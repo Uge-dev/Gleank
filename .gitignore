@@ -1,0 +1,32 @@
+.DS_Store
+
+# Dependencies and generated output
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/.vite/
+**/coverage/
+Backend/data/**/*.sqlite*
+Backend/data/test/
+Backend/uploads/*
+!Backend/uploads/.gitkeep
+!Backend/data/.gitkeep
+
+# Environment files and secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Logs
+**/logs/
+**/*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating-system files
+**/.idea/
+**/.vscode/*
+!**/.vscode/extensions.json
+**/*.sw?

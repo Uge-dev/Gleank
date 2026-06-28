@@ -1,0 +1,8 @@
+.env
+data/**/*.sqlite*
+data/test/
+uploads/*
+!uploads/.gitkeep
+!data/.gitkeep
+node_modules/
+coverage/
