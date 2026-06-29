@@ -78,7 +78,7 @@ function VerifyEmail() {
           <p>
             {user?.emailVerified || message
               ? "Your account can now access protected Gleank actions."
-              : "Check your email inbox or spam folder, then open the verification link sent by Gleank."}
+              : "Open the verification link sent after signup, or request a fresh one."}
           </p>
         </div>
 
@@ -97,6 +97,7 @@ function VerifyEmail() {
             {message}
           </div>
         )}
+
 
         {!user?.emailVerified && (
           <button className="auth-submit-btn" type="button" onClick={handleResend} disabled={isWorking}>

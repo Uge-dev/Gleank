@@ -89,7 +89,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async register(input) {
         const session = await registerRequest(input);
-        localStorage.removeItem("gleank_last_verification_token");
         setSession(session.user, session.store);
         return session.user;
       },

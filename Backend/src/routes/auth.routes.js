@@ -62,7 +62,6 @@ authRouter.post("/register", validate(registerSchema), async (req, res) => {
     user: result.user,
     store: result.store,
     emailVerificationRequired: result.emailVerificationRequired,
-    emailVerificationExpiresAt: result.emailVerificationExpiresAt,
   });
 });
 

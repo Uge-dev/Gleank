@@ -23,7 +23,7 @@ function ForgotPassword() {
   const [step, setStep] = useState<RecoveryStep>(
     tokenFromLink ? "reset" : "request",
   );
-  const [token, setToken] = useState(tokenFromLink);
+  const [token] = useState(tokenFromLink);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,11 +40,6 @@ function ForgotPassword() {
         String(formData.get("email") || "").trim(),
       );
       setMessage(result.message);
-
-      if (result.developmentToken) {
-        setToken(result.developmentToken);
-        setStep("reset");
-      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
