@@ -58,14 +58,16 @@ export const env = {
     process.env.NODE_ENV !== "production",
   ),
   maxUploadMb: numberFromEnv(process.env.MAX_UPLOAD_MB, 5),
+
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: numberFromEnv(process.env.SMTP_PORT, 587),
   smtpSecure: booleanFromEnv(process.env.SMTP_SECURE, false),
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
-  smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "no-reply@gleank.local",
+  smtpFromEmail: process.env.SMTP_FROM_EMAIL || "",
   smtpFromName: process.env.SMTP_FROM_NAME || "Gleank",
   smtpDebug: booleanFromEnv(process.env.SMTP_DEBUG, false),
+
   isProduction: process.env.NODE_ENV === "production",
 };
 

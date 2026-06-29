@@ -145,12 +145,7 @@ export async function registerUser(input, meta = {}) {
     store: serializeStore(findStoreByOwnerId(result.user.id)),
     session: createSession(result.user.id, cleanMeta),
     emailVerificationRequired: !emailVerified,
-    ...(!env.isProduction && result.verification
-      ? {
-          developmentEmailVerificationToken: result.verification.token,
-          emailVerificationExpiresAt: result.verification.expiresAt,
-        }
-      : {}),
+    emailVerificationExpiresAt: result.verification?.expiresAt || null,
   };
 }
 
@@ -212,13 +207,8 @@ export async function resendEmailVerification(userId, meta = {}) {
   createSecurityEvent(row.id, "email_verification_resent", {}, normalizeMeta(meta));
 
   return {
-    message: "Verification instructions have been prepared.",
-    ...(!env.isProduction
-      ? {
-          developmentEmailVerificationToken: verification.token,
-          emailVerificationExpiresAt: verification.expiresAt,
-        }
-      : {}),
+    message: "Verification email has been sent. Please check your inbox or spam folder.",
+    emailVerificationExpiresAt: verification.expiresAt,
   };
 }
 

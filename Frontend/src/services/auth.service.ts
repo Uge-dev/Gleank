@@ -5,8 +5,7 @@ export type AuthResponse = {
   user: AuthUser;
   store: SellerStore | null;
   emailVerificationRequired?: boolean;
-  developmentEmailVerificationToken?: string;
-  emailVerificationExpiresAt?: string;
+  emailVerificationExpiresAt?: string | null;
 };
 
 export type RegisterInput = {
@@ -47,8 +46,7 @@ export function verifyEmail(token: string) {
 export function resendVerification() {
   return apiRequest<{
     message: string;
-    developmentEmailVerificationToken?: string;
-    emailVerificationExpiresAt?: string;
+    emailVerificationExpiresAt?: string | null;
   }>("/auth/resend-verification", {
     method: "POST",
   });

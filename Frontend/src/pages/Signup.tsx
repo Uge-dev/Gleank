@@ -24,7 +24,6 @@ function Signup() {
   const [accountType, setAccountType] = useState<AccountType>("buyer");
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState("");
-  const [developmentToken, setDevelopmentToken] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -44,9 +43,7 @@ function Signup() {
         password: String(formData.get("password") || ""),
         role: accountType,
       });
-      const devToken = localStorage.getItem("gleank_last_verification_token") || "";
       if (!responseUser.emailVerified) {
-        if (devToken) setDevelopmentToken(devToken);
         navigate("/verify-email");
         return;
       }
@@ -199,13 +196,6 @@ function Signup() {
 
           <PasswordStrengthMeter password={password} />
 
-          {developmentToken && (
-            <div className="auth-dev-token-box">
-              <span>Development verification token</span>
-              <code>{developmentToken}</code>
-              <Link to={`/verify-email?token=${encodeURIComponent(developmentToken)}`}>Open verification link</Link>
-            </div>
-          )}
 
           <label className="terms-row">
             <input type="checkbox" required />

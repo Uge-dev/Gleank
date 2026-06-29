@@ -10,7 +10,6 @@ function VerifyEmail() {
   const token = searchParams.get("token") || "";
   const { refreshSession, user } = useAuth();
   const [message, setMessage] = useState("");
-  const [devToken, setDevToken] = useState(() => localStorage.getItem("gleank_last_verification_token") || "");
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(Boolean(token));
 
@@ -23,7 +22,6 @@ function VerifyEmail() {
       .then(async (result) => {
         if (!active) return;
         setMessage(result.message || "Email verified successfully.");
-        localStorage.removeItem("gleank_last_verification_token");
         await refreshSession();
       })
       .catch((requestError) => {
@@ -47,13 +45,11 @@ function VerifyEmail() {
   async function handleResend() {
     setError("");
     setMessage("");
-    setDevToken("");
     setIsWorking(true);
 
     try {
       const result = await resendVerification();
       setMessage(result.message);
-      setDevToken(result.developmentEmailVerificationToken || "");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -82,7 +78,7 @@ function VerifyEmail() {
           <p>
             {user?.emailVerified || message
               ? "Your account can now access protected Gleank actions."
-              : "Open the verification link sent after signup, or request a fresh one."}
+              : "Check your email inbox or spam folder, then open the verification link sent by Gleank."}
           </p>
         </div>
 
@@ -99,16 +95,6 @@ function VerifyEmail() {
           <div className="auth-inline-message success" role="status">
             <FiCheckCircle />
             {message}
-          </div>
-        )}
-
-        {devToken && (
-          <div className="auth-dev-token-box">
-            <span>Development verification token</span>
-            <code>{devToken}</code>
-            <Link to={`/verify-email?token=${encodeURIComponent(devToken)}`}>
-              Open verification link
-            </Link>
           </div>
         )}
 
