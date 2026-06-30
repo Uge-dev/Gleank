@@ -422,6 +422,10 @@ export function updateOrderStatus(user, orderId, status, note = "") {
     throw new HttpError(403, "Buyers can only complete or dispute delivered orders.");
   }
 
+  if (status === "completed" && row.status !== "delivered") {
+    throw new HttpError(422, "Buyer can only complete an order after delivery is verified.");
+  }
+
   const now = new Date().toISOString();
 
   db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(
@@ -433,4 +437,64 @@ export function updateOrderStatus(user, orderId, status, note = "") {
   insertOrderEvent(orderId, status, String(note || "").slice(0, 500));
 
   return getOrder(user.user_id, orderId);
+}
+
+export function verifyOrderDelivery(user, orderId, verificationCode, note = "") {
+  const row = getOrderRowByIdForUser(user.user_id, orderId);
+
+  if (!row) {
+    throw new HttpError(404, "Order was not found.");
+  }
+
+  if (row.seller_id !== user.user_id && user.role !== "admin") {
+    throw new HttpError(403, "Only the seller or admin can verify delivery.");
+  }
+
+  if (row.status !== "out_for_delivery" && row.status !== "ready_for_delivery") {
+    throw new HttpError(422, "Delivery can only be verified after the order is ready or out for delivery.");
+  }
+
+  if (String(verificationCode || "").trim() !== row.verification_code) {
+    throw new HttpError(422, "The delivery verification code is not correct.");
+  }
+
+  const now = new Date().toISOString();
+  db.prepare("UPDATE orders SET status = 'delivered', updated_at = ? WHERE id = ?").run(
+    now,
+    row.id,
+  );
+
+  insertOrderEvent(
+    row.id,
+    "delivered",
+    note || "Seller verified the buyer delivery code and marked the order delivered.",
+  );
+
+  return getOrder(user.user_id, row.id);
+}
+
+export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
+  return transaction(() => {
+    const row = getOrderRowByIdForUser(userId, orderId);
+    if (!row) throw new HttpError(404, "Order was not found.");
+    if (row.buyer_id !== userId) throw new HttpError(403, "Only the buyer can pay for this order.");
+    if (row.status !== "pending_payment") throw new HttpError(422, "This order is not waiting for payment.");
+
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE orders
+      SET status = 'paid', payment_status = 'paid', updated_at = ?
+      WHERE id = ?
+    `).run(now, row.id);
+
+    insertOrderEvent(
+      row.id,
+      "paid",
+      paymentReference
+        ? `Payment verified with reference ${paymentReference}.`
+        : "Payment recorded locally. Replace local provider with gateway verification before production.",
+    );
+
+    return getOrder(userId, row.id);
+  });
 }

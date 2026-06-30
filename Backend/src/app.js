@@ -23,6 +23,7 @@ import { trustRouter } from "./routes/trust.routes.js";
 import { securityRouter } from "./routes/security.routes.js";
 import { subscriptionRouter } from "./routes/subscription.routes.js";
 import { sellerVerificationRouter } from "./routes/seller-verification.routes.js";
+import { paymentRouter } from "./routes/payment.routes.js";
 import { userRouter } from "./routes/user.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 
@@ -77,6 +78,7 @@ app.use("/api/trust", trustRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 app.use("/api/seller-verification", sellerVerificationRouter);
+app.use("/api/payments", paymentRouter);
 app.use("/api/admin", adminRoutes);
 
 app.use(notFoundHandler);

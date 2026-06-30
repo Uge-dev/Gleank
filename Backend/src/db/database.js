@@ -621,6 +621,36 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS payment_transactions (
+    id TEXT PRIMARY KEY,
+    reference TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'local',
+    purpose TEXT NOT NULL
+      CHECK (purpose IN ('store_order', 'used_order', 'seller_subscription')),
+    order_id TEXT,
+    used_order_id TEXT,
+    subscription_id TEXT,
+    user_id TEXT NOT NULL,
+    amount_kobo INTEGER NOT NULL CHECK (amount_kobo >= 0),
+    currency TEXT NOT NULL DEFAULT 'NGN',
+    status TEXT NOT NULL DEFAULT 'initialized'
+      CHECK (status IN ('initialized', 'paid', 'failed', 'cancelled')),
+    authorization_url TEXT NOT NULL DEFAULT '',
+    provider_reference TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_id) REFERENCES seller_subscriptions(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_user_id_idx
+    ON payment_transactions(user_id);
+  CREATE INDEX IF NOT EXISTS payment_transactions_reference_idx
+    ON payment_transactions(reference);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -668,6 +698,15 @@ ensureColumn("services", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+
+ensureColumn("seller_verification_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("seller_verification_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "face_reference", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "face_verified_at", "TEXT");
+ensureColumn("user_trust_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("user_trust_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "face_reference", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
 
 
 

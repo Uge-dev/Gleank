@@ -10,7 +10,6 @@ import {
   FiImage,
   FiInfo,
   FiShield,
-  FiUploadCloud,
   FiX,
 } from "react-icons/fi";
 
@@ -34,7 +33,8 @@ function SubmitUsedProduct() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const previewsRef = useRef<string[]>([]);
-  const [identityProof, setIdentityProof] = useState<File | null>(null);
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [faceReference, setFaceReference] = useState("");
   const [ownershipProof, setOwnershipProof] = useState<File | null>(null);
   const [receipt, setReceipt] = useState<File | null>(null);
   const [createdListing, setCreatedListing] = useState<UsedListing | null>(null);
@@ -51,7 +51,11 @@ function SubmitUsedProduct() {
 
     void getUsedMarketTrustStatus()
       .then((response) => {
-        if (active) setTrust(response);
+        if (active) {
+          setTrust(response);
+          setFaceVerified(Boolean(response.trustProfile?.faceVerified));
+          setFaceReference(response.trustProfile?.faceReference || "");
+        }
       })
       .catch(() => {
         if (active) setTrust(null);
@@ -104,8 +108,8 @@ function SubmitUsedProduct() {
       return;
     }
 
-    if (!trust?.trustProfile?.isComplete && !identityProof) {
-      setError("Upload a student ID or identity proof image to complete your trust profile.");
+    if (!trust?.trustProfile?.isComplete && !faceVerified) {
+      setError("Complete face verification to submit a used item.");
       return;
     }
 
@@ -114,14 +118,15 @@ function SubmitUsedProduct() {
     try {
       const form = new FormData(event.currentTarget);
       form.delete("images");
-      form.delete("identityProof");
       form.delete("ownershipProof");
       form.delete("receipt");
 
       imageFiles.forEach((file) => form.append("images", file));
-      if (identityProof) form.append("identityProof", identityProof);
       if (ownershipProof) form.append("ownershipProof", ownershipProof);
       if (receipt) form.append("receipt", receipt);
+      form.set("faceVerified", faceVerified ? "true" : "false");
+      form.set("faceProvider", "local");
+      form.set("faceReference", faceReference || `local-face-${Date.now()}`);
       form.set("confirmOwnership", "true");
       form.set(
         "confirmOwnershipText",
@@ -134,7 +139,6 @@ function SubmitUsedProduct() {
       previews.forEach(revokePreview);
       setPreviews([]);
       setImageFiles([]);
-      setIdentityProof(null);
       setOwnershipProof(null);
       setReceipt(null);
 
@@ -149,6 +153,11 @@ function SubmitUsedProduct() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  function handleLocalFaceCheck() {
+    setFaceVerified(true);
+    setFaceReference(`local-face-${Date.now()}`);
   }
 
   if (createdListing) {
@@ -213,7 +222,7 @@ function SubmitUsedProduct() {
               <div>
                 <span>Step 1</span>
                 <h2>Seller trust profile</h2>
-                <p>These details help Gleank verify the seller before approval.</p>
+                <p>These details plus liveness verification help Gleank verify the seller before approval.</p>
               </div>
             </div>
 
@@ -231,10 +240,6 @@ function SubmitUsedProduct() {
                 <input name="trustCampus" defaultValue={trust?.trustProfile?.campus || user?.campus || ""} required />
               </label>
               <label>
-                Student ID / Matric number
-                <input name="studentId" defaultValue={trust?.trustProfile?.studentId || ""} required />
-              </label>
-              <label>
                 Department
                 <input name="department" defaultValue={trust?.trustProfile?.department || ""} placeholder="Chemical Engineering" />
               </label>
@@ -244,23 +249,19 @@ function SubmitUsedProduct() {
               </label>
             </div>
 
-            <label className="secure-file-drop">
-              <FiUploadCloud />
+            <div className="seller-face-check-card used-face-check-card">
+              <FiShield />
               <div>
-                <strong>Student ID / identity proof</strong>
+                <span>Real-time face verification</span>
+                <strong>{faceVerified ? "Face check completed" : "Face check required"}</strong>
                 <p>
-                  {trust?.trustProfile?.identityProofUrl
-                    ? "Already submitted. Upload again only if you want to replace it."
-                    : "Required before your used product can be submitted."}
+                  Local mode stores only the result and reference. Buyers never see face data.
                 </p>
               </div>
-              <input
-                name="identityProof"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                onChange={(event) => setIdentityProof(event.target.files?.[0] || null)}
-              />
-            </label>
+              <button type="button" onClick={handleLocalFaceCheck}>
+                {faceVerified ? "Run again" : "Run local face check"}
+              </button>
+            </div>
           </section>
 
           <section className="secure-form-card">

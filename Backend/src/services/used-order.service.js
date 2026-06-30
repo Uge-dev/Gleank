@@ -1,4 +1,5 @@
 import { db, transaction } from "../db/database.js";
+import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createUsedOrderConversation } from "./message.service.js";
@@ -243,9 +244,10 @@ export function createUsedOrder(userId, input) {
   const order = transaction(() => {
     const now = new Date().toISOString();
     const id = createId("uor");
-    const protectionFeeKobo = Math.round(Number(listing.price_kobo || 0) * 0.03);
+    const sellerPriceKobo = Number(listing.seller_price_kobo || 0) || Number(listing.price_kobo || 0);
+    const protectionFeeKobo = Math.round((sellerPriceKobo * env.platformFeePercent) / 100);
     const deliveryFeeKobo = 0;
-    const totalKobo = listing.price_kobo + protectionFeeKobo + deliveryFeeKobo;
+    const totalKobo = sellerPriceKobo + protectionFeeKobo + deliveryFeeKobo;
 
     db.prepare(`
       INSERT INTO used_market_orders (
@@ -260,7 +262,7 @@ export function createUsedOrder(userId, input) {
       listing.id,
       userId,
       listing.seller_id,
-      listing.price_kobo,
+      sellerPriceKobo,
       protectionFeeKobo,
       deliveryFeeKobo,
       totalKobo,
@@ -287,7 +289,7 @@ export function createUsedOrder(userId, input) {
   return order;
 }
 
-export function markUsedOrderPaid(userId, orderId) {
+export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
   return transaction(() => {
     const row = getOrderRowForUser(userId, orderId);
     if (!row) throw new HttpError(404, "Used Market order was not found.");
@@ -303,7 +305,13 @@ export function markUsedOrderPaid(userId, orderId) {
 
     db.prepare("UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?").run(now, row.listing_id);
 
-    insertEvent(row.id, "paid", "Payment is recorded as protected. Replace this with Paystack/Flutterwave verification before production.");
+    insertEvent(
+      row.id,
+      "paid",
+      paymentReference
+        ? `Protected payment verified with reference ${paymentReference}.`
+        : "Payment is recorded as protected. Replace this with gateway verification before production.",
+    );
     return getUsedOrder(userId, row.id);
   });
 }
@@ -323,7 +331,7 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
       if (isBuyer && !["cancelled", "completed", "disputed"].includes(status)) {
         throw new HttpError(403, "Buyers can only cancel, complete, or dispute a used order.");
       }
-      if (isSeller && !["seller_confirmed", "meetup_or_delivery", "delivered", "disputed"].includes(status)) {
+      if (isSeller && !["seller_confirmed", "meetup_or_delivery", "disputed"].includes(status)) {
         throw new HttpError(403, "Seller cannot apply this status.");
       }
     }
@@ -334,7 +342,7 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     if (status === "completed" && row.status !== "delivered") {
       throw new HttpError(422, "Buyer can only complete after seller marks delivered.");
     }
-    if (["seller_confirmed", "meetup_or_delivery", "delivered"].includes(status) && row.status === "pending_payment") {
+    if (["seller_confirmed", "meetup_or_delivery"].includes(status) && row.status === "pending_payment") {
       throw new HttpError(422, "Seller actions unlock after protected payment is recorded.");
     }
 
@@ -350,6 +358,31 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     }
 
     insertEvent(row.id, status, note);
+    return getUsedOrder(user.user_id, row.id);
+  });
+}
+
+export function verifyUsedOrderDelivery(user, orderId, verificationCode, note = "") {
+  return transaction(() => {
+    const row = getOrderRowForUser(user.user_id, orderId);
+    if (!row) throw new HttpError(404, "Used Market order was not found.");
+    if (row.seller_id !== user.user_id && user.role !== "admin") {
+      throw new HttpError(403, "Only the used-item seller or admin can verify delivery.");
+    }
+    if (row.status !== "meetup_or_delivery") {
+      throw new HttpError(422, "Delivery can only be verified after pickup or delivery has started.");
+    }
+    if (String(verificationCode || "").trim() !== row.verification_code) {
+      throw new HttpError(422, "The delivery verification code is not correct.");
+    }
+
+    const now = new Date().toISOString();
+    db.prepare("UPDATE used_market_orders SET status = 'delivered', updated_at = ? WHERE id = ?").run(now, row.id);
+    insertEvent(
+      row.id,
+      "delivered",
+      note || "Seller verified the buyer delivery code and marked the item delivered.",
+    );
     return getUsedOrder(user.user_id, row.id);
   });
 }

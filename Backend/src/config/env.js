@@ -45,6 +45,13 @@ export const env = {
   loginMaxFailedAttempts: numberFromEnv(process.env.LOGIN_MAX_FAILED_ATTEMPTS, 5),
   sellerMonthlyFeeKobo: numberFromEnv(process.env.SELLER_MONTHLY_FEE_KOBO, 300000),
   platformFeePercent: numberFromEnv(process.env.PLATFORM_FEE_PERCENT, 5),
+  paymentProvider: process.env.PAYMENT_PROVIDER || "local",
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
+  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || "",
+  flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY || "",
+  flutterwavePublicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || "",
+  livenessProvider: process.env.LIVENESS_PROVIDER || "local",
+  livenessApiKey: process.env.LIVENESS_API_KEY || "",
   autoVerifyAuth: booleanFromEnv(
     process.env.AUTO_VERIFY_AUTH,
     process.env.NODE_ENV === "test",

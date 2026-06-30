@@ -11,6 +11,9 @@ const selectListing = `
          users.phone AS seller_phone,
          trust.status AS trust_status,
          trust.identity_proof_url AS trust_identity_proof_url,
+         trust.face_verified AS trust_face_verified,
+         trust.face_provider AS trust_face_provider,
+         trust.face_verified_at AS trust_face_verified_at,
          payout.bank_name AS payout_bank_name,
          payout.account_name AS payout_account_name,
          payout.account_number_masked AS payout_account_number_masked,
@@ -46,7 +49,7 @@ function computePlatformPrice(price) {
 }
 
 function serializeUsedListing(row, includePrivate = false) {
-  const trustComplete = Boolean(row.trust_status && row.trust_identity_proof_url);
+  const trustComplete = Boolean(row.trust_status && row.trust_face_verified);
   const payoutComplete = Boolean(row.payout_bank_name && row.payout_account_name);
 
   return {
@@ -83,7 +86,10 @@ function serializeUsedListing(row, includePrivate = false) {
     reviewNote: includePrivate ? row.review_note || "" : "",
     sellerTrust: {
       profileCompleted: trustComplete,
-      identityProofSubmitted: Boolean(row.trust_identity_proof_url),
+      identityProofSubmitted: Boolean(row.trust_face_verified),
+      faceVerified: Boolean(row.trust_face_verified),
+      faceProvider: row.trust_face_provider || "",
+      faceVerifiedAt: row.trust_face_verified_at || null,
       payoutAccountAdded: payoutComplete,
       payoutVerified: Boolean(row.payout_verified),
       accountName: row.payout_account_name || "",

@@ -4,7 +4,9 @@ import {
   createOrders,
   getOrder,
   listOrders,
+  markOrderPaidLocally,
   updateOrderStatus,
+  verifyOrderDelivery,
 } from "../services/order.service.js";
 
 export const orderRouter = Router();
@@ -24,6 +26,16 @@ orderRouter.get("/:id", (req, res) => {
   res.json({ order: getOrder(req.auth.user_id, req.params.id) });
 });
 
+orderRouter.post("/:id/pay", (req, res) => {
+  res.json({
+    order: markOrderPaidLocally(
+      req.auth.user_id,
+      req.params.id,
+      String(req.body?.reference || ""),
+    ),
+  });
+});
+
 orderRouter.patch("/:id/status", (req, res) => {
   res.json({
     order: updateOrderStatus(
@@ -31,6 +43,17 @@ orderRouter.patch("/:id/status", (req, res) => {
       req.params.id,
       req.body?.status,
       req.body?.note,
+    ),
+  });
+});
+
+orderRouter.post("/:id/verify-delivery", (req, res) => {
+  res.json({
+    order: verifyOrderDelivery(
+      req.auth,
+      req.params.id,
+      String(req.body?.verificationCode || ""),
+      String(req.body?.note || ""),
     ),
   });
 });

@@ -28700,3 +28700,117 @@ html[data-theme="dark"] .notification-card {
     white-space: normal;
   }
 }
+
+.seller-face-check-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(22, 163, 74, 0.18);
+  border-radius: 22px;
+  background: linear-gradient(135deg, #f0fdf4, #ffffff);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.06);
+}
+
+.seller-face-check-card > svg {
+  width: 42px;
+  height: 42px;
+  padding: 10px;
+  border-radius: 16px;
+  color: #15803d;
+  background: #dcfce7;
+}
+
+.seller-face-check-card span {
+  display: block;
+  color: #15803d;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.seller-face-check-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.seller-face-check-card p {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.seller-face-check-card button,
+.delivery-code-action button {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 16px;
+  background: #16a34a;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.used-face-check-card {
+  margin-top: 14px;
+}
+
+.delivery-code-action {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.delivery-code-action label {
+  display: grid;
+  gap: 7px;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.delivery-code-action input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  outline: none;
+}
+
+.delivery-code-action input:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
+}
+
+.used-action-stack button.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+@media (max-width: 640px) {
+  .seller-face-check-card {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .seller-face-check-card > svg {
+    width: 40px;
+    height: 40px;
+  }
+
+  .seller-face-check-card button {
+    width: 100%;
+  }
+}

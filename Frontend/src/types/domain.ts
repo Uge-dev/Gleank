@@ -177,6 +177,10 @@ export type UsedMarketTrustProfile = {
   level: string;
   studentId: string;
   identityProofUrl: string | null;
+  faceVerified: boolean;
+  faceProvider: string;
+  faceReference: string;
+  faceVerifiedAt: string | null;
   status: TrustProfileStatus;
   isComplete: boolean;
   createdAt: string;
@@ -205,6 +209,9 @@ export type UsedMarketTrustStatus = {
 export type UsedSellerTrust = {
   profileCompleted: boolean;
   identityProofSubmitted: boolean;
+  faceVerified?: boolean;
+  faceProvider?: string;
+  faceVerifiedAt?: string | null;
   payoutAccountAdded: boolean;
   payoutVerified: boolean;
   accountName: string;
@@ -469,6 +476,10 @@ export type SellerVerificationProfile = {
   campus: string;
   studentId: string;
   identityProofUrl: string | null;
+  faceVerified: boolean;
+  faceProvider: string;
+  faceReference: string;
+  faceVerifiedAt: string | null;
   businessDescription: string;
   agreementAccepted: boolean;
   status: SellerVerificationStatus;

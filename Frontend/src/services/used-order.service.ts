@@ -36,6 +36,20 @@ export function payUsedOrder(id: string) {
   );
 }
 
+export function verifyUsedOrderDelivery(
+  id: string,
+  verificationCode: string,
+  note = "",
+) {
+  return apiRequest<{ order: UsedMarketOrder }>(
+    `/used-orders/${encodeURIComponent(id)}/verify-delivery`,
+    {
+      method: "POST",
+      body: JSON.stringify({ verificationCode, note }),
+    },
+  );
+}
+
 export function updateUsedOrderStatus(
   id: string,
   status: UsedMarketOrderStatus,

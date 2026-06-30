@@ -246,6 +246,7 @@ export async function requestPasswordReset(input, meta = {}) {
 
   return {
     message: resetRequestMessage,
+    ...(!env.isProduction ? { developmentToken: token } : {}),
   };
 }
 

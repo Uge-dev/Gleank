@@ -46,6 +46,18 @@ function escapeHtml(value) {
 }
 
 async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !env.emailFrom) {
+    if (env.isProduction) {
+      assertEmailConfigured();
+    }
+
+    console.info(
+      `[email:development] ${subject} -> ${to}\n${text || html || ""}`,
+    );
+
+    return { sent: false, development: true };
+  }
+
   const mailer = getTransporter();
 
   await mailer.sendMail({
@@ -55,6 +67,8 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
     text,
     html,
   });
+
+  return { sent: true, development: false };
 }
 
 export async function sendEmailVerificationEmail({ to, name, token }) {

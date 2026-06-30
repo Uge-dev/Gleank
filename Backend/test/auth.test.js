@@ -16,6 +16,9 @@ process.env.DATABASE_PATH = "./data/test/gleank-test.sqlite";
 process.env.UPLOADS_PATH = "./data/test/uploads";
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-for-gleank-tests";
 process.env.FRONTEND_URL = "http://localhost:5173";
+process.env.AUTO_VERIFY_AUTH = "true";
+process.env.AUTO_ACTIVATE_SELLER_SUBSCRIPTION = "true";
+process.env.AUTO_APPROVE_USED_LISTINGS = "true";
 
 fs.rmSync(path.join(testRoot, "gleank-test.sqlite"), { force: true });
 fs.rmSync(path.join(testRoot, "uploads"), {
@@ -38,7 +41,7 @@ test("seller can register and load workspace", async () => {
     .send({
       name: "Test Seller",
       email: "seller-test@gleank.local",
-      password: "Gleank123!",
+      password: "CampusMarket123!",
       role: "seller",
       campus: "FUPRE",
       storeName: "Test Campus Store",
@@ -67,7 +70,9 @@ test("seller can register and load workspace", async () => {
 
   assert.equal(productResponse.status, 201);
   assert.equal(productResponse.body.product.stock, 5);
-  assert.equal(productResponse.body.product.price, 15000);
+  assert.equal(productResponse.body.product.sellerPrice, 15000);
+  assert.equal(productResponse.body.product.platformFee, 750);
+  assert.equal(productResponse.body.product.price, 15750);
   assert.equal(productResponse.body.product.isFeatured, true);
   const productId = productResponse.body.product.id;
 
@@ -205,6 +210,19 @@ test("seller can register and load workspace", async () => {
     .field("pickupLocation", "Main gate")
     .field("deliveryOption", "Pickup")
     .field("serialNumber", "TEST-123")
+    .field("defectsDisclosed", "No defects")
+    .field("reasonForSelling", "Testing the protected used market flow.")
+    .field("confirmOwnership", "true")
+    .field("confirmOwnershipText", "Seller confirmed ownership and truthful disclosure.")
+    .field("fullName", "Test Seller")
+    .field("trustPhone", "08000000000")
+    .field("trustCampus", "FUPRE")
+    .field("faceVerified", "true")
+    .field("faceProvider", "local")
+    .field("faceReference", "local-face-test")
+    .field("bankName", "Test Bank")
+    .field("accountName", "TEST SELLER")
+    .field("accountNumber", "0123456789")
     .attach("images", Buffer.from("test-image"), {
       filename: "used-item.png",
       contentType: "image/png",
@@ -245,8 +263,8 @@ test("seller can register and load workspace", async () => {
 
 test("user can securely reset a forgotten password", async () => {
   const email = "password-reset@gleank.local";
-  const originalPassword = "Gleank123!";
-  const newPassword = "Gleank456!";
+  const originalPassword = "CampusMarket123!";
+  const newPassword = "CampusMarket456!";
 
   const registerResponse = await request(app)
     .post("/api/auth/register")

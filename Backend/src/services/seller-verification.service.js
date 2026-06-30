@@ -20,6 +20,10 @@ export function serializeSellerVerification(row) {
       campus: "",
       studentId: "",
       identityProofUrl: null,
+      faceVerified: false,
+      faceProvider: "",
+      faceReference: "",
+      faceVerifiedAt: null,
       businessDescription: "",
       agreementAccepted: false,
       note: "",
@@ -32,8 +36,7 @@ export function serializeSellerVerification(row) {
     row.full_name &&
       row.phone &&
       row.campus &&
-      row.student_id &&
-      row.identity_proof_url &&
+      row.face_verified &&
       row.business_description &&
       row.agreement_accepted,
   );
@@ -47,6 +50,10 @@ export function serializeSellerVerification(row) {
     campus: row.campus,
     studentId: row.student_id,
     identityProofUrl: row.identity_proof_url || null,
+    faceVerified: Boolean(row.face_verified),
+    faceProvider: row.face_provider || "",
+    faceReference: row.face_reference || "",
+    faceVerifiedAt: row.face_verified_at || null,
     businessDescription: row.business_description,
     agreementAccepted: Boolean(row.agreement_accepted),
     status: row.status,
@@ -80,6 +87,20 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     campus: clean(input.sellerCampus || input.campus, 100),
     studentId: clean(input.studentId, 100),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
+    faceVerified:
+      input.faceVerified === true ||
+      input.faceVerified === "true" ||
+      input.faceVerified === "on" ||
+      input.faceVerified === "1" ||
+      Boolean(existing?.face_verified),
+    faceProvider: clean(input.faceProvider || existing?.face_provider || env.livenessProvider, 80),
+    faceReference: clean(
+      input.faceReference ||
+        input.livenessReference ||
+        existing?.face_reference ||
+        `local-face-${Date.now()}`,
+      160,
+    ),
     businessDescription: clean(input.businessDescription, 1200),
     agreementAccepted:
       input.agreementAccepted === true ||
@@ -88,12 +109,12 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       input.agreementAccepted === "1",
   };
 
-  if (!next.fullName || !next.phone || !next.campus || !next.studentId) {
-    throw new HttpError(422, "Complete seller name, phone, campus, and student ID.");
+  if (!next.fullName || !next.phone || !next.campus) {
+    throw new HttpError(422, "Complete seller name, phone, and campus.");
   }
 
-  if (!next.identityProofUrl) {
-    throw new HttpError(422, "Upload your student ID or identity proof image.");
+  if (!next.faceVerified) {
+    throw new HttpError(422, "Complete live face verification before submitting seller verification.");
   }
 
   if (next.businessDescription.length < 20) {
@@ -116,8 +137,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       db.prepare(`
         UPDATE seller_verification_profiles
         SET store_id = ?, full_name = ?, phone = ?, campus = ?, student_id = ?,
-            identity_proof_url = ?, business_description = ?, agreement_accepted = ?,
-            status = ?, note = ?, submitted_at = ?, verified_at = ?, updated_at = ?
+            identity_proof_url = ?, face_verified = ?, face_provider = ?,
+            face_reference = ?, face_verified_at = ?, business_description = ?,
+            agreement_accepted = ?, status = ?, note = ?, submitted_at = ?,
+            verified_at = ?, updated_at = ?
         WHERE user_id = ?
       `).run(
         store.id,
@@ -126,6 +149,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         next.campus,
         next.studentId,
         next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? existing?.face_verified_at || now : null,
         next.businessDescription,
         next.agreementAccepted ? 1 : 0,
         status,
@@ -139,9 +166,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       db.prepare(`
         INSERT INTO seller_verification_profiles (
           id, user_id, store_id, full_name, phone, campus, student_id,
-          identity_proof_url, business_description, agreement_accepted,
+          identity_proof_url, face_verified, face_provider, face_reference,
+          face_verified_at, business_description, agreement_accepted,
           status, note, submitted_at, verified_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         createId("svp"),
         userId,
@@ -151,6 +179,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         next.campus,
         next.studentId,
         next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? now : null,
         next.businessDescription,
         next.agreementAccepted ? 1 : 0,
         status,

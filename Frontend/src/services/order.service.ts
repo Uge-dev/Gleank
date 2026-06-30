@@ -47,3 +47,27 @@ export function updateOrderStatus(
     },
   );
 }
+
+export function payOrder(id: string, reference = "") {
+  return apiRequest<{ order: GleankOrder }>(
+    `/orders/${encodeURIComponent(id)}/pay`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reference }),
+    },
+  );
+}
+
+export function verifyOrderDelivery(
+  id: string,
+  verificationCode: string,
+  note = "",
+) {
+  return apiRequest<{ order: GleankOrder }>(
+    `/orders/${encodeURIComponent(id)}/verify-delivery`,
+    {
+      method: "POST",
+      body: JSON.stringify({ verificationCode, note }),
+    },
+  );
+}

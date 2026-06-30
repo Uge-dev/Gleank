@@ -135,6 +135,46 @@ export function activateSellerSubscriptionForDevelopment(userId) {
   return getSellerSubscription(userId);
 }
 
+export function renewSellerSubscriptionFromPayment(userId, paymentReference) {
+  ensureSellerSubscription(userId);
+  const row = db.prepare("SELECT * FROM seller_subscriptions WHERE user_id = ?").get(userId);
+  const now = new Date();
+  const periodEnd = addDays(now, 30);
+  const reference = String(paymentReference || `payment-${Date.now()}`).slice(0, 160);
+
+  transaction(() => {
+    db.prepare(`
+      UPDATE seller_subscriptions
+      SET status = 'active', starts_at = COALESCE(starts_at, ?),
+          current_period_start = ?, current_period_end = ?, next_renewal_at = ?,
+          last_payment_reference = ?, amount_kobo = ?, updated_at = ?
+      WHERE user_id = ?
+    `).run(
+      now.toISOString(),
+      now.toISOString(),
+      periodEnd.toISOString(),
+      periodEnd.toISOString(),
+      reference,
+      env.sellerMonthlyFeeKobo,
+      now.toISOString(),
+      userId,
+    );
+
+    db.prepare(`
+      INSERT INTO seller_subscription_events (id, subscription_id, event_type, amount_kobo, note, created_at)
+      VALUES (?, ?, 'renewed', ?, ?, ?)
+    `).run(
+      createId("sse"),
+      row.id,
+      env.sellerMonthlyFeeKobo,
+      `Seller subscription payment verified: ${reference}.`,
+      now.toISOString(),
+    );
+  });
+
+  return getSellerSubscription(userId);
+}
+
 export function assertSellerSubscriptionActive(userId) {
   const subscription = ensureSellerSubscription(userId);
   if (!subscription.isActive) {
