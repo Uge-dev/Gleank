@@ -8,7 +8,10 @@ router.post("/login", (req, res) => {
   const { email, password } = req.body || {};
   const adminEmail = process.env.ADMIN_EMAIL || "admin@gleank.com";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin12345";
-  const token = process.env.ADMIN_DEMO_TOKEN || "gleank-admin-demo-token";
+  const token =
+    process.env.ADMIN_TOKEN ||
+    process.env.ADMIN_DEMO_TOKEN ||
+    "gleank-admin-local-token";
 
   if (String(email).toLowerCase().trim() !== adminEmail || String(password).trim() !== adminPassword) {
     return res.status(401).json({ message: "Invalid admin login details" });

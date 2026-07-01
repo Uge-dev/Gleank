@@ -27,7 +27,7 @@ import {
   FaUsers,
 } from "react-icons/fa";
 import {
-  initialAdminDataset,
+  emptyAdminDataset,
   type AdminActivityLog,
   type AdminDataset,
   type AdminDelivery,
@@ -41,7 +41,7 @@ import {
   type AdminUsedItem,
   type AdminUser,
 } from "./adminData";
-import { adminLogin, clearAdminToken, deleteAdminRecord, fetchAdminDataset, getAdminToken, resetAdminDemoData, updateAdminRecordFields, updateAdminRecordStatus } from "./adminApi";
+import { adminLogin, clearAdminToken, deleteAdminRecord, fetchAdminDataset, getAdminToken, updateAdminRecordFields, updateAdminRecordStatus } from "./adminApi";
 import "./AdminDashboard.css";
 
 type AdminTab =
@@ -160,7 +160,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         </form>
 
         <div className="admin-demo-note">
-          Demo access: <strong>admin@gleank.com</strong> / <strong>admin12345</strong>
+          Local default access: <strong>admin@gleank.com</strong> / <strong>admin12345</strong>. Change this with <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> in Backend/.env.
         </div>
       </div>
     </section>
@@ -291,7 +291,7 @@ function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
-  const [data, setData] = useState<AdminDataset>(initialAdminDataset);
+  const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<{ title: string; item: Record<string, unknown> } | null>(null);
@@ -338,7 +338,7 @@ function AdminDashboard() {
   }
 
   async function removeRecord(collection: AdminCollection, id: string, label: string) {
-    const confirmed = window.confirm(`Delete ${label}? This demo action removes the record from the admin table.`);
+    const confirmed = window.confirm(`Apply the admin remove/disable action for ${label}? This updates the real backend record.`);
     if (!confirmed) return;
 
     const response = await deleteAdminRecord(collection, id);
@@ -373,8 +373,13 @@ function AdminDashboard() {
     });
   }
 
-  function resetDemo() {
-    setData(resetAdminDemoData());
+  async function refreshLiveData() {
+    setLoading(true);
+    try {
+      setData(await fetchAdminDataset());
+    } finally {
+      setLoading(false);
+    }
   }
 
   function selectTab(tab: AdminTab) {
@@ -454,7 +459,7 @@ function AdminDashboard() {
                   <span className="admin-pill"><FaShieldAlt /> Platform safety center</span>
                   <h2>Control the full Gleank marketplace from one full-page admin dashboard.</h2>
                   <p>
-                    This area is prepared for user, seller, product, used-market, order, payment, payout, delivery, dispute and feedback integrations.
+                    This area is connected to live users, sellers, products, used-market listings, orders, payments, payouts, deliveries, disputes and activity logs.
                   </p>
                 </div>
                 <div className="admin-hero-metric">
@@ -503,10 +508,10 @@ function AdminDashboard() {
                     </div>
                   </div>
                   <div className="admin-flow-list">
-                    <div><strong>User upload</strong><span>Used item enters pending approval queue.</span></div>
-                    <div><strong>Seller upload</strong><span>Product/service waits for admin approval.</span></div>
-                    <div><strong>Order paid</strong><span>Admin monitors payment, delivery and payout release.</span></div>
-                    <div><strong>Complaint sent</strong><span>Dispute appears for admin review and resolution.</span></div>
+                    <div><strong>User upload</strong><span>Used item appears from the live Used Market table.</span></div>
+                    <div><strong>Seller upload</strong><span>Product/service appears from seller dashboard records.</span></div>
+                    <div><strong>Order paid</strong><span>Admin monitors live payment, delivery and payout states.</span></div>
+                    <div><strong>Complaint sent</strong><span>Reports/disputes propagate into the admin queue.</span></div>
                   </div>
                 </div>
               </section>
@@ -842,7 +847,7 @@ function AdminDashboard() {
                 <div className="admin-panel-head">
                   <div>
                     <h2>Admin Integration Rules</h2>
-                    <p>These are the rules the user, seller and admin sections should follow when the backend is connected.</p>
+                    <p>These are the live rules currently enforced between user, seller and admin sections.</p>
                   </div>
                 </div>
                 <div className="admin-rules-list">
@@ -857,12 +862,12 @@ function AdminDashboard() {
               <div className="admin-panel-card">
                 <div className="admin-panel-head">
                   <div>
-                    <h2>Demo Data</h2>
-                    <p>Use this during frontend testing only. Later, real backend records will replace the demo storage.</p>
+                    <h2>Live Admin Data</h2>
+                    <p>The dashboard now reads from the backend database. Use refresh to pull the latest seller, user and order changes.</p>
                   </div>
                 </div>
                 <div className="admin-settings-actions">
-                  <button type="button" onClick={resetDemo}><FaUndo /> Reset demo admin data</button>
+                  <button type="button" onClick={() => void refreshLiveData()}><FaUndo /> Refresh live admin data</button>
                   <button type="button" onClick={logout}><FaBan /> Logout admin session</button>
                 </div>
               </div>
