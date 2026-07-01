@@ -16,6 +16,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { createOrders } from "../services/order.service";
 import { formatNaira } from "../utils/price";
+import { initializeOrdersPayment } from "../services/payment.service";
 
 function Checkout() {
   const { cartItems, cartSubtotal, clearCart } = useCart();
@@ -65,15 +66,18 @@ function Checkout() {
         })),
       });
 
-      clearCart();
+      const paymentResponse = await initializeOrdersPayment(
+  response.orders.map((order) => order.id),
+);
 
-      const reference = response.orders.map((order) => order.orderCode).join(",");
-      sessionStorage.setItem(
-        "gleank_last_orders",
-        JSON.stringify(response.orders),
-      );
+clearCart();
 
-      navigate(`/order-success?ref=${encodeURIComponent(reference)}`);
+sessionStorage.setItem(
+  "gleank_last_orders",
+  JSON.stringify(response.orders),
+);
+
+window.location.href = paymentResponse.payment.authorizationUrl;
     } catch (requestError) {
       setError(
         requestError instanceof Error

@@ -37,6 +37,17 @@ usedOrderRouter.post("/:id/pay", (req, res) => {
   });
 });
 
+usedOrderRouter.post("/:id/verify-delivery", (req, res) => {
+  res.json({
+    order: verifyUsedOrderDelivery(
+      req.auth,
+      req.params.id,
+      String(req.body?.code || ""),
+      String(req.body?.note || ""),
+    ),
+  });
+});
+
 usedOrderRouter.patch("/:id/status", (req, res) => {
   res.json({
     order: updateUsedOrderStatus(

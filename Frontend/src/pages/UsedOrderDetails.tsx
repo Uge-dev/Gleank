@@ -19,10 +19,11 @@ import LoadingState from "../components/LoadingState";
 import { createConversation } from "../services/message.service";
 import {
   getUsedOrder,
-  payUsedOrder,
   updateUsedOrderStatus,
   verifyUsedOrderDelivery,
 } from "../services/used-order.service";
+
+import { initializeUsedOrderPayment } from "../services/payment.service";
 import type { UsedMarketOrder, UsedMarketOrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
@@ -66,22 +67,24 @@ function UsedOrderDetails() {
   useEffect(loadOrder, [id]);
 
   async function handlePay() {
-    if (!order) return;
-    setIsWorking(true);
-    setError("");
-    try {
-      const response = await payUsedOrder(order.id);
-      setOrder(response.order);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Payment record could not be updated.",
-      );
-    } finally {
-      setIsWorking(false);
-    }
+  if (!order) return;
+
+  setIsWorking(true);
+  setError("");
+
+  try {
+    const response = await initializeUsedOrderPayment(order.id);
+    window.location.href = response.payment.authorizationUrl;
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Payment could not be initialized.",
+    );
+  } finally {
+    setIsWorking(false);
   }
+}
 
   async function handleStatus(status: UsedMarketOrderStatus, note = "") {
     if (!order) return;

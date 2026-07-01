@@ -7,6 +7,7 @@ import {
   getSellerSubscription,
 } from "../services/subscription.service";
 import type { SellerSubscription as SellerSubscriptionType } from "../types/domain";
+import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 
 function SellerSubscription() {
   const [subscription, setSubscription] = useState<SellerSubscriptionType | null>(null);
@@ -36,23 +37,23 @@ function SellerSubscription() {
   }, []);
 
   async function activateDevelopment() {
-    setError("");
-    setMessage("");
-    setIsSubmitting(true);
-    try {
-      const result = await activateSellerSubscriptionForDevelopment();
-      setSubscription(result.subscription);
-      setMessage("Development subscription activated for 30 days.");
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Subscription could not be activated.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+  setError("");
+  setMessage("");
+  setIsSubmitting(true);
+
+  try {
+    const response = await initializeSellerSubscriptionPayment();
+    window.location.href = response.payment.authorizationUrl;
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Subscription payment could not be initialized.",
+    );
+  } finally {
+    setIsSubmitting(false);
   }
+}
 
   if (isLoading) {
     return <section className="seller-subscription-page"><LoadingState title="Loading subscription" message="Checking seller monthly fee status." /></section>;
@@ -78,7 +79,7 @@ function SellerSubscription() {
         {subscription?.currentPeriodEnd && <p>Active until {new Date(subscription.currentPeriodEnd).toLocaleString()}</p>}
         {!subscription?.isActive ? (
           <button type="button" onClick={activateDevelopment} disabled={isSubmitting}>
-            <FiRefreshCw /> {isSubmitting ? "Activating..." : "Activate development subscription"}
+            <FiRefreshCw /> {isSubmitting ? "Opening payment..." : "Pay with Paystack"}
           </button>
         ) : (
           <Link to="/dashboard">Open seller dashboard</Link>

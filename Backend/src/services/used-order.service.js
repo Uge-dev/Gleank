@@ -362,27 +362,54 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
   });
 }
 
-export function verifyUsedOrderDelivery(user, orderId, verificationCode, note = "") {
+
+export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
+  const deliveryCode = clean(code, 20);
+
+  if (!deliveryCode) {
+    throw new HttpError(422, "Enter the buyer delivery code.");
+  }
+
   return transaction(() => {
     const row = getOrderRowForUser(user.user_id, orderId);
-    if (!row) throw new HttpError(404, "Used Market order was not found.");
-    if (row.seller_id !== user.user_id && user.role !== "admin") {
-      throw new HttpError(403, "Only the used-item seller or admin can verify delivery.");
+
+    if (!row) {
+      throw new HttpError(404, "Used Market order was not found.");
     }
+
+    const isSeller = row.seller_id === user.user_id;
+    const isAdmin = user.role === "admin";
+
+    if (!isSeller && !isAdmin) {
+      throw new HttpError(403, "Only the seller can verify the delivery code.");
+    }
+
     if (row.status !== "meetup_or_delivery") {
-      throw new HttpError(422, "Delivery can only be verified after pickup or delivery has started.");
+      throw new HttpError(
+        422,
+        "Delivery code can only be verified when pickup or delivery is in progress.",
+      );
     }
-    if (String(verificationCode || "").trim() !== row.verification_code) {
-      throw new HttpError(422, "The delivery verification code is not correct.");
+
+    if (String(row.verification_code || "") !== deliveryCode) {
+      throw new HttpError(422, "The delivery code is incorrect.");
     }
 
     const now = new Date().toISOString();
-    db.prepare("UPDATE used_market_orders SET status = 'delivered', updated_at = ? WHERE id = ?").run(now, row.id);
+
+    db.prepare(`
+      UPDATE used_market_orders
+      SET status = 'delivered',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, row.id);
+
     insertEvent(
       row.id,
       "delivered",
       note || "Seller verified the buyer delivery code and marked the item delivered.",
     );
+
     return getUsedOrder(user.user_id, row.id);
   });
 }

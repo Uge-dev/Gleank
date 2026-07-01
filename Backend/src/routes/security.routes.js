@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { changePasswordSchema } from "../schemas/auth.schemas.js";
 import { validate } from "../middleware/validate.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import {
   changePassword,
   getAccountSecurity,
@@ -26,6 +26,7 @@ securityRouter.get("/me", (req, res) => {
 
 securityRouter.post(
   "/change-password",
+  requireEmailVerified,
   validate(changePasswordSchema),
   async (req, res) => {
     res.json(await changePassword(req.auth.user_id, req.body, requestMeta(req)));

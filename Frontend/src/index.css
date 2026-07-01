@@ -28814,3 +28814,185 @@ html[data-theme="dark"] .notification-card {
     width: 100%;
   }
 }
+
+/* =========================================
+   CART/AUTH/COMMENTS STABILITY OVERRIDES
+========================================= */
+
+.auth-modal-forgot-link {
+  justify-self: end;
+  margin-top: -4px;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.auth-modal-forgot-link:hover {
+  text-decoration: underline;
+}
+
+.security-locked-box {
+  border: 1px dashed #86efac;
+  background: #f0fdf4;
+}
+
+.seller-store-tabs {
+  scroll-behavior: smooth;
+}
+
+.seller-store-tabs button.active::after {
+  opacity: 1 !important;
+  transform: translateX(-50%) scaleX(1) !important;
+}
+
+.product-comment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.product-comment-actions button {
+  width: auto;
+  min-width: 34px;
+  gap: 4px;
+}
+
+.product-comment-actions button.liked,
+.product-comment-actions button.liked svg {
+  color: #e11d48;
+  fill: #e11d48;
+}
+
+.product-comment-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-comment-actions span {
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.product-comment-reply {
+  margin-left: 26px;
+}
+
+.product-comment-replying {
+  display: inline-flex;
+  margin-top: 4px;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.product-comment-content p.is-deleted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.product-comment-reply-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: #ecfdf5;
+  color: #065f46;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.product-comment-reply-banner button {
+  border: 0;
+  background: transparent;
+  color: #991b1b;
+  font: inherit;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .product-comment-drawer-layer {
+    z-index: 2147483200 !important;
+  }
+
+  .product-comment-drawer {
+    height: min(88dvh, calc(100dvh - 12px)) !important;
+    max-height: calc(100dvh - 12px) !important;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .product-comment-list {
+    min-height: 0;
+    padding-bottom: 10px;
+  }
+
+  .product-comment-form {
+    position: relative;
+    z-index: 3;
+    grid-template-columns: 38px minmax(0, 1fr) 42px !important;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .product-comment-input-wrap {
+    min-width: 0;
+  }
+
+  .product-comment-input-wrap button[aria-label="Add image"],
+  .product-comment-input-wrap button[aria-label="Emoji"] {
+    display: none;
+  }
+
+  .product-comment-reply {
+    margin-left: 14px;
+  }
+}
+
+
+.delivery-code-action {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.delivery-code-action label {
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.delivery-code-action input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  font: inherit;
+  color: #0f172a;
+  background: #ffffff;
+  outline: none;
+}
+
+.delivery-code-action input:focus {
+  border-color: rgba(249, 115, 22, 0.75);
+  box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
+}
+
+.delivery-code-action button {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .delivery-code-action {
+    gap: 0.65rem;
+  }
+
+  .delivery-code-action input {
+    min-height: 46px;
+    border-radius: 12px;
+    font-size: 0.95rem;
+  }
+}

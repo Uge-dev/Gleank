@@ -44,7 +44,8 @@ function serializePublicProduct(row) {
   };
 }
 
-export function getPublicProduct(productId, viewerId) {
+export function getPublicProduct(productId, viewer = null) {
+  const viewerId = viewer?.user_id || viewer?.id || "";
   const row = db
     .prepare(`
       ${publicProductQuery}
@@ -73,15 +74,6 @@ export function getPublicProduct(productId, viewerId) {
     relatedProducts: relatedRows.map(serializePublicProduct),
     interaction: productInteraction(productId, viewerId),
     storeInteraction: storeInteraction(row.store_id, viewerId),
-    comments: productComments(productId).map((comment) => ({
-      id: comment.id,
-      body: comment.body,
-      createdAt: comment.created_at,
-      user: {
-        id: comment.user_id,
-        name: comment.name,
-        avatarUrl: comment.avatar_url || null,
-      },
-    })),
+    comments: productComments(productId, viewer),
   };
 }

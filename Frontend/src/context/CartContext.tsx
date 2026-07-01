@@ -6,6 +6,15 @@ import {
   useState,
 } from "react";
 import type { ReactNode } from "react";
+import { useAuth } from "./AuthContext";
+import {
+  addAccountCartItem,
+  clearAccountCart,
+  getAccountCart,
+  mergeAccountCart,
+  removeAccountCartItem,
+  setAccountCartItemQuantity,
+} from "../services/cart.service";
 
 export type CartItem = {
   id: string;
@@ -16,6 +25,7 @@ export type CartItem = {
   sellerName: string;
   sellerId: string;
   campus: string;
+  category?: string;
   quantity: number;
 };
 
@@ -62,16 +72,58 @@ type CartProviderProps = {
 };
 
 export function CartProvider({ children }: CartProviderProps) {
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+  const [hasHydratedCart, setHasHydratedCart] = useState(false);
 
   useEffect(() => {
     setCartItems(getStoredCart());
   }, []);
 
   useEffect(() => {
+    if (!hasHydratedCart || isAuthenticated) return;
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-  }, [cartItems]);
+  }, [cartItems, hasHydratedCart, isAuthenticated]);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    let active = true;
+
+    async function hydrateAccountCart() {
+      if (!isAuthenticated || !user) {
+        setCartItems(getStoredCart());
+        setHasHydratedCart(true);
+        return;
+      }
+
+      const localCart = getStoredCart();
+
+      try {
+        const nextCart = localCart.length
+          ? await mergeAccountCart(localCart)
+          : await getAccountCart();
+
+        if (!active) return;
+
+        localStorage.removeItem(CART_STORAGE_KEY);
+        setCartItems(nextCart);
+      } catch {
+        if (!active) return;
+        setCartItems(localCart);
+      } finally {
+        if (active) setHasHydratedCart(true);
+      }
+    }
+
+    setHasHydratedCart(false);
+    void hydrateAccountCart();
+
+    return () => {
+      active = false;
+    };
+  }, [authLoading, isAuthenticated, user?.id, user]);
 
   const cartCount = useMemo(() => {
     return cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -92,6 +144,8 @@ export function CartProvider({ children }: CartProviderProps) {
   }
 
   function addToCart(item: AddToCartItem) {
+    const quantity = item.quantity || 1;
+
     setCartItems((currentItems) => {
       const existingItem = currentItems.find(
         (cartItem) => cartItem.id === item.id
@@ -103,7 +157,7 @@ export function CartProvider({ children }: CartProviderProps) {
 
           return {
             ...cartItem,
-            quantity: cartItem.quantity + (item.quantity || 1),
+            quantity: cartItem.quantity + quantity,
           };
         });
       }
@@ -112,50 +166,85 @@ export function CartProvider({ children }: CartProviderProps) {
         ...currentItems,
         {
           ...item,
-          quantity: item.quantity || 1,
+          quantity,
         },
       ];
     });
+
+    if (isAuthenticated) {
+      void addAccountCartItem(item.id, quantity)
+        .then(setCartItems)
+        .catch(() => {
+          // Keep optimistic cart visible if the network fails.
+        });
+    }
 
     setCartDrawerOpen(true);
   }
 
   function increaseQuantity(id: string) {
+    let nextQuantity = 1;
     setCartItems((currentItems) =>
       currentItems.map((item) => {
         if (item.id !== id) return item;
 
+        nextQuantity = item.quantity + 1;
         return {
           ...item,
-          quantity: item.quantity + 1,
+          quantity: nextQuantity,
         };
       })
     );
+
+    if (isAuthenticated) {
+      void setAccountCartItemQuantity(id, nextQuantity)
+        .then(setCartItems)
+        .catch(() => undefined);
+    }
   }
 
   function decreaseQuantity(id: string) {
+    let nextQuantity = 1;
     setCartItems((currentItems) =>
       currentItems
         .map((item) => {
           if (item.id !== id) return item;
 
+          nextQuantity = Math.max(1, item.quantity - 1);
           return {
             ...item,
-            quantity: Math.max(1, item.quantity - 1),
+            quantity: nextQuantity,
           };
         })
         .filter((item) => item.quantity > 0)
     );
+
+    if (isAuthenticated) {
+      void setAccountCartItemQuantity(id, nextQuantity)
+        .then(setCartItems)
+        .catch(() => undefined);
+    }
   }
 
   function removeFromCart(id: string) {
     setCartItems((currentItems) =>
       currentItems.filter((item) => item.id !== id)
     );
+
+    if (isAuthenticated) {
+      void removeAccountCartItem(id)
+        .then(setCartItems)
+        .catch(() => undefined);
+    }
   }
 
   function clearCart() {
     setCartItems([]);
+    if (isAuthenticated) {
+      void clearAccountCart()
+        .then(setCartItems)
+        .catch(() => undefined);
+    }
   }
 
   return (

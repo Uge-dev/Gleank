@@ -112,6 +112,9 @@ export async function sendPasswordResetEmail({ to, name, token }) {
 Reset your Gleank password by opening this link:
 ${resetUrl}
 
+Recovery code:
+${token}
+
 This link expires soon. If you did not request a password reset, ignore this email.`,
     html: `
       <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
@@ -120,6 +123,8 @@ This link expires soon. If you did not request a password reset, ignore this ema
           <h1 style="margin:0 0 12px;font-size:26px;line-height:1.15;color:#020617;">Reset your password</h1>
           <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.6;">Hello ${safeName}, use this secure link to choose a new password for your Gleank account.</p>
           <a href="${resetUrl}" style="display:inline-flex;align-items:center;justify-content:center;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:14px;padding:14px 20px;font-weight:800;">Reset password</a>
+          <p style="margin:22px 0 8px;color:#334155;font-size:13px;font-weight:800;">Recovery code</p>
+          <p style="margin:0;color:#0f172a;background:#f1f5f9;border-radius:14px;padding:12px;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;">${escapeHtml(token)}</p>
           <p style="margin:22px 0 0;color:#64748b;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:<br>${resetUrl}</p>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import {
   FaBan,
@@ -293,26 +293,42 @@ function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<{ title: string; item: Record<string, unknown> } | null>(null);
 
+  const loadAdminData = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    setLoadError("");
+
+    try {
+      setData(await fetchAdminDataset());
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Admin data could not be loaded.";
+      setLoadError(message);
+
+      if (/invalid|unauthorized|forbidden|token|login/i.test(message)) {
+        clearAdminToken();
+        setIsLoggedIn(false);
+      }
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (!isLoggedIn) return;
-    let active = true;
-    setLoading(true);
+    void loadAdminData();
 
-    fetchAdminDataset()
-      .then((payload) => {
-        if (active) setData(payload);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const refreshTimer = window.setInterval(() => {
+      void loadAdminData(false);
+    }, 10000);
 
     return () => {
-      active = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, loadAdminData]);
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
@@ -374,12 +390,7 @@ function AdminDashboard() {
   }
 
   async function refreshLiveData() {
-    setLoading(true);
-    try {
-      setData(await fetchAdminDataset());
-    } finally {
-      setLoading(false);
-    }
+    await loadAdminData();
   }
 
   function selectTab(tab: AdminTab) {
@@ -451,6 +462,11 @@ function AdminDashboard() {
 
         <section className="admin-content">
           {loading ? <div className="admin-loading-card">Loading admin data...</div> : null}
+          {loadError ? (
+            <div className="admin-loading-card admin-error-text">
+              {loadError}. Log in again or use “Refresh live admin data”.
+            </div>
+          ) : null}
 
           {activeTab === "overview" ? (
             <>

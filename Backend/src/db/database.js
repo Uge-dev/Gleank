@@ -276,14 +276,44 @@ db.exec(`
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
+    parent_comment_id TEXT,
     body TEXT NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_comment_id) REFERENCES product_comments(id) ON DELETE CASCADE
   ) STRICT;
 
   CREATE INDEX IF NOT EXISTS product_comments_product_id_idx
     ON product_comments(product_id);
+
+  CREATE TABLE IF NOT EXISTS product_comment_likes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    comment_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (comment_id) REFERENCES product_comments(id) ON DELETE CASCADE,
+    UNIQUE(user_id, comment_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS product_comment_likes_comment_id_idx
+    ON product_comment_likes(comment_id);
+
+  CREATE TABLE IF NOT EXISTS cart_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    UNIQUE(user_id, product_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS cart_items_user_id_idx ON cart_items(user_id);
 
   CREATE TABLE IF NOT EXISTS product_shares (
     id TEXT PRIMARY KEY,
@@ -708,6 +738,9 @@ ensureColumn("user_trust_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''")
 ensureColumn("user_trust_profiles", "face_reference", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
 
+ensureColumn("product_comments", "parent_comment_id", "TEXT");
+ensureColumn("product_comments", "is_deleted", "INTEGER NOT NULL DEFAULT 0");
+
 
 
 
@@ -726,6 +759,53 @@ for (const table of ["products", "services", "used_listings"]) {
     WHERE price_kobo > 0
   `).run();
 }
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payment_transactions (
+    id TEXT PRIMARY KEY,
+    reference TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'local',
+    purpose TEXT NOT NULL CHECK (
+      purpose IN ('store_order', 'used_order', 'seller_subscription')
+    ),
+    order_id TEXT,
+    used_order_id TEXT,
+    subscription_id TEXT,
+    user_id TEXT NOT NULL,
+    amount_kobo INTEGER NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'NGN',
+    status TEXT NOT NULL DEFAULT 'initialized' CHECK (
+      status IN ('initialized', 'paid', 'failed', 'cancelled')
+    ),
+    authorization_url TEXT NOT NULL DEFAULT '',
+    provider_reference TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE SET NULL,
+    FOREIGN KEY (subscription_id) REFERENCES seller_subscriptions(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_user_id_idx
+    ON payment_transactions(user_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_reference_idx
+    ON payment_transactions(reference);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_order_id_idx
+    ON payment_transactions(order_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_used_order_id_idx
+    ON payment_transactions(used_order_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_subscription_id_idx
+    ON payment_transactions(subscription_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_purpose_idx
+    ON payment_transactions(purpose);
+`);
 
 export function transaction(callback) {
   db.exec("BEGIN IMMEDIATE");

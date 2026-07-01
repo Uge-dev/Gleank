@@ -157,6 +157,12 @@ export type PublicStoreWorkspace = SellerWorkspace & {
 export type ProductComment = {
   id: string;
   body: string;
+  parentCommentId: string | null;
+  replyToName: string | null;
+  isDeleted: boolean;
+  likeCount: number;
+  liked: boolean;
+  canDelete: boolean;
   createdAt: string;
   user: {
     id: string;

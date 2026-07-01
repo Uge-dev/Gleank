@@ -17,10 +17,13 @@ function booleanFromEnv(value, fallback) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: numberFromEnv(process.env.PORT, 4000),
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  frontendUrl,
   databasePath: path.resolve(
     backendRoot,
     process.env.DATABASE_PATH || "./data/gleank.sqlite",
@@ -43,13 +46,22 @@ export const env = {
   ),
   loginLockMinutes: numberFromEnv(process.env.LOGIN_LOCK_MINUTES, 15),
   loginMaxFailedAttempts: numberFromEnv(process.env.LOGIN_MAX_FAILED_ATTEMPTS, 5),
-  sellerMonthlyFeeKobo: numberFromEnv(process.env.SELLER_MONTHLY_FEE_KOBO, 300000),
+  sellerMonthlyFeeKobo: numberFromEnv(
+    process.env.SELLER_MONTHLY_FEE_KOBO,
+    300000,
+  ),
   platformFeePercent: numberFromEnv(process.env.PLATFORM_FEE_PERCENT, 5),
-  paymentProvider: process.env.PAYMENT_PROVIDER || "local",
+
+    paymentProvider: process.env.PAYMENT_PROVIDER || "local",
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || "",
+  paystackBaseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
+  paystackCallbackUrl:
+    process.env.PAYSTACK_CALLBACK_URL ||
+    `${process.env.FRONTEND_URL || "http://localhost:5173"}/payment/callback`,
   flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY || "",
   flutterwavePublicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || "",
+  
   livenessProvider: process.env.LIVENESS_PROVIDER || "local",
   livenessApiKey: process.env.LIVENESS_API_KEY || "",
   autoVerifyAuth: booleanFromEnv(
@@ -76,4 +88,12 @@ export const env = {
 
 if (env.isProduction && env.jwtSecret.includes("local-development")) {
   throw new Error("JWT_SECRET must be configured in production.");
+}
+
+if (env.isProduction && env.paymentProvider === "paystack") {
+  if (!env.paystackSecretKey.startsWith("sk_live_")) {
+    throw new Error(
+      "PAYSTACK_SECRET_KEY must be configured with a live secret key in production.",
+    );
+  }
 }

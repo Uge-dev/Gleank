@@ -119,6 +119,8 @@ function AccountSecurity() {
     );
   }
 
+  const canChangePassword = Boolean(user?.emailVerified);
+
   return (
     <section className="account-security-page">
       <Link to="/profile" className="security-back-link">
@@ -164,21 +166,33 @@ function AccountSecurity() {
             </div>
           </div>
 
-          <form className="security-form" onSubmit={handlePassword}>
-            <label>
-              <span>Current password</span>
-              <input name="currentPassword" type="password" autoComplete="current-password" required />
-            </label>
-            <label>
-              <span>New password</span>
-              <input name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
-            </label>
-            <label>
-              <span>Confirm new password</span>
-              <input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
-            </label>
-            <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Updating..." : "Update password"}</button>
-          </form>
+          {canChangePassword ? (
+            <form className="security-form" onSubmit={handlePassword}>
+              <label>
+                <span>Current password</span>
+                <input name="currentPassword" type="password" autoComplete="current-password" required />
+              </label>
+              <label>
+                <span>New password</span>
+                <input name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
+              </label>
+              <label>
+                <span>Confirm new password</span>
+                <input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
+              </label>
+              <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Updating..." : "Update password"}</button>
+            </form>
+          ) : (
+            <div className="security-status-box security-locked-box">
+              <strong>Email verification required</strong>
+              <p>
+                For account safety, verify your email first. After verification,
+                return here to change your password.
+              </p>
+              <Link to="/verify-email">Verify email to unlock password changes</Link>
+              <button type="button" onClick={handleResync}>I have verified, refresh</button>
+            </div>
+          )}
         </section>
       </div>
 

@@ -7,16 +7,36 @@ import {
 
 export const paymentRouter = Router();
 
+const asyncRoute = (handler) => (req, res, next) => {
+  Promise.resolve(handler(req, res, next)).catch(next);
+};
+
 paymentRouter.use(requireAuth, requireEmailVerified);
 
-paymentRouter.post("/initialize", (req, res) => {
-  res.status(201).json({
-    payment: initializePayment(req.auth.user_id, req.body),
-  });
-});
+paymentRouter.post(
+  "/initialize",
+  asyncRoute(async (req, res) => {
+    const payment = await initializePayment(req.auth.user_id, req.body);
+    res.status(201).json({ payment });
+  }),
+);
 
-paymentRouter.post("/verify", (req, res) => {
-  res.json({
-    payment: verifyPayment(req.auth.user_id, String(req.body?.reference || "")),
-  });
-});
+paymentRouter.post(
+  "/verify",
+  asyncRoute(async (req, res) => {
+    const payment = await verifyPayment(
+      req.auth.user_id,
+      String(req.body?.reference || ""),
+    );
+
+    res.json({ payment });
+  }),
+);
+
+paymentRouter.get(
+  "/verify/:reference",
+  asyncRoute(async (req, res) => {
+    const payment = await verifyPayment(req.auth.user_id, req.params.reference);
+    res.json({ payment });
+  }),
+);

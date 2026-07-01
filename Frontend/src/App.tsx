@@ -45,6 +45,7 @@ import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import Reels from "./pages/Reels";
 import AdminDashboard from "./admin/AdminDashboard";
+import PaymentCallback from "./pages/PaymentCallback";
 
 function App() {
   useEffect(() => {
@@ -117,6 +118,7 @@ function App() {
               </ProtectedPage>
             }
           />
+
 
           <Route path="/products/:id" element={<ProductDetails />} />
           <Route path="/stores/:id" element={<SellerStore />} />
@@ -221,6 +223,14 @@ function App() {
               </ProtectedPage>
             }
           />
+          <Route
+  path="/payment/callback"
+  element={
+    <ProtectedPage>
+      <PaymentCallback />
+    </ProtectedPage>
+  }
+/>
 
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />

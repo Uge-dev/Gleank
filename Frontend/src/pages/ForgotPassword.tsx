@@ -23,7 +23,7 @@ function ForgotPassword() {
   const [step, setStep] = useState<RecoveryStep>(
     tokenFromLink ? "reset" : "request",
   );
-  const [token] = useState(tokenFromLink);
+  const [token, setToken] = useState(tokenFromLink);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,7 +39,15 @@ function ForgotPassword() {
       const result = await requestPasswordReset(
         String(formData.get("email") || "").trim(),
       );
-      setMessage(result.message);
+      if (result.developmentToken) {
+        setToken(result.developmentToken);
+      }
+      setMessage(
+        result.developmentToken
+          ? "A recovery code was generated for local development. It has been filled below."
+          : `${result.message} Check your email for the recovery code or reset link.`,
+      );
+      setStep("reset");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -56,8 +64,14 @@ function ForgotPassword() {
     setError("");
     setMessage("");
     const formData = new FormData(event.currentTarget);
+    const recoveryToken = String(formData.get("token") || token || "").trim();
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
+
+    if (!recoveryToken) {
+      setError("Enter the recovery code sent to your email.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("The passwords do not match.");
@@ -67,7 +81,7 @@ function ForgotPassword() {
     setIsSubmitting(true);
 
     try {
-      const result = await resetPassword({ token, password });
+      const result = await resetPassword({ token: recoveryToken, password });
       setMessage(result.message);
       setStep("complete");
     } catch (requestError) {
@@ -153,6 +167,22 @@ function ForgotPassword() {
 
         {step === "reset" && (
           <form className="auth-form" onSubmit={handleReset}>
+            <label>
+              <span>Email recovery code</span>
+              <div className="auth-input-box">
+                <FiMail />
+                <input
+                  name="token"
+                  type="text"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  placeholder="Paste the recovery code from your email"
+                  autoComplete="one-time-code"
+                  required
+                />
+              </div>
+            </label>
+
             <label>
               <span>New password</span>
               <div className="auth-input-box">
