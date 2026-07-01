@@ -24,6 +24,7 @@ import {
 
 import AuthModal from "./AuthModal";
 import MoreDrawer from "./MoreDrawer";
+import LogoutConfirmModal from "./LogoutConfirmModal";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 
@@ -43,6 +44,8 @@ function GleankNav() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const { cartCount, openCartDrawer } = useCart();
 
@@ -52,9 +55,20 @@ function GleankNav() {
     setAuthModalOpen(true);
   }
 
-  async function handleLogout() {
-    await logout();
-    navigate("/");
+  function handleLogoutRequest() {
+    setLogoutModalOpen(true);
+  }
+
+  async function handleLogoutConfirm() {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setLogoutModalOpen(false);
+      navigate("/");
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   const navItems: NavItem[] = [
@@ -224,10 +238,11 @@ function GleankNav() {
               <button
                 type="button"
                 className="sidebar-logout-btn"
-                onClick={handleLogout}
+                onClick={handleLogoutRequest}
+                disabled={isLoggingOut}
               >
                 <IoLogOutOutline />
-                Logout
+                {isLoggingOut ? "Logging out..." : "Logout"}
               </button>
             </div>
           )}
@@ -279,6 +294,13 @@ function GleankNav() {
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
+      />
+
+      <LogoutConfirmModal
+        isOpen={logoutModalOpen}
+        isLoading={isLoggingOut}
+        onCancel={() => setLogoutModalOpen(false)}
+        onConfirm={handleLogoutConfirm}
       />
     </>
   );

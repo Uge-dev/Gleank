@@ -1,20 +1,13 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
-import { useAuth } from "./AuthContext";
-import {
-  addAccountCartItem,
-  clearAccountCart,
-  getAccountCart,
-  mergeAccountCart,
-  removeAccountCartItem,
-  setAccountCartItemQuantity,
-} from "../services/cart.service";
 
 export type CartItem = {
   id: string;
@@ -25,7 +18,6 @@ export type CartItem = {
   sellerName: string;
   sellerId: string;
   campus: string;
-  category?: string;
   quantity: number;
 };
 
@@ -49,22 +41,57 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-const CART_STORAGE_KEY = "gleank-cart";
+const LEGACY_USER_KEY = "gleank_user";
+const OLD_GLOBAL_CART_KEY = "gleank-cart";
+const CART_KEY_PREFIX = "gleank-cart";
 
-function getStoredCart(): CartItem[] {
+function readCurrentUserId() {
   try {
-    const storedCart = localStorage.getItem(CART_STORAGE_KEY);
+    const storedUser = localStorage.getItem(LEGACY_USER_KEY);
+    if (!storedUser) return "";
 
-    if (!storedCart) return [];
+    const user = JSON.parse(storedUser) as { id?: string; isLoggedIn?: boolean };
+    if (!user?.id || user.isLoggedIn === false) return "";
 
-    const parsedCart = JSON.parse(storedCart);
+    return String(user.id);
+  } catch {
+    return "";
+  }
+}
 
-    if (!Array.isArray(parsedCart)) return [];
+function cartStorageKey(userId: string) {
+  return `${CART_KEY_PREFIX}:${userId}`;
+}
 
-    return parsedCart;
+function parseCart(value: string | null): CartItem[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        id: String(item.id || ""),
+        name: String(item.name || ""),
+        price: String(item.price || ""),
+        numericPrice: Number(item.numericPrice || 0),
+        image: String(item.image || ""),
+        sellerName: String(item.sellerName || ""),
+        sellerId: String(item.sellerId || ""),
+        campus: String(item.campus || ""),
+        quantity: Math.max(1, Number(item.quantity || 1)),
+      }))
+      .filter((item) => item.id && item.name && item.sellerId);
   } catch {
     return [];
   }
+}
+
+function loadCartForUser(userId: string) {
+  if (!userId) return [];
+  return parseCart(localStorage.getItem(cartStorageKey(userId)));
 }
 
 type CartProviderProps = {
@@ -72,58 +99,56 @@ type CartProviderProps = {
 };
 
 export function CartProvider({ children }: CartProviderProps) {
-  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const [currentUserId, setCurrentUserId] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
-  const [hasHydratedCart, setHasHydratedCart] = useState(false);
+  const hasHydratedRef = useRef(false);
 
-  useEffect(() => {
-    setCartItems(getStoredCart());
+  const hydrateCart = useCallback(() => {
+    const userId = readCurrentUserId();
+
+    setCurrentUserId(userId);
+    setCartItems(loadCartForUser(userId));
+
+    if (!userId) {
+      setCartDrawerOpen(false);
+      localStorage.removeItem(OLD_GLOBAL_CART_KEY);
+    }
   }, []);
 
   useEffect(() => {
-    if (!hasHydratedCart || isAuthenticated) return;
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-  }, [cartItems, hasHydratedCart, isAuthenticated]);
+    hydrateCart();
+    hasHydratedRef.current = true;
 
-  useEffect(() => {
-    if (authLoading) return;
-
-    let active = true;
-
-    async function hydrateAccountCart() {
-      if (!isAuthenticated || !user) {
-        setCartItems(getStoredCart());
-        setHasHydratedCart(true);
-        return;
-      }
-
-      const localCart = getStoredCart();
-
-      try {
-        const nextCart = localCart.length
-          ? await mergeAccountCart(localCart)
-          : await getAccountCart();
-
-        if (!active) return;
-
-        localStorage.removeItem(CART_STORAGE_KEY);
-        setCartItems(nextCart);
-      } catch {
-        if (!active) return;
-        setCartItems(localCart);
-      } finally {
-        if (active) setHasHydratedCart(true);
+    function handleStorage(event: StorageEvent) {
+      if (
+        event.key === LEGACY_USER_KEY ||
+        event.key === OLD_GLOBAL_CART_KEY ||
+        (event.key || "").startsWith(`${CART_KEY_PREFIX}:`)
+      ) {
+        hydrateCart();
       }
     }
 
-    setHasHydratedCart(false);
-    void hydrateAccountCart();
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("gleank-auth-change", hydrateCart);
 
     return () => {
-      active = false;
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("gleank-auth-change", hydrateCart);
     };
-  }, [authLoading, isAuthenticated, user?.id, user]);
+  }, [hydrateCart]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+
+    if (!currentUserId) {
+      localStorage.removeItem(OLD_GLOBAL_CART_KEY);
+      return;
+    }
+
+    localStorage.setItem(cartStorageKey(currentUserId), JSON.stringify(cartItems));
+  }, [cartItems, currentUserId]);
 
   const cartCount = useMemo(() => {
     return cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -136,6 +161,11 @@ export function CartProvider({ children }: CartProviderProps) {
   }, [cartItems]);
 
   function openCartDrawer() {
+    if (!currentUserId) {
+      setCartDrawerOpen(false);
+      return;
+    }
+
     setCartDrawerOpen(true);
   }
 
@@ -144,11 +174,14 @@ export function CartProvider({ children }: CartProviderProps) {
   }
 
   function addToCart(item: AddToCartItem) {
-    const quantity = item.quantity || 1;
+    if (!currentUserId) {
+      window.dispatchEvent(new Event("gleank-cart-auth-required"));
+      return;
+    }
 
     setCartItems((currentItems) => {
       const existingItem = currentItems.find(
-        (cartItem) => cartItem.id === item.id
+        (cartItem) => cartItem.id === item.id,
       );
 
       if (existingItem) {
@@ -157,7 +190,7 @@ export function CartProvider({ children }: CartProviderProps) {
 
           return {
             ...cartItem,
-            quantity: cartItem.quantity + quantity,
+            quantity: cartItem.quantity + (item.quantity || 1),
           };
         });
       }
@@ -166,106 +199,82 @@ export function CartProvider({ children }: CartProviderProps) {
         ...currentItems,
         {
           ...item,
-          quantity,
+          quantity: item.quantity || 1,
         },
       ];
     });
-
-    if (isAuthenticated) {
-      void addAccountCartItem(item.id, quantity)
-        .then(setCartItems)
-        .catch(() => {
-          // Keep optimistic cart visible if the network fails.
-        });
-    }
 
     setCartDrawerOpen(true);
   }
 
   function increaseQuantity(id: string) {
-    let nextQuantity = 1;
+    if (!currentUserId) return;
+
     setCartItems((currentItems) =>
       currentItems.map((item) => {
         if (item.id !== id) return item;
 
-        nextQuantity = item.quantity + 1;
         return {
           ...item,
-          quantity: nextQuantity,
+          quantity: item.quantity + 1,
         };
-      })
+      }),
     );
-
-    if (isAuthenticated) {
-      void setAccountCartItemQuantity(id, nextQuantity)
-        .then(setCartItems)
-        .catch(() => undefined);
-    }
   }
 
   function decreaseQuantity(id: string) {
-    let nextQuantity = 1;
+    if (!currentUserId) return;
+
     setCartItems((currentItems) =>
       currentItems
         .map((item) => {
           if (item.id !== id) return item;
 
-          nextQuantity = Math.max(1, item.quantity - 1);
           return {
             ...item,
-            quantity: nextQuantity,
+            quantity: Math.max(1, item.quantity - 1),
           };
         })
-        .filter((item) => item.quantity > 0)
+        .filter((item) => item.quantity > 0),
     );
-
-    if (isAuthenticated) {
-      void setAccountCartItemQuantity(id, nextQuantity)
-        .then(setCartItems)
-        .catch(() => undefined);
-    }
   }
 
   function removeFromCart(id: string) {
-    setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== id)
-    );
+    if (!currentUserId) return;
 
-    if (isAuthenticated) {
-      void removeAccountCartItem(id)
-        .then(setCartItems)
-        .catch(() => undefined);
-    }
+    setCartItems((currentItems) =>
+      currentItems.filter((item) => item.id !== id),
+    );
   }
 
   function clearCart() {
     setCartItems([]);
-    if (isAuthenticated) {
-      void clearAccountCart()
-        .then(setCartItems)
-        .catch(() => undefined);
+
+    if (currentUserId) {
+      localStorage.removeItem(cartStorageKey(currentUserId));
     }
+
+    localStorage.removeItem(OLD_GLOBAL_CART_KEY);
   }
 
-  return (
-    <CartContext.Provider
-      value={{
-        cartItems,
-        cartCount,
-        cartSubtotal,
-        cartDrawerOpen,
-        openCartDrawer,
-        closeCartDrawer,
-        addToCart,
-        increaseQuantity,
-        decreaseQuantity,
-        removeFromCart,
-        clearCart,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+  const value = useMemo(
+    () => ({
+      cartItems,
+      cartCount,
+      cartSubtotal,
+      cartDrawerOpen,
+      openCartDrawer,
+      closeCartDrawer,
+      addToCart,
+      increaseQuantity,
+      decreaseQuantity,
+      removeFromCart,
+      clearCart,
+    }),
+    [cartDrawerOpen, cartCount, cartItems, cartSubtotal, currentUserId],
   );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {

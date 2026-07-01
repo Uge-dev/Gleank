@@ -14,6 +14,7 @@ const password = z
   .max(72)
   .superRefine((value, context) => {
     const policy = validatePasswordStrength(value);
+
     if (!policy.valid) {
       for (const issue of policy.issues) {
         context.addIssue({ code: "custom", message: issue });
@@ -61,5 +62,14 @@ export const resetPasswordSchema = z.object({
 
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1).max(72),
+  newPassword: password,
+});
+
+export const securityPasswordResetCodeSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit verification code."),
+});
+
+export const securityPasswordResetCompleteSchema = z.object({
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit verification code."),
   newPassword: password,
 });

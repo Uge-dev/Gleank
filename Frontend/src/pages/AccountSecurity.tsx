@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -6,28 +6,43 @@ import {
   FiArrowLeft,
   FiCheckCircle,
   FiClock,
+  FiKey,
   FiLock,
   FiLogOut,
   FiMail,
   FiMonitor,
   FiShield,
+  FiX,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { useAuth } from "../context/AuthContext";
 import {
-  changePassword,
+  completeSecurityPasswordReset,
   getAccountSecurity,
   logoutAllDevices,
+  requestSecurityPasswordReset,
+  verifySecurityPasswordResetCode,
 } from "../services/security.service";
-import type { AccountSecurityEvent, AccountSecuritySession } from "../types/domain";
+import type {
+  AccountSecurityEvent,
+  AccountSecuritySession,
+} from "../types/domain";
+import "./AccountSecurity.css";
 
 function formatDate(value: string | null | undefined) {
   if (!value) return "Not available";
+
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
 }
+
+function normalizeEventName(value: string) {
+  return value.replaceAll("_", " ");
+}
+
+type ResetStep = "idle" | "code_sent" | "code_verified";
 
 function AccountSecurity() {
   const { user, refreshSession } = useAuth();
@@ -38,8 +53,22 @@ function AccountSecurity() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const [resetStep, setResetStep] = useState<ResetStep>("idle");
+  const [resetCode, setResetCode] = useState("");
+  const [newPasswordOpen, setNewPasswordOpen] = useState(false);
+
+  const maskedEmail = useMemo(() => {
+    const email = user?.email || "";
+    const [name, domain] = email.split("@");
+
+    if (!name || !domain) return email;
+
+    return `${name.slice(0, 2)}${"•".repeat(Math.max(2, name.length - 2))}@${domain}`;
+  }, [user?.email]);
+
   async function loadSecurity() {
     setIsLoading(true);
+
     try {
       const result = await getAccountSecurity();
       setSessions(result.sessions);
@@ -53,34 +82,84 @@ function AccountSecurity() {
     void loadSecurity();
   }, []);
 
-  async function handlePassword(event: FormEvent<HTMLFormElement>) {
+  async function handleRequestPasswordReset() {
+    setMessage("");
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      const result = await requestSecurityPasswordReset();
+      setMessage(result.message);
+      setResetStep("code_sent");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Password reset code could not be sent.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleVerifyCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage("");
     setError("");
     setIsSubmitting(true);
+
+    const formData = new FormData(event.currentTarget);
+    const code = String(formData.get("code") || "").trim();
+
+    try {
+      const result = await verifySecurityPasswordResetCode(code);
+      setResetCode(code);
+      setResetStep("code_verified");
+      setNewPasswordOpen(true);
+      setMessage(result.message);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The verification code could not be confirmed.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleCompletePasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage("");
+    setError("");
+
     const formData = new FormData(event.currentTarget);
     const newPassword = String(formData.get("newPassword") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
 
     if (newPassword !== confirmPassword) {
       setError("The new passwords do not match.");
-      setIsSubmitting(false);
       return;
     }
 
+    setIsSubmitting(true);
+
     try {
-      const result = await changePassword({
-        currentPassword: String(formData.get("currentPassword") || ""),
+      const result = await completeSecurityPasswordReset({
+        code: resetCode,
         newPassword,
       });
+
       setMessage(result.message);
-      event.currentTarget.reset();
+      setNewPasswordOpen(false);
+      setResetCode("");
+      setResetStep("idle");
       await loadSecurity();
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Password could not be changed.",
+          : "Password could not be updated.",
       );
     } finally {
       setIsSubmitting(false);
@@ -91,6 +170,7 @@ function AccountSecurity() {
     setMessage("");
     setError("");
     setIsSubmitting(true);
+
     try {
       const result = await logoutAllDevices();
       setMessage(result.message);
@@ -112,139 +192,273 @@ function AccountSecurity() {
   }
 
   if (isLoading) {
-    return (
-      <section className="account-security-page">
-        <LoadingState title="Loading security" message="Checking sessions and verification state." />
-      </section>
-    );
+    return <LoadingState message="Loading account security..." />;
   }
 
-  const canChangePassword = Boolean(user?.emailVerified);
-
   return (
-    <section className="account-security-page">
-      <Link to="/profile" className="security-back-link">
-        <FiArrowLeft />
-        Back to profile
-      </Link>
+    <main className="account-security-page">
+      <section className="security-hero-card">
+        <Link to="/profile" className="security-back-link">
+          <FiArrowLeft />
+          Back to profile
+        </Link>
 
-      <div className="security-hero-card">
-        <span><FiShield /> Account Security</span>
+        <span className="eyebrow">Account Security</span>
         <h1>Secure your Gleank identity.</h1>
         <p>
-          Manage email verification, password safety, active sessions, and security activity from one protected workspace.
+          Manage email verification, password safety, active sessions, and
+          security activity from one protected workspace.
         </p>
-      </div>
+      </section>
 
-      {error && <div className="security-message error"><FiAlertCircle />{error}</div>}
-      {message && <div className="security-message success"><FiCheckCircle />{message}</div>}
+      {error && (
+        <div className="security-alert security-alert-error">
+          <FiAlertCircle />
+          {error}
+        </div>
+      )}
 
-      <div className="security-grid">
-        <section className="security-card">
-          <div className="security-card-title">
-            <div><FiMail /></div>
-            <div>
-              <span>Verification</span>
-              <h2>Email status</h2>
-            </div>
+      {message && (
+        <div className="security-alert security-alert-success">
+          <FiCheckCircle />
+          {message}
+        </div>
+      )}
+
+      <section className="security-grid">
+        <article className="security-card">
+          <div className="security-card-icon">
+            <FiMail />
           </div>
 
-          <div className="security-status-box">
-            <strong>{user?.emailVerified ? "Verified" : "Not verified"}</strong>
-            <p>{user?.emailVerified ? `Verified ${formatDate(user.emailVerifiedAt)}` : "Verify your email to unlock protected buying, selling, and messaging actions."}</p>
-            {!user?.emailVerified && <Link to="/verify-email">Verify email</Link>}
-            <button type="button" onClick={handleResync}>Refresh status</button>
-          </div>
-        </section>
+          <span>Verification</span>
+          <h2>Email status</h2>
+          <strong className={user?.emailVerified ? "is-good" : "is-warning"}>
+            {user?.emailVerified ? "Verified" : "Not verified"}
+          </strong>
+          <p>
+            {user?.emailVerified
+              ? `Verified ${formatDate(user.emailVerifiedAt)}`
+              : "Verify your email to unlock protected buying, selling, and messaging actions."}
+          </p>
 
-        <section className="security-card">
-          <div className="security-card-title">
-            <div><FiLock /></div>
-            <div>
-              <span>Password</span>
-              <h2>Change password</h2>
-            </div>
-          </div>
+          <div className="security-card-actions">
+            {!user?.emailVerified && (
+              <Link to="/verify-email" className="primary-button">
+                Verify email
+              </Link>
+            )}
 
-          {canChangePassword ? (
-            <form className="security-form" onSubmit={handlePassword}>
-              <label>
-                <span>Current password</span>
-                <input name="currentPassword" type="password" autoComplete="current-password" required />
-              </label>
-              <label>
-                <span>New password</span>
-                <input name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
-              </label>
-              <label>
-                <span>Confirm new password</span>
-                <input name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
-              </label>
-              <button type="submit" disabled={isSubmitting}>{isSubmitting ? "Updating..." : "Update password"}</button>
-            </form>
-          ) : (
-            <div className="security-status-box security-locked-box">
-              <strong>Email verification required</strong>
-              <p>
-                For account safety, verify your email first. After verification,
-                return here to change your password.
-              </p>
-              <Link to="/verify-email">Verify email to unlock password changes</Link>
-              <button type="button" onClick={handleResync}>I have verified, refresh</button>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <div className="security-grid lower">
-        <section className="security-card wide">
-          <div className="security-card-title split">
-            <div className="security-title-inline">
-              <div><FiMonitor /></div>
-              <div>
-                <span>Sessions</span>
-                <h2>Active devices</h2>
-              </div>
-            </div>
-            <button type="button" onClick={handleLogoutAll} disabled={isSubmitting}>
-              <FiLogOut /> Logout other devices
+            <button type="button" onClick={handleResync} className="ghost-button">
+              Refresh status
             </button>
           </div>
+        </article>
 
-          <div className="session-list">
+        <article className="security-card security-password-card">
+          <div className="security-card-icon">
+            <FiKey />
+          </div>
+
+          <span>Password</span>
+          <h2>Reset password securely</h2>
+          <p>
+            For your safety, password changes from this page require a fresh
+            code sent to your verified email: <strong>{maskedEmail}</strong>.
+          </p>
+
+          {resetStep === "idle" && (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={handleRequestPasswordReset}
+              disabled={isSubmitting || !user?.emailVerified}
+            >
+              <FiMail />
+              {isSubmitting ? "Sending code..." : "Send verification code"}
+            </button>
+          )}
+
+          {!user?.emailVerified && (
+            <p className="security-help-text">
+              Verify your email first before resetting your password from this
+              page.
+            </p>
+          )}
+
+          {resetStep === "code_sent" && (
+            <form className="security-code-form" onSubmit={handleVerifyCode}>
+              <label>
+                Enter verification code
+                <input
+                  name="code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="6-digit code"
+                  minLength={6}
+                  maxLength={6}
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={isSubmitting}
+              >
+                <FiLock />
+                {isSubmitting ? "Checking code..." : "Verify code"}
+              </button>
+
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleRequestPasswordReset}
+                disabled={isSubmitting}
+              >
+                Resend code
+              </button>
+            </form>
+          )}
+
+          {resetStep === "code_verified" && (
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setNewPasswordOpen(true)}
+            >
+              Open new password form
+            </button>
+          )}
+        </article>
+
+        <article className="security-card">
+          <div className="security-card-icon">
+            <FiMonitor />
+          </div>
+
+          <span>Sessions</span>
+          <h2>Active devices</h2>
+          <button
+            type="button"
+            onClick={handleLogoutAll}
+            className="ghost-button"
+            disabled={isSubmitting}
+          >
+            <FiLogOut />
+            Logout other devices
+          </button>
+
+          <div className="security-list">
             {sessions.map((session) => (
-              <div className="session-row" key={session.id}>
-                <FiMonitor />
-                <div>
-                  <strong>{session.userAgent || "Unknown device"}</strong>
-                  <p>{session.ipAddress || "Local session"} · Last used {formatDate(session.lastUsedAt)}</p>
-                </div>
-                <span>Expires {formatDate(session.expiresAt)}</span>
+              <div className="security-list-item" key={session.id}>
+                <strong>{session.userAgent || "Unknown device"}</strong>
+                <p>
+                  {session.ipAddress || "Local session"} · Last used{" "}
+                  {formatDate(session.lastUsedAt)}
+                </p>
+                <small>Expires {formatDate(session.expiresAt)}</small>
               </div>
             ))}
           </div>
-        </section>
+        </article>
 
-        <section className="security-card wide">
-          <div className="security-card-title">
-            <div><FiClock /></div>
-            <div>
-              <span>Activity</span>
-              <h2>Recent security events</h2>
-            </div>
+        <article className="security-card security-activity-card">
+          <div className="security-card-icon">
+            <FiShield />
           </div>
 
-          <div className="security-event-list">
-            {events.length ? events.map((event) => (
-              <div key={`${event.eventType}-${event.createdAt}`}>
-                <strong>{event.eventType.replaceAll("_", " ")}</strong>
-                <p>{formatDate(event.createdAt)} · {event.ipAddress || "local"}</p>
+          <span>Activity</span>
+          <h2>Recent security events</h2>
+
+          <div className="security-list">
+            {events.length ? (
+              events.map((event) => (
+                <div
+                  className="security-list-item"
+                  key={`${event.eventType}-${event.createdAt}`}
+                >
+                  <strong>{normalizeEventName(event.eventType)}</strong>
+                  <p>
+                    {formatDate(event.createdAt)} · {event.ipAddress || "local"}
+                  </p>
+                </div>
+              ))
+            ) : (
+              <div className="security-list-item">
+                <strong>No security events yet.</strong>
+                <p>Your recent account protection activity will appear here.</p>
               </div>
-            )) : <p>No security events yet.</p>}
+            )}
           </div>
-        </section>
-      </div>
-    </section>
+        </article>
+      </section>
+
+      {newPasswordOpen && (
+        <div className="security-modal-backdrop" role="presentation">
+          <section
+            className="security-modal-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-password-title"
+          >
+            <button
+              type="button"
+              className="security-modal-close"
+              onClick={() => setNewPasswordOpen(false)}
+              aria-label="Close password form"
+              disabled={isSubmitting}
+            >
+              <FiX />
+            </button>
+
+            <div className="security-card-icon">
+              <FiLock />
+            </div>
+
+            <span className="eyebrow">Final step</span>
+            <h2 id="new-password-title">Create a new password</h2>
+            <p>
+              Your email code is confirmed. Choose a strong password to protect
+              your Gleank account.
+            </p>
+
+            <form onSubmit={handleCompletePasswordReset} className="security-modal-form">
+              <label>
+                New password
+                <input
+                  type="password"
+                  name="newPassword"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+
+              <label>
+                Confirm new password
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </label>
+
+              <button
+                type="submit"
+                className="primary-button full-width"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? "Updating password..." : "Update password"}
+              </button>
+            </form>
+          </section>
+        </div>
+      )}
+    </main>
   );
 }
 

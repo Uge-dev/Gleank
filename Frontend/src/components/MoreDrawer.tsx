@@ -48,9 +48,17 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
   }
 
   async function handleLogout() {
-    await logout();
-    onClose();
+  const confirmed = window.confirm(
+    "Are you sure you want to log out of your Gleank account?",
+  );
+
+  if (!confirmed) {
+    return;
   }
+
+  await logout();
+  onClose();
+}
 
   function handleThemeChange(nextTheme: ThemeMode) {
     setTheme(nextTheme);

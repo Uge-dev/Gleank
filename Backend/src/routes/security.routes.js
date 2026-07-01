@@ -1,11 +1,18 @@
 import { Router } from "express";
-import { changePasswordSchema } from "../schemas/auth.schemas.js";
+import {
+  changePasswordSchema,
+  securityPasswordResetCodeSchema,
+  securityPasswordResetCompleteSchema,
+} from "../schemas/auth.schemas.js";
 import { validate } from "../middleware/validate.js";
-import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";
 import {
   changePassword,
+  completeLoggedInPasswordReset,
   getAccountSecurity,
   logoutAllDevices,
+  requestLoggedInPasswordReset,
+  verifyLoggedInPasswordResetCode,
 } from "../services/security.service.js";
 
 export const securityRouter = Router();
@@ -24,12 +31,44 @@ securityRouter.get("/me", (req, res) => {
   res.json(getAccountSecurity(req.auth));
 });
 
+// Kept for backward compatibility, but the UI no longer uses this direct form.
 securityRouter.post(
   "/change-password",
-  requireEmailVerified,
   validate(changePasswordSchema),
   async (req, res) => {
     res.json(await changePassword(req.auth.user_id, req.body, requestMeta(req)));
+  },
+);
+
+securityRouter.post("/password-reset/request", async (req, res) => {
+  res.json(await requestLoggedInPasswordReset(req.auth.user_id, requestMeta(req)));
+});
+
+securityRouter.post(
+  "/password-reset/verify-code",
+  validate(securityPasswordResetCodeSchema),
+  (req, res) => {
+    res.json(
+      verifyLoggedInPasswordResetCode(
+        req.auth.user_id,
+        req.body.code,
+        requestMeta(req),
+      ),
+    );
+  },
+);
+
+securityRouter.post(
+  "/password-reset/complete",
+  validate(securityPasswordResetCompleteSchema),
+  async (req, res) => {
+    res.json(
+      await completeLoggedInPasswordReset(
+        req.auth.user_id,
+        req.body,
+        requestMeta(req),
+      ),
+    );
   },
 );
 
