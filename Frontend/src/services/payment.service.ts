@@ -1,76 +1,42 @@
 import { apiRequest } from "../lib/api";
 
-export type PaymentPurpose =
-  | "store_order"
-  | "used_order"
-  | "seller_subscription";
-
-export type PaymentStatus =
-  | "initialized"
-  | "paid"
-  | "failed"
-  | "cancelled"
-  | "abandoned"
-  | "pending";
-
-export type GleankPayment = {
-  id: string;
+export type InitializedPayment = {
   reference: string;
-  provider: "local" | "paystack" | string;
-  purpose: PaymentPurpose;
-  orderId: string | null;
-  orderIds: string[];
-  usedOrderId: string | null;
-  subscriptionId: string | null;
-  userId: string;
-  amountKobo: number;
-  amount: number;
-  currency: "NGN";
-  status: PaymentStatus;
+  accessCode?: string;
   authorizationUrl: string;
-  accessCode: string;
-  providerReference: string;
-  providerStatus: string;
-  redirectPath: string;
-  createdAt: string;
-  updatedAt: string;
-  verifiedAt: string | null;
 };
 
-export function initializePayment(input: {
-  purpose: PaymentPurpose;
-  targetId?: string;
-  targetIds?: string[];
-}) {
-  return apiRequest<{ payment: GleankPayment }>("/payments/initialize", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
+export type VerifyPaymentResult = {
+  success: boolean;
+  status: string;
+  reference: string;
+  purpose: "orders" | "used_order" | "seller_subscription";
+  redirectPath: string;
+};
 
 export function initializeOrdersPayment(orderIds: string[]) {
-  return initializePayment({
-    purpose: "store_order",
-    targetIds: orderIds,
+  return apiRequest<{ payment: InitializedPayment }>("/payments/orders/initialize", {
+    method: "POST",
+    body: JSON.stringify({ orderIds }),
   });
 }
 
 export function initializeUsedOrderPayment(orderId: string) {
-  return initializePayment({
-    purpose: "used_order",
-    targetId: orderId,
-  });
+  return apiRequest<{ payment: InitializedPayment }>(
+    `/payments/used-orders/${encodeURIComponent(orderId)}/initialize`,
+    { method: "POST" },
+  );
 }
 
 export function initializeSellerSubscriptionPayment() {
-  return initializePayment({
-    purpose: "seller_subscription",
-  });
+  return apiRequest<{ payment: InitializedPayment }>(
+    "/payments/seller-subscription/initialize",
+    { method: "POST" },
+  );
 }
 
 export function verifyPayment(reference: string) {
-  return apiRequest<{ payment: GleankPayment }>("/payments/verify", {
-    method: "POST",
-    body: JSON.stringify({ reference }),
-  });
+  return apiRequest<{ payment: VerifyPaymentResult }>(
+    `/payments/verify/${encodeURIComponent(reference)}`,
+  );
 }

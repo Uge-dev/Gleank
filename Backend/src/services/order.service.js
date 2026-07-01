@@ -1,6 +1,7 @@
 import { db, transaction } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
+import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -235,6 +236,7 @@ export function getOrder(userId, idOrCode) {
 export function createOrders(userId, input) {
   const items = Array.isArray(input?.items) ? input.items : [];
 
+
   if (items.length === 0) {
     throw new HttpError(422, "Your cart is empty.");
   }
@@ -328,7 +330,16 @@ export function createOrders(userId, input) {
         (total, item) => total + item.lineTotalKobo,
         0,
       );
-      const deliveryFeeKobo = 0;
+      const deliveryFeeKobo =
+  deliveryOption === "Delivery"
+    ? calculateDeliveryFeeKobo({
+        campus,
+        deliveryOption,
+        origin: group.storeName || "Campus Market",
+        destination: deliveryAddress,
+        deliveryAddress,
+      })
+    : 0;
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
       const orderCode = generateOrderCode();

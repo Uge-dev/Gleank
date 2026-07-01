@@ -1,33 +1,127 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
-  FiArrowLeft,
   FiAlertCircle,
+  FiArrowLeft,
   FiCheckCircle,
+  FiCreditCard,
+  FiLock,
   FiMapPin,
+  FiNavigation,
   FiPhone,
+  FiShield,
   FiShoppingCart,
+  FiTruck,
   FiUser,
 } from "react-icons/fi";
-
 import EmptyState from "../components/EmptyState";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { createOrders } from "../services/order.service";
-import { formatNaira } from "../utils/price";
+import { quoteDeliveryFee, getDeliveryZones } from "../services/delivery.service";
+import type { DeliveryQuote, DeliveryZone } from "../services/delivery.service";
 import { initializeOrdersPayment } from "../services/payment.service";
+import { formatNaira } from "../utils/price";
+import "./Checkout.css";
+
+const fallbackZones: DeliveryZone[] = [
+  { id: "main-gate", label: "Main Gate" },
+  { id: "campus-market", label: "Campus Market" },
+  { id: "student-hostel", label: "Student Hostel Area" },
+  { id: "faculty-area", label: "Faculty Area" },
+  { id: "library", label: "Library / Academic Core" },
+  { id: "admin-block", label: "Admin Block" },
+  { id: "cafeteria", label: "Cafeteria / Food Court" },
+  { id: "sports-complex", label: "Sports Complex" },
+];
 
 function Checkout() {
-  const { cartItems, cartSubtotal, clearCart } = useCart();
+  const { cartItems, cartSubtotal } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
-  const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery">(
-    "Pickup",
-  );
+  const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery">("Pickup");
+  const [campus, setCampus] = useState(user?.campus || "FUPRE");
+  const [deliveryZone, setDeliveryZone] = useState("");
+  const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
+  const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
+  const [isQuoting, setIsQuoting] = useState(false);
+  const [quoteError, setQuoteError] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const deliveryFee = deliveryOption === "Delivery" ? deliveryQuote?.fee || 0 : 0;
+  const grandTotal = cartSubtotal + deliveryFee;
+
+  const sellerCount = useMemo(() => {
+    return new Set(cartItems.map((item) => item.sellerId)).size;
+  }, [cartItems]);
+
+  useEffect(() => {
+    if (!campus.trim()) return;
+
+    let active = true;
+
+    void getDeliveryZones(campus)
+      .then((response) => {
+        if (!active) return;
+        if (response.zones.length > 0) {
+          setZones(response.zones);
+        }
+      })
+      .catch(() => {
+        if (active) setZones(fallbackZones);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campus]);
+
+  useEffect(() => {
+    if (deliveryOption !== "Delivery") {
+      setDeliveryQuote(null);
+      setQuoteError("");
+      return;
+    }
+
+    if (!campus.trim() || !deliveryZone) {
+      setDeliveryQuote(null);
+      setQuoteError("");
+      return;
+    }
+
+    let active = true;
+    setIsQuoting(true);
+    setQuoteError("");
+
+    void quoteDeliveryFee({
+      campus,
+      deliveryOption,
+      destination: deliveryZone,
+    })
+      .then((response) => {
+        if (!active) return;
+        setDeliveryQuote(response.quote);
+      })
+      .catch((requestError) => {
+        if (!active) return;
+        setDeliveryQuote(null);
+        setQuoteError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Delivery fee could not be calculated.",
+        );
+      })
+      .finally(() => {
+        if (active) setIsQuoting(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [campus, deliveryOption, deliveryZone]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,18 +134,32 @@ function Checkout() {
     }
 
     const formData = new FormData(event.currentTarget);
-
     const buyerName = String(formData.get("buyerName") || "").trim();
     const buyerPhone = String(formData.get("buyerPhone") || "").trim();
-    const campus = String(formData.get("campus") || "").trim();
-    const deliveryAddress = String(formData.get("deliveryAddress") || "").trim();
+    const preciseDeliveryAddress = String(formData.get("deliveryAddress") || "").trim();
     const pickupLocation = String(formData.get("pickupLocation") || "").trim();
     const note = String(formData.get("note") || "").trim();
+
+    if (deliveryOption === "Delivery" && !deliveryZone) {
+      setError("Select a campus delivery zone before payment.");
+      return;
+    }
+
+    if (deliveryOption === "Delivery" && quoteError) {
+      setError(quoteError);
+      return;
+    }
 
     setError("");
     setIsSubmitting(true);
 
     try {
+      const selectedZone = zones.find((zone) => zone.id === deliveryZone)?.label || deliveryZone;
+      const deliveryAddress =
+        deliveryOption === "Delivery"
+          ? [selectedZone, preciseDeliveryAddress].filter(Boolean).join(" - ")
+          : "";
+
       const response = await createOrders({
         buyerName,
         buyerPhone,
@@ -67,22 +175,21 @@ function Checkout() {
       });
 
       const paymentResponse = await initializeOrdersPayment(
-  response.orders.map((order) => order.id),
-);
+        response.orders.map((order) => order.id),
+      );
 
-clearCart();
+      sessionStorage.setItem("gleank_last_orders", JSON.stringify(response.orders));
+      sessionStorage.setItem(
+        "gleank_pending_payment_reference",
+        paymentResponse.payment.reference,
+      );
 
-sessionStorage.setItem(
-  "gleank_last_orders",
-  JSON.stringify(response.orders),
-);
-
-window.location.href = paymentResponse.payment.authorizationUrl;
+      window.location.href = paymentResponse.payment.authorizationUrl;
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Order could not be created.",
+          : "Checkout could not be completed.",
       );
     } finally {
       setIsSubmitting(false);
@@ -91,7 +198,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
 
   if (cartItems.length === 0) {
     return (
-      <section className="checkout-page">
+      <section className="page-shell checkout-page">
         <EmptyState
           icon={<FiShoppingCart />}
           eyebrow="Empty checkout"
@@ -102,150 +209,183 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             navigate("/search");
           }}
         />
-
-        <Link to="/" className="checkout-back-link">
-          <FiArrowLeft />
-          Back to Feed
+        <Link className="back-link" to="/search">
+          <FiArrowLeft /> Back to Feed
         </Link>
       </section>
     );
   }
 
   return (
-    <section className="checkout-page">
-      <Link to="/cart" className="checkout-back-link">
-        <FiArrowLeft />
-        Back to cart
+    <section className="page-shell checkout-page checkout-pro-page">
+      <Link className="back-link" to="/cart">
+        <FiArrowLeft /> Back to cart
       </Link>
 
-      <div className="checkout-header">
-        <span>Checkout</span>
-
-        <h1>Confirm your order details</h1>
-
-        <p>
-          Gleank will create a real order in the backend. Payment will be
-          connected in the next phase, so the order starts as pending payment.
-        </p>
+      <div className="checkout-pro-hero">
+        <div>
+          <span className="eyebrow">Secure campus checkout</span>
+          <h1>Complete your Gleank order</h1>
+          <p>
+            Confirm your details, choose pickup or campus delivery, then pay securely.
+            Your cart will only clear after payment is verified.
+          </p>
+        </div>
+        <div className="checkout-trust-strip">
+          <span><FiShield /> Buyer protection</span>
+          <span><FiLock /> Secure payment</span>
+          <span><FiTruck /> Campus delivery</span>
+        </div>
       </div>
 
       {error && (
-        <div className="seller-workspace-message error" role="alert">
+        <div className="checkout-alert" role="alert">
           <FiAlertCircle />
           <span>{error}</span>
         </div>
       )}
 
-      <form className="checkout-layout" onSubmit={handleSubmit}>
-        <div className="checkout-form-card">
-          <div className="checkout-section-title">
-            <FiUser />
-            <div>
-              <h2>Buyer information</h2>
-              <p>Use your correct campus contact details.</p>
+      <form className="checkout-pro-grid" onSubmit={handleSubmit}>
+        <div className="checkout-flow-card">
+        
+
+          <section className="checkout-block">
+            <div className="checkout-section-title">
+              <FiUser />
+              <div>
+                <h2>Buyer information</h2>
+                <p>Use the contact details the seller/rider can reach quickly.</p>
+              </div>
             </div>
-          </div>
 
-          <label>
-            <span>Full name</span>
-            <input
-              name="buyerName"
-              defaultValue={user?.name || ""}
-              placeholder="Your full name"
-              required
-            />
-          </label>
-
-          <label>
-            <span>Phone number</span>
-            <input
-              name="buyerPhone"
-              defaultValue={user?.phone || ""}
-              placeholder="080..."
-              required
-            />
-          </label>
-
-          <label>
-            <span>Campus</span>
-            <input
-              name="campus"
-              defaultValue={user?.campus || ""}
-              placeholder="FUPRE"
-              required
-            />
-          </label>
-
-          <div className="checkout-section-title">
-            <FiMapPin />
-            <div>
-              <h2>Delivery method</h2>
-              <p>Choose pickup or campus delivery.</p>
+            <div className="checkout-field-grid">
+              <label>
+                <span>Full name</span>
+                <input name="buyerName" defaultValue={user?.name || ""} required />
+              </label>
+              <label>
+                <span>Phone number</span>
+                <input name="buyerPhone" defaultValue={user?.phone || ""} required />
+              </label>
+              <label className="span-2">
+                <span>Campus</span>
+                <input
+                  name="campus"
+                  value={campus}
+                  onChange={(event) => setCampus(event.target.value)}
+                  required
+                />
+              </label>
             </div>
-          </div>
+          </section>
 
-          <div className="checkout-delivery-options">
-            <label className={deliveryOption === "Pickup" ? "active" : ""}>
-              <input
-                type="radio"
-                name="deliveryOption"
-                value="Pickup"
-                checked={deliveryOption === "Pickup"}
-                onChange={() => setDeliveryOption("Pickup")}
-              />
-              <span>Pickup</span>
-              <small>Meet seller at a pickup point.</small>
-            </label>
+          <section className="checkout-block">
+            <div className="checkout-section-title">
+              <FiMapPin />
+              <div>
+                <h2>Delivery method</h2>
+                <p>Pickup is free. Delivery fee changes by campus distance.</p>
+              </div>
+            </div>
 
-            <label className={deliveryOption === "Delivery" ? "active" : ""}>
-              <input
-                type="radio"
-                name="deliveryOption"
-                value="Delivery"
-                checked={deliveryOption === "Delivery"}
-                onChange={() => setDeliveryOption("Delivery")}
-              />
-              <span>Delivery</span>
-              <small>Send to hostel, class, or agreed location.</small>
-            </label>
-          </div>
+            <div className="delivery-choice-grid">
+              <button
+                type="button"
+                className={deliveryOption === "Pickup" ? "selected" : ""}
+                onClick={() => setDeliveryOption("Pickup")}
+              >
+                <FiShoppingCart />
+                <strong>Pickup</strong>
+                <span>Meet the seller at an agreed point.</span>
+              </button>
 
-          {deliveryOption === "Pickup" ? (
-            <label>
-              <span>Pickup location</span>
-              <input
-                name="pickupLocation"
-                placeholder="Main gate, library, hostel block..."
-                required
-              />
-            </label>
-          ) : (
-            <label>
-              <span>Delivery address</span>
-              <input
-                name="deliveryAddress"
-                placeholder="Hostel, department, class, or location"
-                required
-              />
-            </label>
-          )}
+              <button
+                type="button"
+                className={deliveryOption === "Delivery" ? "selected" : ""}
+                onClick={() => setDeliveryOption("Delivery")}
+              >
+                <FiTruck />
+                <strong>Campus delivery</strong>
+                <span>Pay a fair fee based on campus distance.</span>
+              </button>
+            </div>
 
-          <label>
-            <span>Order note</span>
-            <textarea
-              name="note"
-              rows={4}
-              placeholder="Optional note to seller or rider."
-            />
-          </label>
+            {deliveryOption === "Pickup" ? (
+              <label className="checkout-full-field">
+                <span>Pickup location</span>
+                <input
+                  name="pickupLocation"
+                  placeholder="Example: Main Gate, Campus Market, Faculty entrance"
+                  required
+                />
+              </label>
+            ) : (
+              <div className="delivery-zone-card">
+                <label>
+                  <span>Delivery zone</span>
+                  <select
+                    value={deliveryZone}
+                    onChange={(event) => setDeliveryZone(event.target.value)}
+                    required
+                  >
+                    <option value="">Select a campus zone</option>
+                    {zones.map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>Exact delivery details</span>
+                  <input
+                    name="deliveryAddress"
+                    placeholder="Example: Hostel B, Room 204 / beside library stairs"
+                    required
+                  />
+                </label>
+
+                <div className="delivery-quote-box">
+                  <FiNavigation />
+                  <div>
+                    <strong>
+                      {isQuoting
+                        ? "Calculating delivery fee..."
+                        : deliveryQuote
+                          ? `${deliveryQuote.label} • ${formatNaira(deliveryQuote.fee)}`
+                          : "Select a delivery zone"}
+                    </strong>
+                    <p>
+                      {quoteError ||
+                        (deliveryQuote?.distanceKm
+                          ? `Estimated distance: ${deliveryQuote.distanceKm}km from dispatch point.`
+                          : "The final fee is calculated again on the backend before payment.")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <label className="checkout-full-field">
+              <span>Order note</span>
+              <textarea
+                name="note"
+                rows={4}
+                placeholder="Optional note for the seller or delivery rider"
+              />
+            </label>
+          </section>
         </div>
 
-        <aside className="checkout-summary-card">
+        <aside className="checkout-summary-card checkout-pro-summary">
           <div className="checkout-section-title">
             <FiShoppingCart />
             <div>
               <h2>Order summary</h2>
-              <p>{cartItems.length} cart item(s)</p>
+              <p>
+                {cartItems.length} item(s) from {sellerCount} seller(s)
+              </p>
             </div>
           </div>
 
@@ -253,14 +393,12 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             {cartItems.map((item) => (
               <div className="checkout-item-row" key={item.id}>
                 <img src={item.image} alt={item.name} />
-
                 <div>
                   <strong>{item.name}</strong>
                   <span>
                     {item.sellerName} • Qty {item.quantity}
                   </span>
                 </div>
-
                 <b>{formatNaira(item.numericPrice * item.quantity)}</b>
               </div>
             ))}
@@ -271,33 +409,30 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <small>Subtotal</small>
               <strong>{formatNaira(cartSubtotal)}</strong>
             </span>
-
             <span>
               <small>Delivery fee</small>
-              <strong>{formatNaira(0)}</strong>
+              <strong>{formatNaira(deliveryFee)}</strong>
             </span>
-
             <span className="checkout-grand-total">
               <small>Total</small>
-              <strong>{formatNaira(cartSubtotal)}</strong>
+              <strong>{formatNaira(grandTotal)}</strong>
             </span>
           </div>
 
           <div className="checkout-safe-note">
             <FiCheckCircle />
             <p>
-              This creates your order. Payment verification, escrow release, and
-              delivery code come next.
+              Your order is created first, then payment is verified before sellers are
+              allowed to process it.
             </p>
           </div>
 
-          <button className="checkout-submit-btn" type="submit" disabled={isSubmitting}>
+          <button className="checkout-submit-btn" type="submit" disabled={isSubmitting || isQuoting}>
             {isSubmitting ? (
-              "Creating order..."
+              "Opening secure payment..."
             ) : (
               <>
-                <FiPhone />
-                Create Order
+                <FiCreditCard /> Pay securely
               </>
             )}
           </button>

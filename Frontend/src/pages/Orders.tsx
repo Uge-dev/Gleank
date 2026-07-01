@@ -4,19 +4,21 @@ import {
   FiArrowRight,
   FiCheckCircle,
   FiClock,
+  FiCreditCard,
   FiMessageCircle,
   FiPackage,
   FiShoppingBag,
   FiTruck,
   FiXCircle,
 } from "react-icons/fi";
-
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import { getOrders } from "../services/order.service";
+import { initializeOrdersPayment } from "../services/payment.service";
 import type { GleankOrder, OrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { formatNaira } from "../utils/price";
+import "./Orders.css";
 
 type FilterStatus =
   | "All"
@@ -54,12 +56,11 @@ function statusGroup(status: OrderStatus): Exclude<FilterStatus, "All"> {
 
 function statusIcon(status: OrderStatus) {
   const group = statusGroup(status);
-
   if (group === "Delivered") return <FiCheckCircle />;
   if (group === "Cancelled") return <FiXCircle />;
   if (group === "Preparing") return <FiTruck />;
-  if (group === "Confirmed") return <FiClock />;
-  return <FiPackage />;
+  if (group === "Confirmed") return <FiPackage />;
+  return <FiClock />;
 }
 
 function formatDate(value: string) {
@@ -69,15 +70,20 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function canContinuePayment(order: GleankOrder) {
+  return order.paymentStatus === "unpaid" || order.status === "pending_payment";
+}
+
 function Orders() {
   const [orders, setOrders] = useState<GleankOrder[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [payingOrderId, setPayingOrderId] = useState("");
+  const [paymentError, setPaymentError] = useState("");
 
   useEffect(() => {
     let active = true;
-
     setIsLoading(true);
     setError("");
 
@@ -87,7 +93,6 @@ function Orders() {
       })
       .catch((requestError) => {
         if (!active) return;
-
         setError(
           requestError instanceof Error
             ? requestError.message
@@ -108,34 +113,47 @@ function Orders() {
     return orders.filter((order) => statusGroup(order.status) === activeFilter);
   }, [activeFilter, orders]);
 
+  async function handleContinuePayment(order: GleankOrder) {
+    if (!canContinuePayment(order) || payingOrderId) return;
+
+    setPaymentError("");
+    setPayingOrderId(order.id);
+
+    try {
+      const response = await initializeOrdersPayment([order.id]);
+      sessionStorage.setItem("gleank_pending_payment_reference", response.payment.reference);
+      window.location.href = response.payment.authorizationUrl;
+    } catch (requestError) {
+      setPaymentError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Payment could not be reopened.",
+      );
+      setPayingOrderId("");
+    }
+  }
+
   if (isLoading) {
-    return (
-      <section className="orders-page">
-        <LoadingState
-          title="Loading your orders"
-          message="Gleank is checking your latest order activity."
-        />
-      </section>
-    );
+    return <LoadingState message="Loading your orders..." />;
   }
 
   return (
-    <section className="orders-page">
-      <div className="orders-hero">
-        <span>My Orders</span>
+    <section className="page-shell orders-page orders-upgraded-page">
+      <div className="orders-header">
+        <span className="eyebrow">My Orders</span>
         <h1>Track your campus purchases</h1>
         <p>
-          All orders created from checkout now come directly from the Gleank
-          backend.
+          Continue unpaid payments, follow seller progress, and keep your delivery
+          code safe until you receive the correct item.
         </p>
       </div>
 
-      <div className="order-status-tabs">
+      <div className="orders-filter-bar">
         {statusFilters.map((status) => (
           <button
-            type="button"
             key={status}
             className={activeFilter === status ? "active" : ""}
+            type="button"
             onClick={() => setActiveFilter(status)}
           >
             {status}
@@ -143,9 +161,11 @@ function Orders() {
         ))}
       </div>
 
+      {paymentError && <div className="orders-payment-error">{paymentError}</div>}
+
       {error ? (
         <EmptyState
-          icon={<FiPackage />}
+          icon={<FiXCircle />}
           eyebrow="Orders unavailable"
           title="Could not load orders"
           message={error}
@@ -167,55 +187,51 @@ function Orders() {
         <div className="orders-list">
           {filteredOrders.map((order) => {
             const firstItem = order.items[0];
+            const image = resolveMediaUrl(firstItem?.productImageUrl) || productFallback;
+            const showContinuePayment = canContinuePayment(order);
+            const isPaying = payingOrderId === order.id;
 
             return (
-              <article className="order-card" key={order.id}>
-                <div className="order-card-image">
-                  <img
-                    src={resolveMediaUrl(
-                      firstItem?.productImageUrl,
-                      productFallback,
-                    )}
-                    alt={firstItem?.productName || order.orderCode}
-                  />
-                </div>
+              <article className="order-card upgraded-order-card" key={order.id}>
+                <img src={image} alt={firstItem?.productName || "Order item"} />
 
-                <div className="order-card-content">
-                  <div className="order-card-top">
-                    <div>
-                      <span>{order.orderCode}</span>
-                      <h2>{firstItem?.productName || "Gleank order"}</h2>
-                      <p>
-                        {order.storeName} • {order.items.length} item(s)
-                      </p>
-                    </div>
+                <div className="order-card-main">
+                  <span className="order-code">{order.orderCode}</span>
+                  <h2>{firstItem?.productName || "Gleank order"}</h2>
+                  <p>
+                    {order.storeName} • {order.items.length} item(s)
+                  </p>
 
-                    <div className={`order-status-pill ${statusGroup(order.status).toLowerCase()}`}>
-                      {statusIcon(order.status)}
-                      {order.statusLabel}
-                    </div>
-                  </div>
-
-                  <div className="order-card-meta">
+                  <div className="order-meta-row">
+                    <span>{statusIcon(order.status)} {order.statusLabel}</span>
                     <span>{formatDate(order.createdAt)}</span>
                     <span>{order.deliveryOption}</span>
                     <span>{order.campus}</span>
                   </div>
+                </div>
 
-                  <div className="order-card-bottom">
-                    <strong>{formatNaira(order.total)}</strong>
+                <div className="order-card-side">
+                  <strong>{formatNaira(order.total)}</strong>
 
-                    <div>
-                      <button type="button">
-                        <FiMessageCircle />
-                        Contact
-                      </button>
+                  {showContinuePayment && (
+                    <button
+                      className="continue-payment-btn"
+                      type="button"
+                      disabled={isPaying}
+                      onClick={() => void handleContinuePayment(order)}
+                    >
+                      <FiCreditCard />
+                      {isPaying ? "Opening..." : "Continue Payment"}
+                    </button>
+                  )}
 
-                      <Link to={`/orders/${order.id}`}>
-                        View details
-                        <FiArrowRight />
-                      </Link>
-                    </div>
+                  <div className="order-action-row">
+                    <Link to={`/messages?order=${order.id}`}>
+                      <FiMessageCircle /> Contact
+                    </Link>
+                    <Link to={`/orders/${order.id}`}>
+                      View details <FiArrowRight />
+                    </Link>
                   </div>
                 </div>
               </article>

@@ -9,12 +9,15 @@ import {
 } from "react-icons/fi";
 import { verifyPayment } from "../services/payment.service";
 import "./PaymentCallback.css";
+import { useCart } from "../context/CartContext";
+
 
 type CallbackState = "loading" | "success" | "pending" | "failed";
 
 function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { clearCart } = useCart();
   const [state, setState] = useState<CallbackState>("loading");
   const [message, setMessage] = useState("Verifying your payment securely...");
   const [redirectPath, setRedirectPath] = useState("/orders");
@@ -49,6 +52,8 @@ function PaymentCallback() {
         setRedirectPath(payment.redirectPath || "/orders");
 
         if (payment.status === "paid") {
+          clearCart();
+          sessionStorage.removeItem("gleank_pending_payment_reference");
           setState("success");
           setMessage("Payment verified successfully. Redirecting you now...");
 

@@ -27,6 +27,7 @@ import { paymentRouter } from "./routes/payment.routes.js";
 import { cartRouter } from "./routes/cart.routes.js";
 import { userRouter } from "./routes/user.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import { deliveryRouter } from "./routes/delivery.routes.js";
 
 export const app = express();
 
@@ -68,6 +69,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
+app.use("/api/delivery", deliveryRouter);
 app.use("/api/saved", savedRouter);
 app.use("/api/users", userRouter);
 app.use("/api/stores", storeRouter);
