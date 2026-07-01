@@ -21,8 +21,7 @@
   text-align: center;
   position: relative;
   overflow: hidden;
-  transform: translateZ(0);
-  backface-visibility: hidden;
+ 
 }
 
 .payment-callback-card::before {
@@ -68,19 +67,7 @@
   color: #ef4444;
 }
 
-.payment-callback-spin {
-  animation: paymentCallbackSpin 0.9s linear infinite;
-}
 
-@keyframes paymentCallbackSpin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
 
 .payment-callback-eyebrow {
   display: inline-flex;

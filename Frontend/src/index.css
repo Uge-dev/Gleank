@@ -23541,7 +23541,7 @@ html[data-theme="dark"] .notification-card {
   border-top: 1px solid #e5e7eb;
   background: #ffffff;
   display: grid;
-  grid-template-columns: 44px 1fr 44px;
+  grid-template-rows: 44px 1fr 44px;
   align-items: center;
   gap: 10px;
 }
@@ -23661,7 +23661,7 @@ html[data-theme="dark"] .notification-card {
   }
 
   .product-comment-form {
-    grid-template-columns: 40px 1fr 42px;
+    grid-template-rows: 40px 1fr 42px;
     padding-left: 12px;
     padding-right: 12px;
   }
@@ -28932,7 +28932,7 @@ html[data-theme="dark"] .notification-card {
   .product-comment-form {
     position: relative;
     z-index: 3;
-    grid-template-columns: 38px minmax(0, 1fr) 42px !important;
+    grid-template-rows: 38px minmax(0, 1fr) 42px !important;
     padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px)) !important;
   }
 

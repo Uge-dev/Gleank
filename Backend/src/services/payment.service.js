@@ -4,112 +4,65 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { ensureSellerSubscription } from "./subscription.service.js";
 
-const SUPPORTED_PURPOSES = new Set([
-  "store_order",
-  "used_order",
-  "seller_subscription",
-]);
-
-const PAYSTACK_SUCCESS_STATUS = "success";
+function clean(value, max = 240) {
+  return String(value || "").trim().slice(0, max);
+}
 
 function nowIso() {
   return new Date().toISOString();
 }
 
 function addDays(date, days) {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1_000);
+  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
-function clean(value, max = 240) {
-  return String(value || "").trim().slice(0, max);
-}
-
-function uniqueStrings(values) {
-  return [...new Set(values.map((value) => clean(value, 180)).filter(Boolean))];
-}
-
-function parseJson(value, fallback) {
-  try {
-    return JSON.parse(value || "");
-  } catch {
-    return fallback;
-  }
-}
-
-function generateReference(prefix) {
+function reference(prefix) {
   return `${prefix}-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)
     .toUpperCase()}`;
 }
 
-function localAuthorizationUrl(paymentReference) {
-  return `${env.frontendUrl}/payment/callback?reference=${encodeURIComponent(
-    paymentReference,
-  )}&provider=local`;
-}
-
-function ensurePaymentTable() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS payment_transactions (
-      id TEXT PRIMARY KEY,
-      reference TEXT NOT NULL UNIQUE,
-      provider TEXT NOT NULL DEFAULT 'local',
-      purpose TEXT NOT NULL CHECK (purpose IN ('store_order', 'used_order', 'seller_subscription')),
-      order_id TEXT,
-      used_order_id TEXT,
-      subscription_id TEXT,
-      user_id TEXT NOT NULL,
-      amount_kobo INTEGER NOT NULL CHECK (amount_kobo >= 0),
-      currency TEXT NOT NULL DEFAULT 'NGN',
-      status TEXT NOT NULL DEFAULT 'initialized',
-      authorization_url TEXT NOT NULL DEFAULT '',
-      access_code TEXT NOT NULL DEFAULT '',
-      provider_reference TEXT NOT NULL DEFAULT '',
-      provider_status TEXT NOT NULL DEFAULT '',
-      metadata TEXT NOT NULL DEFAULT '{}',
-      provider_response TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      verified_at TEXT,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    ) STRICT;
-
-    CREATE INDEX IF NOT EXISTS payment_transactions_user_id_idx
-      ON payment_transactions(user_id);
-
-    CREATE INDEX IF NOT EXISTS payment_transactions_reference_idx
-      ON payment_transactions(reference);
-
-    CREATE INDEX IF NOT EXISTS payment_transactions_order_id_idx
-      ON payment_transactions(order_id);
-
-    CREATE INDEX IF NOT EXISTS payment_transactions_used_order_id_idx
-      ON payment_transactions(used_order_id);
-
-    CREATE INDEX IF NOT EXISTS payment_transactions_subscription_id_idx
-      ON payment_transactions(subscription_id);
-  `);
-
-  ensurePaymentColumn("access_code", "TEXT NOT NULL DEFAULT ''");
-  ensurePaymentColumn("provider_status", "TEXT NOT NULL DEFAULT ''");
-  ensurePaymentColumn("provider_response", "TEXT NOT NULL DEFAULT '{}'");
-  ensurePaymentColumn("verified_at", "TEXT");
-}
-
-function ensurePaymentColumn(column, definition) {
-  const columns = db.prepare("PRAGMA table_info(payment_transactions)").all();
-  if (!columns.some((item) => item.name === column)) {
-    db.exec(`ALTER TABLE payment_transactions ADD COLUMN ${column} ${definition}`);
+function parseMetadata(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
   }
 }
 
-ensurePaymentTable();
+function stringifyMetadata(row, patch = {}) {
+  return JSON.stringify({
+    ...parseMetadata(row?.metadata),
+    ...patch,
+  });
+}
+
+function getPaymentRedirectPath(row) {
+  if (!row) return "/orders";
+
+  if (row.purpose === "used_order" && row.used_order_id) {
+    return `/used-orders/${row.used_order_id}`;
+  }
+
+  if (row.purpose === "seller_subscription") {
+    return "/seller-subscription";
+  }
+
+  if (row.purpose === "store_order" && row.order_id) {
+    return `/orders/${row.order_id}`;
+  }
+
+  return "/orders";
+}
 
 function serializePayment(row) {
   if (!row) return null;
 
-  const metadata = parseJson(row.metadata, {});
+  const metadata = parseMetadata(row.metadata);
 
   return {
     id: row.id,
@@ -117,11 +70,6 @@ function serializePayment(row) {
     provider: row.provider,
     purpose: row.purpose,
     orderId: row.order_id || null,
-    orderIds: Array.isArray(metadata.orderIds)
-      ? metadata.orderIds
-      : row.order_id
-        ? [row.order_id]
-        : [],
     usedOrderId: row.used_order_id || null,
     subscriptionId: row.subscription_id || null,
     userId: row.user_id,
@@ -130,13 +78,11 @@ function serializePayment(row) {
     currency: row.currency,
     status: row.status,
     authorizationUrl: row.authorization_url,
-    accessCode: row.access_code || "",
     providerReference: row.provider_reference || "",
-    providerStatus: row.provider_status || "",
-    redirectPath: metadata.redirectPath || redirectPathForPayment(row),
+    providerStatus: metadata.providerStatus || "",
+    redirectPath: getPaymentRedirectPath(row),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    verifiedAt: row.verified_at || null,
   };
 }
 
@@ -146,7 +92,7 @@ function findPaymentByReference(paymentReference) {
     .get(paymentReference);
 }
 
-function getUser(userId) {
+function findUser(userId) {
   const user = db
     .prepare("SELECT id, name, email, role FROM users WHERE id = ?")
     .get(userId);
@@ -155,29 +101,41 @@ function getUser(userId) {
     throw new HttpError(404, "User account was not found.");
   }
 
+  if (!user.email) {
+    throw new HttpError(422, "Your account email is required before payment.");
+  }
+
   return user;
 }
 
-function requirePaystackSecret() {
+function createLocalAuthorizationUrl(paymentReference) {
+  return `${env.frontendUrl}/payments/local/${encodeURIComponent(paymentReference)}`;
+}
+
+function requirePaystackConfig() {
   if (!env.paystackSecretKey) {
+    throw new HttpError(500, "Paystack secret key is not configured.");
+  }
+
+  if (env.isProduction && !env.paystackSecretKey.startsWith("sk_live_")) {
     throw new HttpError(
       500,
-      "Paystack secret key is not configured. Add PAYSTACK_SECRET_KEY to Backend/.env.",
+      "Production Paystack payments must use a live secret key.",
     );
   }
 
   if (!env.isProduction && !env.paystackSecretKey.startsWith("sk_test_")) {
     throw new HttpError(
       500,
-      "Use your Paystack test secret key locally. It should start with sk_test_.",
+      "Local Paystack testing must use a test secret key that starts with sk_test_.",
     );
   }
 }
 
 async function paystackRequest(path, options = {}) {
-  requirePaystackSecret();
+  requirePaystackConfig();
 
-  const response = await fetch(`${env.paystackBaseUrl}${path}`, {
+  const response = await fetch(`${env.paystackBaseUrl || "https://api.paystack.co"}${path}`, {
     ...options,
     headers: {
       Authorization: `Bearer ${env.paystackSecretKey}`,
@@ -199,128 +157,50 @@ async function paystackRequest(path, options = {}) {
   return body;
 }
 
-async function initializeWithPaystack({ user, reference, amountKobo, purpose, metadata }) {
-  const result = await paystackRequest("/transaction/initialize", {
+function getPaystackCallbackUrl() {
+  return (
+    env.paystackCallbackUrl ||
+    `${env.frontendUrl || "http://localhost:5173"}/payment/callback`
+  );
+}
+
+async function initializeWithPaystack({
+  user,
+  paymentReference,
+  amountKobo,
+  purpose,
+  targetId,
+}) {
+  const response = await paystackRequest("/transaction/initialize", {
     method: "POST",
     body: JSON.stringify({
       email: user.email,
       amount: String(amountKobo),
       currency: "NGN",
-      reference,
-      callback_url: env.paystackCallbackUrl,
+      reference: paymentReference,
+      callback_url: getPaystackCallbackUrl(),
       metadata: {
         app: "gleank",
-        userId: user.id,
-        userName: user.name,
         purpose,
-        ...metadata,
+        targetId,
+        userId: user.id,
+        userName: user.name || "",
       },
     }),
   });
 
-  if (!result?.data?.authorization_url || !result?.data?.access_code) {
-    throw new HttpError(502, "Paystack did not return a checkout link.");
+  if (!response?.data?.authorization_url) {
+    throw new HttpError(502, "Paystack did not return a payment checkout link.");
   }
 
   return {
-    authorizationUrl: result.data.authorization_url,
-    accessCode: result.data.access_code,
-    providerReference: result.data.reference || reference,
-    providerResponse: result,
+    authorizationUrl: response.data.authorization_url,
+    accessCode: response.data.access_code || "",
   };
 }
 
-function paymentPrefix(purpose) {
-  if (purpose === "used_order") return "GUM-PAY";
-  if (purpose === "seller_subscription") return "GLK-SUB";
-  return "GLK-PAY";
-}
-
-function normalizeInput(input) {
-  const purpose = clean(input?.purpose, 80);
-
-  if (!SUPPORTED_PURPOSES.has(purpose)) {
-    throw new HttpError(422, "Payment purpose is not supported.");
-  }
-
-  const targetIds = uniqueStrings(
-    Array.isArray(input?.targetIds)
-      ? input.targetIds
-      : [input?.targetId || input?.orderId || input?.usedOrderId],
-  );
-
-  if (purpose !== "seller_subscription" && targetIds.length === 0) {
-    throw new HttpError(422, "Payment target is required.");
-  }
-
-  return { purpose, targetIds };
-}
-
-function getStoreOrdersForPayment(userId, targetIds) {
-  const placeholders = targetIds.map(() => "?").join(",");
-  const orders = db
-    .prepare(
-      `
-        SELECT * FROM orders
-        WHERE id IN (${placeholders})
-          AND buyer_id = ?
-      `,
-    )
-    .all(...targetIds, userId);
-
-  if (orders.length !== targetIds.length) {
-    throw new HttpError(404, "One or more orders were not found.");
-  }
-
-  const invalid = orders.find(
-    (order) => order.status !== "pending_payment" || order.payment_status === "paid",
-  );
-
-  if (invalid) {
-    throw new HttpError(422, "One or more orders are not awaiting payment.");
-  }
-
-  return orders;
-}
-
-function getUsedOrderForPayment(userId, orderId) {
-  const order = db
-    .prepare(
-      `
-        SELECT * FROM used_market_orders
-        WHERE id = ? AND buyer_id = ?
-      `,
-    )
-    .get(orderId, userId);
-
-  if (!order) {
-    throw new HttpError(404, "Used Market order was not found.");
-  }
-
-  if (order.status !== "pending_payment" || order.payment_status === "paid") {
-    throw new HttpError(422, "This protected order is not awaiting payment.");
-  }
-
-  return order;
-}
-
-function getSubscriptionForPayment(userId) {
-  const user = getUser(userId);
-
-  if (user.role !== "seller" && user.role !== "admin") {
-    throw new HttpError(403, "Only seller accounts can pay seller subscription.");
-  }
-
-  const subscription = ensureSellerSubscription(userId);
-
-  return {
-    id: subscription.id || null,
-    amountKobo: subscription.amountKobo || env.sellerMonthlyFeeKobo,
-  };
-}
-
-function savePayment({
-  reference,
+function insertPaymentTransaction({
+  paymentReference,
   provider,
   purpose,
   orderId,
@@ -329,134 +209,32 @@ function savePayment({
   userId,
   amountKobo,
   authorizationUrl,
-  accessCode,
-  providerReference,
-  providerStatus,
-  metadata,
-  providerResponse,
+  metadata = {},
 }) {
   const now = nowIso();
 
-  db.prepare(
-    `
-      INSERT INTO payment_transactions (
-        id,
-        reference,
-        provider,
-        purpose,
-        order_id,
-        used_order_id,
-        subscription_id,
-        user_id,
-        amount_kobo,
-        currency,
-        status,
-        authorization_url,
-        access_code,
-        provider_reference,
-        provider_status,
-        metadata,
-        provider_response,
-        created_at,
-        updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'NGN', 'initialized', ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-  ).run(
-    createId("pay"),
-    reference,
-    provider,
-    purpose,
-    orderId || null,
-    usedOrderId || null,
-    subscriptionId || null,
-    userId,
-    amountKobo,
-    authorizationUrl,
-    accessCode || "",
-    providerReference || "",
-    providerStatus || "",
-    JSON.stringify(metadata || {}),
-    JSON.stringify(providerResponse || {}),
-    now,
-    now,
-  );
-
-  return findPaymentByReference(reference);
-}
-
-export async function initializePayment(userId, input) {
-  const { purpose, targetIds } = normalizeInput(input);
-  const user = getUser(userId);
-
-  let amountKobo = 0;
-  let orderId = null;
-  let usedOrderId = null;
-  let subscriptionId = null;
-  let metadata = {};
-
-  if (purpose === "store_order") {
-    const orders = getStoreOrdersForPayment(userId, targetIds);
-    amountKobo = orders.reduce((total, order) => total + order.total_kobo, 0);
-    orderId = orders[0]?.id || null;
-    metadata = {
-      orderIds: orders.map((order) => order.id),
-      orderCodes: orders.map((order) => order.order_code),
-      redirectPath: `/order-success?ref=${encodeURIComponent(
-        orders.map((order) => order.order_code).join(","),
-      )}`,
-    };
-  }
-
-  if (purpose === "used_order") {
-    const order = getUsedOrderForPayment(userId, targetIds[0]);
-    amountKobo = order.total_kobo;
-    usedOrderId = order.id;
-    metadata = {
-      usedOrderId: order.id,
-      orderCode: order.order_code,
-      listingId: order.listing_id,
-      redirectPath: `/used-orders/${order.id}`,
-    };
-  }
-
-  if (purpose === "seller_subscription") {
-    const subscription = getSubscriptionForPayment(userId);
-    amountKobo = subscription.amountKobo;
-    subscriptionId = subscription.id;
-    metadata = {
-      subscriptionId,
-      planName: "Campus Seller Monthly",
-      redirectPath: "/seller-subscription",
-    };
-  }
-
-  if (amountKobo <= 0) {
-    throw new HttpError(422, "Payment amount must be greater than zero.");
-  }
-
-  const provider = env.paymentProvider === "paystack" ? "paystack" : "local";
-  const reference = generateReference(paymentPrefix(purpose));
-
-  let initialized = {
-    authorizationUrl: localAuthorizationUrl(reference),
-    accessCode: "",
-    providerReference: provider === "local" ? reference : "",
-    providerStatus: "initialized",
-    providerResponse: {},
-  };
-
-  if (provider === "paystack") {
-    initialized = await initializeWithPaystack({
-      user,
+  db.prepare(`
+    INSERT INTO payment_transactions (
+      id,
       reference,
-      amountKobo,
+      provider,
       purpose,
+      order_id,
+      used_order_id,
+      subscription_id,
+      user_id,
+      amount_kobo,
+      currency,
+      status,
+      authorization_url,
+      provider_reference,
       metadata,
-    });
-  }
-
-  const row = savePayment({
-    reference,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'NGN', 'initialized', ?, '', ?, ?, ?)
+  `).run(
+    createId("pay"),
+    paymentReference,
     provider,
     purpose,
     orderId,
@@ -464,135 +242,149 @@ export async function initializePayment(userId, input) {
     subscriptionId,
     userId,
     amountKobo,
-    authorizationUrl: initialized.authorizationUrl,
-    accessCode: initialized.accessCode,
-    providerReference: initialized.providerReference,
-    providerStatus: initialized.providerStatus,
-    metadata,
-    providerResponse: initialized.providerResponse,
-  });
-
-  return serializePayment(row);
+    authorizationUrl,
+    JSON.stringify(metadata),
+    now,
+    now,
+  );
 }
 
-function paymentOrderIds(row) {
-  const metadata = parseJson(row.metadata, {});
-  if (Array.isArray(metadata.orderIds)) {
-    return uniqueStrings(metadata.orderIds);
+function getStoreOrderForPayment(userId, orderId) {
+  const order = db
+    .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
+    .get(orderId, userId);
+
+  if (!order) {
+    throw new HttpError(404, "Order was not found.");
   }
-  return row.order_id ? [row.order_id] : [];
+
+  if (order.payment_status === "paid") {
+    throw new HttpError(422, "This order has already been paid.");
+  }
+
+  if (order.status !== "pending_payment") {
+    throw new HttpError(422, "This order is not awaiting payment.");
+  }
+
+  if (Number(order.total_kobo || 0) <= 0) {
+    throw new HttpError(422, "Payment amount must be greater than zero.");
+  }
+
+  return order;
 }
 
-function redirectPathForPayment(row) {
-  const metadata = parseJson(row.metadata, {});
-
-  if (metadata.redirectPath) {
-    return metadata.redirectPath;
-  }
-
-  if (row.purpose === "store_order") {
-    const orderIds = paymentOrderIds(row);
-    if (orderIds.length === 0) return "/orders";
-
-    const placeholders = orderIds.map(() => "?").join(",");
-    const orders = db
-      .prepare(`SELECT order_code FROM orders WHERE id IN (${placeholders})`)
-      .all(...orderIds);
-
-    const refs = orders.map((order) => order.order_code).join(",");
-    return refs ? `/order-success?ref=${encodeURIComponent(refs)}` : "/orders";
-  }
-
-  if (row.purpose === "used_order") {
-    return row.used_order_id ? `/used-orders/${row.used_order_id}` : "/used-market";
-  }
-
-  if (row.purpose === "seller_subscription") {
-    return "/seller-subscription";
-  }
-
-  return "/orders";
-}
-
-function insertStoreOrderEvent(orderId, note) {
-  db.prepare(
-    `
-      INSERT INTO order_events (id, order_id, status, label, note, created_at)
-      VALUES (?, ?, 'paid', 'Payment confirmed', ?, ?)
-    `,
-  ).run(createId("evt"), orderId, note, nowIso());
-}
-
-function insertUsedOrderEvent(orderId, note) {
-  db.prepare(
-    `
-      INSERT INTO used_market_order_events (id, order_id, status, label, note, created_at)
-      VALUES (?, ?, 'paid', 'Payment recorded', ?, ?)
-    `,
-  ).run(createId("uev"), orderId, note, nowIso());
-}
-
-function applyStoreOrderPayment(row) {
-  const orderIds = paymentOrderIds(row);
-  const now = nowIso();
-
-  for (const orderId of orderIds) {
-    const order = db
-      .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
-      .get(orderId, row.user_id);
-
-    if (!order || order.payment_status === "paid") continue;
-
-    db.prepare(
-      `
-        UPDATE orders
-        SET status = 'paid',
-            payment_status = 'paid',
-            updated_at = ?
-        WHERE id = ?
-      `,
-    ).run(now, order.id);
-
-    insertStoreOrderEvent(
-      order.id,
-      `Payment verified through ${row.provider}. Reference: ${row.reference}`,
-    );
-  }
-}
-
-function applyUsedOrderPayment(row) {
-  const now = nowIso();
+function getUsedOrderForPayment(userId, orderId) {
   const order = db
     .prepare("SELECT * FROM used_market_orders WHERE id = ? AND buyer_id = ?")
-    .get(row.used_order_id, row.user_id);
+    .get(orderId, userId);
 
   if (!order) {
     throw new HttpError(404, "Used Market order was not found.");
   }
 
-  if (order.payment_status === "paid") return;
+  if (order.payment_status === "paid") {
+    throw new HttpError(422, "This used order has already been paid.");
+  }
 
-  db.prepare(
-    `
-      UPDATE used_market_orders
-      SET status = 'paid',
-          payment_status = 'paid',
-          updated_at = ?
-      WHERE id = ?
-    `,
-  ).run(now, order.id);
+  if (order.status !== "pending_payment") {
+    throw new HttpError(422, "This protected order is not awaiting payment.");
+  }
 
-  db.prepare(
-    "UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?",
-  ).run(now, order.listing_id);
+  if (Number(order.total_kobo || 0) <= 0) {
+    throw new HttpError(422, "Payment amount must be greater than zero.");
+  }
 
-  insertUsedOrderEvent(
+  return order;
+}
+
+function insertOrderEvent(orderId, status, label, note = "") {
+  db.prepare(`
+    INSERT INTO order_events (id, order_id, status, label, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(createId("evt"), orderId, status, label, note, nowIso());
+}
+
+function insertUsedOrderEvent(orderId, status, label, note = "") {
+  db.prepare(`
+    INSERT INTO used_market_order_events (id, order_id, status, label, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(createId("uev"), orderId, status, label, note, nowIso());
+}
+
+function markStoreOrderPaid(row) {
+  if (!row.order_id) return;
+
+  const order = db
+    .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
+    .get(row.order_id, row.user_id);
+
+  if (!order) {
+    throw new HttpError(404, "Order connected to this payment was not found.");
+  }
+
+  if (order.payment_status === "paid") {
+    return;
+  }
+
+  const now = nowIso();
+
+  db.prepare(`
+    UPDATE orders
+    SET status = 'paid',
+        payment_status = 'paid',
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, order.id);
+
+  insertOrderEvent(
     order.id,
-    `Protected payment verified through ${row.provider}. Reference: ${row.reference}`,
+    "paid",
+    "Payment confirmed",
+    `Paystack payment verified. Reference: ${row.reference}`,
   );
 }
 
-function applySellerSubscriptionPayment(row) {
+function markUsedOrderPaid(row) {
+  if (!row.used_order_id) return;
+
+  const order = db
+    .prepare("SELECT * FROM used_market_orders WHERE id = ? AND buyer_id = ?")
+    .get(row.used_order_id, row.user_id);
+
+  if (!order) {
+    throw new HttpError(404, "Used Market order connected to this payment was not found.");
+  }
+
+  if (order.payment_status === "paid") {
+    return;
+  }
+
+  const now = nowIso();
+
+  db.prepare(`
+    UPDATE used_market_orders
+    SET status = 'paid',
+        payment_status = 'paid',
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, order.id);
+
+  db.prepare(`
+    UPDATE used_listings
+    SET status = 'sold',
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, order.listing_id);
+
+  insertUsedOrderEvent(
+    order.id,
+    "paid",
+    "Payment recorded",
+    `Paystack protected payment verified. Reference: ${row.reference}`,
+  );
+}
+
+function renewSellerSubscription(row) {
   ensureSellerSubscription(row.user_id);
 
   const subscription = db
@@ -604,183 +396,197 @@ function applySellerSubscriptionPayment(row) {
   }
 
   const now = new Date();
-  const currentEnd = subscription.current_period_end
+  const existingEnd = subscription.current_period_end
     ? new Date(subscription.current_period_end)
     : null;
-  const periodStart = currentEnd && currentEnd > now ? currentEnd : now;
-  const periodEnd = addDays(periodStart, 30);
-  const currentTime = now.toISOString();
 
-  db.prepare(
-    `
-      UPDATE seller_subscriptions
-      SET status = 'active',
-          starts_at = COALESCE(starts_at, ?),
-          current_period_start = ?,
-          current_period_end = ?,
-          next_renewal_at = ?,
-          last_payment_reference = ?,
-          amount_kobo = ?,
-          updated_at = ?
-      WHERE user_id = ?
-    `,
-  ).run(
-    currentTime,
+  const periodStart =
+    existingEnd && existingEnd.getTime() > now.getTime() ? existingEnd : now;
+  const periodEnd = addDays(periodStart, 30);
+  const nowText = now.toISOString();
+
+  db.prepare(`
+    UPDATE seller_subscriptions
+    SET status = 'active',
+        starts_at = COALESCE(starts_at, ?),
+        current_period_start = ?,
+        current_period_end = ?,
+        next_renewal_at = ?,
+        last_payment_reference = ?,
+        amount_kobo = ?,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    nowText,
     periodStart.toISOString(),
     periodEnd.toISOString(),
     periodEnd.toISOString(),
     row.reference,
     row.amount_kobo,
-    currentTime,
+    nowText,
     row.user_id,
   );
 
-  db.prepare(
-    `
-      INSERT INTO seller_subscription_events (
-        id,
-        subscription_id,
-        event_type,
-        amount_kobo,
-        note,
-        created_at
-      ) VALUES (?, ?, 'renewed', ?, ?, ?)
-    `,
-  ).run(
+  db.prepare(`
+    INSERT INTO seller_subscription_events (
+      id,
+      subscription_id,
+      event_type,
+      amount_kobo,
+      note,
+      created_at
+    ) VALUES (?, ?, 'renewed', ?, ?, ?)
+  `).run(
     createId("sse"),
     subscription.id,
     row.amount_kobo,
-    `Seller subscription payment verified through ${row.provider}. Reference: ${row.reference}`,
-    currentTime,
+    `Paystack seller subscription payment verified. Reference: ${row.reference}`,
+    nowText,
   );
 }
 
 function applySuccessfulPayment(row) {
   if (row.purpose === "store_order") {
-    applyStoreOrderPayment(row);
+    markStoreOrderPaid(row);
     return;
   }
 
   if (row.purpose === "used_order") {
-    applyUsedOrderPayment(row);
+    markUsedOrderPaid(row);
     return;
   }
 
   if (row.purpose === "seller_subscription") {
-    applySellerSubscriptionPayment(row);
+    renewSellerSubscription(row);
     return;
   }
 
-  throw new HttpError(422, "Unsupported payment purpose.");
+  throw new HttpError(422, "Payment purpose is not supported.");
 }
 
-function markPaymentFailed(row, providerStatus, providerResponse) {
+function internalStatusFromPaystackStatus(providerStatus) {
+  if (providerStatus === "success") return "paid";
+  if (providerStatus === "abandoned") return "cancelled";
+  if (providerStatus === "failed" || providerStatus === "reversed") return "failed";
+  return "initialized";
+}
+
+function updatePaymentFromProvider(row, providerResponse, internalStatus) {
+  const data = providerResponse?.data || {};
+  const providerStatus = String(data.status || "");
+  const providerReference = String(data.id || data.reference || row.provider_reference || "");
   const now = nowIso();
 
-  db.prepare(
-    `
-      UPDATE payment_transactions
-      SET status = 'failed',
-          provider_status = ?,
-          provider_response = ?,
-          updated_at = ?,
-          verified_at = ?
-      WHERE id = ?
-    `,
-  ).run(
-    providerStatus || "failed",
-    JSON.stringify(providerResponse || {}),
-    now,
-    now,
-    row.id,
-  );
-}
-
-function markPaymentPaid(row, providerStatus, providerResponse) {
-  const now = nowIso();
-
-  db.prepare(
-    `
-      UPDATE payment_transactions
-      SET status = 'paid',
-          provider_status = ?,
-          provider_response = ?,
-          provider_reference = COALESCE(NULLIF(provider_reference, ''), ?),
-          updated_at = ?,
-          verified_at = ?
-      WHERE id = ?
-    `,
-  ).run(
-    providerStatus || PAYSTACK_SUCCESS_STATUS,
-    JSON.stringify(providerResponse || {}),
-    providerResponse?.data?.reference || row.reference,
-    now,
-    now,
-    row.id,
-  );
-}
-
-async function verifyWithPaystack(row) {
-  const result = await paystackRequest(
-    `/transaction/verify/${encodeURIComponent(row.reference)}`,
-    { method: "GET" },
-  );
-
-  const providerStatus = String(result?.data?.status || "failed");
-  const paidAmount = Number(result?.data?.amount || 0);
-
-  if (paidAmount !== row.amount_kobo) {
-    markPaymentFailed(row, "amount_mismatch", result);
-    throw new HttpError(
-      422,
-      "Payment amount mismatch. Please contact Gleank support.",
-    );
-  }
-
-  if (providerStatus !== PAYSTACK_SUCCESS_STATUS) {
-    markPaymentFailed(row, providerStatus, result);
-    return {
-      ok: false,
+  db.prepare(`
+    UPDATE payment_transactions
+    SET status = ?,
+        provider_reference = ?,
+        metadata = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    internalStatus,
+    providerReference,
+    stringifyMetadata(row, {
       providerStatus,
-      providerResponse: result,
-    };
-  }
-
-  return {
-    ok: true,
-    providerStatus,
-    providerResponse: result,
-  };
+      gatewayResponse: data.gateway_response || "",
+      channel: data.channel || "",
+      paidAt: data.paid_at || null,
+      verifiedAt: now,
+      paystackResponse: providerResponse,
+    }),
+    now,
+    row.id,
+  );
 }
 
-function verifyLocalPayment(row) {
-  if (env.isProduction) {
-    throw new HttpError(403, "Local payment verification is disabled in production.");
+export async function initializePayment(userId, input) {
+  const user = findUser(userId);
+  const purpose = clean(input?.purpose, 80);
+  const targetId = clean(input?.targetId || input?.orderId || input?.usedOrderId, 160);
+
+  if (!["store_order", "used_order", "seller_subscription"].includes(purpose)) {
+    throw new HttpError(422, "Payment purpose is not supported.");
   }
 
-  return {
-    ok: true,
-    providerStatus: "local_success",
-    providerResponse: {
-      status: true,
-      message: "Local development payment verified.",
-      data: {
-        reference: row.reference,
-        amount: row.amount_kobo,
-        status: "success",
-      },
+  if (!targetId && purpose !== "seller_subscription") {
+    throw new HttpError(422, "Payment target is required.");
+  }
+
+  let amountKobo = 0;
+  let orderId = null;
+  let usedOrderId = null;
+  let subscriptionId = null;
+  let prefix = "GLK-PAY";
+
+  if (purpose === "store_order") {
+    const order = getStoreOrderForPayment(userId, targetId);
+    orderId = order.id;
+    amountKobo = order.total_kobo;
+    prefix = "GLK-PAY";
+  }
+
+  if (purpose === "used_order") {
+    const order = getUsedOrderForPayment(userId, targetId);
+    usedOrderId = order.id;
+    amountKobo = order.total_kobo;
+    prefix = "GUM-PAY";
+  }
+
+  if (purpose === "seller_subscription") {
+    const subscription = ensureSellerSubscription(userId);
+    subscriptionId = subscription.id || null;
+    amountKobo = subscription.amountKobo || env.sellerMonthlyFeeKobo;
+    prefix = "GLK-SUB";
+  }
+
+  const paymentReference = reference(prefix);
+  const provider = env.paymentProvider || "local";
+
+  if (env.isProduction && provider !== "paystack") {
+    throw new HttpError(500, "Production payments must use Paystack verification.");
+  }
+
+  let authorizationUrl = "";
+  let paystackAccessCode = "";
+
+  if (provider === "paystack") {
+    const paystack = await initializeWithPaystack({
+      user,
+      paymentReference,
+      amountKobo,
+      purpose,
+      targetId: targetId || subscriptionId || userId,
+    });
+
+    authorizationUrl = paystack.authorizationUrl;
+    paystackAccessCode = paystack.accessCode;
+  } else {
+    authorizationUrl = createLocalAuthorizationUrl(paymentReference);
+  }
+
+  insertPaymentTransaction({
+    paymentReference,
+    provider,
+    purpose,
+    orderId,
+    usedOrderId,
+    subscriptionId,
+    userId,
+    amountKobo,
+    authorizationUrl,
+    metadata: {
+      targetId,
+      paystackAccessCode,
+      initializedAt: nowIso(),
     },
-  };
+  });
+
+  return serializePayment(findPaymentByReference(paymentReference));
 }
 
 export async function verifyPayment(userId, paymentReference) {
-  const reference = clean(paymentReference, 200);
-
-  if (!reference) {
-    throw new HttpError(422, "Payment reference is required.");
-  }
-
-  const row = findPaymentByReference(reference);
+  const row = findPaymentByReference(clean(paymentReference, 200));
 
   if (!row) {
     throw new HttpError(404, "Payment reference was not found.");
@@ -794,19 +600,69 @@ export async function verifyPayment(userId, paymentReference) {
     return serializePayment(row);
   }
 
-  const verification =
-    row.provider === "paystack"
-      ? await verifyWithPaystack(row)
-      : verifyLocalPayment(row);
+  if (row.provider === "local") {
+    if (env.isProduction) {
+      throw new HttpError(403, "Local payment verification is disabled in production.");
+    }
 
-  if (!verification.ok) {
-    return serializePayment(findPaymentByReference(reference));
+    transaction(() => {
+      applySuccessfulPayment(row);
+
+      db.prepare(`
+        UPDATE payment_transactions
+        SET status = 'paid',
+            provider_reference = ?,
+            metadata = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        `local-verified-${Date.now()}`,
+        stringifyMetadata(row, {
+          providerStatus: "success",
+          verifiedAt: nowIso(),
+        }),
+        nowIso(),
+        row.id,
+      );
+    });
+
+    return serializePayment(findPaymentByReference(row.reference));
   }
 
-  transaction(() => {
-    applySuccessfulPayment(row);
-    markPaymentPaid(row, verification.providerStatus, verification.providerResponse);
-  });
+  if (row.provider !== "paystack") {
+    throw new HttpError(422, "Unsupported payment provider.");
+  }
 
-  return serializePayment(findPaymentByReference(reference));
+  const providerResponse = await paystackRequest(
+    `/transaction/verify/${encodeURIComponent(row.reference)}`,
+    { method: "GET" },
+  );
+
+  const data = providerResponse?.data || {};
+  const providerStatus = String(data.status || "");
+  const paidAmountKobo = Number(data.amount || 0);
+  const currency = String(data.currency || "NGN").toUpperCase();
+  const internalStatus = internalStatusFromPaystackStatus(providerStatus);
+
+  if (providerStatus === "success") {
+    if (paidAmountKobo !== Number(row.amount_kobo)) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment amount mismatch. Please contact support.");
+    }
+
+    if (currency !== String(row.currency || "NGN").toUpperCase()) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment currency mismatch. Please contact support.");
+    }
+
+    transaction(() => {
+      applySuccessfulPayment(row);
+      updatePaymentFromProvider(row, providerResponse, "paid");
+    });
+
+    return serializePayment(findPaymentByReference(row.reference));
+  }
+
+  updatePaymentFromProvider(row, providerResponse, internalStatus);
+  return serializePayment(findPaymentByReference(row.reference));
 }

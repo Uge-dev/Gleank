@@ -5,6 +5,12 @@ export type PaymentPurpose =
   | "used_order"
   | "seller_subscription";
 
+export type GleankPaymentStatus =
+  | "initialized"
+  | "paid"
+  | "failed"
+  | "cancelled";
+
 export type GleankPayment = {
   id: string;
   reference: string;
@@ -17,15 +23,16 @@ export type GleankPayment = {
   amountKobo: number;
   amount: number;
   currency: "NGN";
-  status: "initialized" | "paid" | "failed" | "cancelled";
+  status: GleankPaymentStatus;
   authorizationUrl: string;
   providerReference: string;
+  providerStatus?: string;
+  redirectPath?: string;
   createdAt: string;
   updatedAt: string;
 };
 
 export type InitializedPayment = GleankPayment;
-
 export type VerifyPaymentResult = GleankPayment;
 
 export function initializePayment(input: {

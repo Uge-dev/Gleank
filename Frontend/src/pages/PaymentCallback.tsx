@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiAlertCircle,
@@ -34,8 +34,14 @@ function PaymentCallback() {
   const navigate = useNavigate();
   const { clearCart } = useCart();
 
+  const clearCartRef = useRef(clearCart);
+
+  useEffect(() => {
+    clearCartRef.current = clearCart;
+  }, [clearCart]);
+
   const [state, setState] = useState<CallbackState>("loading");
-  const [message, setMessage] = useState("Verifying your payment securely...");
+  const [message, setMessage] = useState("Confirming your payment status...");
   const [redirectPath, setRedirectPath] = useState("/orders");
 
   const reference = useMemo(() => {
@@ -58,7 +64,7 @@ function PaymentCallback() {
     }
 
     setState("loading");
-    setMessage("Verifying your payment securely...");
+    setMessage("Confirming your payment status...");
 
     void verifyPayment(reference)
       .then((response) => {
@@ -71,11 +77,11 @@ function PaymentCallback() {
         setRedirectPath(nextRedirectPath);
 
         if (paymentStatus === "paid") {
-          clearCart();
+          clearCartRef.current();
           sessionStorage.removeItem("gleank_pending_payment_reference");
 
           setState("success");
-          setMessage("Payment verified successfully. Redirecting you now...");
+          setMessage("Payment confirmed successfully. Redirecting you now...");
 
           timeoutId = window.setTimeout(() => {
             navigate(nextRedirectPath, { replace: true });
@@ -87,11 +93,12 @@ function PaymentCallback() {
         if (
           paymentStatus === "pending" ||
           paymentStatus === "initialized" ||
+          paymentStatus === "ongoing" ||
           paymentStatus === "abandoned"
         ) {
           setState("pending");
           setMessage(
-            `Payment verification is not complete yet. Current status: ${paymentStatus}.`,
+            `Your payment has not been confirmed yet. Current status: ${paymentStatus}.`,
           );
           return;
         }
@@ -108,7 +115,7 @@ function PaymentCallback() {
         setMessage(
           error instanceof Error
             ? error.message
-            : "Payment verification failed. Please check your orders.",
+            : "Payment confirmation failed. Please check your orders.",
         );
       });
 
@@ -119,11 +126,11 @@ function PaymentCallback() {
         window.clearTimeout(timeoutId);
       }
     };
-  }, [clearCart, navigate, reference]);
+  }, [navigate, reference]);
 
   const icon =
     state === "loading" ? (
-      <FiLoader className="payment-callback-spin" />
+      <FiLoader />
     ) : state === "success" ? (
       <FiCheckCircle />
     ) : state === "pending" ? (
@@ -141,7 +148,7 @@ function PaymentCallback() {
 
         <h1>
           {state === "loading"
-            ? "Checking payment"
+            ? "Confirming payment"
             : state === "success"
               ? "Payment successful"
               : state === "pending"
