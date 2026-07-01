@@ -1,211 +1,244 @@
 .payment-callback-page {
-  min-height: calc(100vh - 90px);
-  display: grid;
-  place-items: center;
-  padding: 48px 18px 72px;
+  width: 100%;
+  min-height: 100vh;
+  padding: 6rem 1.25rem 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background:
-    radial-gradient(circle at top left, rgba(255, 159, 67, 0.18), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.14), transparent 34%),
-    var(--app-bg, #f8fafc);
+    radial-gradient(circle at top left, rgba(255, 122, 0, 0.08), transparent 32%),
+    linear-gradient(180deg, #fffaf5 0%, #ffffff 48%, #f8fafc 100%);
+  color: #111827;
 }
 
 .payment-callback-card {
   width: min(100%, 520px);
+  background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 28px;
-  padding: 36px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 24px 80px rgba(15, 23, 42, 0.12);
+  padding: 2.25rem;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08);
   text-align: center;
-  backdrop-filter: blur(18px);
+  position: relative;
+  overflow: hidden;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.payment-callback-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top right, rgba(255, 122, 0, 0.12), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.08), transparent 30%);
+  pointer-events: none;
+}
+
+.payment-callback-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .payment-callback-icon {
-  width: 74px;
-  height: 74px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 24px;
-  margin-bottom: 18px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #0f172a;
-  font-size: 34px;
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 1rem;
+  border-radius: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff4e8;
+  color: #f97316;
+  font-size: 1.8rem;
 }
 
 .payment-callback-card.is-success .payment-callback-icon {
-  color: #047857;
-  background: rgba(16, 185, 129, 0.12);
-}
-
-.payment-callback-card.is-failed .payment-callback-icon {
-  color: #b42318;
-  background: rgba(239, 68, 68, 0.12);
+  background: #ecfdf5;
+  color: #10b981;
 }
 
 .payment-callback-card.is-pending .payment-callback-icon {
-  color: #b45309;
-  background: rgba(245, 158, 11, 0.14);
+  background: #fff7ed;
+  color: #f59e0b;
+}
+
+.payment-callback-card.is-failed .payment-callback-icon {
+  background: #fef2f2;
+  color: #ef4444;
 }
 
 .payment-callback-spin {
   animation: paymentCallbackSpin 0.9s linear infinite;
 }
 
+@keyframes paymentCallbackSpin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .payment-callback-eyebrow {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 7px 12px;
+  min-height: 30px;
+  padding: 0.42rem 0.85rem;
+  margin-bottom: 1.1rem;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  color: #475569;
-  font-size: 0.78rem;
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  color: #64748b;
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 .payment-callback-card h1 {
-  margin: 18px 0 10px;
+  margin: 0;
   color: #0f172a;
-  font-size: clamp(1.8rem, 6vw, 2.5rem);
+  font-size: clamp(2rem, 5vw, 2.85rem);
   line-height: 1.05;
   letter-spacing: -0.05em;
+  font-weight: 900;
 }
 
 .payment-callback-card p {
   max-width: 390px;
-  margin: 0 auto;
+  margin: 0.9rem auto 0;
   color: #64748b;
   font-size: 1rem;
   line-height: 1.65;
 }
 
 .payment-callback-reference {
-  display: grid;
-  gap: 5px;
-  margin: 24px 0 0;
-  padding: 14px 16px;
-  border: 1px dashed rgba(15, 23, 42, 0.16);
+  margin: 1.65rem auto 0;
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
   border-radius: 18px;
-  background: rgba(248, 250, 252, 0.8);
+  padding: 1rem 1.1rem;
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .payment-callback-reference small {
-  color: #64748b;
-  font-weight: 700;
+  display: block;
+  margin-bottom: 0.3rem;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .payment-callback-reference strong {
   color: #0f172a;
-  font-size: 0.93rem;
-  word-break: break-word;
+  font-size: 0.95rem;
+  font-weight: 900;
 }
 
 .payment-callback-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 26px;
+  margin-top: 1.6rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
 }
 
 .payment-callback-primary,
 .payment-callback-secondary {
-  min-height: 48px;
+  min-height: 50px;
+  border-radius: 16px;
+  border: 0;
+  padding: 0.85rem 1rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 9px;
-  border-radius: 999px;
-  padding: 0 20px;
-  font-weight: 800;
+  gap: 0.45rem;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 900;
   text-decoration: none;
   cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
 .payment-callback-primary {
-  border: 0;
+  background: linear-gradient(135deg, #f97316, #ffb000);
   color: #ffffff;
-  background: #0f172a;
+  box-shadow: 0 14px 28px rgba(249, 115, 22, 0.24);
 }
 
 .payment-callback-secondary {
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #f8fafc;
   color: #0f172a;
-  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
-@keyframes paymentCallbackSpin {
-  to {
-    transform: rotate(360deg);
-  }
+.payment-callback-primary:hover,
+.payment-callback-secondary:hover {
+  transform: translateY(-1px);
+}
+
+.payment-callback-primary:active,
+.payment-callback-secondary:active {
+  transform: translateY(0);
 }
 
 @media (max-width: 640px) {
   .payment-callback-page {
-    min-height: calc(100vh - 76px);
-    padding: 28px 14px 54px;
+    padding: 5.25rem 1rem 2rem;
+    align-items: flex-start;
   }
 
   .payment-callback-card {
     border-radius: 24px;
-    padding: 28px 18px;
+    padding: 1.6rem;
   }
 
   .payment-callback-icon {
-    width: 64px;
-    height: 64px;
+    width: 58px;
+    height: 58px;
     border-radius: 20px;
-    font-size: 30px;
+    font-size: 1.55rem;
+  }
+
+  .payment-callback-eyebrow {
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
+  }
+
+  .payment-callback-card h1 {
+    font-size: 2rem;
+  }
+
+  .payment-callback-card p {
+    font-size: 0.95rem;
   }
 
   .payment-callback-actions {
-    display: grid;
-  }
-
-  .payment-callback-primary,
-  .payment-callback-secondary {
-    width: 100%;
+    grid-template-columns: 1fr;
   }
 }
 
-@media (prefers-color-scheme: dark) {
-  .payment-callback-page {
-    background:
-      radial-gradient(circle at top left, rgba(255, 159, 67, 0.16), transparent 35%),
-      radial-gradient(circle at bottom right, rgba(20, 184, 166, 0.12), transparent 35%),
-      #020617;
-  }
-
-  .payment-callback-card {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: rgba(15, 23, 42, 0.92);
-    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-  }
-
-  .payment-callback-card h1,
-  .payment-callback-reference strong,
+@media (prefers-reduced-motion: reduce) {
+  .payment-callback-spin,
+  .payment-callback-primary,
   .payment-callback-secondary {
-    color: #f8fafc;
+    animation: none;
+    transition: none;
   }
 
-  .payment-callback-card p,
-  .payment-callback-reference small,
-  .payment-callback-eyebrow {
-    color: #cbd5e1;
-  }
-
-  .payment-callback-reference,
-  .payment-callback-eyebrow,
-  .payment-callback-icon {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
-  }
-
-  .payment-callback-secondary {
-    border-color: rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.06);
+  .payment-callback-primary:hover,
+  .payment-callback-secondary:hover {
+    transform: none;
   }
 }

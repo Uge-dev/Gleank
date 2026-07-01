@@ -7,17 +7,33 @@ import {
   FiClock,
   FiLoader,
 } from "react-icons/fi";
-import { verifyPayment } from "../services/payment.service";
-import "./PaymentCallback.css";
+import { verifyPayment, type GleankPayment } from "../services/payment.service";
 import { useCart } from "../context/CartContext";
-
+import "./PaymentCallback.css";
 
 type CallbackState = "loading" | "success" | "pending" | "failed";
+
+function getPaymentRedirectPath(payment: GleankPayment) {
+  if (payment.purpose === "used_order" && payment.usedOrderId) {
+    return `/used-orders/${payment.usedOrderId}`;
+  }
+
+  if (payment.purpose === "seller_subscription") {
+    return "/seller-subscription";
+  }
+
+  if (payment.purpose === "store_order" && payment.orderId) {
+    return `/orders/${payment.orderId}`;
+  }
+
+  return "/orders";
+}
 
 function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { clearCart } = useCart();
+
   const [state, setState] = useState<CallbackState>("loading");
   const [message, setMessage] = useState("Verifying your payment securely...");
   const [redirectPath, setRedirectPath] = useState("/orders");
@@ -33,7 +49,7 @@ function PaymentCallback() {
 
   useEffect(() => {
     let active = true;
-    let timeoutId: number | undefined;
+    let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
 
     if (!reference) {
       setState("failed");
@@ -49,31 +65,40 @@ function PaymentCallback() {
         if (!active) return;
 
         const payment = response.payment;
-        setRedirectPath(payment.redirectPath || "/orders");
+        const nextRedirectPath = getPaymentRedirectPath(payment);
+        const paymentStatus = String(payment.status);
 
-        if (payment.status === "paid") {
+        setRedirectPath(nextRedirectPath);
+
+        if (paymentStatus === "paid") {
           clearCart();
           sessionStorage.removeItem("gleank_pending_payment_reference");
+
           setState("success");
           setMessage("Payment verified successfully. Redirecting you now...");
 
           timeoutId = window.setTimeout(() => {
-            navigate(payment.redirectPath || "/orders", { replace: true });
+            navigate(nextRedirectPath, { replace: true });
           }, 1300);
+
           return;
         }
 
-        if (["pending", "initialized", "abandoned"].includes(payment.status)) {
+        if (
+          paymentStatus === "pending" ||
+          paymentStatus === "initialized" ||
+          paymentStatus === "abandoned"
+        ) {
           setState("pending");
           setMessage(
-            `Payment verification is not complete yet. Current status: ${payment.status}.`,
+            `Payment verification is not complete yet. Current status: ${paymentStatus}.`,
           );
           return;
         }
 
         setState("failed");
         setMessage(
-          `Payment was not successful. Current status: ${payment.status}.`,
+          `Payment was not successful. Current status: ${paymentStatus}.`,
         );
       })
       .catch((error) => {
@@ -89,9 +114,12 @@ function PaymentCallback() {
 
     return () => {
       active = false;
-      if (timeoutId) window.clearTimeout(timeoutId);
+
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     };
-  }, [navigate, reference]);
+  }, [clearCart, navigate, reference]);
 
   const icon =
     state === "loading" ? (

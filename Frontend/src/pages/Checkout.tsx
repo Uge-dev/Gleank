@@ -175,16 +175,20 @@ function Checkout() {
       });
 
       const paymentResponse = await initializeOrdersPayment(
-        response.orders.map((order) => order.id),
-      );
+  response.orders.map((order) => order.id),
+);
 
-      sessionStorage.setItem("gleank_last_orders", JSON.stringify(response.orders));
-      sessionStorage.setItem(
-        "gleank_pending_payment_reference",
-        paymentResponse.payment.reference,
-      );
+sessionStorage.setItem(
+  "gleank_last_orders",
+  JSON.stringify(response.orders),
+);
 
-      window.location.href = paymentResponse.payment.authorizationUrl;
+sessionStorage.setItem(
+  "gleank_pending_payment_reference",
+  paymentResponse.payment.reference,
+);
+
+window.location.href = paymentResponse.payment.authorizationUrl;
     } catch (requestError) {
       setError(
         requestError instanceof Error
