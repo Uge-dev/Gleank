@@ -91,6 +91,7 @@ export type AdminProduct = {
 export type AdminUsedItem = {
   id: string;
   image: string;
+  imageUrls?: string[];
   name: string;
   uploader: string;
   uploaderPhone: string;
@@ -102,6 +103,13 @@ export type AdminUsedItem = {
   status: AdminStatus;
   safetyStatus: AdminStatus;
   rejectionReason?: string;
+  serialNumber?: string;
+  ownershipProofUrl?: string | null;
+  receiptUrl?: string | null;
+  trustIdentityProofUrl?: string | null;
+  reasonForSelling?: string;
+  defectsDisclosed?: string;
+  confirmationText?: string;
   dateSubmitted: string;
 };
 

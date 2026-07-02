@@ -16,6 +16,18 @@ function computePlatformPrice(price) {
   const buyerPriceKobo = sellerPriceKobo + platformFeeKobo;
   return { sellerPriceKobo, platformFeeKobo, buyerPriceKobo };
 }
+
+function serviceAmountRange(input) {
+  const basePrice = Number(input.price || 0);
+  const minPrice = Number(input.minPrice || 0) > 0 ? Number(input.minPrice) : basePrice;
+  const maxPrice = Number(input.maxPrice || 0) > 0 ? Math.max(Number(input.maxPrice), minPrice) : 0;
+
+  return {
+    minPriceKobo: Math.round(minPrice * 100),
+    maxPriceKobo: Math.round(maxPrice * 100),
+  };
+}
+
 function storeForUser(userId) {
   const store = findStoreByOwnerId(userId);
 
@@ -183,23 +195,29 @@ export function createService(userId, input, uploadedUrls) {
   const id = createId("svc");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   const price = computePlatformPrice(input.price);
+  const range = serviceAmountRange(input);
 
   db.prepare(`
     INSERT INTO services (
-      id, store_id, name, slug, category, description, price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo,
+      id, store_id, name, slug, category, service_type, location, description,
+      price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo, min_price_kobo, max_price_kobo,
       duration_minutes, status, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
     input.name,
     uniqueListingSlug("services", store.id, input.name),
     input.category,
+    input.serviceType || input.category,
+    input.location || store.campus || "",
     input.description,
     price.buyerPriceKobo,
     price.sellerPriceKobo,
     price.platformFeeKobo,
     price.buyerPriceKobo,
+    range.minPriceKobo,
+    range.maxPriceKobo,
     input.durationMinutes,
     input.status,
     input.isFeatured ? 1 : 0,
@@ -221,22 +239,28 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   const price = computePlatformPrice(input.price);
+  const range = serviceAmountRange(input);
 
   db.prepare(`
     UPDATE services
-    SET name = ?, slug = ?, category = ?, description = ?, price_kobo = ?,
+    SET name = ?, slug = ?, category = ?, service_type = ?, location = ?, description = ?, price_kobo = ?,
         seller_price_kobo = ?, platform_fee_kobo = ?, buyer_price_kobo = ?,
-        duration_minutes = ?, status = ?, is_featured = ?, image_urls = ?, updated_at = ?
+        min_price_kobo = ?, max_price_kobo = ?, duration_minutes = ?, status = ?,
+        is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
   `).run(
     input.name,
     uniqueListingSlug("services", store.id, input.name, serviceId),
     input.category,
+    input.serviceType || input.category,
+    input.location || store.campus || "",
     input.description,
     price.buyerPriceKobo,
     price.sellerPriceKobo,
     price.platformFeeKobo,
     price.buyerPriceKobo,
+    range.minPriceKobo,
+    range.maxPriceKobo,
     input.durationMinutes,
     input.status,
     input.isFeatured ? 1 : 0,

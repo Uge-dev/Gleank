@@ -7,6 +7,7 @@ import {
   FiGrid,
   FiHeart,
   FiInfo,
+  FiMapPin,
   FiMessageCircle,
   FiSearch,
   FiSend,
@@ -60,6 +61,21 @@ function formatPrice(price: number) {
     currency: "NGN",
     maximumFractionDigits: 0,
   }).format(price);
+}
+
+function formatServiceRange(service: SellerService) {
+  const min = Number(service.minPrice || 0);
+  const max = Number(service.maxPrice || 0);
+
+  if (min > 0 && max > min) {
+    return `${formatPrice(min)} - ${formatPrice(max)}`;
+  }
+
+  if (min > 0) {
+    return `From ${formatPrice(min)}`;
+  }
+
+  return `From ${formatPrice(service.price)}`;
 }
 
 function compactNumber(value: number) {
@@ -691,7 +707,11 @@ async function handleProductViewed(productId: string) {
           )}
 
           {activeTab === "Services" && (
-            <ServiceGrid services={filteredServices} onMessage={openMessages} />
+            <ServiceGrid
+              services={filteredServices}
+              storeCampus={store.campus}
+              onMessage={openMessages}
+            />
           )}
 
           {activeTab === "Favorites" && (
@@ -713,6 +733,7 @@ async function handleProductViewed(productId: string) {
               {favoriteServices.length > 0 && (
                 <ServiceGrid
                   services={favoriteServices}
+                  storeCampus={store.campus}
                   onMessage={openMessages}
                   favorite
                 />
@@ -879,10 +900,12 @@ function ProductGrid({
 
 function ServiceGrid({
   services,
+  storeCampus,
   onMessage,
   favorite = false,
 }: {
   services: SellerService[];
+  storeCampus: string;
   onMessage: () => void;
   favorite?: boolean;
 }) {
@@ -916,9 +939,19 @@ function ServiceGrid({
           />
 
           <div>
+            <span className="seller-service-type">
+              {service.serviceType || service.category}
+            </span>
             <h3>{service.name}</h3>
-            <p>{service.durationMinutes} minutes</p>
-            <strong>{formatPrice(service.price)}</strong>
+            <p className="seller-service-location">
+              <FiMapPin />
+              {service.location || storeCampus || "Campus service"}
+            </p>
+            <p className="seller-service-description">
+              {service.description || "Message this seller to discuss availability, timing, and service details."}
+            </p>
+            <p>{service.durationMinutes} minutes • {service.category}</p>
+            <strong>{formatServiceRange(service)}</strong>
 
             {service.isFeatured && (
               <span className="seller-service-favorite">Favorite</span>

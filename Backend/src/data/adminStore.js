@@ -252,7 +252,8 @@ function buildUsedItems() {
   return db
     .prepare(`
       SELECT used_listings.*, users.name AS uploader_name, users.phone AS uploader_phone,
-             trust.face_verified AS face_verified
+             trust.face_verified AS face_verified,
+             trust.identity_proof_url AS trust_identity_proof_url
       FROM used_listings
       JOIN users ON users.id = used_listings.seller_id
       LEFT JOIN user_trust_profiles trust ON trust.user_id = users.id
@@ -263,6 +264,7 @@ function buildUsedItems() {
     .map((row) => ({
       id: row.id,
       image: firstImage(row.image_urls),
+      imageUrls: parseImages(row.image_urls),
       name: row.name,
       uploader: row.uploader_name,
       uploaderPhone: row.uploader_phone || "",
@@ -274,6 +276,13 @@ function buildUsedItems() {
       status: usedStatus(row.status),
       safetyStatus: row.status === "active" ? "safe" : row.status === "rejected" ? "unsafe" : "needs_review",
       rejectionReason: row.review_note || "",
+      serialNumber: row.serial_number || "",
+      ownershipProofUrl: row.ownership_proof_url || null,
+      receiptUrl: row.receipt_url || null,
+      trustIdentityProofUrl: row.trust_identity_proof_url || null,
+      reasonForSelling: row.reason_for_selling || "",
+      defectsDisclosed: row.defects_disclosed || "",
+      confirmationText: row.confirmation_text || "",
       dateSubmitted: dateOnly(row.created_at),
     }));
 }

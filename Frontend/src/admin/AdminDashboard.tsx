@@ -55,6 +55,7 @@ import {
   updateAdminRecordStatus,
 } from "./adminApi";
 import LogoutConfirmModal from "../components/LogoutConfirmModal";
+import { apiUrl } from "../lib/api";
 import "./AdminDashboard.css";
 
 type AdminTab =
@@ -132,7 +133,7 @@ function RecordThumb({ src, name }: { src?: string; name: string }) {
 
   return (
     <div className="admin-record-name">
-      {src ? <img src={src} alt={name} className="admin-record-thumb" /> : <span className="admin-record-thumb fallback">{initials}</span>}
+      {src ? <img src={apiUrl(src)} alt={name} className="admin-record-thumb" /> : <span className="admin-record-thumb fallback">{initials}</span>}
       <strong>{name}</strong>
     </div>
   );
@@ -287,6 +288,48 @@ function DataTable<T extends { id: string }>({ title, subtitle, rows, columns, s
   );
 }
 
+function isExternalUrl(value: string) {
+  return /^https?:\/\//i.test(value) || value.startsWith("/uploads/");
+}
+
+function renderRecordValue(value: unknown) {
+  if (typeof value === "boolean") return prettyStatus(value);
+
+  if (Array.isArray(value)) {
+    if (!value.length) return "Not available";
+
+    return (
+      <div className="admin-detail-link-list">
+        {value.map((item, index) => {
+          const text = String(item || "");
+
+          return isExternalUrl(text) ? (
+            <a key={`${text}-${index}`} href={apiUrl(text)} target="_blank" rel="noreferrer">
+              Open file {index + 1}
+            </a>
+          ) : (
+            <span key={`${text}-${index}`}>{text}</span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const text = String(value ?? "");
+
+  if (!text) return "Not available";
+
+  if (isExternalUrl(text)) {
+    return (
+      <a href={apiUrl(text)} target="_blank" rel="noreferrer">
+        Open file
+      </a>
+    );
+  }
+
+  return text;
+}
+
 function DetailDrawer({ title, item, onClose }: { title: string; item: Record<string, unknown> | null; onClose: () => void }) {
   if (!item) return null;
 
@@ -305,7 +348,7 @@ function DetailDrawer({ title, item, onClose }: { title: string; item: Record<st
           {Object.entries(item).map(([key, value]) => (
             <div key={key}>
               <span>{key.replace(/([A-Z])/g, " $1")}</span>
-              <strong>{typeof value === "boolean" ? prettyStatus(value) : String(value ?? "Not available")}</strong>
+              <div className="admin-detail-value">{renderRecordValue(value)}</div>
             </div>
           ))}
         </div>

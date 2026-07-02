@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FiBookOpen,
@@ -36,7 +36,7 @@ import type { SavedItemType, SearchResults } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { getAnonViewerId } from "../utils/visitor";
 
-type RightTab = "hot" | "vendors";
+type FeedTab = "hot" | "vendors" | "following";
 
 const emptyResults: SearchResults = {
   stores: [],
@@ -72,7 +72,7 @@ function Home() {
   const viewedProductIdsRef = useRef<Set<string>>(new Set());
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [activeRightTab, setActiveRightTab] = useState<RightTab>("hot");
+  const [activeRightTab, setActiveRightTab] = useState<FeedTab>("hot");
   const [marketplace, setMarketplace] = useState<SearchResults>(emptyResults);
   const [isLoading, setIsLoading] = useState(true);
   const [activeCommentProductId, setActiveCommentProductId] = useState<
@@ -272,6 +272,77 @@ async function handleProductViewed(productId: string) {
     },
   ];
 
+  const storeBySlug = useMemo(
+    () => new Map(marketplace.stores.map((store) => [store.slug, store])),
+    [marketplace.stores],
+  );
+
+  const visibleProducts = useMemo(() => {
+    const productsOnly = marketplace.products.filter((product) => {
+      const store = storeBySlug.get(product.storeSlug);
+      return Boolean(store);
+    });
+
+    if (activeRightTab === "following") {
+      return productsOnly
+        .filter((product) => storeBySlug.get(product.storeSlug)?.interaction.isFollowing)
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    }
+
+    if (activeRightTab === "vendors") {
+      const tenDaysAgo = Date.now() - 10 * 24 * 60 * 60 * 1_000;
+
+      return productsOnly
+        .filter((product) => {
+          const store = storeBySlug.get(product.storeSlug);
+          return store?.createdAt && new Date(store.createdAt).getTime() >= tenDaysAgo;
+        })
+        .sort((a, b) => {
+          const storeA = storeBySlug.get(a.storeSlug);
+          const storeB = storeBySlug.get(b.storeSlug);
+          return String(storeB?.createdAt || "").localeCompare(String(storeA?.createdAt || ""));
+        });
+    }
+
+    return [...productsOnly].sort((a, b) => {
+      const engagementA =
+        (a.isFeatured ? 100_000 : 0) +
+        a.interaction.viewCount +
+        a.interaction.likeCount * 3 +
+        a.interaction.commentCount * 4 +
+        a.interaction.saveCount * 2 +
+        a.interaction.shareCount * 5;
+      const engagementB =
+        (b.isFeatured ? 100_000 : 0) +
+        b.interaction.viewCount +
+        b.interaction.likeCount * 3 +
+        b.interaction.commentCount * 4 +
+        b.interaction.saveCount * 2 +
+        b.interaction.shareCount * 5;
+
+      if (engagementA !== engagementB) return engagementB - engagementA;
+      return b.updatedAt.localeCompare(a.updatedAt);
+    });
+  }, [activeRightTab, marketplace.products, storeBySlug]);
+
+  const feedEmptyCopy = {
+    hot: {
+      eyebrow: "Marketplace ready",
+      title: "No published products yet",
+      message: "Products created and activated by sellers will appear here automatically.",
+    },
+    vendors: {
+      eyebrow: "New vendors",
+      title: "No new vendor products yet",
+      message: "Products from sellers who joined in the last 10 days will appear here.",
+    },
+    following: {
+      eyebrow: "Following",
+      title: "No followed seller products yet",
+      message: "Follow sellers from their profiles or the seller cards to build this feed.",
+    },
+  }[activeRightTab];
+
   if (isLoading) {
     return (
       <section className="guest-feed-page">
@@ -295,20 +366,18 @@ async function handleProductViewed(productId: string) {
         <div className="feed-layout">
           <div className="main-feed-area">
             <div className="feed-column">
-              {marketplace.products.length === 0 ? (
+              {visibleProducts.length === 0 ? (
                 <EmptyState
                   icon={<FiShoppingBag />}
-                  eyebrow="Marketplace ready"
-                  title="No published products yet"
-                  message="Products created and activated by sellers will appear here automatically."
+                  eyebrow={feedEmptyCopy.eyebrow}
+                  title={feedEmptyCopy.title}
+                  message={feedEmptyCopy.message}
                   actionLabel="Search Marketplace"
                   onAction={() => navigate("/search")}
                 />
               ) : (
-                marketplace.products.map((product) => {
-                  const productStore = marketplace.stores.find(
-                    (store) => store.slug === product.storeSlug,
-                  );
+                visibleProducts.map((product) => {
+                  const productStore = storeBySlug.get(product.storeSlug);
 
                   const storeLogoUrl = productStore?.logoUrl
                     ? resolveMediaUrl(productStore.logoUrl, "")

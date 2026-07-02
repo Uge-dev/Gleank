@@ -19,7 +19,7 @@ import {
 import { activateSellerSubscriptionForDevelopment } from "../services/subscription.service";
 
 function SellerOnboarding() {
-  const { user, store } = useAuth();
+  const { user, store, refreshSession } = useAuth();
   const [state, setState] = useState<SellerVerificationResponse | null>(null);
   const [faceVerified, setFaceVerified] = useState(false);
   const [faceReference, setFaceReference] = useState("");
@@ -66,6 +66,7 @@ function SellerOnboarding() {
     try {
       const result = await updateSellerVerification(new FormData(event.currentTarget));
       setState(result);
+      await refreshSession();
       setMessage("Seller verification submitted successfully.");
     } catch (requestError) {
       setError(
@@ -116,9 +117,11 @@ function SellerOnboarding() {
 
       <div className="seller-onboarding-hero">
         <span><FiShoppingBag /> Seller Onboarding</span>
-        <h1>Unlock a verified Gleank seller workspace.</h1>
+        <h1>{store ? "Complete your verified seller workspace." : "Turn your buyer account into a seller profile."}</h1>
         <p>
-          Complete seller identity, accept the seller agreement, and keep your ₦3,000 monthly subscription active before publishing campus products or services.
+          {store
+            ? "Complete seller identity, accept the seller agreement, and keep your ₦3,000 monthly subscription active before publishing campus products or services."
+            : "You do not need another login. Add store details, complete verification, and Gleank will upgrade this account into a seller account."}
         </p>
       </div>
 
@@ -130,8 +133,30 @@ function SellerOnboarding() {
           <div className="seller-onboarding-title">
             <span>Verification</span>
             <h2>Seller identity</h2>
-            <p>Use your real seller details and complete live face verification. No academic document is required.</p>
+            <p>Use your real seller details and complete live face verification. Existing buyer details are prefilled where possible.</p>
           </div>
+
+          {!store && (
+            <div className="seller-onboarding-form-grid">
+              <label>
+                <span>Store name</span>
+                <input
+                  name="storeName"
+                  defaultValue={`${user?.name?.split(" ")[0] || "Gleank"} Store`}
+                  placeholder="Destiny Gadgets"
+                  required
+                />
+              </label>
+              <label>
+                <span>Store category</span>
+                <input
+                  name="storeCategory"
+                  placeholder="Food, Fashion, Gadgets, Services..."
+                  required
+                />
+              </label>
+            </div>
+          )}
 
           <div className="seller-onboarding-form-grid">
             <label>

@@ -61,6 +61,15 @@ function passwordResetExpiry() {
 const resetRequestMessage =
   "If an active account matches that email, password reset instructions are ready.";
 
+function queueAuthEmail(label, send) {
+  void send().catch((error) => {
+    console.error(
+      `[auth-email:${label}]`,
+      error instanceof Error ? error.message : error,
+    );
+  });
+}
+
 function normalizeMeta(meta = {}) {
   return {
     ipAddress: meta.ipAddress || "",
@@ -77,7 +86,9 @@ function assertPasswordPolicy(password) {
 }
 
 export async function registerUser(input, meta = {}) {
-  if (findUserByEmail(input.email)) {
+  const email = String(input.email || "").trim().toLowerCase();
+
+  if (findUserByEmail(email)) {
     throw new HttpError(409, "An account already exists with this email.");
   }
 
@@ -94,7 +105,7 @@ export async function registerUser(input, meta = {}) {
     const createdUser = createUser({
       id: userId,
       name: input.name,
-      email: input.email,
+      email,
       passwordHash,
       role: input.role,
       campus: input.campus,
@@ -133,11 +144,11 @@ export async function registerUser(input, meta = {}) {
   });
 
   if (result.verification) {
-    await sendEmailVerificationEmail({
+    queueAuthEmail("verification", () => sendEmailVerificationEmail({
       to: result.user.email,
       name: result.user.name,
       token: result.verification.token,
-    });
+    }));
   }
 
   return {
@@ -202,11 +213,17 @@ export async function resendEmailVerification(userId, meta = {}) {
   }
 
   const verification = createEmailVerificationToken(row.id);
-  await sendEmailVerificationEmail({ to: row.email, name: row.name, token: verification.token });
+  queueAuthEmail("verification-resend", () =>
+    sendEmailVerificationEmail({
+      to: row.email,
+      name: row.name,
+      token: verification.token,
+    }),
+  );
   createSecurityEvent(row.id, "email_verification_resent", {}, normalizeMeta(meta));
 
   return {
-    message: "A fresh verification link has been sent to your email.",
+    message: "A fresh verification link is being sent to your email.",
   };
 }
 
@@ -242,7 +259,9 @@ export async function requestPasswordReset(input, meta = {}) {
     createSecurityEvent(user.id, "password_reset_requested", {}, normalizeMeta(meta));
   });
 
-  await sendPasswordResetEmail({ to: user.email, name: user.name, token });
+  queueAuthEmail("password-reset", () =>
+    sendPasswordResetEmail({ to: user.email, name: user.name, token }),
+  );
 
   return {
     message: resetRequestMessage,

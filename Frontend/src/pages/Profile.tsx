@@ -323,7 +323,11 @@ function Profile() {
                 campus store.
               </p>
 
-              {user?.role === "seller" ? <Link to="/dashboard">Open Seller Dashboard</Link> : <Link to="/signup">Create Seller Account</Link>}
+              {user?.role === "seller" ? (
+                <Link to="/dashboard">Open Seller Dashboard</Link>
+              ) : (
+                <Link to="/seller/onboarding">Set up seller profile</Link>
+              )}
             </div>
           </section>
 

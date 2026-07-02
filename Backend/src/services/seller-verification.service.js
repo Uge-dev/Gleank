@@ -1,12 +1,79 @@
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
-import { createId } from "../lib/ids.js";
+import { createId, slugify } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
-import { findStoreByOwnerId } from "../repositories/store.repository.js";
+import {
+  createStore,
+  findStoreByOwnerId,
+  findStoreBySlug,
+} from "../repositories/store.repository.js";
+import { findUserById, updateUserRole } from "../repositories/user.repository.js";
 import { getPayoutAccount } from "./trust.service.js";
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
+}
+
+function uniqueStoreSlug(storeName) {
+  const base = slugify(storeName || "gleank-store") || "gleank-store";
+  let candidate = base;
+  let suffix = 2;
+
+  while (findStoreBySlug(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function defaultStoreName(user) {
+  const firstName = clean(user?.name, 60).split(/\s+/)[0] || "Gleank";
+  return `${firstName} Store`;
+}
+
+export function ensureSellerStoreForUser(userId, input = {}) {
+  const existingStore = findStoreByOwnerId(userId);
+  const user = findUserById(userId);
+  const now = new Date().toISOString();
+
+  if (!user) throw new HttpError(404, "Account was not found.");
+
+  if (existingStore) {
+    if (user.role !== "seller" && user.role !== "admin") {
+      updateUserRole(userId, "seller", now);
+    }
+
+    return existingStore;
+  }
+
+  const storeName = clean(
+    input.storeName || input.businessName || defaultStoreName(user),
+    100,
+  );
+
+  if (storeName.length < 2) {
+    throw new HttpError(422, "Enter a store name for your seller profile.");
+  }
+
+  const store = createStore({
+    id: createId("sto"),
+    ownerId: userId,
+    slug: uniqueStoreSlug(storeName),
+    name: storeName,
+    description: clean(input.businessDescription, 1500),
+    campus: clean(input.sellerCampus || input.campus || user.campus, 80),
+    category: clean(input.storeCategory || input.category || "General", 80),
+    phone: clean(input.sellerPhone || input.phone || user.phone, 30),
+    status: "active",
+    verified: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  updateUserRole(userId, "seller", now);
+
+  return store;
 }
 
 export function serializeSellerVerification(row) {
@@ -74,8 +141,7 @@ export function getSellerVerification(userId) {
 }
 
 export function upsertSellerVerification(userId, input, identityProofUrl = null) {
-  const store = findStoreByOwnerId(userId);
-  if (!store) throw new HttpError(404, "Create your seller store before verification.");
+  const store = ensureSellerStoreForUser(userId, input);
 
   const existing = db
     .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
@@ -213,6 +279,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
 }
 
 export function getSellerReadiness(userId) {
+  const user = findUserById(userId);
   const store = findStoreByOwnerId(userId);
   const verification = getSellerVerification(userId);
   const payoutAccount = getPayoutAccount(userId);
@@ -222,7 +289,7 @@ export function getSellerReadiness(userId) {
     verification,
     payoutAccount,
     hasStore: Boolean(store),
-    emailReady: true,
+    emailReady: Boolean(user?.email_verified),
     verificationReady: verification.status === "verified",
     payoutReady: Boolean(payoutAccount?.isComplete),
   };

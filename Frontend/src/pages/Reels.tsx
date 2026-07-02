@@ -16,10 +16,11 @@ import AuthModal from "../components/AuthModal";
 function Reels() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [soundOnVideo, setSoundOnVideo] = useState<string | null>(null);
-  const [activeTopTab, setActiveTopTab] = useState<"hot" | "vendors">("hot");
+  const [activeTopTab, setActiveTopTab] = useState<"hot" | "vendors" | "following">("hot");
 
   function requireAuth() {
     setAuthModalOpen(true);
+    return false;
   }
 
   const reels = [

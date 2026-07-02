@@ -247,7 +247,7 @@ function App() {
           <Route
             path="/seller/onboarding"
             element={
-              <ProtectedPage roles={["seller", "admin"]}>
+              <ProtectedPage>
                 <SellerOnboarding />
               </ProtectedPage>
             }

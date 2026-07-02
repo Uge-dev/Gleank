@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
 import { FiBell, FiSearch } from "react-icons/fi";
 
-type FeedTopTab = "hot" | "vendors";
+type FeedTopTab = "hot" | "vendors" | "following";
 
 type FeedTopTabsProps = {
   activeTab: FeedTopTab;
   onTabChange: (tab: FeedTopTab) => void;
-  onRequireAuth: () => void;
+  onRequireAuth: () => boolean | void;
 };
 
 function FeedTopTabs({
@@ -30,7 +30,15 @@ function FeedTopTabs({
         New Vendors
       </button>
 
-      <button onClick={onRequireAuth}>Following</button>
+      <button
+        className={activeTab === "following" ? "active" : ""}
+        onClick={() => {
+          if (onRequireAuth() === false) return;
+          onTabChange("following");
+        }}
+      >
+        Following
+      </button>
 
       <div className="for-you-top-icons">
         <Link

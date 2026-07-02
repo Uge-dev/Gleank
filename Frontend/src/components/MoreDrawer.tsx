@@ -128,7 +128,7 @@ function MoreDrawer({
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/dashboard" : "/signup"}
+            to={user?.role === "seller" ? "/dashboard" : "/seller/onboarding"}
             onClick={onClose}
           >
             <span className="more-row-icon green">
@@ -145,7 +145,7 @@ function MoreDrawer({
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/create" : "/signup"}
+            to={user?.role === "seller" ? "/create" : "/seller/onboarding"}
             onClick={onClose}
           >
             <span className="more-row-icon orange">

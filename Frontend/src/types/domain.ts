@@ -74,6 +74,8 @@ export type SellerService = {
   name: string;
   slug: string;
   category: string;
+  serviceType?: string;
+  location?: string;
   description: string;
   sellerPriceKobo?: number;
   sellerPrice?: number;
@@ -83,6 +85,10 @@ export type SellerService = {
   buyerPrice?: number;
   priceKobo: number;
   price: number;
+  minPriceKobo?: number;
+  minPrice?: number;
+  maxPriceKobo?: number;
+  maxPrice?: number;
   durationMinutes: number;
   status: "draft" | "active" | "paused";
   isFeatured: boolean;

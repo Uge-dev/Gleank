@@ -940,9 +940,32 @@
   font-size: 0.82rem;
 }
 
-.admin-detail-grid strong {
+.admin-detail-grid strong,
+.admin-detail-value {
   display: block;
   overflow-wrap: anywhere;
+}
+
+.admin-detail-grid strong a,
+.admin-detail-value a,
+.admin-detail-link-list a {
+  color: #15803d;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.admin-detail-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-detail-link-list a,
+.admin-detail-link-list span {
+  display: inline-flex;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #ecfdf5;
 }
 
 

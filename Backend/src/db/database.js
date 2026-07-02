@@ -144,8 +144,12 @@ db.exec(`
     name TEXT NOT NULL,
     slug TEXT NOT NULL,
     category TEXT NOT NULL,
+    service_type TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     price_kobo INTEGER NOT NULL CHECK (price_kobo >= 0),
+    min_price_kobo INTEGER NOT NULL DEFAULT 0,
+    max_price_kobo INTEGER NOT NULL DEFAULT 0,
     duration_minutes INTEGER NOT NULL DEFAULT 60 CHECK (duration_minutes > 0),
     status TEXT NOT NULL DEFAULT 'draft'
       CHECK (status IN ('draft', 'active', 'paused')),
@@ -719,6 +723,10 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("products", "is_featured", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "is_featured", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "service_type", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("services", "location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("services", "min_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "max_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 
 ensureColumn("used_listings", "reason_for_selling", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("used_listings", "defects_disclosed", "TEXT NOT NULL DEFAULT ''");

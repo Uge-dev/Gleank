@@ -51,6 +51,15 @@ function getMailFrom() {
   return env.emailFrom || env.smtpUser || "no-reply@gleank.local";
 }
 
+function queueSecurityEmail(label, send) {
+  void send().catch((error) => {
+    console.error(
+      `[security-email:${label}]`,
+      error instanceof Error ? error.message : error,
+    );
+  });
+}
+
 async function sendLoggedInPasswordResetCodeEmail({ to, name, code, expiresAt }) {
   if (!isSmtpConfigured()) {
     throw new HttpError(
@@ -63,6 +72,9 @@ async function sendLoggedInPasswordResetCodeEmail({ to, name, code, expiresAt })
     host: env.smtpHost,
     port: env.smtpPort,
     secure: env.smtpSecure,
+    connectionTimeout: 8_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 12_000,
     auth: {
       user: env.smtpUser,
       pass: env.smtpPass,
@@ -295,15 +307,15 @@ export async function requestLoggedInPasswordReset(userId, meta = {}) {
     createSecurityEvent(userId, "password_reset_code_requested", {}, meta);
   });
 
-  await sendLoggedInPasswordResetCodeEmail({
+  queueSecurityEmail("password-reset-code", () => sendLoggedInPasswordResetCodeEmail({
     to: user.email,
     name: user.name,
     code,
     expiresAt: expiresAt.toISOString(),
-  });
+  }));
 
   return {
-    message: "A verification code has been sent to your verified email address.",
+    message: "A verification code is being sent to your verified email address.",
   };
 }
 
