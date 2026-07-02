@@ -3,16 +3,19 @@ import { getPublicProduct } from "../services/catalog.service.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
   addProductComment,
+  deleteProductComment,
+  likeProductComment,
   likeProduct,
   recordProductShare,
   recordProductView,
+  unlikeProductComment,
   unlikeProduct,
 } from "../services/interaction.service.js";
 
 export const productRouter = Router();
 
 productRouter.get("/:id", (req, res) => {
-  res.json(getPublicProduct(req.params.id, req.auth?.user_id));
+  res.json(getPublicProduct(req.params.id, req.auth));
 });
 
 productRouter.post("/:id/like", requireAuth, (req, res) => {
@@ -48,21 +51,33 @@ productRouter.post("/:id/view", (req, res) => {
 });
 
 productRouter.post("/:id/comments", requireAuth, (req, res) => {
-  const comment = addProductComment(
-    req.auth.user_id,
-    req.params.id,
-    req.body.body,
-  );
   res.status(201).json({
-    comment: {
-      id: comment.id,
-      body: comment.body,
-      createdAt: comment.created_at,
-      user: {
-        id: comment.user_id,
-        name: comment.name,
-        avatarUrl: comment.avatar_url || null,
-      },
-    },
+    comment: addProductComment(req.auth.user_id, req.params.id, req.body),
+  });
+});
+
+productRouter.post("/:id/comments/:commentId/like", requireAuth, (req, res) => {
+  res.json({
+    comment: likeProductComment(
+      req.auth.user_id,
+      req.params.id,
+      req.params.commentId,
+    ),
+  });
+});
+
+productRouter.delete("/:id/comments/:commentId/like", requireAuth, (req, res) => {
+  res.json({
+    comment: unlikeProductComment(
+      req.auth.user_id,
+      req.params.id,
+      req.params.commentId,
+    ),
+  });
+});
+
+productRouter.delete("/:id/comments/:commentId", requireAuth, (req, res) => {
+  res.json({
+    comment: deleteProductComment(req.auth, req.params.id, req.params.commentId),
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, JSX } from "react";
 import {
   FaBan,
@@ -15,6 +15,7 @@ import {
   FaEye,
   FaHistory,
   FaMoneyBillWave,
+  FaPaperPlane,
   FaSearch,
   FaShieldAlt,
   FaShoppingBag,
@@ -27,7 +28,7 @@ import {
   FaUsers,
 } from "react-icons/fa";
 import {
-  initialAdminDataset,
+  emptyAdminDataset,
   type AdminActivityLog,
   type AdminDataset,
   type AdminDelivery,
@@ -38,10 +39,23 @@ import {
   type AdminProduct,
   type AdminSeller,
   type AdminStatus,
+  type AdminSupportConversation,
   type AdminUsedItem,
   type AdminUser,
 } from "./adminData";
-import { adminLogin, clearAdminToken, deleteAdminRecord, fetchAdminDataset, getAdminToken, resetAdminDemoData, updateAdminRecordFields, updateAdminRecordStatus } from "./adminApi";
+import {
+  adminLogin,
+  clearAdminToken,
+  deleteAdminRecord,
+  fetchAdminDataset,
+  getAdminToken,
+  markAdminSupportConversationRead,
+  sendAdminSupportMessage,
+  updateAdminRecordFields,
+  updateAdminRecordStatus,
+} from "./adminApi";
+import LogoutConfirmModal from "../components/LogoutConfirmModal";
+import { apiUrl } from "../lib/api";
 import "./AdminDashboard.css";
 
 type AdminTab =
@@ -55,6 +69,7 @@ type AdminTab =
   | "payouts"
   | "deliveries"
   | "disputes"
+  | "support"
   | "feedback"
   | "activityLogs"
   | "settings";
@@ -77,6 +92,7 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "payouts", label: "Payouts", icon: <FaMoneyBillWave />, description: "Seller funds" },
   { id: "deliveries", label: "Deliveries", icon: <FaTruck />, description: "Rider and codes" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
+  { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
   { id: "feedback", label: "Feedback", icon: <FaCommentDots />, description: "Platform feedback" },
   { id: "activityLogs", label: "Activity Logs", icon: <FaHistory />, description: "Admin actions" },
   { id: "settings", label: "Settings", icon: <FaCog />, description: "Rules and setup" },
@@ -89,6 +105,18 @@ function slugStatus(status: string) {
 function prettyStatus(status: AdminStatus | string | boolean) {
   if (typeof status === "boolean") return status ? "Yes" : "No";
   return status.replace(/_/g, " ");
+}
+
+function formatAdminTime(value: string) {
+  if (!value) return "Not available";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 function StatusBadge({ status }: { status: AdminStatus | string | boolean }) {
@@ -105,7 +133,7 @@ function RecordThumb({ src, name }: { src?: string; name: string }) {
 
   return (
     <div className="admin-record-name">
-      {src ? <img src={src} alt={name} className="admin-record-thumb" /> : <span className="admin-record-thumb fallback">{initials}</span>}
+      {src ? <img src={apiUrl(src)} alt={name} className="admin-record-thumb" /> : <span className="admin-record-thumb fallback">{initials}</span>}
       <strong>{name}</strong>
     </div>
   );
@@ -160,7 +188,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         </form>
 
         <div className="admin-demo-note">
-          Demo access: <strong>admin@gleank.com</strong> / <strong>admin12345</strong>
+          Local default access: <strong>admin@gleank.com</strong> / <strong>admin12345</strong>. Change this with <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> in Backend/.env.
         </div>
       </div>
     </section>
@@ -260,6 +288,48 @@ function DataTable<T extends { id: string }>({ title, subtitle, rows, columns, s
   );
 }
 
+function isExternalUrl(value: string) {
+  return /^https?:\/\//i.test(value) || value.startsWith("/uploads/");
+}
+
+function renderRecordValue(value: unknown) {
+  if (typeof value === "boolean") return prettyStatus(value);
+
+  if (Array.isArray(value)) {
+    if (!value.length) return "Not available";
+
+    return (
+      <div className="admin-detail-link-list">
+        {value.map((item, index) => {
+          const text = String(item || "");
+
+          return isExternalUrl(text) ? (
+            <a key={`${text}-${index}`} href={apiUrl(text)} target="_blank" rel="noreferrer">
+              Open file {index + 1}
+            </a>
+          ) : (
+            <span key={`${text}-${index}`}>{text}</span>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const text = String(value ?? "");
+
+  if (!text) return "Not available";
+
+  if (isExternalUrl(text)) {
+    return (
+      <a href={apiUrl(text)} target="_blank" rel="noreferrer">
+        Open file
+      </a>
+    );
+  }
+
+  return text;
+}
+
 function DetailDrawer({ title, item, onClose }: { title: string; item: Record<string, unknown> | null; onClose: () => void }) {
   if (!item) return null;
 
@@ -278,7 +348,7 @@ function DetailDrawer({ title, item, onClose }: { title: string; item: Record<st
           {Object.entries(item).map(([key, value]) => (
             <div key={key}>
               <span>{key.replace(/([A-Z])/g, " $1")}</span>
-              <strong>{typeof value === "boolean" ? prettyStatus(value) : String(value ?? "Not available")}</strong>
+              <div className="admin-detail-value">{renderRecordValue(value)}</div>
             </div>
           ))}
         </div>
@@ -287,38 +357,175 @@ function DetailDrawer({ title, item, onClose }: { title: string; item: Record<st
   );
 }
 
+function AdminSupportInbox({
+  conversations,
+  draftById,
+  replyingConversationId,
+  onDraftChange,
+  onReply,
+  onMarkRead,
+}: {
+  conversations: AdminSupportConversation[];
+  draftById: Record<string, string>;
+  replyingConversationId: string;
+  onDraftChange: (conversationId: string, value: string) => void;
+  onReply: (conversation: AdminSupportConversation) => void;
+  onMarkRead: (conversation: AdminSupportConversation) => void;
+}) {
+  return (
+    <section className="admin-panel-card admin-support-panel">
+      <div className="admin-panel-head">
+        <div>
+          <h2>Support Inbox</h2>
+          <p>Reply to users and sellers who open admin chat from the More page.</p>
+        </div>
+        <span>{conversations.length} conversations</span>
+      </div>
+
+      <div className="admin-support-list">
+        {conversations.map((conversation) => (
+          <article className="admin-support-card" key={conversation.id}>
+            <div className="admin-support-card-head">
+              <div>
+                <span>{conversation.userRole}</span>
+                <h3>{conversation.userName}</h3>
+                <p>{conversation.userEmail} • {conversation.campus || "Campus not set"}</p>
+              </div>
+
+              <div className="admin-support-meta">
+                <StatusBadge status={conversation.status} />
+                {conversation.unreadCount > 0 ? <strong>{conversation.unreadCount} unread</strong> : null}
+                <small>{formatAdminTime(conversation.lastMessageAt)}</small>
+              </div>
+            </div>
+
+            <div className="admin-support-thread">
+              {conversation.messages.length > 0 ? (
+                conversation.messages.map((message) => (
+                  <div
+                    key={message.id}
+                    className={
+                      message.isAdmin
+                        ? "admin-support-message admin"
+                        : "admin-support-message"
+                    }
+                  >
+                    <strong>{message.senderName}</strong>
+                    <p>{message.body}</p>
+                    <time>{formatAdminTime(message.createdAt)}</time>
+                  </div>
+                ))
+              ) : (
+                <div className="admin-support-empty">
+                  No messages in this support thread yet.
+                </div>
+              )}
+            </div>
+
+            <div className="admin-support-reply">
+              <textarea
+                value={draftById[conversation.id] || ""}
+                onChange={(event) => onDraftChange(conversation.id, event.target.value)}
+                placeholder={`Reply to ${conversation.userName}...`}
+                rows={3}
+              />
+
+              <div>
+                <button
+                  type="button"
+                  className="admin-support-read-btn"
+                  onClick={() => onMarkRead(conversation)}
+                >
+                  Mark read
+                </button>
+
+                <button
+                  type="button"
+                  className="admin-support-send-btn"
+                  disabled={
+                    replyingConversationId === conversation.id ||
+                    !(draftById[conversation.id] || "").trim()
+                  }
+                  onClick={() => onReply(conversation)}
+                >
+                  <FaPaperPlane />
+                  {replyingConversationId === conversation.id ? "Sending..." : "Send reply"}
+                </button>
+              </div>
+            </div>
+          </article>
+        ))}
+
+        {conversations.length === 0 ? (
+          <div className="admin-empty-state">
+            No support conversation matches your current search.
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
-  const [data, setData] = useState<AdminDataset>(initialAdminDataset);
+  const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [supportDrafts, setSupportDrafts] = useState<Record<string, string>>({});
+  const [replyingConversationId, setReplyingConversationId] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<{ title: string; item: Record<string, unknown> } | null>(null);
+
+  const loadAdminData = useCallback(async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    setLoadError("");
+
+    try {
+      setData(await fetchAdminDataset());
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Admin data could not be loaded.";
+      setLoadError(message);
+
+      if (/invalid|unauthorized|forbidden|token|login/i.test(message)) {
+        clearAdminToken();
+        setIsLoggedIn(false);
+      }
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    let active = true;
-    setLoading(true);
+    void loadAdminData();
 
-    fetchAdminDataset()
-      .then((payload) => {
-        if (active) setData(payload);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    const refreshTimer = window.setInterval(() => {
+      void loadAdminData(false);
+    }, 10000);
 
     return () => {
-      active = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [isLoggedIn]);
+  }, [isLoggedIn, loadAdminData]);
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
+  const supportRows = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return data.supportConversations;
+
+    return data.supportConversations.filter((conversation) =>
+      JSON.stringify(conversation).toLowerCase().includes(keyword),
+    );
+  }, [data.supportConversations, search]);
 
   function logout() {
     clearAdminToken();
+    setLogoutModalOpen(false);
     setIsLoggedIn(false);
   }
 
@@ -337,8 +544,48 @@ function AdminDashboard() {
     setData(response.data);
   }
 
+  function updateSupportDraft(conversationId: string, value: string) {
+    setSupportDrafts((current) => ({
+      ...current,
+      [conversationId]: value,
+    }));
+  }
+
+  async function replyToSupportConversation(conversation: AdminSupportConversation) {
+    const body = (supportDrafts[conversation.id] || "").trim();
+    if (!body || replyingConversationId) return;
+
+    setReplyingConversationId(conversation.id);
+    setLoadError("");
+
+    try {
+      const response = await sendAdminSupportMessage(conversation.id, body);
+      setData(response.data);
+      setSupportDrafts((current) => {
+        const next = { ...current };
+        delete next[conversation.id];
+        return next;
+      });
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Support reply could not be sent.");
+    } finally {
+      setReplyingConversationId("");
+    }
+  }
+
+  async function markSupportRead(conversation: AdminSupportConversation) {
+    setLoadError("");
+
+    try {
+      const response = await markAdminSupportConversationRead(conversation.id);
+      setData(response.data);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Support conversation could not be marked as read.");
+    }
+  }
+
   async function removeRecord(collection: AdminCollection, id: string, label: string) {
-    const confirmed = window.confirm(`Delete ${label}? This demo action removes the record from the admin table.`);
+    const confirmed = window.confirm(`Apply the admin remove/disable action for ${label}? This updates the real backend record.`);
     if (!confirmed) return;
 
     const response = await deleteAdminRecord(collection, id);
@@ -373,8 +620,8 @@ function AdminDashboard() {
     });
   }
 
-  function resetDemo() {
-    setData(resetAdminDemoData());
+  async function refreshLiveData() {
+    await loadAdminData();
   }
 
   function selectTab(tab: AdminTab) {
@@ -417,7 +664,7 @@ function AdminDashboard() {
           ))}
         </nav>
 
-        <button className="admin-logout" onClick={logout} type="button">
+        <button className="admin-logout" onClick={() => setLogoutModalOpen(true)} type="button">
           <FaSignOutAlt /> Logout
         </button>
       </aside>
@@ -446,6 +693,11 @@ function AdminDashboard() {
 
         <section className="admin-content">
           {loading ? <div className="admin-loading-card">Loading admin data...</div> : null}
+          {loadError ? (
+            <div className="admin-loading-card admin-error-text">
+              {loadError}. Log in again or use “Refresh live admin data”.
+            </div>
+          ) : null}
 
           {activeTab === "overview" ? (
             <>
@@ -454,7 +706,7 @@ function AdminDashboard() {
                   <span className="admin-pill"><FaShieldAlt /> Platform safety center</span>
                   <h2>Control the full Gleank marketplace from one full-page admin dashboard.</h2>
                   <p>
-                    This area is prepared for user, seller, product, used-market, order, payment, payout, delivery, dispute and feedback integrations.
+                    This area is connected to live users, sellers, products, used-market listings, orders, payments, payouts, deliveries, disputes and activity logs.
                   </p>
                 </div>
                 <div className="admin-hero-metric">
@@ -476,7 +728,8 @@ function AdminDashboard() {
                 <StatCard label="Revenue" value={data.overview.totalRevenue} helper="tracked transaction volume" icon={<FaCreditCard />} />
                 <StatCard label="Payouts" value={data.overview.pendingPayouts} helper="seller funds needing action" icon={<FaMoneyBillWave />} />
                 <StatCard label="Disputes" value={data.overview.openDisputes} helper="open or reviewing" icon={<FaExclamationTriangle />} />
-                <StatCard label="Feedback" value={data.overview.unreadFeedback} helper="unread messages" icon={<FaCommentDots />} />
+                <StatCard label="Support" value={data.overview.unreadSupport} helper="unread admin chats" icon={<FaCommentDots />} />
+                <StatCard label="Feedback" value={data.overview.unreadFeedback} helper="platform feedback" icon={<FaCommentDots />} />
               </section>
 
               <section className="admin-overview-grid">
@@ -491,6 +744,7 @@ function AdminDashboard() {
                     <MiniQueue title="Seller verification" value={data.sellers.filter((seller) => seller.verificationStatus === "pending").length} helper="Approve or reject store onboarding" tone="orange" />
                     <MiniQueue title="Used market approvals" value={data.usedItems.filter((item) => item.status === "pending").length} helper="Review campus used-item uploads" tone="blue" />
                     <MiniQueue title="Open disputes" value={data.disputes.filter((item) => item.status === "open" || item.status === "reviewing").length} helper="Buyer/seller complaints" tone="red" />
+                    <MiniQueue title="Support chat" value={data.overview.unreadSupport} helper="Unread admin chat messages" tone="blue" />
                     <MiniQueue title="Payout release" value={payoutRows.length} helper="Seller payment actions" tone="green" />
                   </div>
                 </div>
@@ -503,10 +757,10 @@ function AdminDashboard() {
                     </div>
                   </div>
                   <div className="admin-flow-list">
-                    <div><strong>User upload</strong><span>Used item enters pending approval queue.</span></div>
-                    <div><strong>Seller upload</strong><span>Product/service waits for admin approval.</span></div>
-                    <div><strong>Order paid</strong><span>Admin monitors payment, delivery and payout release.</span></div>
-                    <div><strong>Complaint sent</strong><span>Dispute appears for admin review and resolution.</span></div>
+                    <div><strong>User upload</strong><span>Used item appears from the live Used Market table.</span></div>
+                    <div><strong>Seller upload</strong><span>Product/service appears from seller dashboard records.</span></div>
+                    <div><strong>Order paid</strong><span>Admin monitors live payment, delivery and payout states.</span></div>
+                    <div><strong>Complaint sent</strong><span>Reports/disputes propagate into the admin queue.</span></div>
                   </div>
                 </div>
               </section>
@@ -794,6 +1048,17 @@ function AdminDashboard() {
             />
           ) : null}
 
+          {activeTab === "support" ? (
+            <AdminSupportInbox
+              conversations={supportRows}
+              draftById={supportDrafts}
+              replyingConversationId={replyingConversationId}
+              onDraftChange={updateSupportDraft}
+              onReply={(conversation) => void replyToSupportConversation(conversation)}
+              onMarkRead={(conversation) => void markSupportRead(conversation)}
+            />
+          ) : null}
+
           {activeTab === "feedback" ? (
             <DataTable<AdminFeedback>
               title="Feedback Management"
@@ -842,7 +1107,7 @@ function AdminDashboard() {
                 <div className="admin-panel-head">
                   <div>
                     <h2>Admin Integration Rules</h2>
-                    <p>These are the rules the user, seller and admin sections should follow when the backend is connected.</p>
+                    <p>These are the live rules currently enforced between user, seller and admin sections.</p>
                   </div>
                 </div>
                 <div className="admin-rules-list">
@@ -857,13 +1122,13 @@ function AdminDashboard() {
               <div className="admin-panel-card">
                 <div className="admin-panel-head">
                   <div>
-                    <h2>Demo Data</h2>
-                    <p>Use this during frontend testing only. Later, real backend records will replace the demo storage.</p>
+                    <h2>Live Admin Data</h2>
+                    <p>The dashboard now reads from the backend database. Use refresh to pull the latest seller, user and order changes.</p>
                   </div>
                 </div>
                 <div className="admin-settings-actions">
-                  <button type="button" onClick={resetDemo}><FaUndo /> Reset demo admin data</button>
-                  <button type="button" onClick={logout}><FaBan /> Logout admin session</button>
+                  <button type="button" onClick={() => void refreshLiveData()}><FaUndo /> Refresh live admin data</button>
+                  <button type="button" onClick={() => setLogoutModalOpen(true)}><FaBan /> Logout admin session</button>
                 </div>
               </div>
             </section>
@@ -872,6 +1137,12 @@ function AdminDashboard() {
       </main>
 
       <DetailDrawer title={selectedRecord?.title || "Record"} item={selectedRecord?.item || null} onClose={() => setSelectedRecord(null)} />
+
+      <LogoutConfirmModal
+        isOpen={logoutModalOpen}
+        onCancel={() => setLogoutModalOpen(false)}
+        onConfirm={logout}
+      />
     </section>
   );
 }

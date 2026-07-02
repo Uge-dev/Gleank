@@ -1,7 +1,9 @@
 import { db } from "../db/database.js";
 
 export function findUserByEmail(email) {
-  return db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  return db
+    .prepare("SELECT * FROM users WHERE email = ?")
+    .get(String(email || "").trim().toLowerCase());
 }
 
 export function findUserById(id) {
@@ -40,6 +42,26 @@ export function updateUser(id, updates) {
     SET name = ?, campus = ?, phone = ?, updated_at = ?
     WHERE id = ?
   `).run(updates.name, updates.campus, updates.phone, updates.updatedAt, id);
+
+  return findUserById(id);
+}
+
+export function updateUserAvatar(id, avatarUrl, updatedAt) {
+  db.prepare(`
+    UPDATE users
+    SET avatar_url = ?, updated_at = ?
+    WHERE id = ?
+  `).run(avatarUrl, updatedAt, id);
+
+  return findUserById(id);
+}
+
+export function updateUserRole(id, role, updatedAt) {
+  db.prepare(`
+    UPDATE users
+    SET role = ?, updated_at = ?
+    WHERE id = ?
+  `).run(role, updatedAt, id);
 
   return findUserById(id);
 }

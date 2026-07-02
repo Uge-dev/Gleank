@@ -351,7 +351,7 @@ function Dashboard() {
             </Link>
             <button
               type="button"
-              className="secondary"
+              className="secondary manage-highlights-btn"
               onClick={() => setActiveTab("highlights")}
             >
               <FiGrid />

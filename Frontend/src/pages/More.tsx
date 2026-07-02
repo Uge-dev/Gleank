@@ -10,6 +10,8 @@ import {
   FiShoppingBag,
   FiUser,
 } from "react-icons/fi";
+import { FaWhatsapp } from "react-icons/fa";
+import { getSupportWhatsAppUrl } from "../utils/support";
 
 const moreLinks = [
   {
@@ -55,10 +57,16 @@ const moreLinks = [
     path: "/dashboard",
   },
   {
-    title: "Help & Support",
-    description: "Get help using Gleank.",
+    title: "Help Center",
+    description: "Read guides and help articles.",
     icon: <FiHelpCircle />,
     path: "/help",
+  },
+  {
+    title: "Chat with Admin",
+    description: "Open a live support chat with Gleank admin.",
+    icon: <FiMessageCircle />,
+    path: "/messages?support=1",
   },
 ];
 
@@ -87,6 +95,24 @@ function More() {
             <FiChevronRight />
           </Link>
         ))}
+
+        <a
+          href={getSupportWhatsAppUrl("Hello Gleank Support, I need help with my account.")}
+          className="more-page-card whatsapp"
+          target="_blank"
+          rel="noreferrer"
+        >
+          <div className="more-page-card-icon">
+            <FaWhatsapp />
+          </div>
+
+          <div>
+            <strong>WhatsApp Support</strong>
+            <p>Chat with Gleank admin on WhatsApp.</p>
+          </div>
+
+          <FiChevronRight />
+        </a>
       </div>
     </section>
   );

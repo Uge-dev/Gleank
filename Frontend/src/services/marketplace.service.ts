@@ -48,13 +48,44 @@ export function viewPublicProduct(id: string, anonKey = "") {
 }
 
 
-export function commentOnPublicProduct(id: string, body: string) {
+export function commentOnPublicProduct(
+  id: string,
+  body: string,
+  parentCommentId?: string | null,
+) {
   return apiRequest<{ comment: ProductComment }>(
     `/products/${encodeURIComponent(id)}/comments`,
     {
       method: "POST",
-      body: JSON.stringify({ body }),
+      body: JSON.stringify({ body, parentCommentId }),
     },
+  );
+}
+
+export function likeProductComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/products/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}/like`,
+    { method: "POST" },
+  );
+}
+
+export function unlikeProductComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/products/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}/like`,
+    { method: "DELETE" },
+  );
+}
+
+export function deleteProductComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/products/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}`,
+    { method: "DELETE" },
   );
 }
 

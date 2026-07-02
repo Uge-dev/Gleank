@@ -19,9 +19,11 @@ import LoadingState from "../components/LoadingState";
 import { createConversation } from "../services/message.service";
 import {
   getUsedOrder,
-  payUsedOrder,
   updateUsedOrderStatus,
+  verifyUsedOrderDelivery,
 } from "../services/used-order.service";
+
+import { initializeUsedOrderPayment } from "../services/payment.service";
 import type { UsedMarketOrder, UsedMarketOrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
@@ -44,6 +46,7 @@ function UsedOrderDetails() {
   const [isLoading, setIsLoading] = useState(true);
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
+  const [deliveryCode, setDeliveryCode] = useState("");
 
   function loadOrder() {
     setIsLoading(true);
@@ -64,22 +67,24 @@ function UsedOrderDetails() {
   useEffect(loadOrder, [id]);
 
   async function handlePay() {
-    if (!order) return;
-    setIsWorking(true);
-    setError("");
-    try {
-      const response = await payUsedOrder(order.id);
-      setOrder(response.order);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Payment record could not be updated.",
-      );
-    } finally {
-      setIsWorking(false);
-    }
+  if (!order) return;
+
+  setIsWorking(true);
+  setError("");
+
+  try {
+    const response = await initializeUsedOrderPayment(order.id);
+    window.location.href = response.payment.authorizationUrl;
+  } catch (requestError) {
+    setError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Payment could not be initialized.",
+    );
+  } finally {
+    setIsWorking(false);
   }
+}
 
   async function handleStatus(status: UsedMarketOrderStatus, note = "") {
     if (!order) return;
@@ -93,6 +98,29 @@ function UsedOrderDetails() {
         requestError instanceof Error
           ? requestError.message
           : "Order status could not be updated.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleVerifyDelivery() {
+    if (!order) return;
+    setIsWorking(true);
+    setError("");
+    try {
+      const response = await verifyUsedOrderDelivery(
+        order.id,
+        deliveryCode,
+        "Seller verified the buyer delivery code.",
+      );
+      setOrder(response.order);
+      setDeliveryCode("");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Delivery code could not be verified.",
       );
     } finally {
       setIsWorking(false);
@@ -262,10 +290,21 @@ function UsedOrderDetails() {
             )}
 
             {isSeller && order.status === "meetup_or_delivery" && (
-              <button type="button" onClick={() => void handleStatus("delivered", "Seller marked item delivered.")} disabled={isWorking}>
-                <FiPackage />
-                Mark delivered
-              </button>
+              <div className="delivery-code-action">
+                <label>
+                  Buyer delivery code
+                  <input
+                    value={deliveryCode}
+                    onChange={(event) => setDeliveryCode(event.target.value)}
+                    placeholder="Enter 6-digit code"
+                    inputMode="numeric"
+                  />
+                </label>
+                <button type="button" onClick={() => void handleVerifyDelivery()} disabled={isWorking || !deliveryCode.trim()}>
+                  <FiPackage />
+                  Verify code & mark delivered
+                </button>
+              </div>
             )}
 
             {isBuyer && order.status === "delivered" && (

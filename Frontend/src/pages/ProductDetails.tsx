@@ -195,6 +195,7 @@ function ProductDetails() {
       sellerName: product.store.name,
       sellerId: product.store.slug,
       campus: product.store.campus,
+      category: product.category,
       quantity,
     });
   }

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   IoHome,
@@ -24,8 +24,11 @@ import {
 
 import AuthModal from "./AuthModal";
 import MoreDrawer from "./MoreDrawer";
+import LogoutConfirmModal from "./LogoutConfirmModal";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+import { getUnreadMessageCount } from "../services/message.service";
+import { getNotificationUnreadCount } from "../services/notification.service";
 
 type NavItem = {
   label: string;
@@ -43,18 +46,80 @@ function GleankNav() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
+  const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
 
   const { cartCount, openCartDrawer } = useCart();
 
   const isLoggedIn = isAuthenticated;
 
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setMessageUnreadCount(0);
+      setNotificationUnreadCount(0);
+      return;
+    }
+
+    let active = true;
+
+    async function loadCounts() {
+      const [messageResult, notificationResult] = await Promise.allSettled([
+        user?.emailVerified
+          ? getUnreadMessageCount()
+          : Promise.resolve({ unreadCount: 0 }),
+        getNotificationUnreadCount(),
+      ]);
+
+      if (!active) return;
+
+      if (messageResult.status === "fulfilled") {
+        setMessageUnreadCount(messageResult.value.unreadCount);
+      }
+
+      if (notificationResult.status === "fulfilled") {
+        setNotificationUnreadCount(notificationResult.value.unreadCount);
+      }
+    }
+
+    void loadCounts();
+
+    const timer = window.setInterval(() => {
+      void loadCounts();
+    }, 5000);
+
+    function handleFocus() {
+      void loadCounts();
+    }
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [isLoggedIn, user?.emailVerified]);
+
   function openAuthModal() {
     setAuthModalOpen(true);
   }
 
-  async function handleLogout() {
-    await logout();
-    navigate("/");
+  function handleLogoutRequest() {
+    setLogoutModalOpen(true);
+  }
+
+  async function handleLogoutConfirm() {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setLogoutModalOpen(false);
+      navigate("/");
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   const navItems: NavItem[] = [
@@ -134,6 +199,12 @@ function GleankNav() {
 
   const desktopNavItems = navItems.filter((item) => item.showOnDesktop);
 
+  function badgeCountFor(label: string) {
+    if (label === "Messages") return messageUnreadCount;
+    if (label === "Notifications") return notificationUnreadCount;
+    return 0;
+  }
+
   const mobileNavItems = [
     navItems.find((item) => item.label === "For You"),
     navItems.find((item) => item.label === "Used Market"),
@@ -163,6 +234,9 @@ function GleankNav() {
                 <>
                   <span className="gleank-nav-icon">
                     {isActive ? item.activeIcon : item.icon}
+                    {badgeCountFor(item.label) > 0 && (
+                      <small>{badgeCountFor(item.label)}</small>
+                    )}
                   </span>
 
                   <span className="gleank-nav-text">{item.label}</span>
@@ -224,10 +298,11 @@ function GleankNav() {
               <button
                 type="button"
                 className="sidebar-logout-btn"
-                onClick={handleLogout}
+                onClick={handleLogoutRequest}
+                disabled={isLoggingOut}
               >
                 <IoLogOutOutline />
-                Logout
+                {isLoggingOut ? "Logging out..." : "Logout"}
               </button>
             </div>
           )}
@@ -259,6 +334,10 @@ function GleankNav() {
                   {item.label === "Cart" && cartCount > 0 && (
                     <small>{cartCount}</small>
                   )}
+
+                  {item.label !== "Cart" && badgeCountFor(item.label) > 0 && (
+                    <small>{badgeCountFor(item.label)}</small>
+                  )}
                 </span>
 
                 <span className="gleank-mobile-label">
@@ -274,11 +353,20 @@ function GleankNav() {
         isOpen={moreDrawerOpen}
         onClose={() => setMoreDrawerOpen(false)}
         onRequireAuth={openAuthModal}
+        messageUnreadCount={messageUnreadCount}
+        notificationUnreadCount={notificationUnreadCount}
       />
 
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
+      />
+
+      <LogoutConfirmModal
+        isOpen={logoutModalOpen}
+        isLoading={isLoggingOut}
+        onCancel={() => setLogoutModalOpen(false)}
+        onConfirm={handleLogoutConfirm}
       />
     </>
   );

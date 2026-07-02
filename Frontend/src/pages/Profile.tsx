@@ -1,7 +1,12 @@
 import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import type { ChangeEvent } from "react";
 import {
+  FiAlertCircle,
   FiBell,
+  FiCamera,
   FiChevronRight,
+  FiCheckCircle,
   FiCreditCard,
   FiEdit3,
   FiHeart,
@@ -17,7 +22,9 @@ import {
   FiStar,
   FiUser,
 } from "react-icons/fi";
+import LogoutConfirmModal from "../components/LogoutConfirmModal";
 import { useAuth } from "../context/AuthContext";
+import { uploadProfileAvatar } from "../services/user.service";
 import { resolveMediaUrl } from "../utils/media";
 
 const profileStats = [
@@ -100,7 +107,12 @@ const quickActions = [
 
 function Profile() {
   const navigate = useNavigate();
-  const { user, store, logout } = useAuth();
+  const { user, store, logout, refreshSession } = useAuth();
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [profileError, setProfileError] = useState("");
 
   const displayName = user?.name || "Gleank User";
   const displayEmail = user?.email || "user@gleank.com";
@@ -113,12 +125,45 @@ function Profile() {
         ? resolveMediaUrl(user.avatarUrl, "")
         : "";
 
-  async function handleLogout() {
-    await logout();
-    navigate("/login");
+  async function handleLogoutConfirm() {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setLogoutModalOpen(false);
+      navigate("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
+
+  async function handleAvatarUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    if (!file || user?.role === "seller") return;
+
+    setProfileMessage("");
+    setProfileError("");
+    setIsUploadingAvatar(true);
+
+    try {
+      await uploadProfileAvatar(file);
+      await refreshSession();
+      setProfileMessage("Profile photo updated successfully.");
+    } catch (requestError) {
+      setProfileError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Profile photo could not be uploaded.",
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+      event.target.value = "";
+    }
   }
 
   return (
+    <>
     <section className="profile-page">
       <div className="profile-hero-card">
         <div className="profile-main-info">
@@ -127,6 +172,19 @@ function Profile() {
               <img src={profileAvatarUrl} alt={displayName} />
             ) : (
               <FiUser />
+            )}
+
+            {user?.role !== "seller" && (
+              <label className="profile-avatar-upload">
+                <FiCamera />
+                <span>{isUploadingAvatar ? "Uploading..." : "Change photo"}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  disabled={isUploadingAvatar}
+                  onChange={(event) => void handleAvatarUpload(event)}
+                />
+              </label>
             )}
           </div>
 
@@ -160,10 +218,24 @@ function Profile() {
 
           <button type="button" className="profile-edit-btn">
             <FiEdit3 />
-            Edit Profile
+            {user?.role === "seller" ? "Store logo controls profile" : "Upload buyer photo"}
           </button>
         </div>
       </div>
+
+      {(profileMessage || profileError) && (
+        <div
+          className={
+            profileError
+              ? "profile-inline-message error"
+              : "profile-inline-message success"
+          }
+          role={profileError ? "alert" : "status"}
+        >
+          {profileError ? <FiAlertCircle /> : <FiCheckCircle />}
+          <span>{profileError || profileMessage}</span>
+        </div>
+      )}
 
       <div className="profile-stats-grid">
         {profileStats.map((stat) => (
@@ -251,7 +323,11 @@ function Profile() {
                 campus store.
               </p>
 
-              {user?.role === "seller" ? <Link to="/dashboard">Open Seller Dashboard</Link> : <Link to="/signup">Create Seller Account</Link>}
+              {user?.role === "seller" ? (
+                <Link to="/dashboard">Open Seller Dashboard</Link>
+              ) : (
+                <Link to="/seller/onboarding">Set up seller profile</Link>
+              )}
             </div>
           </section>
 
@@ -287,7 +363,7 @@ function Profile() {
               <button
                 type="button"
                 className="profile-logout-btn"
-                onClick={handleLogout}
+                onClick={() => setLogoutModalOpen(true)}
               >
                 <FiLogOut />
                 Logout
@@ -297,6 +373,14 @@ function Profile() {
         </aside>
       </div>
     </section>
+
+    <LogoutConfirmModal
+      isOpen={logoutModalOpen}
+      isLoading={isLoggingOut}
+      onCancel={() => setLogoutModalOpen(false)}
+      onConfirm={() => void handleLogoutConfirm()}
+    />
+    </>
   );
 }
 

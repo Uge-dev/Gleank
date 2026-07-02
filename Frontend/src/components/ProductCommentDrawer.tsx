@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import {
   FiAtSign,
   FiHeart,
@@ -6,12 +7,16 @@ import {
   FiMessageCircle,
   FiSend,
   FiSmile,
+  FiTrash2,
   FiX,
 } from "react-icons/fi";
 
 import {
   commentOnPublicProduct,
+  deleteProductComment,
   getPublicProduct,
+  likeProductComment,
+  unlikeProductComment,
 } from "../services/marketplace.service";
 import type { ProductComment } from "../types/domain";
 
@@ -81,16 +86,19 @@ function ProductCommentDrawer({
   onRequireAuth,
   onCommentCreated,
 }: ProductCommentDrawerProps) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [comments, setComments] = useState<ProductComment[]>([]);
   const [commentBody, setCommentBody] = useState("");
+  const [replyTarget, setReplyTarget] = useState<ProductComment | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [activeCommentAction, setActiveCommentAction] = useState("");
   const [error, setError] = useState("");
 
   const title = useMemo(() => {
-    const count = comments.length;
+    const count = comments.filter((comment) => !comment.isDeleted).length;
     return `${count} ${count === 1 ? "comment" : "comments"}`;
-  }, [comments.length]);
+  }, [comments]);
 
   useEffect(() => {
     if (!isOpen || !productId) return;
@@ -99,6 +107,7 @@ function ProductCommentDrawer({
 
     setIsLoading(true);
     setError("");
+    setReplyTarget(null);
 
     void getPublicProduct(productId)
       .then((response) => {
@@ -144,7 +153,15 @@ function ProductCommentDrawer({
     };
   }, [isOpen, onClose]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  function replaceComment(updatedComment: ProductComment) {
+    setComments((current) =>
+      current.map((comment) =>
+        comment.id === updatedComment.id ? updatedComment : comment,
+      ),
+    );
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!productId) return;
@@ -158,10 +175,15 @@ function ProductCommentDrawer({
     setError("");
 
     try {
-      const response = await commentOnPublicProduct(productId, body);
+      const response = await commentOnPublicProduct(
+        productId,
+        body,
+        replyTarget?.id || null,
+      );
 
       setComments((current) => [response.comment, ...current]);
       setCommentBody("");
+      setReplyTarget(null);
       onCommentCreated?.();
     } catch (requestError) {
       setError(
@@ -172,6 +194,63 @@ function ProductCommentDrawer({
     } finally {
       setIsSending(false);
     }
+  }
+
+  async function toggleCommentLike(comment: ProductComment) {
+    if (!productId || comment.isDeleted) return;
+    if (!onRequireAuth()) return;
+
+    setActiveCommentAction(`${comment.id}:like`);
+    setError("");
+
+    try {
+      const response = comment.liked
+        ? await unlikeProductComment(productId, comment.id)
+        : await likeProductComment(productId, comment.id);
+
+      replaceComment(response.comment);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Comment like could not be updated.",
+      );
+    } finally {
+      setActiveCommentAction("");
+    }
+  }
+
+  async function handleDelete(comment: ProductComment) {
+    if (!productId || !comment.canDelete || comment.isDeleted) return;
+    if (!onRequireAuth()) return;
+
+    setActiveCommentAction(`${comment.id}:delete`);
+    setError("");
+
+    try {
+      const response = await deleteProductComment(productId, comment.id);
+      replaceComment(response.comment);
+
+      if (replyTarget?.id === comment.id) {
+        setReplyTarget(null);
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Comment could not be deleted.",
+      );
+    } finally {
+      setActiveCommentAction("");
+    }
+  }
+
+  function startReply(comment: ProductComment) {
+    if (comment.isDeleted) return;
+    if (!onRequireAuth()) return;
+
+    setReplyTarget(comment);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   if (!isOpen || !productId) return null;
@@ -218,7 +297,14 @@ function ProductCommentDrawer({
             </div>
           ) : (
             comments.map((comment) => (
-              <article className="product-comment-item" key={comment.id}>
+              <article
+                className={
+                  comment.parentCommentId
+                    ? "product-comment-item product-comment-reply"
+                    : "product-comment-item"
+                }
+                key={comment.id}
+              >
                 <div className="product-comment-avatar">
                   {getCommentInitial(comment)}
                 </div>
@@ -226,16 +312,51 @@ function ProductCommentDrawer({
                 <div className="product-comment-content">
                   <div className="product-comment-line">
                     <strong>{getCommentAuthor(comment)}</strong>
-                    <button type="button" aria-label="Like comment">
-                      <FiHeart />
-                    </button>
+                    <div className="product-comment-actions">
+                      {!comment.isDeleted && comment.canDelete && (
+                        <button
+                          type="button"
+                          aria-label="Delete comment"
+                          disabled={activeCommentAction === `${comment.id}:delete`}
+                          onClick={() => void handleDelete(comment)}
+                        >
+                          <FiTrash2 />
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        className={comment.liked ? "liked" : ""}
+                        aria-label={comment.liked ? "Unlike comment" : "Like comment"}
+                        disabled={
+                          comment.isDeleted ||
+                          activeCommentAction === `${comment.id}:like`
+                        }
+                        onClick={() => void toggleCommentLike(comment)}
+                      >
+                        <FiHeart />
+                        {comment.likeCount > 0 && <span>{comment.likeCount}</span>}
+                      </button>
+                    </div>
                   </div>
 
-                  <p>{comment.body}</p>
+                  {comment.replyToName && (
+                    <span className="product-comment-replying">
+                      Replying to @{comment.replyToName}
+                    </span>
+                  )}
+
+                  <p className={comment.isDeleted ? "is-deleted" : ""}>
+                    {comment.body}
+                  </p>
 
                   <div className="product-comment-meta">
                     <span>{getCommentDate(comment)}</span>
-                    <button type="button">Reply</button>
+                    {!comment.isDeleted && (
+                      <button type="button" onClick={() => startReply(comment)}>
+                        Reply
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>
@@ -244,14 +365,28 @@ function ProductCommentDrawer({
         </div>
 
         <form className="product-comment-form" onSubmit={handleSubmit}>
+          {replyTarget && (
+            <div className="product-comment-reply-banner">
+              <span>Replying to @{getCommentAuthor(replyTarget)}</span>
+              <button type="button" onClick={() => setReplyTarget(null)}>
+                Cancel
+              </button>
+            </div>
+          )}
+
           <div className="product-comment-form-avatar">G</div>
 
           <div className="product-comment-input-wrap">
             <input
+              ref={inputRef}
               type="text"
               value={commentBody}
               onChange={(event) => setCommentBody(event.target.value)}
-              placeholder="Add comment..."
+              placeholder={
+                replyTarget
+                  ? `Reply to ${getCommentAuthor(replyTarget)}...`
+                  : "Add comment..."
+              }
               maxLength={500}
             />
 

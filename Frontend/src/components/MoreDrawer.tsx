@@ -21,19 +21,32 @@ import {
   FiUser,
   FiX,
 } from "react-icons/fi";
+import { FaWhatsapp } from "react-icons/fa";
 
 import { applyTheme, getSavedTheme, type ThemeMode } from "../utils/theme";
 import { useAuth } from "../context/AuthContext";
+import LogoutConfirmModal from "./LogoutConfirmModal";
+import { getSupportWhatsAppUrl } from "../utils/support";
 
 type MoreDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
   onRequireAuth: () => void;
+  messageUnreadCount?: number;
+  notificationUnreadCount?: number;
 };
 
-function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
+function MoreDrawer({
+  isOpen,
+  onClose,
+  onRequireAuth,
+  messageUnreadCount = 0,
+  notificationUnreadCount = 0,
+}: MoreDrawerProps) {
   const { user, isAuthenticated, logout } = useAuth();
   const [theme, setTheme] = useState<ThemeMode>("system");
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggedIn = isAuthenticated;
 
   useEffect(() => {
@@ -47,9 +60,16 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
     }
   }
 
-  async function handleLogout() {
-    await logout();
-    onClose();
+  async function handleLogoutConfirm() {
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      setLogoutModalOpen(false);
+      onClose();
+    } finally {
+      setIsLoggingOut(false);
+    }
   }
 
   function handleThemeChange(nextTheme: ThemeMode) {
@@ -60,6 +80,7 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
   if (!isOpen) return null;
 
   return (
+    <>
     <div className="more-drawer-backdrop" onClick={onClose}>
       <aside
         className="more-drawer"
@@ -95,7 +116,7 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
               <p>{user?.role === "seller" ? "Seller account" : "Buyer account"}</p>
             </div>
 
-            <button type="button" onClick={handleLogout}>
+            <button type="button" onClick={() => setLogoutModalOpen(true)}>
               <FiLogOut />
               Logout
             </button>
@@ -107,7 +128,7 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/dashboard" : "/signup"}
+            to={user?.role === "seller" ? "/dashboard" : "/seller/onboarding"}
             onClick={onClose}
           >
             <span className="more-row-icon green">
@@ -124,7 +145,7 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/create" : "/signup"}
+            to={user?.role === "seller" ? "/create" : "/seller/onboarding"}
             onClick={onClose}
           >
             <span className="more-row-icon orange">
@@ -205,6 +226,10 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
               <small>Chat with sellers and buyers</small>
             </div>
 
+            {messageUnreadCount > 0 && (
+              <span className="more-row-badge">{messageUnreadCount}</span>
+            )}
+
             <FiChevronRight />
           </Link>
 
@@ -217,6 +242,10 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
               <strong>Notifications</strong>
               <small>Orders, messages, and seller updates</small>
             </div>
+
+            {notificationUnreadCount > 0 && (
+              <span className="more-row-badge">{notificationUnreadCount}</span>
+            )}
 
             <FiChevronRight />
           </Link>
@@ -270,6 +299,42 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
 
             <FiChevronRight />
           </Link>
+
+          <Link
+            className="more-menu-row"
+            to="/messages?support=1"
+            onClick={onClose}
+          >
+            <span className="more-row-icon green">
+              <FiMessageCircle />
+            </span>
+
+            <div>
+              <strong>Chat with Admin</strong>
+              <small>Open a live polling support chat</small>
+            </div>
+
+            <FiChevronRight />
+          </Link>
+
+          <a
+            className="more-menu-row"
+            href={getSupportWhatsAppUrl("Hello Gleank Support, I need help.")}
+            target="_blank"
+            rel="noreferrer"
+            onClick={onClose}
+          >
+            <span className="more-row-icon green">
+              <FaWhatsapp />
+            </span>
+
+            <div>
+              <strong>WhatsApp Support</strong>
+              <small>Chat with admin on WhatsApp</small>
+            </div>
+
+            <FiChevronRight />
+          </a>
 
           <button type="button" className="more-menu-row">
             <span className="more-row-icon">
@@ -337,6 +402,14 @@ function MoreDrawer({ isOpen, onClose, onRequireAuth }: MoreDrawerProps) {
         </p>
       </aside>
     </div>
+
+    <LogoutConfirmModal
+      isOpen={logoutModalOpen}
+      isLoading={isLoggingOut}
+      onCancel={() => setLogoutModalOpen(false)}
+      onConfirm={() => void handleLogoutConfirm()}
+    />
+    </>
   );
 }
 

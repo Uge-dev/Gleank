@@ -83,21 +83,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...state,
       isAuthenticated: Boolean(state.user),
       async login(input) {
-        localStorage.removeItem("gleank_last_verification_token");
         const session = await loginRequest(input);
         setSession(session.user, session.store);
         return session.user;
       },
       async register(input) {
         const session = await registerRequest(input);
-        if (session.developmentEmailVerificationToken) {
-          localStorage.setItem(
-            "gleank_last_verification_token",
-            session.developmentEmailVerificationToken,
-          );
-        } else {
-          localStorage.removeItem("gleank_last_verification_token");
-        }
         setSession(session.user, session.store);
         return session.user;
       },

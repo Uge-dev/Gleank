@@ -50,7 +50,7 @@ usedMarketRouter.post(
     const receiptFile = req.files?.receipt?.[0];
     const identityProofFile = req.files?.identityProof?.[0];
 
-    if (identityProofFile || req.body.fullName || req.body.studentId) {
+    if (identityProofFile || req.body.fullName || req.body.faceVerified) {
       upsertTrustProfile(
         req.auth.user_id,
         req.body,

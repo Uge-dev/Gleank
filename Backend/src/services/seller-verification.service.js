@@ -1,12 +1,79 @@
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
-import { createId } from "../lib/ids.js";
+import { createId, slugify } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
-import { findStoreByOwnerId } from "../repositories/store.repository.js";
+import {
+  createStore,
+  findStoreByOwnerId,
+  findStoreBySlug,
+} from "../repositories/store.repository.js";
+import { findUserById, updateUserRole } from "../repositories/user.repository.js";
 import { getPayoutAccount } from "./trust.service.js";
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
+}
+
+function uniqueStoreSlug(storeName) {
+  const base = slugify(storeName || "gleank-store") || "gleank-store";
+  let candidate = base;
+  let suffix = 2;
+
+  while (findStoreBySlug(candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function defaultStoreName(user) {
+  const firstName = clean(user?.name, 60).split(/\s+/)[0] || "Gleank";
+  return `${firstName} Store`;
+}
+
+export function ensureSellerStoreForUser(userId, input = {}) {
+  const existingStore = findStoreByOwnerId(userId);
+  const user = findUserById(userId);
+  const now = new Date().toISOString();
+
+  if (!user) throw new HttpError(404, "Account was not found.");
+
+  if (existingStore) {
+    if (user.role !== "seller" && user.role !== "admin") {
+      updateUserRole(userId, "seller", now);
+    }
+
+    return existingStore;
+  }
+
+  const storeName = clean(
+    input.storeName || input.businessName || defaultStoreName(user),
+    100,
+  );
+
+  if (storeName.length < 2) {
+    throw new HttpError(422, "Enter a store name for your seller profile.");
+  }
+
+  const store = createStore({
+    id: createId("sto"),
+    ownerId: userId,
+    slug: uniqueStoreSlug(storeName),
+    name: storeName,
+    description: clean(input.businessDescription, 1500),
+    campus: clean(input.sellerCampus || input.campus || user.campus, 80),
+    category: clean(input.storeCategory || input.category || "General", 80),
+    phone: clean(input.sellerPhone || input.phone || user.phone, 30),
+    status: "active",
+    verified: false,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  updateUserRole(userId, "seller", now);
+
+  return store;
 }
 
 export function serializeSellerVerification(row) {
@@ -20,6 +87,10 @@ export function serializeSellerVerification(row) {
       campus: "",
       studentId: "",
       identityProofUrl: null,
+      faceVerified: false,
+      faceProvider: "",
+      faceReference: "",
+      faceVerifiedAt: null,
       businessDescription: "",
       agreementAccepted: false,
       note: "",
@@ -32,8 +103,7 @@ export function serializeSellerVerification(row) {
     row.full_name &&
       row.phone &&
       row.campus &&
-      row.student_id &&
-      row.identity_proof_url &&
+      row.face_verified &&
       row.business_description &&
       row.agreement_accepted,
   );
@@ -47,6 +117,10 @@ export function serializeSellerVerification(row) {
     campus: row.campus,
     studentId: row.student_id,
     identityProofUrl: row.identity_proof_url || null,
+    faceVerified: Boolean(row.face_verified),
+    faceProvider: row.face_provider || "",
+    faceReference: row.face_reference || "",
+    faceVerifiedAt: row.face_verified_at || null,
     businessDescription: row.business_description,
     agreementAccepted: Boolean(row.agreement_accepted),
     status: row.status,
@@ -67,8 +141,7 @@ export function getSellerVerification(userId) {
 }
 
 export function upsertSellerVerification(userId, input, identityProofUrl = null) {
-  const store = findStoreByOwnerId(userId);
-  if (!store) throw new HttpError(404, "Create your seller store before verification.");
+  const store = ensureSellerStoreForUser(userId, input);
 
   const existing = db
     .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
@@ -80,6 +153,20 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     campus: clean(input.sellerCampus || input.campus, 100),
     studentId: clean(input.studentId, 100),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
+    faceVerified:
+      input.faceVerified === true ||
+      input.faceVerified === "true" ||
+      input.faceVerified === "on" ||
+      input.faceVerified === "1" ||
+      Boolean(existing?.face_verified),
+    faceProvider: clean(input.faceProvider || existing?.face_provider || env.livenessProvider, 80),
+    faceReference: clean(
+      input.faceReference ||
+        input.livenessReference ||
+        existing?.face_reference ||
+        `local-face-${Date.now()}`,
+      160,
+    ),
     businessDescription: clean(input.businessDescription, 1200),
     agreementAccepted:
       input.agreementAccepted === true ||
@@ -88,12 +175,12 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       input.agreementAccepted === "1",
   };
 
-  if (!next.fullName || !next.phone || !next.campus || !next.studentId) {
-    throw new HttpError(422, "Complete seller name, phone, campus, and student ID.");
+  if (!next.fullName || !next.phone || !next.campus) {
+    throw new HttpError(422, "Complete seller name, phone, and campus.");
   }
 
-  if (!next.identityProofUrl) {
-    throw new HttpError(422, "Upload your student ID or identity proof image.");
+  if (!next.faceVerified) {
+    throw new HttpError(422, "Complete live face verification before submitting seller verification.");
   }
 
   if (next.businessDescription.length < 20) {
@@ -116,8 +203,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       db.prepare(`
         UPDATE seller_verification_profiles
         SET store_id = ?, full_name = ?, phone = ?, campus = ?, student_id = ?,
-            identity_proof_url = ?, business_description = ?, agreement_accepted = ?,
-            status = ?, note = ?, submitted_at = ?, verified_at = ?, updated_at = ?
+            identity_proof_url = ?, face_verified = ?, face_provider = ?,
+            face_reference = ?, face_verified_at = ?, business_description = ?,
+            agreement_accepted = ?, status = ?, note = ?, submitted_at = ?,
+            verified_at = ?, updated_at = ?
         WHERE user_id = ?
       `).run(
         store.id,
@@ -126,6 +215,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         next.campus,
         next.studentId,
         next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? existing?.face_verified_at || now : null,
         next.businessDescription,
         next.agreementAccepted ? 1 : 0,
         status,
@@ -139,9 +232,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       db.prepare(`
         INSERT INTO seller_verification_profiles (
           id, user_id, store_id, full_name, phone, campus, student_id,
-          identity_proof_url, business_description, agreement_accepted,
+          identity_proof_url, face_verified, face_provider, face_reference,
+          face_verified_at, business_description, agreement_accepted,
           status, note, submitted_at, verified_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         createId("svp"),
         userId,
@@ -151,6 +245,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         next.campus,
         next.studentId,
         next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? now : null,
         next.businessDescription,
         next.agreementAccepted ? 1 : 0,
         status,
@@ -181,6 +279,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
 }
 
 export function getSellerReadiness(userId) {
+  const user = findUserById(userId);
   const store = findStoreByOwnerId(userId);
   const verification = getSellerVerification(userId);
   const payoutAccount = getPayoutAccount(userId);
@@ -190,7 +289,7 @@ export function getSellerReadiness(userId) {
     verification,
     payoutAccount,
     hasStore: Boolean(store),
-    emailReady: true,
+    emailReady: Boolean(user?.email_verified),
     verificationReady: verification.status === "verified",
     payoutReady: Boolean(payoutAccount?.isComplete),
   };

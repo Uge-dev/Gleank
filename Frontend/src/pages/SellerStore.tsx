@@ -7,6 +7,7 @@ import {
   FiGrid,
   FiHeart,
   FiInfo,
+  FiMapPin,
   FiMessageCircle,
   FiSearch,
   FiSend,
@@ -62,6 +63,21 @@ function formatPrice(price: number) {
   }).format(price);
 }
 
+function formatServiceRange(service: SellerService) {
+  const min = Number(service.minPrice || 0);
+  const max = Number(service.maxPrice || 0);
+
+  if (min > 0 && max > min) {
+    return `${formatPrice(min)} - ${formatPrice(max)}`;
+  }
+
+  if (min > 0) {
+    return `From ${formatPrice(min)}`;
+  }
+
+  return `From ${formatPrice(service.price)}`;
+}
+
 function compactNumber(value: number) {
   if (value >= 1_000_000) {
     const formatted = value / 1_000_000;
@@ -82,6 +98,7 @@ function SellerStore() {
   const { isAuthenticated } = useAuth();
   const { isSaved, toggleSaved } = useSaved();
   const viewedProductIdsRef = useRef<Set<string>>(new Set());
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
   const [activeCommentProductId, setActiveCommentProductId] = useState<
   string | null
 >(null);
@@ -98,6 +115,8 @@ function SellerStore() {
   const [shareNotice, setShareNotice] = useState("");
 
   const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const ignoreSwipeRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -130,6 +149,18 @@ function SellerStore() {
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    const activeButton = tabsContainerRef.current?.querySelector(
+      "button.active",
+    );
+
+    activeButton?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [activeTab]);
 
   const filteredProducts = useMemo(() => {
     if (!workspace) return [];
@@ -254,25 +285,66 @@ function SellerStore() {
   }
 
   function handleTouchStart(event: TouchEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement | null;
+    const interactiveTarget = target?.closest(
+      [
+        ".feed-media-shell",
+        ".feed-media-slider",
+        ".product-media-area",
+        ".product-media-slider",
+        ".feed-actions",
+        ".product-card-buttons",
+        ".cart-quantity-control",
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+      ].join(","),
+    );
+
+    ignoreSwipeRef.current = Boolean(interactiveTarget);
     touchStartX.current = event.touches[0]?.clientX ?? null;
+    touchStartY.current = event.touches[0]?.clientY ?? null;
   }
 
   function handleTouchEnd(event: TouchEvent<HTMLDivElement>) {
-    if (touchStartX.current === null) return;
+    if (
+      touchStartX.current === null ||
+      touchStartY.current === null ||
+      ignoreSwipeRef.current
+    ) {
+      touchStartX.current = null;
+      touchStartY.current = null;
+      ignoreSwipeRef.current = false;
+      return;
+    }
 
     const endX = event.changedTouches[0]?.clientX ?? touchStartX.current;
-    const distance = endX - touchStartX.current;
+    const endY = event.changedTouches[0]?.clientY ?? touchStartY.current;
+    const distanceX = endX - touchStartX.current;
+    const distanceY = endY - touchStartY.current;
 
     touchStartX.current = null;
+    touchStartY.current = null;
+    ignoreSwipeRef.current = false;
 
-    if (Math.abs(distance) < 55) return;
+    if (
+      Math.abs(distanceX) < 110 ||
+      Math.abs(distanceY) > 42 ||
+      Math.abs(distanceX) < Math.abs(distanceY) * 1.8
+    ) {
+      return;
+    }
 
     const currentIndex = tabs.indexOf(activeTab);
 
     const nextIndex =
-      distance < 0
+      distanceX < 0
         ? Math.min(tabs.length - 1, currentIndex + 1)
         : Math.max(0, currentIndex - 1);
+
+    if (nextIndex === currentIndex) return;
 
     selectTab(tabs[nextIndex]);
   }
@@ -594,7 +666,7 @@ async function handleProductViewed(productId: string) {
             />
           </div>
 
-          <div className="seller-store-tabs">
+          <div className="seller-store-tabs" ref={tabsContainerRef}>
             {tabs.map((tab) => (
               <button
                 type="button"
@@ -635,7 +707,11 @@ async function handleProductViewed(productId: string) {
           )}
 
           {activeTab === "Services" && (
-            <ServiceGrid services={filteredServices} onMessage={openMessages} />
+            <ServiceGrid
+              services={filteredServices}
+              storeCampus={store.campus}
+              onMessage={openMessages}
+            />
           )}
 
           {activeTab === "Favorites" && (
@@ -657,6 +733,7 @@ async function handleProductViewed(productId: string) {
               {favoriteServices.length > 0 && (
                 <ServiceGrid
                   services={favoriteServices}
+                  storeCampus={store.campus}
                   onMessage={openMessages}
                   favorite
                 />
@@ -823,10 +900,12 @@ function ProductGrid({
 
 function ServiceGrid({
   services,
+  storeCampus,
   onMessage,
   favorite = false,
 }: {
   services: SellerService[];
+  storeCampus: string;
   onMessage: () => void;
   favorite?: boolean;
 }) {
@@ -860,9 +939,19 @@ function ServiceGrid({
           />
 
           <div>
+            <span className="seller-service-type">
+              {service.serviceType || service.category}
+            </span>
             <h3>{service.name}</h3>
-            <p>{service.durationMinutes} minutes</p>
-            <strong>{formatPrice(service.price)}</strong>
+            <p className="seller-service-location">
+              <FiMapPin />
+              {service.location || storeCampus || "Campus service"}
+            </p>
+            <p className="seller-service-description">
+              {service.description || "Message this seller to discuss availability, timing, and service details."}
+            </p>
+            <p>{service.durationMinutes} minutes • {service.category}</p>
+            <strong>{formatServiceRange(service)}</strong>
 
             {service.isFeatured && (
               <span className="seller-service-favorite">Favorite</span>

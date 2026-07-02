@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { getPayoutAccount, getTrustProfile, ensureUsedMarketTrust } from "./trust.service.js";
+import { createNotification } from "./notification.service.js";
 
 const MAX_USED_IMAGES = 10;
 
@@ -11,6 +12,9 @@ const selectListing = `
          users.phone AS seller_phone,
          trust.status AS trust_status,
          trust.identity_proof_url AS trust_identity_proof_url,
+         trust.face_verified AS trust_face_verified,
+         trust.face_provider AS trust_face_provider,
+         trust.face_verified_at AS trust_face_verified_at,
          payout.bank_name AS payout_bank_name,
          payout.account_name AS payout_account_name,
          payout.account_number_masked AS payout_account_number_masked,
@@ -46,7 +50,7 @@ function computePlatformPrice(price) {
 }
 
 function serializeUsedListing(row, includePrivate = false) {
-  const trustComplete = Boolean(row.trust_status && row.trust_identity_proof_url);
+  const trustComplete = Boolean(row.trust_status && row.trust_face_verified);
   const payoutComplete = Boolean(row.payout_bank_name && row.payout_account_name);
 
   return {
@@ -83,7 +87,10 @@ function serializeUsedListing(row, includePrivate = false) {
     reviewNote: includePrivate ? row.review_note || "" : "",
     sellerTrust: {
       profileCompleted: trustComplete,
-      identityProofSubmitted: Boolean(row.trust_identity_proof_url),
+      identityProofSubmitted: Boolean(row.trust_face_verified),
+      faceVerified: Boolean(row.trust_face_verified),
+      faceProvider: row.trust_face_provider || "",
+      faceVerifiedAt: row.trust_face_verified_at || null,
       payoutAccountAdded: payoutComplete,
       payoutVerified: Boolean(row.payout_verified),
       accountName: row.payout_account_name || "",
@@ -234,6 +241,18 @@ export function createUsedListing(userId, input, files) {
     now,
   );
 
+  createNotification({
+    userId,
+    type: "used_market",
+    title: status === "active" ? "Used item published" : "Used item submitted",
+    body: status === "active"
+      ? `${clean(input.name, 120)} is now visible in the Used Market.`
+      : `${clean(input.name, 120)} is waiting for admin review.`,
+    actionLabel: "View listing",
+    actionPath: `/used-market/${id}`,
+    imageUrl: images[0] || "",
+  });
+
   return getUsedListing(id, userId);
 }
 
@@ -252,11 +271,19 @@ export function updateOwnUsedListingStatus(userId, listingId, status) {
     .run(status, new Date().toISOString(), listingId, userId);
 
   if (!result.changes) throw new HttpError(404, "Used item was not found.");
+  createNotification({
+    userId,
+    type: "used_market",
+    title: "Used item status updated",
+    body: `Your Used Market listing is now ${status}.`,
+    actionLabel: "View listing",
+    actionPath: `/used-market/${listingId}`,
+  });
   return getUsedListing(listingId, userId);
 }
 
 export function reportUsedListing(userId, listingId, input) {
-  getUsedListing(listingId, userId);
+  const listing = getUsedListing(listingId, userId);
 
   db.prepare(`
     INSERT INTO used_listing_reports (
@@ -270,6 +297,18 @@ export function reportUsedListing(userId, listingId, input) {
     clean(input.details, 1200),
     new Date().toISOString(),
   );
+
+  if (listing.sellerId !== userId) {
+    createNotification({
+      userId: listing.sellerId,
+      type: "used_market",
+      title: "Used listing report received",
+      body: `${listing.name} has a new safety report for admin review.`,
+      actionLabel: "View listing",
+      actionPath: `/used-market/${listing.id}`,
+      imageUrl: listing.imageUrls?.[0] || "",
+    });
+  }
 
   return { success: true };
 }

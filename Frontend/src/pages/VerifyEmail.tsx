@@ -10,7 +10,6 @@ function VerifyEmail() {
   const token = searchParams.get("token") || "";
   const { refreshSession, user } = useAuth();
   const [message, setMessage] = useState("");
-  const [devToken, setDevToken] = useState(() => localStorage.getItem("gleank_last_verification_token") || "");
   const [error, setError] = useState("");
   const [isWorking, setIsWorking] = useState(Boolean(token));
 
@@ -23,7 +22,6 @@ function VerifyEmail() {
       .then(async (result) => {
         if (!active) return;
         setMessage(result.message || "Email verified successfully.");
-        localStorage.removeItem("gleank_last_verification_token");
         await refreshSession();
       })
       .catch((requestError) => {
@@ -47,13 +45,11 @@ function VerifyEmail() {
   async function handleResend() {
     setError("");
     setMessage("");
-    setDevToken("");
     setIsWorking(true);
 
     try {
       const result = await resendVerification();
       setMessage(result.message);
-      setDevToken(result.developmentEmailVerificationToken || "");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -102,15 +98,6 @@ function VerifyEmail() {
           </div>
         )}
 
-        {devToken && (
-          <div className="auth-dev-token-box">
-            <span>Development verification token</span>
-            <code>{devToken}</code>
-            <Link to={`/verify-email?token=${encodeURIComponent(devToken)}`}>
-              Open verification link
-            </Link>
-          </div>
-        )}
 
         {!user?.emailVerified && (
           <button className="auth-submit-btn" type="button" onClick={handleResend} disabled={isWorking}>

@@ -1,7 +1,9 @@
 import { db, transaction } from "../db/database.js";
+import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createUsedOrderConversation } from "./message.service.js";
+import { createNotification, createNotificationForUsers } from "./notification.service.js";
 
 const USED_ORDER_STATUSES = new Set([
   "pending_payment",
@@ -243,9 +245,10 @@ export function createUsedOrder(userId, input) {
   const order = transaction(() => {
     const now = new Date().toISOString();
     const id = createId("uor");
-    const protectionFeeKobo = Math.round(Number(listing.price_kobo || 0) * 0.03);
+    const sellerPriceKobo = Number(listing.seller_price_kobo || 0) || Number(listing.price_kobo || 0);
+    const protectionFeeKobo = Math.round((sellerPriceKobo * env.platformFeePercent) / 100);
     const deliveryFeeKobo = 0;
-    const totalKobo = listing.price_kobo + protectionFeeKobo + deliveryFeeKobo;
+    const totalKobo = sellerPriceKobo + protectionFeeKobo + deliveryFeeKobo;
 
     db.prepare(`
       INSERT INTO used_market_orders (
@@ -260,7 +263,7 @@ export function createUsedOrder(userId, input) {
       listing.id,
       userId,
       listing.seller_id,
-      listing.price_kobo,
+      sellerPriceKobo,
       protectionFeeKobo,
       deliveryFeeKobo,
       totalKobo,
@@ -281,13 +284,33 @@ export function createUsedOrder(userId, input) {
     const conversation = createUsedOrderConversation(userId, id);
     db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE id = ?").run(conversation.id, id);
 
+    createNotification({
+      userId: listing.seller_id,
+      type: "used_market",
+      title: "New Used Market order",
+      body: `${buyerName} started a protected order for ${listing.name}.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${id}`,
+      imageUrl: parseImages(listing.image_urls)[0] || "",
+    });
+
+    createNotification({
+      userId,
+      type: "used_market",
+      title: "Protected order created",
+      body: `Your protected order for ${listing.name} is waiting for payment.`,
+      actionLabel: "Continue order",
+      actionPath: `/used-orders/${id}`,
+      imageUrl: parseImages(listing.image_urls)[0] || "",
+    });
+
     return getUsedOrder(userId, id);
   });
 
   return order;
 }
 
-export function markUsedOrderPaid(userId, orderId) {
+export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
   return transaction(() => {
     const row = getOrderRowForUser(userId, orderId);
     if (!row) throw new HttpError(404, "Used Market order was not found.");
@@ -303,7 +326,23 @@ export function markUsedOrderPaid(userId, orderId) {
 
     db.prepare("UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?").run(now, row.listing_id);
 
-    insertEvent(row.id, "paid", "Payment is recorded as protected. Replace this with Paystack/Flutterwave verification before production.");
+    insertEvent(
+      row.id,
+      "paid",
+      paymentReference
+        ? `Protected payment verified with reference ${paymentReference}.`
+        : "Payment is recorded as protected. Replace this with gateway verification before production.",
+    );
+
+    createNotificationForUsers([row.buyer_id, row.seller_id], {
+      type: "used_market",
+      title: "Used Market payment confirmed",
+      body: `Protected payment for ${row.listing_name} has been confirmed.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${row.id}`,
+      imageUrl: parseImages(row.listing_image_urls)[0] || "",
+    });
+
     return getUsedOrder(userId, row.id);
   });
 }
@@ -323,7 +362,7 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
       if (isBuyer && !["cancelled", "completed", "disputed"].includes(status)) {
         throw new HttpError(403, "Buyers can only cancel, complete, or dispute a used order.");
       }
-      if (isSeller && !["seller_confirmed", "meetup_or_delivery", "delivered", "disputed"].includes(status)) {
+      if (isSeller && !["seller_confirmed", "meetup_or_delivery", "disputed"].includes(status)) {
         throw new HttpError(403, "Seller cannot apply this status.");
       }
     }
@@ -334,7 +373,7 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     if (status === "completed" && row.status !== "delivered") {
       throw new HttpError(422, "Buyer can only complete after seller marks delivered.");
     }
-    if (["seller_confirmed", "meetup_or_delivery", "delivered"].includes(status) && row.status === "pending_payment") {
+    if (["seller_confirmed", "meetup_or_delivery"].includes(status) && row.status === "pending_payment") {
       throw new HttpError(422, "Seller actions unlock after protected payment is recorded.");
     }
 
@@ -350,6 +389,81 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     }
 
     insertEvent(row.id, status, note);
+
+    createNotificationForUsers(
+      [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
+      {
+        type: "used_market",
+        title: eventLabel(status),
+        body: note || `${row.listing_name} is now ${statusLabel(status)}.`,
+        actionLabel: "View order",
+        actionPath: `/used-orders/${row.id}`,
+        imageUrl: parseImages(row.listing_image_urls)[0] || "",
+      },
+    );
+
+    return getUsedOrder(user.user_id, row.id);
+  });
+}
+
+
+export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
+  const deliveryCode = clean(code, 20);
+
+  if (!deliveryCode) {
+    throw new HttpError(422, "Enter the buyer delivery code.");
+  }
+
+  return transaction(() => {
+    const row = getOrderRowForUser(user.user_id, orderId);
+
+    if (!row) {
+      throw new HttpError(404, "Used Market order was not found.");
+    }
+
+    const isSeller = row.seller_id === user.user_id;
+    const isAdmin = user.role === "admin";
+
+    if (!isSeller && !isAdmin) {
+      throw new HttpError(403, "Only the seller can verify the delivery code.");
+    }
+
+    if (row.status !== "meetup_or_delivery") {
+      throw new HttpError(
+        422,
+        "Delivery code can only be verified when pickup or delivery is in progress.",
+      );
+    }
+
+    if (String(row.verification_code || "") !== deliveryCode) {
+      throw new HttpError(422, "The delivery code is incorrect.");
+    }
+
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE used_market_orders
+      SET status = 'delivered',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, row.id);
+
+    insertEvent(
+      row.id,
+      "delivered",
+      note || "Seller verified the buyer delivery code and marked the item delivered.",
+    );
+
+    createNotification({
+      userId: row.buyer_id,
+      type: "used_market",
+      title: "Used item delivered",
+      body: `${row.listing_name} has been marked delivered.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${row.id}`,
+      imageUrl: parseImages(row.listing_image_urls)[0] || "",
+    });
+
     return getUsedOrder(user.user_id, row.id);
   });
 }
@@ -365,6 +479,16 @@ export function submitUsedDeliveryProof(user, orderId, fileUrl, note = "") {
     INSERT INTO used_market_delivery_proofs (id, order_id, seller_id, proof_image_url, note, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'submitted', ?)
   `).run(createId("udp"), row.id, row.seller_id, fileUrl || null, clean(note, 1000), new Date().toISOString());
+
+  createNotification({
+    userId: row.buyer_id,
+    type: "used_market",
+    title: "Delivery proof submitted",
+    body: `${row.listing_name} has delivery proof attached by the seller.`,
+    actionLabel: "View order",
+    actionPath: `/used-orders/${row.id}`,
+    imageUrl: fileUrl || parseImages(row.listing_image_urls)[0] || "",
+  });
 
   return { success: true };
 }

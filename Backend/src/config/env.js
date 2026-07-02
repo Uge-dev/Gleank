@@ -22,15 +22,21 @@ function normalizeUrl(value) {
 }
 
 const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
+const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
+const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
+const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: numberFromEnv(process.env.PORT, 4000),
   frontendUrl,
+  databaseProvider,
+  databaseUrl: process.env.DATABASE_URL || "",
   databasePath: path.resolve(
     backendRoot,
     process.env.DATABASE_PATH || "./data/gleank.sqlite",
   ),
+  storageProvider,
   uploadsPath: path.resolve(
     backendRoot,
     process.env.UPLOADS_PATH || "./uploads",
@@ -49,8 +55,24 @@ export const env = {
   ),
   loginLockMinutes: numberFromEnv(process.env.LOGIN_LOCK_MINUTES, 15),
   loginMaxFailedAttempts: numberFromEnv(process.env.LOGIN_MAX_FAILED_ATTEMPTS, 5),
-  sellerMonthlyFeeKobo: numberFromEnv(process.env.SELLER_MONTHLY_FEE_KOBO, 300000),
+  sellerMonthlyFeeKobo: numberFromEnv(
+    process.env.SELLER_MONTHLY_FEE_KOBO,
+    300000,
+  ),
   platformFeePercent: numberFromEnv(process.env.PLATFORM_FEE_PERCENT, 5),
+
+  paymentProvider,
+  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
+  paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || "",
+  paystackBaseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
+  paystackCallbackUrl:
+    process.env.PAYSTACK_CALLBACK_URL ||
+    `${process.env.FRONTEND_URL || "http://localhost:5173"}/payment/callback`,
+  flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY || "",
+  flutterwavePublicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || "",
+  
+  livenessProvider: process.env.LIVENESS_PROVIDER || "local",
+  livenessApiKey: process.env.LIVENESS_API_KEY || "",
   autoVerifyAuth: booleanFromEnv(
     process.env.AUTO_VERIFY_AUTH,
     process.env.NODE_ENV === "test",
@@ -64,17 +86,64 @@ export const env = {
     process.env.NODE_ENV !== "production",
   ),
   maxUploadMb: numberFromEnv(process.env.MAX_UPLOAD_MB, 5),
+  imageMaxWidth: numberFromEnv(process.env.IMAGE_MAX_WIDTH, 1800),
+  imageWebpQuality: numberFromEnv(process.env.IMAGE_WEBP_QUALITY, 86),
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || "",
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  cloudinaryFolder: process.env.CLOUDINARY_FOLDER || "gleank",
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: numberFromEnv(process.env.SMTP_PORT, 587),
   smtpSecure: booleanFromEnv(process.env.SMTP_SECURE, false),
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
-  smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "no-reply@gleank.local",
+  emailFrom: process.env.EMAIL_FROM || "",
   smtpFromName: process.env.SMTP_FROM_NAME || "Gleank",
-  smtpDebug: booleanFromEnv(process.env.SMTP_DEBUG, false),
+  smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.EMAIL_FROM || "",
   isProduction: process.env.NODE_ENV === "production",
 };
 
 if (env.isProduction && env.jwtSecret.includes("local-development")) {
   throw new Error("JWT_SECRET must be configured in production.");
+}
+
+if (!["sqlite", "postgres"].includes(env.databaseProvider)) {
+  throw new Error("DATABASE_PROVIDER must be either sqlite or postgres.");
+}
+
+if (!["local", "cloudinary"].includes(env.storageProvider)) {
+  throw new Error("STORAGE_PROVIDER must be either local or cloudinary.");
+}
+
+if (env.databaseProvider === "postgres" && !env.databaseUrl) {
+  throw new Error("DATABASE_URL is required when DATABASE_PROVIDER=postgres.");
+}
+
+if (env.storageProvider === "cloudinary") {
+  const hasCloudinaryConfig =
+    env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret;
+
+  if (!hasCloudinaryConfig) {
+    throw new Error(
+      "Cloudinary storage requires CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.",
+    );
+  }
+}
+
+if (env.isProduction && env.storageProvider !== "cloudinary") {
+  throw new Error("STORAGE_PROVIDER=cloudinary is required in production.");
+}
+
+if (env.isProduction && env.databaseProvider !== "postgres") {
+  console.warn(
+    "Production database is still set to sqlite. Complete the Postgres data-layer migration before using Neon for live production traffic.",
+  );
+}
+
+if (env.isProduction && env.paymentProvider === "paystack") {
+  if (!env.paystackSecretKey.startsWith("sk_live_")) {
+    throw new Error(
+      "PAYSTACK_SECRET_KEY must be configured with a live secret key in production.",
+    );
+  }
 }

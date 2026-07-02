@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { FiLock, FiShield } from "react-icons/fi";
 import AuthModal from "./AuthModal";
 import LoadingState from "./LoadingState";
@@ -46,9 +47,9 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
           <h1>This workspace requires a seller account</h1>
           <p>
             Your buyer account is active, but product, service, store, and
-            inventory tools are available only to registered Gleank sellers.
+            inventory tools need a completed seller profile first.
           </p>
-          <a href="/profile">Return to your profile</a>
+          <Link to="/seller/onboarding">Set up seller profile</Link>
         </div>
       </section>
     );
@@ -69,6 +70,9 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
             <button type="button" onClick={() => setAuthModalOpen(true)}>
               Open secure login
             </button>
+            <Link className="protected-forgot-link" to="/forgot-password">
+              Forgot password?
+            </Link>
           </div>
         </div>
       </section>

@@ -164,6 +164,7 @@ const { addToCart } = useCart();
       sellerName: storeName,
       sellerId: username,
       campus,
+      category,
       quantity,
     });
   }

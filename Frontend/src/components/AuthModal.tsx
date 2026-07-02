@@ -125,6 +125,14 @@ function AuthModal({ isOpen, onClose }: AuthModalProps) {
             </div>
           </label>
 
+          <Link
+            className="auth-modal-forgot-link"
+            to="/forgot-password"
+            onClick={onClose}
+          >
+            Forgot password?
+          </Link>
+
           <button
             type="submit"
             className="auth-modal-submit"

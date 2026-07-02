@@ -6,6 +6,12 @@ const numberValue = (minimum = 0) =>
     z.number().finite().min(minimum),
   );
 
+const optionalNumberValue = (minimum = 0) =>
+  z.preprocess(
+    (value) => (value === "" || value === undefined ? undefined : Number(value)),
+    z.number().finite().min(minimum).optional(),
+  );
+
 const booleanValue = z.preprocess(
   (value) =>
     value === true ||
@@ -38,8 +44,12 @@ export const productSchema = z.object({
 export const serviceSchema = z.object({
   name: z.string().trim().min(2).max(120),
   category: z.string().trim().min(2).max(80),
+  serviceType: z.string().trim().max(80).optional().default(""),
+  location: z.string().trim().max(120).optional().default(""),
   description: z.string().trim().max(3_000).default(""),
   price: numberValue(0),
+  minPrice: optionalNumberValue(0).default(0),
+  maxPrice: optionalNumberValue(0).default(0),
   durationMinutes: numberValue(1).pipe(z.number().int()),
   status: z.enum(["draft", "active", "paused"]).default("draft"),
   isFeatured: booleanValue.optional().default(false),

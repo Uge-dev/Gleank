@@ -1,8 +1,10 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -16,6 +18,7 @@ export type CartItem = {
   sellerName: string;
   sellerId: string;
   campus: string;
+  category?: string;
   quantity: number;
 };
 
@@ -39,22 +42,58 @@ type CartContextValue = {
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-const CART_STORAGE_KEY = "gleank-cart";
+const LEGACY_USER_KEY = "gleank_user";
+const OLD_GLOBAL_CART_KEY = "gleank-cart";
+const CART_KEY_PREFIX = "gleank-cart";
 
-function getStoredCart(): CartItem[] {
+function readCurrentUserId() {
   try {
-    const storedCart = localStorage.getItem(CART_STORAGE_KEY);
+    const storedUser = localStorage.getItem(LEGACY_USER_KEY);
+    if (!storedUser) return "";
 
-    if (!storedCart) return [];
+    const user = JSON.parse(storedUser) as { id?: string; isLoggedIn?: boolean };
+    if (!user?.id || user.isLoggedIn === false) return "";
 
-    const parsedCart = JSON.parse(storedCart);
+    return String(user.id);
+  } catch {
+    return "";
+  }
+}
 
-    if (!Array.isArray(parsedCart)) return [];
+function cartStorageKey(userId: string) {
+  return `${CART_KEY_PREFIX}:${userId}`;
+}
 
-    return parsedCart;
+function parseCart(value: string | null): CartItem[] {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        id: String(item.id || ""),
+        name: String(item.name || ""),
+        price: String(item.price || ""),
+        numericPrice: Number(item.numericPrice || 0),
+        image: String(item.image || ""),
+        sellerName: String(item.sellerName || ""),
+        sellerId: String(item.sellerId || ""),
+        campus: String(item.campus || ""),
+        category: item.category ? String(item.category) : undefined,
+        quantity: Math.max(1, Number(item.quantity || 1)),
+      }))
+      .filter((item) => item.id && item.name && item.sellerId);
   } catch {
     return [];
   }
+}
+
+function loadCartForUser(userId: string) {
+  if (!userId) return [];
+  return parseCart(localStorage.getItem(cartStorageKey(userId)));
 }
 
 type CartProviderProps = {
@@ -62,16 +101,56 @@ type CartProviderProps = {
 };
 
 export function CartProvider({ children }: CartProviderProps) {
+  const [currentUserId, setCurrentUserId] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [cartDrawerOpen, setCartDrawerOpen] = useState(false);
+  const hasHydratedRef = useRef(false);
 
-  useEffect(() => {
-    setCartItems(getStoredCart());
+  const hydrateCart = useCallback(() => {
+    const userId = readCurrentUserId();
+
+    setCurrentUserId(userId);
+    setCartItems(loadCartForUser(userId));
+
+    if (!userId) {
+      setCartDrawerOpen(false);
+      localStorage.removeItem(OLD_GLOBAL_CART_KEY);
+    }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems));
-  }, [cartItems]);
+    hydrateCart();
+    hasHydratedRef.current = true;
+
+    function handleStorage(event: StorageEvent) {
+      if (
+        event.key === LEGACY_USER_KEY ||
+        event.key === OLD_GLOBAL_CART_KEY ||
+        (event.key || "").startsWith(`${CART_KEY_PREFIX}:`)
+      ) {
+        hydrateCart();
+      }
+    }
+
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("gleank-auth-change", hydrateCart);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("gleank-auth-change", hydrateCart);
+    };
+  }, [hydrateCart]);
+
+  useEffect(() => {
+    if (!hasHydratedRef.current) return;
+
+    if (!currentUserId) {
+      localStorage.removeItem(OLD_GLOBAL_CART_KEY);
+      return;
+    }
+
+    localStorage.setItem(cartStorageKey(currentUserId), JSON.stringify(cartItems));
+  }, [cartItems, currentUserId]);
 
   const cartCount = useMemo(() => {
     return cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -84,6 +163,11 @@ export function CartProvider({ children }: CartProviderProps) {
   }, [cartItems]);
 
   function openCartDrawer() {
+    if (!currentUserId) {
+      setCartDrawerOpen(false);
+      return;
+    }
+
     setCartDrawerOpen(true);
   }
 
@@ -92,9 +176,14 @@ export function CartProvider({ children }: CartProviderProps) {
   }
 
   function addToCart(item: AddToCartItem) {
+    if (!currentUserId) {
+      window.dispatchEvent(new Event("gleank-cart-auth-required"));
+      return;
+    }
+
     setCartItems((currentItems) => {
       const existingItem = currentItems.find(
-        (cartItem) => cartItem.id === item.id
+        (cartItem) => cartItem.id === item.id,
       );
 
       if (existingItem) {
@@ -121,6 +210,8 @@ export function CartProvider({ children }: CartProviderProps) {
   }
 
   function increaseQuantity(id: string) {
+    if (!currentUserId) return;
+
     setCartItems((currentItems) =>
       currentItems.map((item) => {
         if (item.id !== id) return item;
@@ -129,11 +220,13 @@ export function CartProvider({ children }: CartProviderProps) {
           ...item,
           quantity: item.quantity + 1,
         };
-      })
+      }),
     );
   }
 
   function decreaseQuantity(id: string) {
+    if (!currentUserId) return;
+
     setCartItems((currentItems) =>
       currentItems
         .map((item) => {
@@ -144,39 +237,46 @@ export function CartProvider({ children }: CartProviderProps) {
             quantity: Math.max(1, item.quantity - 1),
           };
         })
-        .filter((item) => item.quantity > 0)
+        .filter((item) => item.quantity > 0),
     );
   }
 
   function removeFromCart(id: string) {
+    if (!currentUserId) return;
+
     setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== id)
+      currentItems.filter((item) => item.id !== id),
     );
   }
 
   function clearCart() {
     setCartItems([]);
+
+    if (currentUserId) {
+      localStorage.removeItem(cartStorageKey(currentUserId));
+    }
+
+    localStorage.removeItem(OLD_GLOBAL_CART_KEY);
   }
 
-  return (
-    <CartContext.Provider
-      value={{
-        cartItems,
-        cartCount,
-        cartSubtotal,
-        cartDrawerOpen,
-        openCartDrawer,
-        closeCartDrawer,
-        addToCart,
-        increaseQuantity,
-        decreaseQuantity,
-        removeFromCart,
-        clearCart,
-      }}
-    >
-      {children}
-    </CartContext.Provider>
+  const value = useMemo(
+    () => ({
+      cartItems,
+      cartCount,
+      cartSubtotal,
+      cartDrawerOpen,
+      openCartDrawer,
+      closeCartDrawer,
+      addToCart,
+      increaseQuantity,
+      decreaseQuantity,
+      removeFromCart,
+      clearCart,
+    }),
+    [cartDrawerOpen, cartCount, cartItems, cartSubtotal, currentUserId],
   );
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {

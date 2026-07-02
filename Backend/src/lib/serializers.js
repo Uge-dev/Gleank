@@ -98,14 +98,23 @@ export function serializeProduct(row) {
 export function serializeService(row) {
   if (!row) return null;
 
+  const minPriceKobo = numberOrFallback(row.min_price_kobo, 0);
+  const maxPriceKobo = numberOrFallback(row.max_price_kobo, 0);
+
   return {
     id: row.id,
     storeId: row.store_id,
     name: row.name,
     slug: row.slug,
     category: row.category,
+    serviceType: row.service_type || row.category || "",
+    location: row.location || "",
     description: row.description || "",
     ...pricePayload(row),
+    minPriceKobo,
+    minPrice: minPriceKobo / 100,
+    maxPriceKobo,
+    maxPrice: maxPriceKobo / 100,
     durationMinutes: row.duration_minutes,
     status: row.status,
     isFeatured: Boolean(row.is_featured),

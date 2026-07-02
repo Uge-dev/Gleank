@@ -1,4 +1,5 @@
 import { db } from "../db/database.js";
+import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 
@@ -29,13 +30,16 @@ export function serializeTrustProfile(row) {
     level: row.level,
     studentId: row.student_id,
     identityProofUrl: row.identity_proof_url || null,
+    faceVerified: Boolean(row.face_verified),
+    faceProvider: row.face_provider || "",
+    faceReference: row.face_reference || "",
+    faceVerifiedAt: row.face_verified_at || null,
     status: row.status,
     isComplete: Boolean(
       row.full_name &&
         row.phone &&
         row.campus &&
-        row.student_id &&
-        row.identity_proof_url,
+        row.face_verified,
     ),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -96,24 +100,40 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
     level: clean(input.level, 40),
     studentId: clean(input.studentId, 80),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
+    faceVerified:
+      input.faceVerified === true ||
+      input.faceVerified === "true" ||
+      input.faceVerified === "on" ||
+      input.faceVerified === "1" ||
+      Boolean(existing?.face_verified),
+    faceProvider: clean(input.faceProvider || existing?.face_provider || env.livenessProvider, 80),
+    faceReference: clean(
+      input.faceReference ||
+        input.livenessReference ||
+        existing?.face_reference ||
+        `local-face-${Date.now()}`,
+      160,
+    ),
   };
 
-  if (!next.fullName || !next.phone || !next.campus || !next.studentId) {
+  if (!next.fullName || !next.phone || !next.campus) {
     throw new HttpError(
       422,
-      "Complete your trust profile with full name, phone, campus, and student ID before uploading used items.",
+      "Complete your trust profile with full name, phone, and campus before uploading used items.",
     );
   }
 
-  if (!next.identityProofUrl) {
-    throw new HttpError(422, "Upload a student ID or identity proof image.");
+  if (!next.faceVerified) {
+    throw new HttpError(422, "Complete live face verification before uploading used items.");
   }
 
   if (existing) {
     db.prepare(`
       UPDATE user_trust_profiles
       SET full_name = ?, phone = ?, campus = ?, department = ?, level = ?,
-          student_id = ?, identity_proof_url = ?, status = 'pending', updated_at = ?
+          student_id = ?, identity_proof_url = ?, face_verified = ?,
+          face_provider = ?, face_reference = ?, face_verified_at = ?,
+          status = 'pending', updated_at = ?
       WHERE user_id = ?
     `).run(
       next.fullName,
@@ -123,6 +143,10 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       next.level,
       next.studentId,
       next.identityProofUrl,
+      next.faceVerified ? 1 : 0,
+      next.faceProvider,
+      next.faceReference,
+      next.faceVerified ? existing?.face_verified_at || now : null,
       now,
       userId,
     );
@@ -130,8 +154,9 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
     db.prepare(`
       INSERT INTO user_trust_profiles (
         id, user_id, full_name, phone, campus, department, level,
-        student_id, identity_proof_url, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        student_id, identity_proof_url, face_verified, face_provider,
+        face_reference, face_verified_at, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     `).run(
       createId("trp"),
       userId,
@@ -142,6 +167,10 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       next.level,
       next.studentId,
       next.identityProofUrl,
+      next.faceVerified ? 1 : 0,
+      next.faceProvider,
+      next.faceReference,
+      next.faceVerified ? now : null,
       now,
       now,
     );

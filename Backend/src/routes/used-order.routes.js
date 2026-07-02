@@ -8,6 +8,7 @@ import {
   markUsedOrderPaid,
   submitUsedDeliveryProof,
   updateUsedOrderStatus,
+  verifyUsedOrderDelivery,
 } from "../services/used-order.service.js";
 
 export const usedOrderRouter = Router();
@@ -27,7 +28,24 @@ usedOrderRouter.get("/:id", (req, res) => {
 });
 
 usedOrderRouter.post("/:id/pay", (req, res) => {
-  res.json({ order: markUsedOrderPaid(req.auth.user_id, req.params.id) });
+  res.json({
+    order: markUsedOrderPaid(
+      req.auth.user_id,
+      req.params.id,
+      String(req.body?.reference || ""),
+    ),
+  });
+});
+
+usedOrderRouter.post("/:id/verify-delivery", (req, res) => {
+  res.json({
+    order: verifyUsedOrderDelivery(
+      req.auth,
+      req.params.id,
+      String(req.body?.code || ""),
+      String(req.body?.note || ""),
+    ),
+  });
 });
 
 usedOrderRouter.patch("/:id/status", (req, res) => {
@@ -36,6 +54,17 @@ usedOrderRouter.patch("/:id/status", (req, res) => {
       req.auth,
       req.params.id,
       String(req.body?.status || ""),
+      String(req.body?.note || ""),
+    ),
+  });
+});
+
+usedOrderRouter.post("/:id/verify-delivery", (req, res) => {
+  res.json({
+    order: verifyUsedOrderDelivery(
+      req.auth,
+      req.params.id,
+      String(req.body?.verificationCode || ""),
       String(req.body?.note || ""),
     ),
   });

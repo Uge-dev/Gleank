@@ -359,8 +359,30 @@ function Create() {
               />
             </label>
 
+            {createType === "service" && (
+              <>
+                <label>
+                  <span>Service type</span>
+                  <input
+                    name="serviceType"
+                    defaultValue={existingService?.serviceType || existingService?.category || ""}
+                    placeholder="Repair, Makeup, Laundry, Design..."
+                  />
+                </label>
+
+                <label>
+                  <span>Service location</span>
+                  <input
+                    name="location"
+                    defaultValue={existingService?.location || ""}
+                    placeholder="On campus, online, hostel pickup..."
+                  />
+                </label>
+              </>
+            )}
+
             <label>
-              <span>Price (₦)</span>
+              <span>{createType === "service" ? "Starting price (₦)" : "Price (₦)"}</span>
               <input
                 name="price"
                 type="number"
@@ -371,6 +393,34 @@ function Create() {
                 required
               />
             </label>
+
+            {createType === "service" && (
+              <>
+                <label>
+                  <span>Minimum amount (₦)</span>
+                  <input
+                    name="minPrice"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={existingService?.minPrice || existingService?.price || ""}
+                    placeholder="2000"
+                  />
+                </label>
+
+                <label>
+                  <span>Maximum amount (₦)</span>
+                  <input
+                    name="maxPrice"
+                    type="number"
+                    min="0"
+                    step="1"
+                    defaultValue={existingService?.maxPrice || ""}
+                    placeholder="Optional"
+                  />
+                </label>
+              </>
+            )}
 
             {createType === "product" ? (
               <label>

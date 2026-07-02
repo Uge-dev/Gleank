@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { fileUrl, upload } from "../middleware/upload.js";
-import { requireAuth, requireRole } from "../middleware/auth.js";
+import { requireAuth } from "../middleware/auth.js";
 import {
   getSellerReadiness,
   getSellerVerification,
@@ -10,7 +10,7 @@ import { ensureSellerSubscription, getSellerSubscription } from "../services/sub
 
 export const sellerVerificationRouter = Router();
 
-sellerVerificationRouter.use(requireAuth, requireRole("seller", "admin"));
+sellerVerificationRouter.use(requireAuth);
 
 sellerVerificationRouter.get("/me", (req, res) => {
   if (req.auth.role === "admin") {
@@ -18,7 +18,10 @@ sellerVerificationRouter.get("/me", (req, res) => {
     return;
   }
 
-  ensureSellerSubscription(req.auth.user_id);
+  if (req.auth.role === "seller") {
+    ensureSellerSubscription(req.auth.user_id);
+  }
+
   res.json({
     verification: getSellerVerification(req.auth.user_id),
     readiness: getSellerReadiness(req.auth.user_id),

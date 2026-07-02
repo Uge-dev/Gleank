@@ -7,9 +7,13 @@ export function getConversations() {
   );
 }
 
+export function getUnreadMessageCount() {
+  return apiRequest<{ unreadCount: number }>("/messages/unread-count");
+}
+
 export function createConversation(input: {
-  contextType: "used_listing" | "used_order";
-  contextId: string;
+  contextType: "used_listing" | "used_order" | "store" | "order" | "support";
+  contextId?: string;
 }) {
   return apiRequest<{ conversation: GleankConversation }>(
     "/messages/conversations",

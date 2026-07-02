@@ -1,173 +1,138 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
-
-let transporterPromise = null;
-
-function isSmtpConfigured() {
-  return Boolean(env.smtpHost && env.smtpUser && env.smtpPass);
-}
-
-function getFromAddress() {
-  const name = String(env.smtpFromName || "Gleank").replace(/[<>]/g, "").trim();
-  const email = String(env.smtpFromEmail || env.smtpUser || "no-reply@gleank.local").trim();
-  return name ? `"${name}" <${email}>` : email;
-}
-
-async function getTransporter() {
-  if (!isSmtpConfigured()) {
-    return null;
-  }
-
-  if (!transporterPromise) {
-    transporterPromise = Promise.resolve(
-      nodemailer.createTransport({
-        host: env.smtpHost,
-        port: env.smtpPort,
-        secure: env.smtpSecure,
-        auth: {
-          user: env.smtpUser,
-          pass: env.smtpPass,
-        },
-        logger: env.smtpDebug,
-        debug: env.smtpDebug,
-      }),
-    );
-  }
-
-  return transporterPromise;
-}
+import { HttpError } from "../lib/http-error.js";
 
 export function buildFrontendUrl(path) {
   const base = env.frontendUrl.replace(/\/$/, "");
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-function escapeHtml(value = "") {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+function assertEmailConfigured() {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !env.emailFrom) {
+    throw new HttpError(
+      500,
+      "Email delivery is not configured. Add Brevo SMTP values to Backend/.env.",
+    );
+  }
 }
 
-function emailShell({ title, preview, body, ctaText, ctaUrl, footer }) {
-  const safeTitle = escapeHtml(title);
-  const safePreview = escapeHtml(preview);
-  const safeBody = escapeHtml(body);
-  const safeCtaText = escapeHtml(ctaText);
-  const safeCtaUrl = escapeHtml(ctaUrl);
-  const safeFooter = escapeHtml(footer);
+let transporter = null;
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${safeTitle}</title>
-  </head>
-  <body style="margin:0;background:#f6f8fb;font-family:Arial,Helvetica,sans-serif;color:#111827;">
-    <span style="display:none!important;visibility:hidden;opacity:0;height:0;width:0;overflow:hidden;">${safePreview}</span>
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f8fb;padding:32px 12px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #e5e7eb;">
-            <tr>
-              <td style="padding:28px 28px 12px;background:#07111f;color:#ffffff;">
-                <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#fb923c;font-weight:700;">Gleank</div>
-                <h1 style="margin:12px 0 0;font-size:26px;line-height:1.25;">${safeTitle}</h1>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:28px;">
-                <p style="margin:0 0 20px;font-size:16px;line-height:1.65;color:#374151;">${safeBody}</p>
-                <a href="${safeCtaUrl}" style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700;font-size:15px;">${safeCtaText}</a>
-                <p style="margin:24px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">If the button does not work, copy and paste this link into your browser:<br />
-                  <a href="${safeCtaUrl}" style="color:#2563eb;word-break:break-all;">${safeCtaUrl}</a>
-                </p>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:18px 28px 28px;color:#6b7280;font-size:12px;line-height:1.6;border-top:1px solid #eef2f7;">${safeFooter}</td>
-            </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`;
-}
-
-async function sendMail({ to, subject, text, html }) {
-  const transporter = await getTransporter();
+function getTransporter() {
+  assertEmailConfigured();
 
   if (!transporter) {
-    const message = "SMTP email is not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS, and sender details in Backend/.env.";
-
-    if (env.isProduction) {
-      throw new Error(message);
-    }
-
-    console.warn(`[Gleank email warning] ${message}`);
-    console.log(`[Gleank email fallback] To: ${to}`);
-    console.log(`[Gleank email fallback] Subject: ${subject}`);
-    console.log(text);
-    return { delivered: false, mode: "console" };
+    transporter = nodemailer.createTransport({
+      host: env.smtpHost,
+      port: env.smtpPort,
+      secure: env.smtpSecure,
+      connectionTimeout: 8_000,
+      greetingTimeout: 8_000,
+      socketTimeout: 12_000,
+      auth: {
+        user: env.smtpUser,
+        pass: env.smtpPass,
+      },
+    });
   }
 
-  const info = await transporter.sendMail({
-    from: getFromAddress(),
+  return transporter;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !env.emailFrom) {
+    if (env.isProduction) {
+      assertEmailConfigured();
+    }
+
+    console.info(
+      `[email:development] ${subject} -> ${to}\n${text || html || ""}`,
+    );
+
+    return { sent: false, development: true };
+  }
+
+  const mailer = getTransporter();
+
+  await mailer.sendMail({
+    from: env.emailFrom,
     to,
     subject,
     text,
     html,
   });
 
-  if (!env.isProduction || env.smtpDebug) {
-    console.log(`[Gleank email sent] ${subject} -> ${to} (${info.messageId || "no-message-id"})`);
-  }
-
-  return { delivered: true, messageId: info.messageId };
+  return { sent: true, development: false };
 }
 
 export async function sendEmailVerificationEmail({ to, name, token }) {
   const verificationUrl = buildFrontendUrl(`/verify-email?token=${encodeURIComponent(token)}`);
-  const displayName = name || "there";
-  const subject = "Verify your Gleank email address";
-  const body = `Hi ${displayName}, please verify your email address to activate your Gleank account and continue using protected buyer, seller, order, chat, and used-market features.`;
-  const footer = "This verification link expires soon. If you did not create a Gleank account, you can safely ignore this email.";
+  const safeName = escapeHtml(name || "there");
 
-  const text = `${body}\n\nVerify your email: ${verificationUrl}\n\n${footer}`;
-  const html = emailShell({
-    title: "Verify your email",
-    preview: "Complete your Gleank signup by verifying your email address.",
-    body,
-    ctaText: "Verify Email",
-    ctaUrl: verificationUrl,
-    footer,
+  await sendTransactionalEmail({
+    to,
+    subject: "Verify your Gleank account",
+    text: `Hello ${name || "there"},
+
+Verify your Gleank account by opening this link:
+${verificationUrl}
+
+This link expires soon. If you did not create a Gleank account, ignore this email.`,
+    html: `
+      <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;padding:28px;">
+          <p style="margin:0 0 10px;color:#16a34a;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Gleank verification</p>
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.15;color:#020617;">Verify your email</h1>
+          <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.6;">Hello ${safeName}, confirm this email address to secure your Gleank account and unlock protected actions.</p>
+          <a href="${verificationUrl}" style="display:inline-flex;align-items:center;justify-content:center;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:14px;padding:14px 20px;font-weight:800;">Verify email</a>
+          <p style="margin:22px 0 0;color:#64748b;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:<br>${verificationUrl}</p>
+        </div>
+      </div>
+    `,
   });
 
-  const result = await sendMail({ to, subject, text, html });
-  return { ...result, verificationUrl };
+  return { sent: true };
 }
 
 export async function sendPasswordResetEmail({ to, name, token }) {
   const resetUrl = buildFrontendUrl(`/forgot-password?token=${encodeURIComponent(token)}`);
-  const displayName = name || "there";
-  const subject = "Reset your Gleank password";
-  const body = `Hi ${displayName}, use this secure link to reset your Gleank password. If you did not request a reset, ignore this email and your password will remain unchanged.`;
-  const footer = "This password reset link expires soon for your account security.";
+  const safeName = escapeHtml(name || "there");
 
-  const text = `${body}\n\nReset your password: ${resetUrl}\n\n${footer}`;
-  const html = emailShell({
-    title: "Reset your password",
-    preview: "Use this secure Gleank link to reset your password.",
-    body,
-    ctaText: "Reset Password",
-    ctaUrl: resetUrl,
-    footer,
+  await sendTransactionalEmail({
+    to,
+    subject: "Reset your Gleank password",
+    text: `Hello ${name || "there"},
+
+Reset your Gleank password by opening this link:
+${resetUrl}
+
+Recovery code:
+${token}
+
+This link expires soon. If you did not request a password reset, ignore this email.`,
+    html: `
+      <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;padding:28px;">
+          <p style="margin:0 0 10px;color:#16a34a;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Gleank security</p>
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.15;color:#020617;">Reset your password</h1>
+          <p style="margin:0 0 18px;color:#475569;font-size:15px;line-height:1.6;">Hello ${safeName}, use this secure link to choose a new password for your Gleank account.</p>
+          <a href="${resetUrl}" style="display:inline-flex;align-items:center;justify-content:center;background:#16a34a;color:#ffffff;text-decoration:none;border-radius:14px;padding:14px 20px;font-weight:800;">Reset password</a>
+          <p style="margin:22px 0 8px;color:#334155;font-size:13px;font-weight:800;">Recovery code</p>
+          <p style="margin:0;color:#0f172a;background:#f1f5f9;border-radius:14px;padding:12px;word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;">${escapeHtml(token)}</p>
+          <p style="margin:22px 0 0;color:#64748b;font-size:13px;line-height:1.5;">If the button does not work, copy and paste this link into your browser:<br>${resetUrl}</p>
+        </div>
+      </div>
+    `,
   });
 
-  const result = await sendMail({ to, subject, text, html });
-  return { ...result, resetUrl };
+  return { sent: true };
 }

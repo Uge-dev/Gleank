@@ -3,6 +3,12 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { env } from "../config/env.js";
 
+if (env.databaseProvider === "postgres") {
+  throw new Error(
+    "DATABASE_PROVIDER=postgres is configured, but the runtime data layer still uses SQLite. Run npm --prefix Backend run neon:check to verify Neon credentials, then complete the async Postgres repository migration before starting the API with DATABASE_PROVIDER=postgres.",
+  );
+}
+
 fs.mkdirSync(path.dirname(env.databasePath), { recursive: true });
 
 export const db = new Database(env.databasePath, {
@@ -38,6 +44,27 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL
+      CHECK (type IN ('order', 'message', 'seller', 'product', 'like', 'admin', 'used_market')),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    action_label TEXT NOT NULL DEFAULT 'Open',
+    action_path TEXT NOT NULL DEFAULT '/',
+    image_url TEXT,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    read_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS notifications_user_id_idx
+    ON notifications(user_id);
+  CREATE INDEX IF NOT EXISTS notifications_unread_idx
+    ON notifications(user_id, is_read, created_at);
 
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id TEXT PRIMARY KEY,
@@ -117,8 +144,12 @@ db.exec(`
     name TEXT NOT NULL,
     slug TEXT NOT NULL,
     category TEXT NOT NULL,
+    service_type TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
     description TEXT NOT NULL DEFAULT '',
     price_kobo INTEGER NOT NULL CHECK (price_kobo >= 0),
+    min_price_kobo INTEGER NOT NULL DEFAULT 0,
+    max_price_kobo INTEGER NOT NULL DEFAULT 0,
     duration_minutes INTEGER NOT NULL DEFAULT 60 CHECK (duration_minutes > 0),
     status TEXT NOT NULL DEFAULT 'draft'
       CHECK (status IN ('draft', 'active', 'paused')),
@@ -276,14 +307,44 @@ db.exec(`
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
+    parent_comment_id TEXT,
     body TEXT NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_comment_id) REFERENCES product_comments(id) ON DELETE CASCADE
   ) STRICT;
 
   CREATE INDEX IF NOT EXISTS product_comments_product_id_idx
     ON product_comments(product_id);
+
+  CREATE TABLE IF NOT EXISTS product_comment_likes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    comment_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (comment_id) REFERENCES product_comments(id) ON DELETE CASCADE,
+    UNIQUE(user_id, comment_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS product_comment_likes_comment_id_idx
+    ON product_comment_likes(comment_id);
+
+  CREATE TABLE IF NOT EXISTS cart_items (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    product_id TEXT NOT NULL,
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    UNIQUE(user_id, product_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS cart_items_user_id_idx ON cart_items(user_id);
 
   CREATE TABLE IF NOT EXISTS product_shares (
     id TEXT PRIMARY KEY,
@@ -621,6 +682,36 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS payment_transactions (
+    id TEXT PRIMARY KEY,
+    reference TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'local',
+    purpose TEXT NOT NULL
+      CHECK (purpose IN ('store_order', 'used_order', 'seller_subscription')),
+    order_id TEXT,
+    used_order_id TEXT,
+    subscription_id TEXT,
+    user_id TEXT NOT NULL,
+    amount_kobo INTEGER NOT NULL CHECK (amount_kobo >= 0),
+    currency TEXT NOT NULL DEFAULT 'NGN',
+    status TEXT NOT NULL DEFAULT 'initialized'
+      CHECK (status IN ('initialized', 'paid', 'failed', 'cancelled')),
+    authorization_url TEXT NOT NULL DEFAULT '',
+    provider_reference TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (subscription_id) REFERENCES seller_subscriptions(id) ON DELETE SET NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_user_id_idx
+    ON payment_transactions(user_id);
+  CREATE INDEX IF NOT EXISTS payment_transactions_reference_idx
+    ON payment_transactions(reference);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -632,6 +723,10 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("products", "is_featured", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "is_featured", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "service_type", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("services", "location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("services", "min_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "max_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 
 ensureColumn("used_listings", "reason_for_selling", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("used_listings", "defects_disclosed", "TEXT NOT NULL DEFAULT ''");
@@ -669,6 +764,18 @@ ensureColumn("used_listings", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0")
 ensureColumn("used_listings", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 
+ensureColumn("seller_verification_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("seller_verification_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "face_reference", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "face_verified_at", "TEXT");
+ensureColumn("user_trust_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("user_trust_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "face_reference", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
+
+ensureColumn("product_comments", "parent_comment_id", "TEXT");
+ensureColumn("product_comments", "is_deleted", "INTEGER NOT NULL DEFAULT 0");
+
 
 
 
@@ -687,6 +794,53 @@ for (const table of ["products", "services", "used_listings"]) {
     WHERE price_kobo > 0
   `).run();
 }
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS payment_transactions (
+    id TEXT PRIMARY KEY,
+    reference TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'local',
+    purpose TEXT NOT NULL CHECK (
+      purpose IN ('store_order', 'used_order', 'seller_subscription')
+    ),
+    order_id TEXT,
+    used_order_id TEXT,
+    subscription_id TEXT,
+    user_id TEXT NOT NULL,
+    amount_kobo INTEGER NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'NGN',
+    status TEXT NOT NULL DEFAULT 'initialized' CHECK (
+      status IN ('initialized', 'paid', 'failed', 'cancelled')
+    ),
+    authorization_url TEXT NOT NULL DEFAULT '',
+    provider_reference TEXT NOT NULL DEFAULT '',
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE SET NULL,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE SET NULL,
+    FOREIGN KEY (subscription_id) REFERENCES seller_subscriptions(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_user_id_idx
+    ON payment_transactions(user_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_reference_idx
+    ON payment_transactions(reference);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_order_id_idx
+    ON payment_transactions(order_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_used_order_id_idx
+    ON payment_transactions(used_order_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_subscription_id_idx
+    ON payment_transactions(subscription_id);
+
+  CREATE INDEX IF NOT EXISTS payment_transactions_purpose_idx
+    ON payment_transactions(purpose);
+`);
 
 export function transaction(callback) {
   db.exec("BEGIN IMMEDIATE");

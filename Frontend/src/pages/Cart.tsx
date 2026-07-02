@@ -1,47 +1,15 @@
-import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   FiArrowRight,
+  FiLock,
   FiMinus,
   FiPlus,
   FiShoppingCart,
   FiTrash2,
 } from "react-icons/fi";
-
 import EmptyState from "../components/EmptyState";
-
-type CartItem = {
-  id: string;
-  name: string;
-  seller: string;
-  category: string;
-  price: number;
-  quantity: number;
-  image: string;
-};
-
-const initialCartItems: CartItem[] = [
-  {
-    id: "cart-001",
-    name: "Jollof Rice Combo",
-    seller: "Tasty Bowl",
-    category: "Food",
-    price: 2500,
-    quantity: 2,
-    image:
-      "https://images.unsplash.com/photo-1604909052743-94e838986d24?auto=format&fit=crop&w=900&q=80",
-  },
-  {
-    id: "cart-002",
-    name: "Campus Hoodie",
-    seller: "Style Plug",
-    category: "Fashion",
-    price: 12000,
-    quantity: 1,
-    image:
-      "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=900&q=80",
-  },
-];
+import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -52,52 +20,35 @@ function formatPrice(price: number) {
 }
 
 function Cart() {
-  const [cartItems, setCartItems] = useState<CartItem[]>(initialCartItems);
+  const { isAuthenticated } = useAuth();
+  const {
+    cartItems,
+    cartSubtotal,
+    increaseQuantity,
+    decreaseQuantity,
+    removeFromCart,
+  } = useCart();
 
-  const subtotal = useMemo(() => {
-    return cartItems.reduce((total, item) => {
-      return total + item.price * item.quantity;
-    }, 0);
-  }, [cartItems]);
-
-  const deliveryFee = cartItems.length > 0 ? 1000 : 0;
-  const serviceFee = cartItems.length > 0 ? 500 : 0;
-  const total = subtotal + deliveryFee + serviceFee;
-
-  function increaseQuantity(id: string) {
-    setCartItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== id) return item;
-        return {
-          ...item,
-          quantity: item.quantity + 1,
-        };
-      })
-    );
-  }
-
-  function decreaseQuantity(id: string) {
-    setCartItems((currentItems) =>
-      currentItems.map((item) => {
-        if (item.id !== id) return item;
-
-        return {
-          ...item,
-          quantity: Math.max(1, item.quantity - 1),
-        };
-      })
-    );
-  }
-
-  function removeItem(id: string) {
-    setCartItems((currentItems) =>
-      currentItems.filter((item) => item.id !== id)
+  if (!isAuthenticated) {
+    return (
+      <main className="cart-page">
+        <EmptyState
+          icon={<FiLock />}
+          eyebrow="Login required"
+          title="Sign in to view your cart"
+          message="Your cart is protected and tied to your Gleank account so another user cannot see your selected products on this device."
+          actionLabel="Login to Continue"
+          onAction={() => {
+            window.location.href = "/login";
+          }}
+        />
+      </main>
     );
   }
 
   if (cartItems.length === 0) {
     return (
-      <section className="cart-page">
+      <main className="cart-page">
         <EmptyState
           icon={<FiShoppingCart />}
           eyebrow="Your cart is empty"
@@ -108,15 +59,19 @@ function Cart() {
             window.location.href = "/search";
           }}
         />
-      </section>
+      </main>
     );
   }
 
+  const serviceFee = 0;
+  const deliveryFee = 0;
+  const total = cartSubtotal + deliveryFee + serviceFee;
+
   return (
-    <section className="cart-page">
-      <div className="cart-page-header">
+    <main className="cart-page">
+      <section className="cart-hero">
         <div>
-          <span>Shopping Cart</span>
+          <span className="eyebrow">Shopping Cart</span>
           <h1>Your cart</h1>
           <p>
             Review your selected products, update quantities, and continue to
@@ -124,27 +79,26 @@ function Cart() {
           </p>
         </div>
 
-        <Link to="/search">
+        <Link to="/search" className="ghost-button">
           Continue Shopping
-          <FiArrowRight />
         </Link>
-      </div>
+      </section>
 
-      <div className="cart-layout">
-        <div className="cart-items-list">
+      <section className="cart-layout">
+        <div className="cart-items-panel">
           {cartItems.map((item) => (
             <article className="cart-item-card" key={item.id}>
               <img src={item.image} alt={item.name} />
 
               <div className="cart-item-info">
-                <span>{item.category}</span>
+                <span>{item.campus || "Campus product"}</span>
                 <h2>{item.name}</h2>
-                <p>Sold by {item.seller}</p>
-                <strong>{formatPrice(item.price)}</strong>
+                <p>Sold by {item.sellerName}</p>
+                <strong>{formatPrice(item.numericPrice)}</strong>
               </div>
 
-              <div className="cart-item-controls">
-                <div className="cart-quantity-control">
+              <div className="cart-item-actions">
+                <div className="quantity-control">
                   <button
                     type="button"
                     onClick={() => decreaseQuantity(item.id)}
@@ -164,12 +118,12 @@ function Cart() {
                   </button>
                 </div>
 
-                <small>{formatPrice(item.price * item.quantity)}</small>
+                <strong>{formatPrice(item.numericPrice * item.quantity)}</strong>
 
                 <button
                   type="button"
-                  className="cart-remove-btn"
-                  onClick={() => removeItem(item.id)}
+                  className="remove-cart-item"
+                  onClick={() => removeFromCart(item.id)}
                 >
                   <FiTrash2 />
                   Remove
@@ -180,44 +134,41 @@ function Cart() {
         </div>
 
         <aside className="cart-summary-card">
-          <span>Order Summary</span>
-
+          <span className="eyebrow">Order Summary</span>
           <h2>Checkout details</h2>
 
-          <div className="cart-summary-list">
-            <div>
-              <p>Subtotal</p>
-              <strong>{formatPrice(subtotal)}</strong>
-            </div>
-
-            <div>
-              <p>Delivery fee</p>
-              <strong>{formatPrice(deliveryFee)}</strong>
-            </div>
-
-            <div>
-              <p>Service fee</p>
-              <strong>{formatPrice(serviceFee)}</strong>
-            </div>
+          <div className="summary-row">
+            <span>Subtotal</span>
+            <strong>{formatPrice(cartSubtotal)}</strong>
           </div>
 
-          <div className="cart-total-row">
-            <p>Total</p>
+          <div className="summary-row">
+            <span>Delivery fee</span>
+            <strong>Calculated at checkout</strong>
+          </div>
+
+          <div className="summary-row">
+            <span>Service fee</span>
+            <strong>{formatPrice(serviceFee)}</strong>
+          </div>
+
+          <div className="summary-total">
+            <span>Estimated total</span>
             <strong>{formatPrice(total)}</strong>
           </div>
 
-          <Link to="/checkout" className="cart-checkout-btn">
+          <Link to="/checkout" className="primary-button full-width">
             Proceed to Checkout
             <FiArrowRight />
           </Link>
 
           <p className="cart-summary-note">
-            Your payment will be protected. Delivery and pickup options will be
-            confirmed at checkout.
+            Delivery fee is calculated at checkout based on your selected campus
+            delivery location.
           </p>
         </aside>
-      </div>
-    </section>
+      </section>
+    </main>
   );
 }
 

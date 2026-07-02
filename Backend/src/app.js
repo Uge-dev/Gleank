@@ -23,8 +23,12 @@ import { trustRouter } from "./routes/trust.routes.js";
 import { securityRouter } from "./routes/security.routes.js";
 import { subscriptionRouter } from "./routes/subscription.routes.js";
 import { sellerVerificationRouter } from "./routes/seller-verification.routes.js";
+import { paymentRouter } from "./routes/payment.routes.js";
+import { cartRouter } from "./routes/cart.routes.js";
 import { userRouter } from "./routes/user.routes.js";
+import { notificationRouter } from "./routes/notification.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import { deliveryRouter } from "./routes/delivery.routes.js";
 
 export const app = express();
 
@@ -92,6 +96,7 @@ app.get("/api/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
+app.use("/api/delivery", deliveryRouter);
 app.use("/api/saved", savedRouter);
 app.use("/api/users", userRouter);
 app.use("/api/stores", storeRouter);
@@ -103,6 +108,9 @@ app.use("/api/trust", trustRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 app.use("/api/seller-verification", sellerVerificationRouter);
+app.use("/api/payments", paymentRouter);
+app.use("/api/cart", cartRouter);
+app.use("/api/notifications", notificationRouter);
 app.use("/api/admin", adminRoutes);
 
 app.use(notFoundHandler);

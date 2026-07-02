@@ -8,7 +8,6 @@ import {
   FiCreditCard,
   FiShield,
   FiShoppingBag,
-  FiUploadCloud,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { useAuth } from "../context/AuthContext";
@@ -20,9 +19,10 @@ import {
 import { activateSellerSubscriptionForDevelopment } from "../services/subscription.service";
 
 function SellerOnboarding() {
-  const { user, store } = useAuth();
+  const { user, store, refreshSession } = useAuth();
   const [state, setState] = useState<SellerVerificationResponse | null>(null);
-  const [identityFileName, setIdentityFileName] = useState("");
+  const [faceVerified, setFaceVerified] = useState(false);
+  const [faceReference, setFaceReference] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +33,8 @@ function SellerOnboarding() {
     try {
       const result = await getSellerVerification();
       setState(result);
+      setFaceVerified(Boolean(result.verification?.faceVerified));
+      setFaceReference(result.verification?.faceReference || "");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -42,6 +44,13 @@ function SellerOnboarding() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  function handleLocalFaceCheck() {
+    const reference = `local-face-${Date.now()}`;
+    setFaceVerified(true);
+    setFaceReference(reference);
+    setMessage("Local face verification captured. Connect a real liveness provider before production.");
   }
 
   useEffect(() => {
@@ -57,6 +66,7 @@ function SellerOnboarding() {
     try {
       const result = await updateSellerVerification(new FormData(event.currentTarget));
       setState(result);
+      await refreshSession();
       setMessage("Seller verification submitted successfully.");
     } catch (requestError) {
       setError(
@@ -107,9 +117,11 @@ function SellerOnboarding() {
 
       <div className="seller-onboarding-hero">
         <span><FiShoppingBag /> Seller Onboarding</span>
-        <h1>Unlock a verified Gleank seller workspace.</h1>
+        <h1>{store ? "Complete your verified seller workspace." : "Turn your buyer account into a seller profile."}</h1>
         <p>
-          Complete seller identity, accept the seller agreement, and keep your ₦3,000 monthly subscription active before publishing campus products or services.
+          {store
+            ? "Complete seller identity, accept the seller agreement, and keep your ₦3,000 monthly subscription active before publishing campus products or services."
+            : "You do not need another login. Add store details, complete verification, and Gleank will upgrade this account into a seller account."}
         </p>
       </div>
 
@@ -121,8 +133,30 @@ function SellerOnboarding() {
           <div className="seller-onboarding-title">
             <span>Verification</span>
             <h2>Seller identity</h2>
-            <p>Use details that match your student ID or valid identity proof.</p>
+            <p>Use your real seller details and complete live face verification. Existing buyer details are prefilled where possible.</p>
           </div>
+
+          {!store && (
+            <div className="seller-onboarding-form-grid">
+              <label>
+                <span>Store name</span>
+                <input
+                  name="storeName"
+                  defaultValue={`${user?.name?.split(" ")[0] || "Gleank"} Store`}
+                  placeholder="Destiny Gadgets"
+                  required
+                />
+              </label>
+              <label>
+                <span>Store category</span>
+                <input
+                  name="storeCategory"
+                  placeholder="Food, Fashion, Gadgets, Services..."
+                  required
+                />
+              </label>
+            </div>
+          )}
 
           <div className="seller-onboarding-form-grid">
             <label>
@@ -137,11 +171,27 @@ function SellerOnboarding() {
               <span>Campus</span>
               <input name="campus" defaultValue={verification?.campus || user?.campus || ""} required />
             </label>
-            <label>
-              <span>Student ID / Matric No.</span>
-              <input name="studentId" defaultValue={verification?.studentId || ""} required />
-            </label>
           </div>
+
+          <div className="seller-face-check-card">
+            <FiShield />
+            <div>
+              <span>Real-time face verification</span>
+              <strong>{faceVerified ? "Face check completed" : "Face check required"}</strong>
+              <p>
+                Local mode stores only the verification result, provider, reference,
+                and timestamp. Production should connect Smile ID, Dojah, Prembly,
+                or another liveness provider.
+              </p>
+            </div>
+            <button type="button" onClick={handleLocalFaceCheck}>
+              {faceVerified ? "Run again" : "Run local face check"}
+            </button>
+          </div>
+
+          <input type="hidden" name="faceVerified" value={faceVerified ? "true" : "false"} />
+          <input type="hidden" name="faceProvider" value="local" />
+          <input type="hidden" name="faceReference" value={faceReference} />
 
           <label className="seller-onboarding-full">
             <span>Business description</span>
@@ -151,19 +201,6 @@ function SellerOnboarding() {
               placeholder="Explain what you sell, how students receive orders, and your campus availability."
               rows={6}
               required
-            />
-          </label>
-
-          <label className="seller-onboarding-upload">
-            <FiUploadCloud />
-            <strong>{identityFileName || "Upload identity proof"}</strong>
-            <p>Student ID, school card, or clear identity proof image. JPEG, PNG, WebP, or GIF.</p>
-            <input
-              name="identityProof"
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              onChange={(event) => setIdentityFileName(event.target.files?.[0]?.name || "")}
-              required={!verification?.identityProofUrl}
             />
           </label>
 
@@ -204,6 +241,7 @@ function SellerOnboarding() {
 
           <div className="seller-status-list">
             <span className={user?.emailVerified ? "done" : ""}>Email verified</span>
+            <span className={faceVerified ? "done" : ""}>Face verification complete</span>
             <span className={verification?.status === "verified" ? "done" : ""}>Seller verified</span>
             <span className={subscription?.isActive ? "done" : ""}>Subscription active</span>
             <span>5% buyer-facing platform fee ready</span>

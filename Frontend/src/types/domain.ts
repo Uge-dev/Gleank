@@ -74,6 +74,8 @@ export type SellerService = {
   name: string;
   slug: string;
   category: string;
+  serviceType?: string;
+  location?: string;
   description: string;
   sellerPriceKobo?: number;
   sellerPrice?: number;
@@ -83,6 +85,10 @@ export type SellerService = {
   buyerPrice?: number;
   priceKobo: number;
   price: number;
+  minPriceKobo?: number;
+  minPrice?: number;
+  maxPriceKobo?: number;
+  maxPrice?: number;
   durationMinutes: number;
   status: "draft" | "active" | "paused";
   isFeatured: boolean;
@@ -157,6 +163,12 @@ export type PublicStoreWorkspace = SellerWorkspace & {
 export type ProductComment = {
   id: string;
   body: string;
+  parentCommentId: string | null;
+  replyToName: string | null;
+  isDeleted: boolean;
+  likeCount: number;
+  liked: boolean;
+  canDelete: boolean;
   createdAt: string;
   user: {
     id: string;
@@ -177,6 +189,10 @@ export type UsedMarketTrustProfile = {
   level: string;
   studentId: string;
   identityProofUrl: string | null;
+  faceVerified: boolean;
+  faceProvider: string;
+  faceReference: string;
+  faceVerifiedAt: string | null;
   status: TrustProfileStatus;
   isComplete: boolean;
   createdAt: string;
@@ -205,6 +221,9 @@ export type UsedMarketTrustStatus = {
 export type UsedSellerTrust = {
   profileCompleted: boolean;
   identityProofSubmitted: boolean;
+  faceVerified?: boolean;
+  faceProvider?: string;
+  faceVerifiedAt?: string | null;
   payoutAccountAdded: boolean;
   payoutVerified: boolean;
   accountName: string;
@@ -435,6 +454,12 @@ export type GleankConversation = {
   otherUserName: string;
   listingName: string;
   listingImageUrl: string | null;
+  storeName: string;
+  storeSlug: string;
+  storeLogoUrl: string | null;
+  storeCampus: string;
+  storeCategory: string;
+  unreadCount: number;
   lastMessageBody: string;
   lastMessageAt: string | null;
   createdAt: string;
@@ -469,6 +494,10 @@ export type SellerVerificationProfile = {
   campus: string;
   studentId: string;
   identityProofUrl: string | null;
+  faceVerified: boolean;
+  faceProvider: string;
+  faceReference: string;
+  faceVerifiedAt: string | null;
   businessDescription: string;
   agreementAccepted: boolean;
   status: SellerVerificationStatus;

@@ -5,8 +5,6 @@ export type AuthResponse = {
   user: AuthUser;
   store: SellerStore | null;
   emailVerificationRequired?: boolean;
-  developmentEmailVerificationToken?: string;
-  emailVerificationExpiresAt?: string;
 };
 
 export type RegisterInput = {
@@ -45,11 +43,7 @@ export function verifyEmail(token: string) {
 }
 
 export function resendVerification() {
-  return apiRequest<{
-    message: string;
-    developmentEmailVerificationToken?: string;
-    emailVerificationExpiresAt?: string;
-  }>("/auth/resend-verification", {
+  return apiRequest<{ message: string }>("/auth/resend-verification", {
     method: "POST",
   });
 }
@@ -61,11 +55,7 @@ export function logout() {
 }
 
 export function requestPasswordReset(email: string) {
-  return apiRequest<{
-    message: string;
-    developmentToken?: string;
-    expiresAt?: string;
-  }>("/auth/forgot-password", {
+  return apiRequest<{ message: string }>("/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email }),
   });
