@@ -10770,6 +10770,57 @@ html[data-theme="dark"] .locked-preview-card {
   font-size: 14px;
 }
 
+.recovery-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.recovery-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top right, rgba(22, 163, 74, 0.12), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(249, 115, 22, 0.1), transparent 30%);
+}
+
+.recovery-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.recovery-icon-ring {
+  width: 74px;
+  height: 74px;
+  margin: 0 auto 18px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.14), rgba(249, 115, 22, 0.12));
+  color: var(--brand-green, #16a34a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+
+.recovery-form {
+  margin-top: 22px;
+}
+
+.recovery-submit-link {
+  width: 100%;
+  min-height: 52px;
+  margin-top: 22px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #16a34a, #15803d);
+  color: #ffffff !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  font-weight: 950;
+}
+
 /* Auth responsive */
 
 @media (max-width: 980px) {

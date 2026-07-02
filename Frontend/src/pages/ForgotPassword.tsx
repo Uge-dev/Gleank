@@ -92,110 +92,117 @@ function ForgotPassword() {
       title="Get back into Gleank"
       description="Securely reset your buyer or seller password using the email attached to your account."
     >
-      <Link to="/login" className="auth-back-link">
-        <FiArrowLeft />
-        Back to login
-      </Link>
-
-      <span className="auth-eyebrow">Secure recovery</span>
-
-      <h1>
-        {step === "request"
-          ? "Reset password"
-          : step === "reset"
-            ? "Choose a new password"
-            : "Password updated"}
-      </h1>
-
-      <p className="auth-subtitle">
-        {step === "request"
-          ? "Enter the email connected to your Gleank account. If the account exists, a secure reset link will be sent to that email."
-          : step === "reset"
-            ? "Use at least eight characters for your new password."
-            : "Your account is ready for a fresh login."}
-      </p>
-
-      {error && (
-        <div className="auth-alert auth-alert-error">
-          <FiAlertCircle />
-          {error}
-        </div>
-      )}
-
-      {message && (
-        <div className="auth-alert auth-alert-success">
-          <FiCheckCircle />
-          {message}
-        </div>
-      )}
-
-      {step === "request" && (
-        <form onSubmit={handleRequest} className="auth-form">
-          <label>
-            Email address
-            <span>
-              <FiMail />
-              <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                placeholder="you@example.com"
-                required
-              />
-            </span>
-          </label>
-
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Preparing recovery..." : "Send reset link"}
-          </button>
-        </form>
-      )}
-
-      {step === "reset" && (
-        <form onSubmit={handleReset} className="auth-form">
-          <label>
-            New password
-            <span>
-              <FiLock />
-              <input
-                type="password"
-                name="password"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </span>
-          </label>
-
-          <label>
-            Confirm new password
-            <span>
-              <FiLock />
-              <input
-                type="password"
-                name="confirmPassword"
-                autoComplete="new-password"
-                minLength={8}
-                required
-              />
-            </span>
-          </label>
-
-          <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Updating password..." : "Reset password"}
-          </button>
-        </form>
-      )}
-
-      {step === "complete" && (
-        <Link to="/login" className="auth-submit-link">
-          Continue to login
+      <div className="auth-form-card recovery-card">
+        <Link to="/login" className="auth-back-link">
+          <FiArrowLeft />
+          Back to login
         </Link>
-      )}
 
-      <p className="auth-footer-note">
-        Need a different account? <Link to="/signup">Create account</Link>
-      </p>
+        <div className="recovery-icon-ring">
+          {step === "complete" ? <FiCheckCircle /> : step === "reset" ? <FiLock /> : <FiMail />}
+        </div>
+
+        <div className="auth-form-header centered">
+          <span>Secure recovery</span>
+          <h2>
+            {step === "request"
+              ? "Reset password"
+              : step === "reset"
+                ? "Choose a new password"
+                : "Password updated"}
+          </h2>
+
+          <p>
+            {step === "request"
+              ? "Enter the email connected to your Gleank account. If the account exists, a secure reset link will be sent there."
+              : step === "reset"
+                ? "Create a strong new password for this buyer or seller account."
+                : "Your account is ready for a fresh login."}
+          </p>
+        </div>
+
+        {error && (
+          <div className="auth-inline-message error" role="alert">
+            <FiAlertCircle />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {message && (
+          <div className="auth-inline-message success" role="status">
+            <FiCheckCircle />
+            <span>{message}</span>
+          </div>
+        )}
+
+        {step === "request" && (
+          <form onSubmit={handleRequest} className="auth-form recovery-form">
+            <label>
+              <span>Email address</span>
+              <div className="auth-input-box">
+                <FiMail />
+                <input
+                  type="email"
+                  name="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
+            </label>
+
+            <button className="auth-submit-btn" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Preparing recovery..." : "Send reset link"}
+            </button>
+          </form>
+        )}
+
+        {step === "reset" && (
+          <form onSubmit={handleReset} className="auth-form recovery-form">
+            <label>
+              <span>New password</span>
+              <div className="auth-input-box">
+                <FiLock />
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>Confirm new password</span>
+              <div className="auth-input-box">
+                <FiLock />
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+              </div>
+            </label>
+
+            <button className="auth-submit-btn" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? "Updating password..." : "Reset password"}
+            </button>
+          </form>
+        )}
+
+        {step === "complete" && (
+          <Link to="/login" className="auth-submit-link recovery-submit-link">
+            Continue to login
+          </Link>
+        )}
+
+        <p className="auth-switch-text">
+          Need a different account? <Link to="/signup">Create account</Link>
+        </p>
+      </div>
     </AuthLayout>
   );
 }

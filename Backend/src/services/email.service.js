@@ -8,12 +8,21 @@ export function buildFrontendUrl(path) {
 }
 
 function assertEmailConfigured() {
-  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !env.emailFrom) {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !fromAddress()) {
     throw new HttpError(
       500,
       "Email delivery is not configured. Add Brevo SMTP values to Backend/.env.",
     );
   }
+}
+
+function fromAddress() {
+  if (env.emailFrom) return env.emailFrom;
+  if (env.smtpFromEmail) {
+    const safeName = String(env.smtpFromName || "Gleank").replace(/[<>]/g, "").trim();
+    return safeName ? `"${safeName}" <${env.smtpFromEmail}>` : env.smtpFromEmail;
+  }
+  return "";
 }
 
 let transporter = null;
@@ -49,7 +58,7 @@ function escapeHtml(value) {
 }
 
 async function sendTransactionalEmail({ to, subject, text, html }) {
-  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !env.emailFrom) {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !fromAddress()) {
     if (env.isProduction) {
       assertEmailConfigured();
     }
@@ -64,7 +73,7 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
   const mailer = getTransporter();
 
   await mailer.sendMail({
-    from: env.emailFrom,
+    from: fromAddress(),
     to,
     subject,
     text,

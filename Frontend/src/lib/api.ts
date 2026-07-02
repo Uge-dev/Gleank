@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
+const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 45000);
 
 function getApiOrigin() {
   if (/^https?:\/\//i.test(API_URL)) {
@@ -41,16 +42,34 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   const isFormData = init.body instanceof FormData;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   if (init.body && !isFormData && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers,
-    credentials: "include",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      signal: init.signal || controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(
+        408,
+        "The server is taking too long to respond. Please wait a moment and try again.",
+      );
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     let body: ApiErrorBody = {};

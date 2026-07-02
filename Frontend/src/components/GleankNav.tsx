@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, useNavigate } from "react-router-dom";
 import {
   IoHome,
@@ -213,6 +214,41 @@ function GleankNav() {
     navItems.find((item) => item.label === "Profile"),
   ].filter(Boolean) as NavItem[];
 
+  const mobileNav = (
+    <nav className="gleank-mobile-nav">
+      {mobileNavItems.map((item) => (
+        <NavLink
+          key={item.label}
+          to={item.path}
+          className={({ isActive }) =>
+            isActive ? "gleank-mobile-link active" : "gleank-mobile-link"
+          }
+          aria-label={item.mobileLabel}
+        >
+          {({ isActive }) => (
+            <>
+              <span className="gleank-mobile-icon">
+                {isActive ? item.activeIcon : item.icon}
+
+                {item.label === "Cart" && cartCount > 0 && (
+                  <small>{cartCount}</small>
+                )}
+
+                {item.label !== "Cart" && badgeCountFor(item.label) > 0 && (
+                  <small>{badgeCountFor(item.label)}</small>
+                )}
+              </span>
+
+              <span className="gleank-mobile-label">
+                {item.mobileLabel}
+              </span>
+            </>
+          )}
+        </NavLink>
+      ))}
+    </nav>
+  );
+
   return (
     <>
       <aside className="gleank-sidebar">
@@ -316,38 +352,9 @@ function GleankNav() {
         </div>
       </aside>
 
-      <nav className="gleank-mobile-nav">
-        {mobileNavItems.map((item) => (
-          <NavLink
-            key={item.label}
-            to={item.path}
-            className={({ isActive }) =>
-              isActive ? "gleank-mobile-link active" : "gleank-mobile-link"
-            }
-            aria-label={item.mobileLabel}
-          >
-            {({ isActive }) => (
-              <>
-                <span className="gleank-mobile-icon">
-                  {isActive ? item.activeIcon : item.icon}
-
-                  {item.label === "Cart" && cartCount > 0 && (
-                    <small>{cartCount}</small>
-                  )}
-
-                  {item.label !== "Cart" && badgeCountFor(item.label) > 0 && (
-                    <small>{badgeCountFor(item.label)}</small>
-                  )}
-                </span>
-
-                <span className="gleank-mobile-label">
-                  {item.mobileLabel}
-                </span>
-              </>
-            )}
-          </NavLink>
-        ))}
-      </nav>
+      {typeof document !== "undefined"
+        ? createPortal(mobileNav, document.body)
+        : mobileNav}
 
       <MoreDrawer
         isOpen={moreDrawerOpen}
@@ -360,6 +367,9 @@ function GleankNav() {
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
+        onLoginSuccess={(loggedInUser) => {
+          navigate(loggedInUser.role === "seller" ? "/dashboard" : "/profile");
+        }}
       />
 
       <LogoutConfirmModal

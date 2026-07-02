@@ -12,13 +12,15 @@ import {
   FiX,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
+import type { AuthUser } from "../types/domain";
 
 type AuthModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  onLoginSuccess?: (user: AuthUser) => void;
 };
 
-function AuthModal({ isOpen, onClose }: AuthModalProps) {
+function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -38,11 +40,12 @@ function AuthModal({ isOpen, onClose }: AuthModalProps) {
     const formData = new FormData(event.currentTarget);
 
     try {
-      await login({
+      const user = await login({
         email: String(formData.get("email") || "").trim(),
         password: String(formData.get("password") || ""),
       });
       onClose();
+      onLoginSuccess?.(user);
     } catch (requestError) {
       setError(
         requestError instanceof Error
