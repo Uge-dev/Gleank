@@ -34,6 +34,20 @@ export const app = express();
 
 cleanExpiredSessions();
 
+function normalizeCorsOrigin(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+const allowedCorsOrigins = new Set(
+  [
+    env.frontendUrl,
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ]
+    .map(normalizeCorsOrigin)
+    .filter(Boolean),
+);
+
 app.set("trust proxy", 1);
 app.use(
   helmet({
@@ -42,7 +56,19 @@ app.use(
 );
 app.use(
   cors({
-    origin: env.frontendUrl,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedCorsOrigins.has(normalizeCorsOrigin(origin))) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS origin is not allowed: ${origin}`));
+    },
     credentials: true,
   }),
 );
