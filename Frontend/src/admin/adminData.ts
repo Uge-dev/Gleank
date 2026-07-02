@@ -31,6 +31,7 @@ export type AdminStatus =
   | "resolved"
   | "unread"
   | "read"
+  | "answered"
   | "safe"
   | "unsafe"
   | "needs_review"
@@ -170,6 +171,31 @@ export type AdminFeedback = {
   createdAt: string;
 };
 
+export type AdminSupportMessage = {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderRole: "user" | "seller" | "admin";
+  body: string;
+  isAdmin: boolean;
+  createdAt: string;
+};
+
+export type AdminSupportConversation = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userRole: "user" | "seller" | "admin";
+  campus: string;
+  avatarUrl: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+  status: AdminStatus;
+  messages: AdminSupportMessage[];
+};
+
 export type AdminActivityLog = {
   id: string;
   admin: string;
@@ -191,6 +217,7 @@ export type AdminOverview = {
   pendingPayouts: string;
   openDisputes: number;
   unreadFeedback: number;
+  unreadSupport: number;
 };
 
 export type AdminDataset = {
@@ -203,6 +230,7 @@ export type AdminDataset = {
   payments: AdminPayment[];
   deliveries: AdminDelivery[];
   disputes: AdminDispute[];
+  supportConversations: AdminSupportConversation[];
   feedback: AdminFeedback[];
   activityLogs: AdminActivityLog[];
 };
@@ -221,6 +249,7 @@ export const emptyAdminDataset: AdminDataset = {
     pendingPayouts: "0 pending",
     openDisputes: 0,
     unreadFeedback: 0,
+    unreadSupport: 0,
   },
   users: [],
   sellers: [],
@@ -230,6 +259,7 @@ export const emptyAdminDataset: AdminDataset = {
   payments: [],
   deliveries: [],
   disputes: [],
+  supportConversations: [],
   feedback: [],
   activityLogs: [],
 };

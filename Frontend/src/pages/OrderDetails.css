@@ -265,3 +265,76 @@
     grid-column: 1 / -1;
   }
 }
+
+.order-message-link,
+.detail-payment-btn,
+.order-details-page .back-link {
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.order-message-link:hover,
+.detail-payment-btn:hover,
+.order-details-page .back-link:hover {
+  transform: translateY(-1px);
+}
+
+.order-message-link {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+html[data-theme="dark"] .order-details-hero {
+  background: linear-gradient(135deg, #020617, #0f172a);
+}
+
+html[data-theme="dark"] .order-details-main-card,
+html[data-theme="dark"] .order-details-side-card,
+html[data-theme="dark"] .order-details-main-card section,
+html[data-theme="dark"] .order-details-side-card section,
+html[data-theme="dark"] .order-detail-items article,
+html[data-theme="dark"] .order-events-list article,
+html[data-theme="dark"] .order-message-link {
+  background: var(--card-bg);
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+html[data-theme="dark"] .timeline-row h3,
+html[data-theme="dark"] .order-events-list h3,
+html[data-theme="dark"] .order-detail-items h3,
+html[data-theme="dark"] .payment-summary-line.total {
+  color: var(--text-main);
+}
+
+html[data-theme="dark"] .timeline-row p,
+html[data-theme="dark"] .order-events-list p,
+html[data-theme="dark"] .order-detail-items p,
+html[data-theme="dark"] .order-details-side-card p {
+  color: var(--text-muted);
+}
+
+@media (max-width: 520px) {
+  .order-details-grid {
+    gap: 0.9rem;
+  }
+
+  .order-details-main-card,
+  .order-details-side-card {
+    padding: 0.75rem;
+  }
+
+  .payment-summary-line,
+  .delivery-info-strip,
+  .order-details-main-card section,
+  .order-details-side-card section {
+    border-radius: 18px;
+  }
+
+  .order-message-link,
+  .detail-payment-btn {
+    width: 100%;
+  }
+}

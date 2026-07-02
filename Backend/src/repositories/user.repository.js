@@ -44,6 +44,16 @@ export function updateUser(id, updates) {
   return findUserById(id);
 }
 
+export function updateUserAvatar(id, avatarUrl, updatedAt) {
+  db.prepare(`
+    UPDATE users
+    SET avatar_url = ?, updated_at = ?
+    WHERE id = ?
+  `).run(avatarUrl, updatedAt, id);
+
+  return findUserById(id);
+}
+
 export function updateUserPassword(id, passwordHash, updatedAt) {
   db.prepare(`
     UPDATE users

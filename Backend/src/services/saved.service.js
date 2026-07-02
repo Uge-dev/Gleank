@@ -1,6 +1,7 @@
 import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import { createNotification } from "./notification.service.js";
 import {
   serializeProduct,
   serializeService,
@@ -60,6 +61,49 @@ function targetFor(type, itemId) {
   return serializeUsedListing(row);
 }
 
+function notificationTargetFor(type, itemId) {
+  if (type === "product") {
+    return db.prepare(`
+      SELECT products.name, products.image_urls, stores.owner_id
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+    `).get(itemId);
+  }
+
+  if (type === "store") {
+    return db
+      .prepare("SELECT name, slug, logo_url AS image_urls, owner_id FROM stores WHERE id = ?")
+      .get(itemId);
+  }
+
+  if (type === "service") {
+    return db.prepare(`
+      SELECT services.name, services.image_urls, stores.owner_id
+      FROM services
+      JOIN stores ON stores.id = services.store_id
+      WHERE services.id = ?
+    `).get(itemId);
+  }
+
+  return db
+    .prepare("SELECT name, image_urls, seller_id AS owner_id FROM used_listings WHERE id = ?")
+    .get(itemId);
+}
+
+function firstImage(value) {
+  if (typeof value === "string" && (/^https?:\/\//i.test(value) || value.startsWith("/"))) {
+    return value;
+  }
+
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed[0] || "" : "";
+  } catch {
+    return "";
+  }
+}
+
 function savedItemView(row) {
   const item = targetFor(row.item_type, row.item_id);
   if (!item) return null;
@@ -90,7 +134,7 @@ export function saveItem(userId, input) {
     throw new HttpError(404, "The item you tried to save was not found.");
   }
 
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO saved_items (id, user_id, item_type, item_id, created_at)
     VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(user_id, item_type, item_id) DO NOTHING
@@ -101,6 +145,27 @@ export function saveItem(userId, input) {
     input.itemId,
     new Date().toISOString(),
   );
+
+  if (result.changes) {
+    const target = notificationTargetFor(input.itemType, input.itemId);
+
+    if (target?.owner_id && target.owner_id !== userId) {
+      const user = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+      createNotification({
+        userId: target.owner_id,
+        type: input.itemType === "used_listing" ? "used_market" : "product",
+        title: "Item saved",
+        body: `${user?.name || "A Gleank user"} saved ${target.name}.`,
+        actionLabel: "View item",
+        actionPath: input.itemType === "used_listing"
+          ? `/used-market/${input.itemId}`
+          : input.itemType === "store"
+            ? `/stores/${target.slug || input.itemId}`
+            : `/products/${input.itemId}`,
+        imageUrl: firstImage(target.image_urls),
+      });
+    }
+  }
 
   const row = db
     .prepare(`

@@ -5,7 +5,6 @@ import {
   FiAlertCircle,
   FiArrowLeft,
   FiCheckCircle,
-  FiClock,
   FiKey,
   FiLock,
   FiLogOut,

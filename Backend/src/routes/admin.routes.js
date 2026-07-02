@@ -1,5 +1,13 @@
 import { Router } from "express";
-import { deleteRecord, getAdminDataset, resetAdminDataset, updateRecordFields, updateRecordStatus } from "../data/adminStore.js";
+import {
+  deleteRecord,
+  getAdminDataset,
+  markSupportConversationRead,
+  resetAdminDataset,
+  sendAdminSupportMessage,
+  updateRecordFields,
+  updateRecordStatus,
+} from "../data/adminStore.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 
 const router = Router();
@@ -29,6 +37,24 @@ router.post("/login", (req, res) => {
 
 router.get("/overview", requireAdmin, (_req, res) => {
   res.json(getAdminDataset());
+});
+
+router.post("/support/:conversationId/messages", requireAdmin, (req, res) => {
+  try {
+    const data = sendAdminSupportMessage(req.params.conversationId, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || "Could not send support reply" });
+  }
+});
+
+router.patch("/support/:conversationId/read", requireAdmin, (req, res) => {
+  try {
+    const data = markSupportConversationRead(req.params.conversationId);
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || "Could not mark support conversation as read" });
+  }
 });
 
 router.patch("/:collection/:id/status", requireAdmin, (req, res) => {

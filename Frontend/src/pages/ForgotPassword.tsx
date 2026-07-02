@@ -87,7 +87,11 @@ function ForgotPassword() {
   }
 
   return (
-    <AuthLayout>
+    <AuthLayout
+      eyebrow="Account recovery"
+      title="Get back into Gleank"
+      description="Securely reset your buyer or seller password using the email attached to your account."
+    >
       <Link to="/login" className="auth-back-link">
         <FiArrowLeft />
         Back to login

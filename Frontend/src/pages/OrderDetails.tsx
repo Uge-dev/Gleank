@@ -10,7 +10,6 @@ import {
   FiPackage,
   FiPhone,
   FiShoppingBag,
-  FiTruck,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { getOrder } from "../services/order.service";
@@ -190,7 +189,7 @@ function OrderDetails() {
 
             <div className="order-detail-items">
               {order.items.map((item) => {
-                const image = resolveMediaUrl(item.productImageUrl) || productFallback;
+                const image = resolveMediaUrl(item.productImageUrl, productFallback);
 
                 return (
                   <article key={item.id}>

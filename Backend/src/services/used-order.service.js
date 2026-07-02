@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createUsedOrderConversation } from "./message.service.js";
+import { createNotification, createNotificationForUsers } from "./notification.service.js";
 
 const USED_ORDER_STATUSES = new Set([
   "pending_payment",
@@ -283,6 +284,26 @@ export function createUsedOrder(userId, input) {
     const conversation = createUsedOrderConversation(userId, id);
     db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE id = ?").run(conversation.id, id);
 
+    createNotification({
+      userId: listing.seller_id,
+      type: "used_market",
+      title: "New Used Market order",
+      body: `${buyerName} started a protected order for ${listing.name}.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${id}`,
+      imageUrl: parseImages(listing.image_urls)[0] || "",
+    });
+
+    createNotification({
+      userId,
+      type: "used_market",
+      title: "Protected order created",
+      body: `Your protected order for ${listing.name} is waiting for payment.`,
+      actionLabel: "Continue order",
+      actionPath: `/used-orders/${id}`,
+      imageUrl: parseImages(listing.image_urls)[0] || "",
+    });
+
     return getUsedOrder(userId, id);
   });
 
@@ -312,6 +333,16 @@ export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
         ? `Protected payment verified with reference ${paymentReference}.`
         : "Payment is recorded as protected. Replace this with gateway verification before production.",
     );
+
+    createNotificationForUsers([row.buyer_id, row.seller_id], {
+      type: "used_market",
+      title: "Used Market payment confirmed",
+      body: `Protected payment for ${row.listing_name} has been confirmed.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${row.id}`,
+      imageUrl: parseImages(row.listing_image_urls)[0] || "",
+    });
+
     return getUsedOrder(userId, row.id);
   });
 }
@@ -358,6 +389,19 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     }
 
     insertEvent(row.id, status, note);
+
+    createNotificationForUsers(
+      [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
+      {
+        type: "used_market",
+        title: eventLabel(status),
+        body: note || `${row.listing_name} is now ${statusLabel(status)}.`,
+        actionLabel: "View order",
+        actionPath: `/used-orders/${row.id}`,
+        imageUrl: parseImages(row.listing_image_urls)[0] || "",
+      },
+    );
+
     return getUsedOrder(user.user_id, row.id);
   });
 }
@@ -410,6 +454,16 @@ export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
       note || "Seller verified the buyer delivery code and marked the item delivered.",
     );
 
+    createNotification({
+      userId: row.buyer_id,
+      type: "used_market",
+      title: "Used item delivered",
+      body: `${row.listing_name} has been marked delivered.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${row.id}`,
+      imageUrl: parseImages(row.listing_image_urls)[0] || "",
+    });
+
     return getUsedOrder(user.user_id, row.id);
   });
 }
@@ -425,6 +479,16 @@ export function submitUsedDeliveryProof(user, orderId, fileUrl, note = "") {
     INSERT INTO used_market_delivery_proofs (id, order_id, seller_id, proof_image_url, note, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'submitted', ?)
   `).run(createId("udp"), row.id, row.seller_id, fileUrl || null, clean(note, 1000), new Date().toISOString());
+
+  createNotification({
+    userId: row.buyer_id,
+    type: "used_market",
+    title: "Delivery proof submitted",
+    body: `${row.listing_name} has delivery proof attached by the seller.`,
+    actionLabel: "View order",
+    actionPath: `/used-orders/${row.id}`,
+    imageUrl: fileUrl || parseImages(row.listing_image_urls)[0] || "",
+  });
 
   return { success: true };
 }

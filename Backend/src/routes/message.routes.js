@@ -1,9 +1,13 @@
 import { Router } from "express";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import {
+  createStoreConversation,
+  createStoreOrderConversation,
+  createSupportConversation,
   createUsedListingConversation,
   createUsedOrderConversation,
   getConversation,
+  getUnreadMessageCount,
   listConversations,
   listMessages,
   sendMessage,
@@ -17,13 +21,27 @@ messageRouter.get("/conversations", (req, res) => {
   res.json({ conversations: listConversations(req.auth.user_id) });
 });
 
+messageRouter.get("/unread-count", (req, res) => {
+  res.json({ unreadCount: getUnreadMessageCount(req.auth.user_id) });
+});
+
 messageRouter.post("/conversations", (req, res) => {
   const contextType = String(req.body?.contextType || "");
   const contextId = String(req.body?.contextId || "");
 
-  const conversation = contextType === "used_order"
-    ? createUsedOrderConversation(req.auth.user_id, contextId)
-    : createUsedListingConversation(req.auth.user_id, contextId);
+  let conversation;
+
+  if (contextType === "used_order") {
+    conversation = createUsedOrderConversation(req.auth.user_id, contextId);
+  } else if (contextType === "store") {
+    conversation = createStoreConversation(req.auth.user_id, contextId);
+  } else if (contextType === "order") {
+    conversation = createStoreOrderConversation(req.auth.user_id, contextId);
+  } else if (contextType === "support") {
+    conversation = createSupportConversation(req.auth.user_id);
+  } else {
+    conversation = createUsedListingConversation(req.auth.user_id, contextId);
+  }
 
   res.status(201).json({ conversation });
 });

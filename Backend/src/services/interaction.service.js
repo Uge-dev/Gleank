@@ -1,6 +1,7 @@
 import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import { createNotification, createNotificationForUsers } from "./notification.service.js";
 
 function activeStoreBySlug(slug) {
   const store = db
@@ -19,6 +20,25 @@ function activeProduct(productId) {
   `).get(productId);
   if (!product) throw new HttpError(404, "Product was not found.");
   return product;
+}
+
+function productNotificationTarget(productId) {
+  return db.prepare(`
+    SELECT products.id, products.name, products.image_urls,
+           stores.owner_id, stores.name AS store_name
+    FROM products
+    JOIN stores ON stores.id = products.store_id
+    WHERE products.id = ?
+  `).get(productId);
+}
+
+function firstProductImage(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed[0] || "" : "";
+  } catch {
+    return "";
+  }
 }
 
 function productCommentById(commentId) {
@@ -75,11 +95,25 @@ function serializeComment(row, viewer = null) {
 
 export function followStore(userId, slug) {
   const store = activeStoreBySlug(slug);
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO store_follows (id, user_id, store_id, created_at)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(user_id, store_id) DO NOTHING
   `).run(createId("fol"), userId, store.id, new Date().toISOString());
+
+  if (result.changes && store.owner_id !== userId) {
+    const follower = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    createNotification({
+      userId: store.owner_id,
+      type: "seller",
+      title: "New store follower",
+      body: `${follower?.name || "A Gleank user"} followed ${store.name}.`,
+      actionLabel: "View store",
+      actionPath: `/stores/${store.slug}`,
+      imageUrl: store.logo_url || store.cover_url || "",
+    });
+  }
+
   return storeInteraction(store.id, userId);
 }
 
@@ -116,11 +150,26 @@ export function storeInteraction(storeId, viewerId) {
 
 export function likeProduct(userId, productId) {
   activeProduct(productId);
-  db.prepare(`
+  const target = productNotificationTarget(productId);
+  const result = db.prepare(`
     INSERT INTO product_likes (id, user_id, product_id, created_at)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(user_id, product_id) DO NOTHING
   `).run(createId("lik"), userId, productId, new Date().toISOString());
+
+  if (result.changes && target?.owner_id && target.owner_id !== userId) {
+    const user = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    createNotification({
+      userId: target.owner_id,
+      type: "like",
+      title: "Product liked",
+      body: `${user?.name || "A Gleank user"} liked ${target.name}.`,
+      actionLabel: "View product",
+      actionPath: `/products/${productId}`,
+      imageUrl: firstProductImage(target.image_urls),
+    });
+  }
+
   return productInteraction(productId, userId);
 }
 
@@ -134,6 +183,7 @@ export function unlikeProduct(userId, productId) {
 
 export function addProductComment(userId, productId, input) {
   activeProduct(productId);
+  const target = productNotificationTarget(productId);
   const cleanBody =
     typeof input === "string"
       ? input.trim()
@@ -167,6 +217,27 @@ export function addProductComment(userId, productId, input) {
     cleanBody,
     new Date().toISOString(),
   );
+
+  const commenter = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+  const notificationTargets = [];
+
+  if (target?.owner_id && target.owner_id !== userId) {
+    notificationTargets.push(target.owner_id);
+  }
+
+  if (parentCommentId) {
+    const parent = productCommentById(parentCommentId);
+    if (parent.user_id !== userId) notificationTargets.push(parent.user_id);
+  }
+
+  createNotificationForUsers(notificationTargets, {
+    type: "product",
+    title: parentCommentId ? "New comment reply" : "New product comment",
+    body: `${commenter?.name || "A Gleank user"} commented on ${target?.name || "your product"}: ${cleanBody}`,
+    actionLabel: "View product",
+    actionPath: `/products/${productId}`,
+    imageUrl: firstProductImage(target?.image_urls),
+  });
 
   return productComments(productId, { user_id: userId }).find(
     (comment) => comment.id === id,
@@ -221,6 +292,7 @@ export function productInteraction(productId, viewerId) {
 
 export function recordProductShare(userId, productId, anonKey = "") {
   activeProduct(productId);
+  const target = productNotificationTarget(productId);
 
   db.prepare(`
     INSERT INTO product_shares (id, user_id, anon_key, product_id, created_at)
@@ -232,6 +304,19 @@ export function recordProductShare(userId, productId, anonKey = "") {
     productId,
     new Date().toISOString(),
   );
+
+  if (userId && target?.owner_id && target.owner_id !== userId) {
+    const user = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    createNotification({
+      userId: target.owner_id,
+      type: "product",
+      title: "Product shared",
+      body: `${user?.name || "A Gleank user"} shared ${target.name}.`,
+      actionLabel: "View product",
+      actionPath: `/products/${productId}`,
+      imageUrl: firstProductImage(target.image_urls),
+    });
+  }
 
   return productInteraction(productId, userId);
 }
@@ -300,11 +385,23 @@ export function likeProductComment(userId, productId, commentId) {
     throw new HttpError(404, "Comment was not found.");
   }
 
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO product_comment_likes (id, user_id, comment_id, created_at)
     VALUES (?, ?, ?, ?)
     ON CONFLICT(user_id, comment_id) DO NOTHING
   `).run(createId("clk"), userId, commentId, new Date().toISOString());
+
+  if (result.changes && comment.user_id !== userId) {
+    const user = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    createNotification({
+      userId: comment.user_id,
+      type: "like",
+      title: "Comment liked",
+      body: `${user?.name || "A Gleank user"} liked your comment.`,
+      actionLabel: "View product",
+      actionPath: `/products/${productId}`,
+    });
+  }
 
   return productComments(productId, { user_id: userId }).find(
     (item) => item.id === commentId,

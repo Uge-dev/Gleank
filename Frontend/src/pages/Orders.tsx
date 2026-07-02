@@ -187,7 +187,7 @@ function Orders() {
         <div className="orders-list">
           {filteredOrders.map((order) => {
             const firstItem = order.items[0];
-            const image = resolveMediaUrl(firstItem?.productImageUrl) || productFallback;
+            const image = resolveMediaUrl(firstItem?.productImageUrl, productFallback);
             const showContinuePayment = canContinuePayment(order);
             const isPaying = payingOrderId === order.id;
 

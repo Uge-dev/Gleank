@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { serializeUser } from "../lib/serializers.js";
-import { updateUser } from "../repositories/user.repository.js";
+import { findUserById, updateUser, updateUserAvatar } from "../repositories/user.repository.js";
+import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const userRouter = Router();
 
@@ -22,6 +24,31 @@ userRouter.patch(
       ...req.body,
       updatedAt: new Date().toISOString(),
     });
+
+    res.json({ user: serializeUser(user) });
+  },
+);
+
+userRouter.post(
+  "/me/avatar",
+  requireAuth,
+  upload.single("avatar"),
+  (req, res) => {
+    if (!req.file) {
+      throw new HttpError(400, "Choose an image to upload.");
+    }
+
+    const existingUser = findUserById(req.auth.user_id);
+    const avatarUrl = fileUrl(req, req.file);
+    const user = updateUserAvatar(
+      req.auth.user_id,
+      avatarUrl,
+      new Date().toISOString(),
+    );
+
+    if (existingUser?.avatar_url) {
+      deleteUploadedFiles([existingUser.avatar_url]);
+    }
 
     res.json({ user: serializeUser(user) });
   },

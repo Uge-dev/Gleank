@@ -1,6 +1,7 @@
 import { db, transaction } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
+import { createNotification, createNotificationForUsers } from "../services/notification.service.js";
 
 function naira(kobo = 0) {
   return new Intl.NumberFormat("en-NG", {
@@ -536,6 +537,98 @@ function buildFeedback() {
     }));
 }
 
+function supportAdminRow() {
+  const existingAdmin = db
+    .prepare("SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+    .get();
+
+  if (existingAdmin) return existingAdmin;
+
+  const now = new Date().toISOString();
+  const id = createId("adm");
+
+  db.prepare(`
+    INSERT INTO users (
+      id, name, email, password_hash, role, campus, phone,
+      avatar_url, is_active, email_verified, email_verified_at,
+      phone_verified, phone_verified_at, failed_login_count, locked_until,
+      last_login_at, last_password_change_at, created_at, updated_at
+    )
+    VALUES (
+      ?, 'Gleank Support', 'support@gleank.local', 'support-account',
+      'admin', 'Gleank HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
+      NULL, ?, ?, ?
+    )
+  `).run(id, now, now, now, now);
+
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+}
+
+function mapSupportRole(role) {
+  if (role === "buyer") return "user";
+  return role || "user";
+}
+
+function buildSupportConversations() {
+  const messages = db.prepare(`
+    SELECT messages.*, users.name AS sender_name, users.role AS sender_role
+    FROM messages
+    JOIN users ON users.id = messages.sender_id
+    WHERE messages.conversation_id = ?
+    ORDER BY messages.created_at ASC
+    LIMIT 160
+  `);
+
+  return db
+    .prepare(`
+      SELECT conversations.*,
+             users.name AS user_name,
+             users.email AS user_email,
+             users.role AS user_role,
+             users.campus AS user_campus,
+             users.avatar_url AS user_avatar_url,
+             (
+               SELECT COUNT(*)
+               FROM messages unread
+               WHERE unread.conversation_id = conversations.id
+                 AND unread.sender_id = conversations.buyer_id
+                 AND unread.is_read = 0
+             ) AS unread_count
+      FROM conversations
+      JOIN users ON users.id = conversations.buyer_id
+      WHERE conversations.context_type = 'support'
+      ORDER BY COALESCE(conversations.last_message_at, conversations.updated_at) DESC
+      LIMIT 100
+    `)
+    .all()
+    .map((row) => {
+      const conversationMessages = messages.all(row.id).map((message) => ({
+        id: message.id,
+        senderId: message.sender_id,
+        senderName: message.sender_name || "Gleank user",
+        senderRole: mapSupportRole(message.sender_role),
+        body: message.body,
+        isAdmin: message.sender_role === "admin",
+        createdAt: message.created_at,
+      }));
+
+      return {
+        id: row.id,
+        userId: row.buyer_id,
+        userName: row.user_name,
+        userEmail: row.user_email,
+        userRole: mapSupportRole(row.user_role),
+        campus: row.user_campus || "",
+        avatarUrl: row.user_avatar_url || "",
+        lastMessage: row.last_message_body || conversationMessages.at(-1)?.body || "",
+        lastMessageAt: row.last_message_at || row.updated_at,
+        unreadCount: Number(row.unread_count || 0),
+        status: Number(row.unread_count || 0) > 0 ? "unread" : "read",
+        messages: conversationMessages,
+      };
+    });
+}
+
 function buildActivityLogs() {
   const security = db
     .prepare(`
@@ -582,6 +675,10 @@ export function buildAdminOverview(data) {
     return sum + (Number.isFinite(numeric) ? numeric * 100 : 0);
   }, 0);
   const pendingPayoutCount = data.payments.filter((payment) => ["on_hold", "ready_for_release"].includes(payment.payoutStatus)).length;
+  const unreadSupportCount = data.supportConversations.reduce(
+    (sum, conversation) => sum + Number(conversation.unreadCount || 0),
+    0,
+  );
 
   return {
     totalUsers: data.users.length,
@@ -596,6 +693,7 @@ export function buildAdminOverview(data) {
     pendingPayouts: `${pendingPayoutCount} pending`,
     openDisputes: data.disputes.filter((dispute) => ["open", "reviewing"].includes(dispute.status)).length,
     unreadFeedback: data.feedback.filter((item) => item.status === "unread").length,
+    unreadSupport: unreadSupportCount,
   };
 }
 
@@ -609,11 +707,73 @@ export function getAdminDataset() {
     payments: buildPayments(),
     deliveries: buildDeliveries(),
     disputes: buildDisputes(),
+    supportConversations: buildSupportConversations(),
     feedback: buildFeedback(),
     activityLogs: buildActivityLogs(),
   };
 
   return { overview: buildAdminOverview(data), ...data };
+}
+
+function cleanSupportBody(value) {
+  return String(value || "").trim().slice(0, 1600);
+}
+
+function markSupportConversationReadInternal(conversationId) {
+  const conversation = db
+    .prepare("SELECT * FROM conversations WHERE id = ? AND context_type = 'support'")
+    .get(conversationId);
+
+  if (!conversation) throw new HttpError(404, "Support conversation was not found.");
+
+  db.prepare(`
+    UPDATE messages
+    SET is_read = 1
+    WHERE conversation_id = ? AND sender_id = ?
+  `).run(conversation.id, conversation.buyer_id);
+
+  return conversation;
+}
+
+export function markSupportConversationRead(conversationId) {
+  transaction(() => {
+    markSupportConversationReadInternal(conversationId);
+  });
+
+  return getAdminDataset();
+}
+
+export function sendAdminSupportMessage(conversationId, input) {
+  const body = cleanSupportBody(input?.body);
+  if (!body) throw new HttpError(422, "Message cannot be empty.");
+
+  transaction(() => {
+    const conversation = markSupportConversationReadInternal(conversationId);
+    const admin = supportAdminRow();
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      INSERT INTO messages (id, conversation_id, sender_id, body, attachment_url, is_read, created_at)
+      VALUES (?, ?, ?, ?, NULL, 0, ?)
+    `).run(createId("msg"), conversation.id, admin.id, body, now);
+
+    db.prepare(`
+      UPDATE conversations
+      SET seller_id = ?, last_message_body = ?, last_message_at = ?, updated_at = ?
+      WHERE id = ?
+    `).run(admin.id, body, now, now, conversation.id);
+
+    createNotification({
+      userId: conversation.buyer_id,
+      type: "message",
+      title: "Gleank Support replied",
+      body,
+      actionLabel: "Open support chat",
+      actionPath: "/messages?support=1",
+    });
+  });
+
+  return getAdminDataset();
 }
 
 function assertKnownCollection(collection) {
@@ -654,14 +814,35 @@ function updateUser(id, fields) {
   if ("status" in fields) {
     const active = fields.status === "active" ? 1 : 0;
     db.prepare("UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?").run(active, new Date().toISOString(), id);
+    createNotification({
+      userId: id,
+      type: "admin",
+      title: active ? "Account activated" : "Account status changed",
+      body: active
+        ? "Admin has activated your Gleank account."
+        : "Admin has changed your Gleank account status. Contact support if this seems wrong.",
+      actionLabel: "View profile",
+      actionPath: "/profile",
+    });
   }
 }
 
 function updateSeller(id, fields) {
   const now = new Date().toISOString();
+  const storeForNotice = db.prepare("SELECT id, owner_id, name, slug FROM stores WHERE id = ?").get(id);
   if ("status" in fields) {
     const status = fields.status === "active" ? "active" : "paused";
     db.prepare("UPDATE stores SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
+    if (storeForNotice) {
+      createNotification({
+        userId: storeForNotice.owner_id,
+        type: "admin",
+        title: "Store status updated",
+        body: `${storeForNotice.name} is now ${status}.`,
+        actionLabel: "Open dashboard",
+        actionPath: "/dashboard",
+      });
+    }
   }
   if ("verificationStatus" in fields) {
     const status = fields.verificationStatus === "approved" ? "verified" : fields.verificationStatus === "pending" ? "pending_verification" : fields.verificationStatus;
@@ -679,12 +860,27 @@ function updateSeller(id, fields) {
         WHERE user_id = ?
       `).run(status, `Admin set seller verification to ${status}.`, status === "verified" ? now : null, now, store.owner_id);
     }
+    if (storeForNotice) {
+      createNotification({
+        userId: storeForNotice.owner_id,
+        type: "admin",
+        title: "Seller verification updated",
+        body: `${storeForNotice.name} verification is now ${status}.`,
+        actionLabel: "Open seller setup",
+        actionPath: "/seller/onboarding",
+      });
+    }
   }
 }
 
 function updateProductOrService(id, fields) {
   const now = new Date().toISOString();
-  const product = db.prepare("SELECT id FROM products WHERE id = ?").get(id);
+  const product = db.prepare(`
+    SELECT products.id, products.name, products.store_id, stores.owner_id
+    FROM products
+    JOIN stores ON stores.id = products.store_id
+    WHERE products.id = ?
+  `).get(id);
   if (product) {
     if ("status" in fields || "stockStatus" in fields || "stock" in fields) {
       const status = normalizeProductStatus(fields.status || fields.stockStatus || "approved");
@@ -694,17 +890,39 @@ function updateProductOrService(id, fields) {
       } else {
         db.prepare("UPDATE products SET status = ?, stock = ?, updated_at = ? WHERE id = ?").run(status, stock, now, id);
       }
+      createNotification({
+        userId: product.owner_id,
+        type: "admin",
+        title: "Product status updated",
+        body: `${product.name} is now ${status}.`,
+        actionLabel: "Open dashboard",
+        actionPath: "/dashboard",
+      });
     }
     return;
   }
 
-  const service = db.prepare("SELECT id FROM services WHERE id = ?").get(id);
+  const service = db.prepare(`
+    SELECT services.id, services.name, stores.owner_id
+    FROM services
+    JOIN stores ON stores.id = services.store_id
+    WHERE services.id = ?
+  `).get(id);
   if (service && ("status" in fields || "stockStatus" in fields)) {
+    const status = normalizeServiceStatus(fields.status || fields.stockStatus || "approved");
     db.prepare("UPDATE services SET status = ?, updated_at = ? WHERE id = ?").run(
-      normalizeServiceStatus(fields.status || fields.stockStatus || "approved"),
+      status,
       now,
       id,
     );
+    createNotification({
+      userId: service.owner_id,
+      type: "admin",
+      title: "Service status updated",
+      body: `${service.name} is now ${status}.`,
+      actionLabel: "Open dashboard",
+      actionPath: "/dashboard",
+    });
   }
 }
 
@@ -712,11 +930,22 @@ function updateUsedItem(id, fields) {
   const now = new Date().toISOString();
   const status = normalizeUsedStatus(fields.status || fields.safetyStatus || "pending");
   const note = fields.rejectionReason || fields.reviewNote || "";
+  const listing = db.prepare("SELECT id, seller_id, name FROM used_listings WHERE id = ?").get(id);
   db.prepare("UPDATE used_listings SET status = ?, review_note = COALESCE(NULLIF(?, ''), review_note), updated_at = ? WHERE id = ?").run(status, note, now, id);
   db.prepare(`
     INSERT INTO used_listing_reviews (id, listing_id, reviewer_id, status, note, created_at)
     VALUES (?, ?, NULL, ?, ?, ?)
   `).run(createId("ulr"), id, status === "active" ? "approved" : status === "rejected" ? "rejected" : "pending", note || `Admin set status to ${status}.`, now);
+  if (listing) {
+    createNotification({
+      userId: listing.seller_id,
+      type: "admin",
+      title: "Used Market review updated",
+      body: `${listing.name} is now ${status}.${note ? ` ${note}` : ""}`,
+      actionLabel: "View listing",
+      actionPath: `/used-market/${listing.id}`,
+    });
+  }
 }
 
 function updateOrder(id, fields) {
@@ -724,17 +953,31 @@ function updateOrder(id, fields) {
   const nextStatus = normalizeOrderStatus(fields.orderStatus || fields.deliveryStatus || fields.status || "");
   const payment = fields.paymentStatus || "";
 
-  const normal = db.prepare("SELECT id FROM orders WHERE id = ? OR order_code = ?").get(id, id);
+  const normal = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM orders WHERE id = ? OR order_code = ?").get(id, id);
   if (normal) {
     if (nextStatus) db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, normal.id);
     if (payment) db.prepare("UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?").run(payment === "successful" ? "paid" : payment === "pending" ? "unpaid" : payment, now, normal.id);
+    createNotificationForUsers([normal.buyer_id, normal.seller_id], {
+      type: "admin",
+      title: "Order updated by admin",
+      body: `Order ${normal.order_code} was updated${nextStatus ? ` to ${nextStatus}` : ""}.`,
+      actionLabel: "View order",
+      actionPath: `/orders/${normal.id}`,
+    });
     return;
   }
 
-  const used = db.prepare("SELECT id FROM used_market_orders WHERE id = ? OR order_code = ?").get(id, id);
+  const used = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM used_market_orders WHERE id = ? OR order_code = ?").get(id, id);
   if (used) {
     if (nextStatus) db.prepare("UPDATE used_market_orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, used.id);
     if (payment) db.prepare("UPDATE used_market_orders SET payment_status = ?, updated_at = ? WHERE id = ?").run(payment === "successful" ? "paid" : payment === "pending" ? "unpaid" : payment, now, used.id);
+    createNotificationForUsers([used.buyer_id, used.seller_id], {
+      type: "admin",
+      title: "Used Market order updated by admin",
+      body: `Order ${used.order_code} was updated${nextStatus ? ` to ${nextStatus}` : ""}.`,
+      actionLabel: "View order",
+      actionPath: `/used-orders/${used.id}`,
+    });
   }
 }
 

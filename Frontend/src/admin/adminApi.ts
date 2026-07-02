@@ -78,3 +78,22 @@ export async function deleteAdminRecord(collection: AdminCollection, id: string)
     method: "DELETE",
   });
 }
+
+export async function sendAdminSupportMessage(conversationId: string, body: string) {
+  return request<{ success: boolean; data: AdminDataset }>(
+    `/admin/support/${conversationId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    },
+  );
+}
+
+export async function markAdminSupportConversationRead(conversationId: string) {
+  return request<{ success: boolean; data: AdminDataset }>(
+    `/admin/support/${conversationId}/read`,
+    {
+      method: "PATCH",
+    },
+  );
+}

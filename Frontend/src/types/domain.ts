@@ -448,6 +448,12 @@ export type GleankConversation = {
   otherUserName: string;
   listingName: string;
   listingImageUrl: string | null;
+  storeName: string;
+  storeSlug: string;
+  storeLogoUrl: string | null;
+  storeCampus: string;
+  storeCategory: string;
+  unreadCount: number;
   lastMessageBody: string;
   lastMessageAt: string | null;
   createdAt: string;

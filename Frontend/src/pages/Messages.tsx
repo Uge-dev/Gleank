@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   FiArrowLeft,
@@ -16,220 +16,358 @@ import {
 } from "react-icons/fi";
 
 import EmptyState from "../components/EmptyState";
-import { conversations } from "../data/messages";
-import type { Conversation } from "../data/messages";
-import { getPublicStore } from "../services/seller.service";
+import LoadingState from "../components/LoadingState";
+import { useAuth } from "../context/AuthContext";
+import {
+  createConversation,
+  getConversationMessages,
+  getConversations,
+  sendConversationMessage,
+} from "../services/message.service";
+import type { GleankConversation, GleankMessage } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
-type MessageFilter = "All" | "Unread" | "Orders" | "Sellers";
+type MessageFilter = "All" | "Unread" | "Orders" | "Sellers" | "Support";
 
-function getCurrentTime() {
+const messageFilters: MessageFilter[] = [
+  "All",
+  "Unread",
+  "Orders",
+  "Sellers",
+  "Support",
+];
+
+const chatFallback =
+  "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=600&q=80";
+
+function formatChatTime(value?: string | null) {
+  if (!value) return "Now";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Now";
+
   return new Intl.DateTimeFormat("en-NG", {
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date());
+  }).format(date);
+}
+
+function conversationName(conversation: GleankConversation) {
+  if (conversation.contextType === "support") return "Gleank Support";
+  return (
+    conversation.otherUserName ||
+    conversation.storeName ||
+    conversation.sellerName ||
+    "Gleank user"
+  );
+}
+
+function conversationHandle(conversation: GleankConversation) {
+  if (conversation.contextType === "support") return "support";
+  return conversation.storeSlug || conversation.contextType.replaceAll("_", "-");
+}
+
+function conversationAvatar(conversation: GleankConversation) {
+  const name = conversationName(conversation);
+  return name.slice(0, 1).toUpperCase();
+}
+
+function conversationImage(conversation: GleankConversation) {
+  return resolveMediaUrl(
+    conversation.storeLogoUrl || conversation.listingImageUrl,
+    "",
+  );
+}
+
+function conversationCampus(conversation: GleankConversation) {
+  if (conversation.contextType === "support") return "Admin support";
+  return conversation.storeCampus || "Campus chat";
+}
+
+function conversationPreview(conversation: GleankConversation) {
+  if (conversation.contextType === "support") {
+    return {
+      id: conversation.id,
+      href: "/help",
+      name: "Gleank admin support",
+      price: "Live help",
+      image: chatFallback,
+      status: "Support",
+    };
+  }
+
+  if (conversation.orderId) {
+    return {
+      id: conversation.orderId,
+      href: `/orders/${conversation.orderId}`,
+      name: `Order ${conversation.orderId.slice(-8).toUpperCase()}`,
+      price: "Order conversation",
+      image: resolveMediaUrl(conversation.storeLogoUrl, chatFallback),
+      status: "Order",
+    };
+  }
+
+  if (conversation.listingId) {
+    return {
+      id: conversation.listingId,
+      href: `/used-market/${conversation.listingId}`,
+      name: conversation.listingName || "Used-market item",
+      price: "Used Market",
+      image: resolveMediaUrl(conversation.listingImageUrl, chatFallback),
+      status: conversation.contextType === "used_order" ? "Used Order" : "Used Item",
+    };
+  }
+
+  return {
+    id: conversation.contextId,
+    href: conversation.storeSlug
+      ? `/stores/${conversation.storeSlug}`
+      : "/search",
+    name: conversation.storeName || conversationName(conversation),
+    price: conversation.storeCategory || "Store chat",
+    image: resolveMediaUrl(conversation.storeLogoUrl, chatFallback),
+    status: "Store",
+  };
 }
 
 function Messages() {
   const [searchParams] = useSearchParams();
-  const [conversationList, setConversationList] =
-    useState<Conversation[]>(conversations);
-
-  const [activeConversationId, setActiveConversationId] = useState(
-    conversations[0]?.id || ""
-  );
-
+  const { user } = useAuth();
+  const [conversationList, setConversationList] = useState<
+    GleankConversation[]
+  >([]);
+  const [activeConversationId, setActiveConversationId] = useState("");
+  const [messages, setMessages] = useState<GleankMessage[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<MessageFilter>("All");
   const [messageText, setMessageText] = useState("");
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState("");
 
   const messageEndRef = useRef<HTMLDivElement | null>(null);
-  const openedSellerRef = useRef("");
+  const openedContextRef = useRef("");
 
-  const filteredConversations = useMemo(() => {
-    return conversationList.filter((conversation) => {
-      const searchValue = searchTerm.toLowerCase();
+  const loadConversations = useCallback(
+    async (preferredConversationId = "") => {
+      const response = await getConversations();
+      setConversationList(response.conversations);
 
-      const matchesSearch =
-        conversation.sellerName.toLowerCase().includes(searchValue) ||
-        conversation.sellerUsername.toLowerCase().includes(searchValue) ||
-        conversation.product.name.toLowerCase().includes(searchValue) ||
-        conversation.category.toLowerCase().includes(searchValue) ||
-        conversation.lastMessage.toLowerCase().includes(searchValue);
+      setActiveConversationId((current) => {
+        if (
+          preferredConversationId &&
+          response.conversations.some((item) => item.id === preferredConversationId)
+        ) {
+          return preferredConversationId;
+        }
 
-      if (!matchesSearch) return false;
+        if (current && response.conversations.some((item) => item.id === current)) {
+          return current;
+        }
 
-      if (activeFilter === "Unread") {
-        return conversation.unreadCount > 0;
-      }
+        return response.conversations[0]?.id || "";
+      });
+    },
+    [],
+  );
 
-      if (activeFilter === "Orders") {
-        return conversation.product.status.toLowerCase().includes("order");
-      }
+  useEffect(() => {
+    let active = true;
 
-      if (activeFilter === "Sellers") {
-        return true;
-      }
+    setIsLoading(true);
+    setError("");
 
-      return true;
-    });
-  }, [conversationList, searchTerm, activeFilter]);
+    void loadConversations()
+      .catch((requestError) => {
+        if (!active) return;
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Messages could not be loaded.",
+        );
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    const timer = window.setInterval(() => {
+      void loadConversations().catch(() => undefined);
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [loadConversations]);
+
+  useEffect(() => {
+    const sellerSlug = searchParams.get("seller")?.trim() || "";
+    const orderId = searchParams.get("order")?.trim() || "";
+    const supportRequested = searchParams.get("support") === "1";
+    const contextKey = supportRequested
+      ? "support"
+      : orderId
+        ? `order:${orderId}`
+        : sellerSlug
+          ? `store:${sellerSlug}`
+          : "";
+
+    if (!contextKey || openedContextRef.current === contextKey) return;
+    openedContextRef.current = contextKey;
+
+    const input = supportRequested
+      ? { contextType: "support" as const }
+      : orderId
+        ? { contextType: "order" as const, contextId: orderId }
+        : { contextType: "store" as const, contextId: sellerSlug };
+
+    void createConversation(input)
+      .then(async (response) => {
+        await loadConversations(response.conversation.id);
+        setActiveConversationId(response.conversation.id);
+        setMobileChatOpen(true);
+      })
+      .catch((requestError) => {
+        openedContextRef.current = "";
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Conversation could not be started.",
+        );
+      });
+  }, [loadConversations, searchParams]);
 
   const activeConversation = useMemo(() => {
     return conversationList.find(
-      (conversation) => conversation.id === activeConversationId
+      (conversation) => conversation.id === activeConversationId,
     );
-  }, [conversationList, activeConversationId]);
+  }, [activeConversationId, conversationList]);
+
+  const loadMessages = useCallback(async (conversationId: string) => {
+    setIsLoadingMessages(true);
+
+    try {
+      const response = await getConversationMessages(conversationId);
+      setMessages(response.messages);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      setMessages([]);
+      return;
+    }
+
+    let active = true;
+
+    void loadMessages(activeConversationId).catch((requestError) => {
+      if (!active) return;
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Conversation messages could not be loaded.",
+      );
+    });
+
+    const timer = window.setInterval(() => {
+      void loadMessages(activeConversationId).catch(() => undefined);
+    }, 2500);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [activeConversationId, loadMessages]);
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [activeConversationId, activeConversation?.messages.length]);
+  }, [activeConversationId, messages.length]);
 
-  useEffect(() => {
-    const sellerSlug = searchParams.get("seller")?.trim() || "";
-    if (!sellerSlug || openedSellerRef.current === sellerSlug) return;
-    openedSellerRef.current = sellerSlug;
+  const filteredConversations = useMemo(() => {
+    return conversationList.filter((conversation) => {
+      const searchValue = searchTerm.toLowerCase();
+      const name = conversationName(conversation);
+      const preview = conversationPreview(conversation);
+      const matchesSearch =
+        !searchValue ||
+        name.toLowerCase().includes(searchValue) ||
+        conversationHandle(conversation).toLowerCase().includes(searchValue) ||
+        preview.name.toLowerCase().includes(searchValue) ||
+        (conversation.lastMessageBody || "").toLowerCase().includes(searchValue);
 
-    const existingConversation = conversationList.find(
-      (conversation) => conversation.sellerUsername === sellerSlug,
-    );
-    if (existingConversation) {
-      setActiveConversationId(existingConversation.id);
-      setMobileChatOpen(true);
-      return;
-    }
+      if (!matchesSearch) return false;
 
-    void getPublicStore(sellerSlug)
-      .then((workspace) => {
-        const product = workspace.products[0];
-        const service = workspace.services[0];
-        const name =
-          searchParams.get("name")?.trim() || workspace.store.name;
-        const conversation: Conversation = {
-          id: `chat-${workspace.store.slug}`,
-          sellerName: name,
-          sellerUsername: workspace.store.slug,
-          sellerAvatar: name.slice(0, 1).toUpperCase(),
-          sellerImage: workspace.store.logoUrl || undefined,
-          campus: workspace.store.campus,
-          category: workspace.store.category,
-          lastMessage: `Start a conversation with ${name}.`,
-          lastMessageTime: "Now",
-          unreadCount: 0,
-          online: true,
-          product: product
-            ? {
-                id: product.id,
-                href: `/products/${product.id}`,
-                name: product.name,
-                price: new Intl.NumberFormat("en-NG", {
-                  style: "currency",
-                  currency: "NGN",
-                  maximumFractionDigits: 0,
-                }).format(product.price),
-                image: resolveMediaUrl(
-                  product.imageUrls[0],
-                  "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=500&q=80",
-                ),
-                status:
-                  product.status === "out_of_stock" ? "Sold" : "Available",
-              }
-            : {
-                id: service?.id || workspace.store.id,
-                href: `/stores/${workspace.store.slug}`,
-                name: service?.name || workspace.store.name,
-                price: service
-                  ? new Intl.NumberFormat("en-NG", {
-                      style: "currency",
-                      currency: "NGN",
-                      maximumFractionDigits: 0,
-                    }).format(service.price)
-                  : "Contact seller",
-                image: resolveMediaUrl(
-                  service?.imageUrls[0] || workspace.store.logoUrl,
-                  "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=500&q=80",
-                ),
-                status: service ? "Service" : "Available",
-              },
-          messages: [
-            {
-              id: `intro-${workspace.store.id}`,
-              sender: "seller",
-              text: `You are now messaging ${name}. Ask about products, services, pickup, or delivery.`,
-              time: getCurrentTime(),
-            },
-          ],
-        };
+      if (activeFilter === "Unread") return conversation.unreadCount > 0;
+      if (activeFilter === "Orders") return Boolean(conversation.orderId);
+      if (activeFilter === "Support") return conversation.contextType === "support";
+      if (activeFilter === "Sellers") return conversation.contextType !== "support";
 
-        setConversationList((current) => [conversation, ...current]);
-        setActiveConversationId(conversation.id);
-        setMobileChatOpen(true);
-      })
-      .catch(() => {
-        openedSellerRef.current = "";
-      });
-  }, [conversationList, searchParams]);
+      return true;
+    });
+  }, [activeFilter, conversationList, searchTerm]);
 
-  function selectConversation(conversation: Conversation) {
+  function selectConversation(conversation: GleankConversation) {
     setActiveConversationId(conversation.id);
     setMobileChatOpen(true);
-
-    setConversationList((currentConversations) =>
-      currentConversations.map((item) => {
-        if (item.id !== conversation.id) return item;
-
-        return {
-          ...item,
-          unreadCount: 0,
-        };
-      })
-    );
   }
 
-  function sendMessage() {
+  async function sendMessage() {
     const cleanMessage = messageText.trim();
 
-    if (!cleanMessage || !activeConversation) return;
+    if (!cleanMessage || !activeConversation || isSending) return;
 
-    const newMessage = {
-      id: `msg-${Date.now()}`,
-      sender: "me" as const,
-      text: cleanMessage,
-      time: getCurrentTime(),
-    };
+    setIsSending(true);
+    setError("");
 
-    setConversationList((currentConversations) =>
-      currentConversations.map((conversation) => {
-        if (conversation.id !== activeConversation.id) return conversation;
-
-        return {
-          ...conversation,
-          lastMessage: cleanMessage,
-          lastMessageTime: "Now",
-          unreadCount: 0,
-          messages: [...conversation.messages, newMessage],
-        };
-      })
-    );
-
-    setMessageText("");
+    try {
+      const response = await sendConversationMessage(
+        activeConversation.id,
+        cleanMessage,
+      );
+      setMessages((current) => [...current, response.message]);
+      setMessageText("");
+      await loadConversations(activeConversation.id);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Message could not be sent.",
+      );
+    } finally {
+      setIsSending(false);
+    }
   }
 
-  if (conversationList.length === 0) {
+  if (isLoading) {
     return (
       <section className="messages-page">
+        <LoadingState
+          title="Loading messages"
+          message="Opening your live Gleank inbox."
+        />
+      </section>
+    );
+  }
+
+  if (conversationList.length === 0 && !error) {
+    return (
+      <section className="messages-page messages-empty-page">
         <EmptyState
           icon={<FiMessageCircle />}
           eyebrow="No messages yet"
           title="Your inbox is empty"
-          message="When you message sellers or buyers, your conversations will appear here."
-          actionLabel="Browse Products"
+          message="When you message sellers, buyers, or Gleank support, your conversations will appear here."
+          actionLabel="Chat with support"
           onAction={() => {
-            window.location.href = "/search";
+            window.location.href = "/messages?support=1";
           }}
         />
       </section>
@@ -246,7 +384,7 @@ function Messages() {
         <aside className="messages-sidebar-panel">
           <div className="messages-sidebar-header">
             <div>
-              <span>Inbox</span>
+              <span>Live Inbox</span>
               <h1>Messages</h1>
             </div>
 
@@ -255,84 +393,96 @@ function Messages() {
             </button>
           </div>
 
+          {error && (
+            <div className="messages-inline-error" role="alert">
+              {error}
+            </div>
+          )}
+
           <div className="messages-search-box">
             <FiSearch />
 
             <input
               type="text"
-              placeholder="Search sellers, products, messages..."
+              placeholder="Search sellers, support, orders..."
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
           </div>
 
           <div className="messages-filter-row">
-            {(["All", "Unread", "Orders", "Sellers"] as MessageFilter[]).map(
-              (filter) => (
-                <button
-                  type="button"
-                  key={filter}
-                  className={activeFilter === filter ? "active" : ""}
-                  onClick={() => setActiveFilter(filter)}
-                >
-                  {filter}
-                </button>
-              )
-            )}
+            {messageFilters.map((filter) => (
+              <button
+                type="button"
+                key={filter}
+                className={activeFilter === filter ? "active" : ""}
+                onClick={() => setActiveFilter(filter)}
+              >
+                {filter}
+              </button>
+            ))}
           </div>
 
           <div className="conversation-list">
             {filteredConversations.length > 0 ? (
-              filteredConversations.map((conversation) => (
-                <button
-                  type="button"
-                  key={conversation.id}
-                  className={
-                    activeConversationId === conversation.id
-                      ? "conversation-card active"
-                      : "conversation-card"
-                  }
-                  onClick={() => selectConversation(conversation)}
-                >
-                  <div className="conversation-avatar-wrap">
-                    {conversation.sellerImage ? (
-                      <img
-                        src={conversation.sellerImage}
-                        alt={conversation.sellerName}
-                      />
-                    ) : (
-                      <span>{conversation.sellerAvatar}</span>
+              filteredConversations.map((conversation) => {
+                const name = conversationName(conversation);
+                const image = conversationImage(conversation);
+                const preview = conversationPreview(conversation);
+
+                return (
+                  <button
+                    type="button"
+                    key={conversation.id}
+                    className={
+                      activeConversationId === conversation.id
+                        ? "conversation-card active"
+                        : "conversation-card"
+                    }
+                    onClick={() => selectConversation(conversation)}
+                  >
+                    <div className="conversation-avatar-wrap">
+                      {image ? (
+                        <img src={image} alt={name} />
+                      ) : (
+                        <span>{conversationAvatar(conversation)}</span>
+                      )}
+
+                      <small />
+                    </div>
+
+                    <div className="conversation-info">
+                      <div className="conversation-top-line">
+                        <strong>{name}</strong>
+                        <time>{formatChatTime(conversation.lastMessageAt)}</time>
+                      </div>
+
+                      <p>@{conversationHandle(conversation)}</p>
+
+                      <span>
+                        {conversation.lastMessageBody ||
+                          (conversation.contextType === "support"
+                            ? "Open support conversation"
+                            : "Start the conversation")}
+                      </span>
+
+                      <div className="conversation-product-line">
+                        <FiShoppingBag />
+                        {preview.name}
+                      </div>
+                    </div>
+
+                    {conversation.unreadCount > 0 && (
+                      <em>{conversation.unreadCount}</em>
                     )}
-
-                    {conversation.online && <small />}
-                  </div>
-
-                  <div className="conversation-info">
-                    <div className="conversation-top-line">
-                      <strong>{conversation.sellerName}</strong>
-                      <time>{conversation.lastMessageTime}</time>
-                    </div>
-
-                    <p>@{conversation.sellerUsername}</p>
-
-                    <span>{conversation.lastMessage}</span>
-
-                    <div className="conversation-product-line">
-                      <FiShoppingBag />
-                      {conversation.product.name}
-                    </div>
-                  </div>
-
-                  {conversation.unreadCount > 0 && (
-                    <em>{conversation.unreadCount}</em>
-                  )}
-                </button>
-              ))
+                  </button>
+                );
+              })
             ) : (
               <div className="messages-empty-list">
                 <FiSearch />
                 <h3>No conversation found</h3>
-                <p>Try searching with another seller or product name.</p>
+                <p>Try searching with another seller, order, or support term.</p>
               </div>
             )}
           </div>
@@ -351,39 +501,46 @@ function Messages() {
               </button>
 
               <Link
-                to={`/stores/${activeConversation.sellerUsername}`}
+                to={
+                  activeConversation.contextType === "support"
+                    ? "/help"
+                    : activeConversation.storeSlug
+                      ? `/stores/${activeConversation.storeSlug}`
+                      : "/messages"
+                }
                 className="chat-seller-main"
               >
                 <div className="chat-seller-avatar">
-                  {activeConversation.sellerImage ? (
+                  {conversationImage(activeConversation) ? (
                     <img
-                      src={activeConversation.sellerImage}
-                      alt={activeConversation.sellerName}
+                      src={conversationImage(activeConversation)}
+                      alt={conversationName(activeConversation)}
                     />
                   ) : (
-                    <span>{activeConversation.sellerAvatar}</span>
+                    <span>{conversationAvatar(activeConversation)}</span>
                   )}
 
-                  {activeConversation.online && <small />}
+                  <small />
                 </div>
 
                 <div>
-                  <h2>{activeConversation.sellerName}</h2>
-                  <p>
-                    {activeConversation.online ? "Online" : "Offline"} •{" "}
-                    {activeConversation.campus}
-                  </p>
+                  <h2>{conversationName(activeConversation)}</h2>
+                  <p>Polling live • {conversationCampus(activeConversation)}</p>
                 </div>
               </Link>
 
               <div className="chat-header-actions">
-                <button type="button" aria-label="Call seller">
+                <button type="button" aria-label="Call">
                   <FiPhone />
                 </button>
 
                 <Link
-                  to={`/stores/${activeConversation.sellerUsername}`}
-                  aria-label="View seller profile"
+                  to={
+                    activeConversation.storeSlug
+                      ? `/stores/${activeConversation.storeSlug}`
+                      : "/profile"
+                  }
+                  aria-label="View profile"
                 >
                   <FiUser />
                 </Link>
@@ -395,44 +552,45 @@ function Messages() {
             </div>
 
             <div className="chat-product-preview">
-              <img
-                src={activeConversation.product.image}
-                alt={activeConversation.product.name}
-              />
+              {(() => {
+                const preview = conversationPreview(activeConversation);
 
-              <div>
-                <span>{activeConversation.product.status}</span>
-                <h3>{activeConversation.product.name}</h3>
-                <p>{activeConversation.product.price}</p>
-              </div>
+                return (
+                  <>
+                    <img src={preview.image} alt={preview.name} />
 
-              <Link
-                to={
-                  activeConversation.product.href ||
-                  `/products/${activeConversation.product.id}`
-                }
-              >
-                View
-              </Link>
+                    <div>
+                      <span>{preview.status}</span>
+                      <h3>{preview.name}</h3>
+                      <p>{preview.price}</p>
+                    </div>
+
+                    <Link to={preview.href}>View</Link>
+                  </>
+                );
+              })()}
             </div>
 
             <div className="chat-message-area">
               <div className="chat-date-divider">
-                <span>Today</span>
+                <span>{isLoadingMessages ? "Syncing..." : "Live chat"}</span>
               </div>
 
-              {activeConversation.messages.map((message) => (
+              {messages.map((message) => (
                 <div
                   key={message.id}
                   className={
-                    message.sender === "me"
+                    message.senderId === user?.id
                       ? "message-bubble-row mine"
                       : "message-bubble-row"
                   }
                 >
                   <div className="message-bubble">
-                    <p>{message.text}</p>
-                    <time>{message.time}</time>
+                    {message.senderId !== user?.id && (
+                      <strong>{message.senderName}</strong>
+                    )}
+                    <p>{message.body}</p>
+                    <time>{formatChatTime(message.createdAt)}</time>
                   </div>
                 </div>
               ))}
@@ -466,9 +624,9 @@ function Messages() {
               <button
                 type="button"
                 className="chat-send-button"
-                onClick={sendMessage}
+                onClick={() => void sendMessage()}
                 aria-label="Send message"
-                disabled={!messageText.trim()}
+                disabled={isSending || !messageText.trim()}
               >
                 <FiSend />
               </button>
@@ -483,8 +641,8 @@ function Messages() {
             <h2>Select a conversation</h2>
 
             <p>
-              Choose a seller or product conversation from the list to start
-              chatting.
+              Choose a seller, order, or support conversation from the list to
+              start chatting.
             </p>
           </section>
         )}

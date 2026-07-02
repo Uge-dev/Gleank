@@ -307,7 +307,15 @@ export async function requestPasswordReset(input, meta = {}) {
     token,
   });
 
-  return { message: resetRequestMessage };
+  return {
+    message: resetRequestMessage,
+    ...(!env.isProduction
+      ? {
+          developmentToken: token,
+          passwordResetExpiresAt: expiresAt.toISOString(),
+        }
+      : {}),
+  };
 }
 
 export async function resetPassword(input, meta = {}) {

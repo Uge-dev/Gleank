@@ -2,6 +2,7 @@ import { db, transaction } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
+import { createNotification, createNotificationForUsers } from "./notification.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -401,6 +402,27 @@ export function createOrders(userId, input) {
         "Your order has been created and is waiting for payment.",
       );
 
+      const firstProductName = group.products[0]?.product?.name || "a product";
+      createNotification({
+        userId: group.sellerId,
+        type: "order",
+        title: "New order received",
+        body: `${buyerName} placed an order for ${firstProductName}.`,
+        actionLabel: "View order",
+        actionPath: `/orders/${orderId}`,
+        imageUrl: firstImage(group.products[0]?.product?.image_urls),
+      });
+
+      createNotification({
+        userId,
+        type: "order",
+        title: "Order created",
+        body: `Your order ${orderCode} is waiting for payment.`,
+        actionLabel: "Continue order",
+        actionPath: `/orders/${orderId}`,
+        imageUrl: firstImage(group.products[0]?.product?.image_urls),
+      });
+
       output.push(hydrateOrder(getOrderRowByIdForUser(userId, orderId)));
     }
 
@@ -447,6 +469,17 @@ export function updateOrderStatus(user, orderId, status, note = "") {
 
   insertOrderEvent(orderId, status, String(note || "").slice(0, 500));
 
+  createNotificationForUsers(
+    [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
+    {
+      type: "order",
+      title: eventLabel(status),
+      body: note || `Order ${row.order_code} is now ${statusLabel(status)}.`,
+      actionLabel: "View order",
+      actionPath: `/orders/${row.id}`,
+    },
+  );
+
   return getOrder(user.user_id, orderId);
 }
 
@@ -481,6 +514,15 @@ export function verifyOrderDelivery(user, orderId, verificationCode, note = "") 
     note || "Seller verified the buyer delivery code and marked the order delivered.",
   );
 
+  createNotification({
+    userId: row.buyer_id,
+    type: "order",
+    title: "Order delivered",
+    body: `Your order ${row.order_code} has been marked delivered.`,
+    actionLabel: "View order",
+    actionPath: `/orders/${row.id}`,
+  });
+
   return getOrder(user.user_id, row.id);
 }
 
@@ -505,6 +547,14 @@ export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
         ? `Payment verified with reference ${paymentReference}.`
         : "Payment recorded locally. Replace local provider with gateway verification before production.",
     );
+
+    createNotificationForUsers([row.buyer_id, row.seller_id], {
+      type: "order",
+      title: "Payment confirmed",
+      body: `Payment for order ${row.order_code} has been confirmed.`,
+      actionLabel: "View order",
+      actionPath: `/orders/${row.id}`,
+    });
 
     return getOrder(userId, row.id);
   });

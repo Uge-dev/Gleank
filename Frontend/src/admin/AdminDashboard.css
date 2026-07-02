@@ -961,6 +961,191 @@
   color: var(--admin-red);
 }
 
+.admin-support-panel {
+  overflow: visible;
+}
+
+.admin-support-list {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.admin-support-card {
+  border: 1px solid var(--admin-border);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top right, rgba(25, 167, 91, 0.08), transparent 30%),
+    #ffffff;
+  overflow: hidden;
+}
+
+.admin-support-card-head,
+.admin-support-reply,
+.admin-support-meta,
+.admin-support-reply > div {
+  display: flex;
+  align-items: center;
+}
+
+.admin-support-card-head {
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-support-card-head span {
+  color: var(--admin-green-dark);
+  font-size: 0.74rem;
+  font-weight: 950;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-support-card-head h3,
+.admin-support-card-head p,
+.admin-support-message p {
+  margin: 0;
+}
+
+.admin-support-card-head h3 {
+  margin-top: 5px;
+  font-size: 1.12rem;
+}
+
+.admin-support-card-head p,
+.admin-support-meta small,
+.admin-support-message time {
+  color: var(--admin-muted);
+}
+
+.admin-support-meta {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  text-align: right;
+}
+
+.admin-support-meta strong {
+  color: var(--admin-red);
+  background: var(--admin-red-soft);
+  border-radius: 999px;
+  padding: 7px 10px;
+  font-size: 0.78rem;
+}
+
+.admin-support-thread {
+  display: grid;
+  gap: 12px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 18px;
+  background: #f8fafc;
+}
+
+.admin-support-message {
+  width: min(78%, 620px);
+  border: 1px solid var(--admin-border);
+  border-radius: 18px 18px 18px 6px;
+  padding: 12px 14px;
+  background: #ffffff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
+}
+
+.admin-support-message.admin {
+  justify-self: end;
+  border-color: rgba(25, 167, 91, 0.22);
+  border-radius: 18px 18px 6px 18px;
+  background: linear-gradient(135deg, #ecfdf5, #ffffff);
+}
+
+.admin-support-message strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--admin-text);
+  font-size: 0.84rem;
+}
+
+.admin-support-message p {
+  color: var(--admin-text);
+  line-height: 1.55;
+}
+
+.admin-support-message time {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.74rem;
+}
+
+.admin-support-empty {
+  color: var(--admin-muted);
+  border: 1px dashed var(--admin-border);
+  border-radius: 18px;
+  padding: 18px;
+  background: #ffffff;
+}
+
+.admin-support-reply {
+  gap: 14px;
+  padding: 18px;
+  border-top: 1px solid var(--admin-border);
+}
+
+.admin-support-reply textarea {
+  width: 100%;
+  min-height: 94px;
+  resize: vertical;
+  border: 1px solid var(--admin-border);
+  border-radius: 18px;
+  outline: none;
+  padding: 13px 15px;
+  color: var(--admin-text);
+  background: #ffffff;
+  font: inherit;
+}
+
+.admin-support-reply textarea:focus {
+  border-color: rgba(25, 167, 91, 0.55);
+  box-shadow: 0 0 0 4px rgba(25, 167, 91, 0.12);
+}
+
+.admin-support-reply > div {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+  min-width: 160px;
+}
+
+.admin-support-read-btn,
+.admin-support-send-btn {
+  min-height: 45px;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 900;
+  font-family: inherit;
+}
+
+.admin-support-read-btn {
+  color: var(--admin-green-dark);
+  background: var(--admin-green-soft);
+}
+
+.admin-support-send-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #031107;
+  background: linear-gradient(135deg, #35e882, #f8d24d);
+}
+
+.admin-support-send-btn:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
 .admin-status-needs-review,
 .admin-status-pending,
 .admin-status-reviewing,
@@ -1068,6 +1253,21 @@
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .admin-support-card-head,
+  .admin-support-reply {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-support-meta {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .admin-support-message {
+    width: 92%;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1105,5 +1305,16 @@
   .admin-profile-pill {
     min-height: 44px;
     padding: 0 13px;
+  }
+
+  .admin-support-list,
+  .admin-support-card-head,
+  .admin-support-thread,
+  .admin-support-reply {
+    padding: 14px;
+  }
+
+  .admin-support-message {
+    width: 100%;
   }
 }

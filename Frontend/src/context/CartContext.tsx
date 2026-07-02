@@ -18,6 +18,7 @@ export type CartItem = {
   sellerName: string;
   sellerId: string;
   campus: string;
+  category?: string;
   quantity: number;
 };
 
@@ -81,6 +82,7 @@ function parseCart(value: string | null): CartItem[] {
         sellerName: String(item.sellerName || ""),
         sellerId: String(item.sellerId || ""),
         campus: String(item.campus || ""),
+        category: item.category ? String(item.category) : undefined,
         quantity: Math.max(1, Number(item.quantity || 1)),
       }))
       .filter((item) => item.id && item.name && item.sellerId);

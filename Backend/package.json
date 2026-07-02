@@ -7,7 +7,9 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test --test-concurrency=1",
-    "seed": "node src/scripts/seed.js"
+    "seed": "node src/scripts/seed.js",
+    "neon:check": "node src/scripts/neon-check.js",
+    "production:check": "node src/scripts/production-check.js"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -15,6 +17,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
+    "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -24,8 +27,10 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nanoid": "^5.1.15",
-    "zod": "^4.4.3",
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^9.0.3",
+    "pg": "^8.22.0",
+    "sharp": "^0.35.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "supertest": "^7.2.2"

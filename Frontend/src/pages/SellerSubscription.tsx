@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiArrowLeft, FiCheckCircle, FiCreditCard, FiRefreshCw } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
-import {
-  activateSellerSubscriptionForDevelopment,
-  getSellerSubscription,
-} from "../services/subscription.service";
+import { getSellerSubscription } from "../services/subscription.service";
 import type { SellerSubscription as SellerSubscriptionType } from "../types/domain";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 

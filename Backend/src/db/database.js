@@ -3,6 +3,12 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { env } from "../config/env.js";
 
+if (env.databaseProvider === "postgres") {
+  throw new Error(
+    "DATABASE_PROVIDER=postgres is configured, but the runtime data layer still uses SQLite. Run npm --prefix Backend run neon:check to verify Neon credentials, then complete the async Postgres repository migration before starting the API with DATABASE_PROVIDER=postgres.",
+  );
+}
+
 fs.mkdirSync(path.dirname(env.databasePath), { recursive: true });
 
 export const db = new Database(env.databasePath, {
@@ -38,6 +44,27 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
   CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL
+      CHECK (type IN ('order', 'message', 'seller', 'product', 'like', 'admin', 'used_market')),
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    action_label TEXT NOT NULL DEFAULT 'Open',
+    action_path TEXT NOT NULL DEFAULT '/',
+    image_url TEXT,
+    is_read INTEGER NOT NULL DEFAULT 0,
+    read_at TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS notifications_user_id_idx
+    ON notifications(user_id);
+  CREATE INDEX IF NOT EXISTS notifications_unread_idx
+    ON notifications(user_id, is_read, created_at);
 
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id TEXT PRIMARY KEY,

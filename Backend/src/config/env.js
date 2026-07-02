@@ -19,15 +19,20 @@ function booleanFromEnv(value, fallback) {
 
 const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
+const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
+const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: numberFromEnv(process.env.PORT, 4000),
   frontendUrl,
+  databaseProvider,
+  databaseUrl: process.env.DATABASE_URL || "",
   databasePath: path.resolve(
     backendRoot,
     process.env.DATABASE_PATH || "./data/gleank.sqlite",
   ),
+  storageProvider,
   uploadsPath: path.resolve(
     backendRoot,
     process.env.UPLOADS_PATH || "./uploads",
@@ -77,6 +82,12 @@ export const env = {
     process.env.NODE_ENV !== "production",
   ),
   maxUploadMb: numberFromEnv(process.env.MAX_UPLOAD_MB, 5),
+  imageMaxWidth: numberFromEnv(process.env.IMAGE_MAX_WIDTH, 1800),
+  imageWebpQuality: numberFromEnv(process.env.IMAGE_WEBP_QUALITY, 86),
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || "",
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  cloudinaryFolder: process.env.CLOUDINARY_FOLDER || "gleank",
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: numberFromEnv(process.env.SMTP_PORT, 587),
   smtpSecure: booleanFromEnv(process.env.SMTP_SECURE, false),
@@ -88,6 +99,39 @@ export const env = {
 
 if (env.isProduction && env.jwtSecret.includes("local-development")) {
   throw new Error("JWT_SECRET must be configured in production.");
+}
+
+if (!["sqlite", "postgres"].includes(env.databaseProvider)) {
+  throw new Error("DATABASE_PROVIDER must be either sqlite or postgres.");
+}
+
+if (!["local", "cloudinary"].includes(env.storageProvider)) {
+  throw new Error("STORAGE_PROVIDER must be either local or cloudinary.");
+}
+
+if (env.databaseProvider === "postgres" && !env.databaseUrl) {
+  throw new Error("DATABASE_URL is required when DATABASE_PROVIDER=postgres.");
+}
+
+if (env.storageProvider === "cloudinary") {
+  const hasCloudinaryConfig =
+    env.cloudinaryCloudName && env.cloudinaryApiKey && env.cloudinaryApiSecret;
+
+  if (!hasCloudinaryConfig) {
+    throw new Error(
+      "Cloudinary storage requires CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.",
+    );
+  }
+}
+
+if (env.isProduction && env.storageProvider !== "cloudinary") {
+  throw new Error("STORAGE_PROVIDER=cloudinary is required in production.");
+}
+
+if (env.isProduction && env.databaseProvider !== "postgres") {
+  console.warn(
+    "Production database is still set to sqlite. Complete the Postgres data-layer migration before using Neon for live production traffic.",
+  );
 }
 
 if (env.isProduction && env.paymentProvider === "paystack") {

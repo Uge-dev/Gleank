@@ -9,7 +9,6 @@ import {
   FiLock,
   FiMapPin,
   FiNavigation,
-  FiPhone,
   FiShield,
   FiShoppingCart,
   FiTruck,
