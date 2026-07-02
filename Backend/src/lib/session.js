@@ -147,7 +147,7 @@ export function listActiveSessionsForUser(userId) {
 export function sessionCookieOptions() {
   return {
     httpOnly: true,
-    sameSite: "lax",
+    sameSite: env.isProduction ? "none" : "lax",
     secure: env.isProduction,
     path: "/",
     maxAge: env.sessionDays * 24 * 60 * 60 * 1_000,

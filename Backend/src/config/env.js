@@ -17,7 +17,11 @@ function booleanFromEnv(value, fallback) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+function normalizeUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
 const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
 const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
