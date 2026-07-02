@@ -17,10 +17,16 @@ function booleanFromEnv(value, fallback) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+function normalizeUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
+
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: numberFromEnv(process.env.PORT, 4000),
-  frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+  frontendUrl,
   databasePath: path.resolve(
     backendRoot,
     process.env.DATABASE_PATH || "./data/gleank.sqlite",
