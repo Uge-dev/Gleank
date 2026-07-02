@@ -1,0 +1,16 @@
+{
+  "name": "gleank-waitlist-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Separate Gleank landing page with MongoDB waitlist and admin dashboard.",
+  "scripts": {
+    "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "start": "npm run start --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

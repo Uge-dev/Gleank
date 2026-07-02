@@ -1,0 +1,88 @@
+.gleank-waitlist-panel {
+  padding: 24px;
+  border-radius: 24px;
+  background: #101214;
+  color: #fff;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.gleank-waitlist-panel.auth {
+  max-width: 420px;
+  display: grid;
+  gap: 12px;
+}
+
+.gleank-waitlist-panel input,
+.gleank-waitlist-panel button {
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  padding: 0 14px;
+}
+
+.gleank-waitlist-panel input {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+
+.gleank-waitlist-panel button {
+  border: none;
+  background: #23d982;
+  color: #07110c;
+  font-weight: 800;
+}
+
+.panel-head,
+.panel-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.panel-head p {
+  margin: 0 0 4px;
+  color: #23d982;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.panel-head h2 {
+  margin: 0;
+}
+
+.panel-filter input {
+  flex: 1;
+}
+
+.panel-error {
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 80, 80, 0.15);
+  color: #ffd1d1;
+}
+
+.panel-table-wrap {
+  overflow-x: auto;
+}
+
+.gleank-waitlist-panel table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gleank-waitlist-panel th,
+.gleank-waitlist-panel td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  white-space: nowrap;
+}
+
+.gleank-waitlist-panel th {
+  color: rgba(255,255,255,0.6);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
