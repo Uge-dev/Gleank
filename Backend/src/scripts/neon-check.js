@@ -10,10 +10,8 @@ if (!databaseUrl) {
 }
 
 const pool = new Pool({
-  connectionString: databaseUrl,
-  ssl: databaseUrl.includes("sslmode=require")
-    ? undefined
-    : { rejectUnauthorized: true },
+  connectionString: databaseUrl.replace("sslmode=require", "sslmode=verify-full"),
+  ssl: { rejectUnauthorized: true },
   max: 1,
   idleTimeoutMillis: 5_000,
   connectionTimeoutMillis: 10_000,

@@ -19,7 +19,7 @@ Neon gives you a Postgres connection string that looks like:
 
 ```env
 DATABASE_PROVIDER=postgres
-DATABASE_URL=postgresql://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=require&channel_binding=require
+DATABASE_URL=postgresql://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DB?sslmode=verify-full&channel_binding=require
 ```
 
 Verify the connection from the backend folder:
