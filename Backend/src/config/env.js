@@ -24,6 +24,7 @@ function normalizeUrl(value) {
 const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
 const paystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
+const emailProvider = String(process.env.EMAIL_PROVIDER || "").toLowerCase();
 const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
 const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
 
@@ -106,6 +107,8 @@ export const env = {
   emailFrom: process.env.EMAIL_FROM || "",
   smtpFromName: process.env.SMTP_FROM_NAME || "Gleank",
   smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.EMAIL_FROM || "",
+  emailProvider,
+  brevoApiKey: process.env.BREVO_API_KEY || "",
   emailDiagnosticToken: process.env.EMAIL_DIAGNOSTIC_TOKEN || "",
   isProduction: process.env.NODE_ENV === "production",
 };

@@ -8,6 +8,16 @@ export function buildFrontendUrl(path) {
 }
 
 function assertEmailConfigured() {
+  if (shouldUseBrevoApi()) {
+    if (!env.brevoApiKey || !senderParts().email) {
+      throw new HttpError(
+        500,
+        "Brevo API email delivery is not configured. Add BREVO_API_KEY and EMAIL_FROM or SMTP_FROM_EMAIL.",
+      );
+    }
+    return;
+  }
+
   if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !fromAddress()) {
     throw new HttpError(
       500,
@@ -25,6 +35,34 @@ function fromAddress() {
   return "";
 }
 
+function configuredProvider() {
+  if (["brevo", "brevo-api", "api"].includes(env.emailProvider)) return "brevo-api";
+  if (env.emailProvider === "smtp") return "smtp";
+  return env.brevoApiKey ? "brevo-api" : "smtp";
+}
+
+function shouldUseBrevoApi() {
+  return configuredProvider() === "brevo-api";
+}
+
+function senderParts() {
+  const raw = fromAddress();
+  const match = raw.match(/^(.*?)<([^>]+)>$/);
+
+  if (match) {
+    const name = match[1].replace(/^["']|["']$/g, "").trim();
+    return {
+      name: name || env.smtpFromName || "Gleank",
+      email: match[2].trim(),
+    };
+  }
+
+  return {
+    name: env.smtpFromName || "Gleank",
+    email: raw.trim(),
+  };
+}
+
 function preview(value) {
   const text = String(value || "");
   if (!text) return "";
@@ -36,6 +74,8 @@ export function getEmailConfigReport() {
   const sender = fromAddress();
 
   return {
+    provider: configuredProvider(),
+    brevoApiKeyPresent: Boolean(env.brevoApiKey),
     smtpHostPresent: Boolean(env.smtpHost),
     smtpHost: env.smtpHost || "",
     smtpPort: env.smtpPort,
@@ -82,7 +122,89 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+async function brevoApiRequest(path, init = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(`https://api.brevo.com/v3${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        accept: "application/json",
+        "api-key": env.brevoApiKey,
+        ...(init.headers || {}),
+      },
+    });
+
+    const body = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new HttpError(
+        response.status || 502,
+        body.message || "Brevo API request failed.",
+        body,
+      );
+    }
+
+    return body;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new HttpError(504, "Brevo API request timed out.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function sendBrevoApiEmail({ to, subject, text, html }) {
+  assertEmailConfigured();
+  const sender = senderParts();
+
+  const body = await brevoApiRequest("/smtp/email", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      sender,
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html,
+    }),
+  });
+
+  return {
+    sent: true,
+    development: false,
+    provider: "brevo-api",
+    accepted: [to],
+    rejected: [],
+    response: body.messageId || "Brevo API accepted the message.",
+    messageId: body.messageId || "",
+  };
+}
+
 async function sendTransactionalEmail({ to, subject, text, html }) {
+  if (shouldUseBrevoApi()) {
+    if (!env.brevoApiKey || !senderParts().email) {
+      if (env.isProduction) {
+        assertEmailConfigured();
+      }
+
+      console.info(
+        `[email:development] ${subject} -> ${to}\n${text || html || ""}`,
+      );
+
+      return { sent: false, development: true, provider: "brevo-api" };
+    }
+
+    return sendBrevoApiEmail({ to, subject, text, html });
+  }
+
   if (!env.smtpHost || !env.smtpUser || !env.smtpPass || !fromAddress()) {
     if (env.isProduction) {
       assertEmailConfigured();
@@ -108,6 +230,7 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
   return {
     sent: true,
     development: false,
+    provider: "smtp",
     accepted: info.accepted || [],
     rejected: info.rejected || [],
     response: info.response || "",
@@ -116,11 +239,23 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
 }
 
 export async function verifyEmailTransport() {
+  if (shouldUseBrevoApi()) {
+    assertEmailConfigured();
+    await brevoApiRequest("/account", { method: "GET" });
+
+    return {
+      ok: true,
+      provider: "brevo-api",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
   const mailer = getTransporter();
   await mailer.verify();
 
   return {
     ok: true,
+    provider: "smtp",
     checkedAt: new Date().toISOString(),
   };
 }
