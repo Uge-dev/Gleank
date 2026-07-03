@@ -9,6 +9,7 @@
     "start": "node src/server.js",
     "test": "node --test --test-concurrency=1",
     "seed": "node src/scripts/seed.js",
+    "migrate:neon": "node src/scripts/migrate-sqlite-to-postgres.js",
     "neon:check": "node src/scripts/neon-check.js",
     "production:check": "node src/scripts/production-check.js"
   },

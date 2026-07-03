@@ -12,8 +12,10 @@ const backendRoot = path.resolve(
 const testRoot = path.join(backendRoot, "data/test");
 fs.mkdirSync(testRoot, { recursive: true });
 process.env.NODE_ENV = "test";
+process.env.DATABASE_PROVIDER = "sqlite";
 process.env.DATABASE_PATH = "./data/test/gleank-test.sqlite";
 process.env.UPLOADS_PATH = "./data/test/uploads";
+process.env.STORAGE_PROVIDER = "local";
 process.env.JWT_SECRET = "test-secret-that-is-long-enough-for-gleank-tests";
 process.env.FRONTEND_URL = "http://localhost:5173";
 process.env.AUTO_VERIFY_AUTH = "true";

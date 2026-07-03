@@ -2,23 +2,28 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { env } from "../config/env.js";
+import { PostgresSyncDatabase } from "./postgres-sync-adapter.js";
 
-if (env.databaseProvider === "postgres") {
-  throw new Error(
-    "DATABASE_PROVIDER=postgres is configured, but the runtime data layer still uses SQLite. Run npm --prefix Backend run neon:check to verify Neon credentials, then complete the async Postgres repository migration before starting the API with DATABASE_PROVIDER=postgres.",
-  );
+const usePostgres = env.databaseProvider === "postgres";
+
+if (!usePostgres) {
+  fs.mkdirSync(path.dirname(env.databasePath), { recursive: true });
 }
 
-fs.mkdirSync(path.dirname(env.databasePath), { recursive: true });
+export const db = usePostgres
+  ? new PostgresSyncDatabase()
+  : new Database(env.databasePath, {
+      timeout: 5_000,
+    });
 
-export const db = new Database(env.databasePath, {
-  timeout: 5_000,
-});
+if (!usePostgres) {
+  db.exec(`
+    PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+  `);
+}
 
 db.exec(`
-  PRAGMA journal_mode = WAL;
-  PRAGMA foreign_keys = ON;
-
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,

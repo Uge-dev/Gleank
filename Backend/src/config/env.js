@@ -98,7 +98,7 @@ export const env = {
   cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
   cloudinaryApiKey: process.env.CLOUDINARY_API_KEY || "",
   cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET || "",
-  cloudinaryFolder: process.env.CLOUDINARY_FOLDER || "gleank",
+  cloudinaryFolder: process.env.CLOUDINARY_FOLDER || "gleenc",
   smtpHost: process.env.SMTP_HOST || "",
   smtpPort: numberFromEnv(process.env.SMTP_PORT, 587),
   smtpSecure: booleanFromEnv(process.env.SMTP_SECURE, false),
@@ -146,7 +146,7 @@ if (env.isProduction && env.storageProvider !== "cloudinary") {
 
 if (env.isProduction && env.databaseProvider !== "postgres") {
   console.warn(
-    "Production database is still set to sqlite. Complete the Postgres data-layer migration before using Neon for live production traffic.",
+    "Production database is set to sqlite. Set DATABASE_PROVIDER=postgres and DATABASE_URL to use persistent Neon storage.",
   );
 }
 

@@ -6,7 +6,7 @@ used-item sellers, dispatch riders, and platform administrators.
 This repository contains:
 
 - `Frontend/` — React, TypeScript, React Router, and Vite.
-- `Backend/` — Express REST API, SQLite persistence, authentication, uploads,
+- `Backend/` — Express REST API, SQLite local persistence, Neon/Postgres production persistence, authentication, uploads,
   stores, products, services, saved items, and Used Market listings.
 - `scripts/` — one-command local setup and development startup.
 
@@ -33,7 +33,7 @@ Open [http://localhost:5173](http://localhost:5173).
 Demo seller:
 
 ```text
-Email: seller@gleank.local
+Email: seller@gleenc.local
 Password: Gleenc123!
 ```
 

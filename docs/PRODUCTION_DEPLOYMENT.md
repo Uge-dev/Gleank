@@ -29,9 +29,21 @@ cd Backend
 npm run neon:check
 ```
 
-Important: the current Gleenc runtime still uses the synchronous SQLite data layer. The app now refuses to start with `DATABASE_PROVIDER=postgres` so it cannot accidentally pretend to be using Neon while writing to SQLite. The next required backend task is the full async Postgres repository migration.
+Important: the backend now supports `DATABASE_PROVIDER=postgres` through the shared database adapter. Use Neon for production so accounts, stores, products, uploads, chats, notifications, and admin data persist after Render redeploys.
 
-Do not accept live production traffic on Neon until that migration is complete.
+If you have useful local SQLite data to copy into Neon, run this from the backend folder after setting `DATABASE_URL`:
+
+```bash
+npm run migrate:neon
+```
+
+By default it reads `./data/gleank.sqlite`. To choose another SQLite file, set:
+
+```bash
+SQLITE_MIGRATION_SOURCE=/absolute/path/to/gleank.sqlite npm run migrate:neon
+```
+
+The migration creates the Neon schema first, then upserts rows table-by-table. It does not delete the SQLite file.
 
 ## 3. Cloudinary image storage
 
@@ -42,7 +54,7 @@ STORAGE_PROVIDER=cloudinary
 CLOUDINARY_CLOUD_NAME=your-cloud-name
 CLOUDINARY_API_KEY=your-api-key
 CLOUDINARY_API_SECRET=your-api-secret
-CLOUDINARY_FOLDER=gleank
+CLOUDINARY_FOLDER=gleenc
 IMAGE_MAX_WIDTH=1800
 IMAGE_WEBP_QUALITY=86
 MAX_UPLOAD_MB=5
@@ -76,7 +88,7 @@ STORAGE_PROVIDER=cloudinary
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
-CLOUDINARY_FOLDER=gleank
+CLOUDINARY_FOLDER=gleenc
 
 SMTP_HOST=smtp-relay.brevo.com
 SMTP_PORT=587
@@ -165,12 +177,13 @@ npm --prefix Backend start
 
 Use this order:
 
-1. Deploy backend with local SQLite only for staging tests, not live production. Render free instances use ephemeral storage, so SQLite accounts can disappear after redeploy/restart.
-2. Confirm Cloudinary uploads work.
-3. Confirm SMTP verification works.
-4. Complete async Postgres repository migration.
-5. Run `npm run neon:check`.
-6. Run `npm run production:check`.
-7. Deploy backend with `DATABASE_PROVIDER=postgres`.
-8. Deploy frontend with `VITE_API_URL` pointing to the backend `/api`.
-9. Create one buyer, one seller, upload images, create a product, message, order, and verify notifications.
+1. Create the Neon database and copy the pooled connection string.
+2. Set `DATABASE_PROVIDER=postgres` and `DATABASE_URL` on the backend host.
+3. If needed, run `npm run migrate:neon` locally to copy SQLite data into Neon.
+4. Confirm Cloudinary uploads work.
+5. Confirm Brevo/API email verification works.
+6. Run `npm run neon:check`.
+7. Run `npm run production:check`.
+8. Deploy backend with the Neon environment variables.
+9. Deploy frontend with `VITE_API_URL` pointing to the backend `/api`.
+10. Create one buyer, one seller, upload images, create a product, message, order, and verify notifications.
