@@ -117,17 +117,48 @@ function requirePaystackConfig() {
     throw new HttpError(500, "Paystack secret key is not configured.");
   }
 
-  if (env.isProduction && !env.paystackSecretKey.startsWith("sk_live_")) {
+  if (env.paystackMode === "test") {
+    if (!env.paystackSecretKey.startsWith("sk_test_")) {
+      throw new HttpError(
+        500,
+        "PAYSTACK_MODE=test requires a Paystack test secret key that starts with sk_test_.",
+      );
+    }
+    return;
+  }
+
+  if (env.paystackMode === "live") {
+    if (!env.paystackSecretKey.startsWith("sk_live_")) {
+      throw new HttpError(
+        500,
+        "PAYSTACK_MODE=live requires a Paystack live secret key that starts with sk_live_.",
+      );
+    }
+    return;
+  }
+
+  if (
+    env.isProduction &&
+    !env.paystackSecretKey.startsWith("sk_live_") &&
+    !(
+      env.allowPaystackTestKeysInProduction &&
+      env.paystackSecretKey.startsWith("sk_test_")
+    )
+  ) {
     throw new HttpError(
       500,
-      "Production Paystack payments must use a live secret key.",
+      "Production Paystack payments must use a live secret key, or set PAYSTACK_MODE=test while testing with sk_test_ keys.",
     );
   }
 
-  if (!env.isProduction && !env.paystackSecretKey.startsWith("sk_test_")) {
+  if (
+    !env.isProduction &&
+    !env.paystackSecretKey.startsWith("sk_test_") &&
+    !env.paystackSecretKey.startsWith("sk_live_")
+  ) {
     throw new HttpError(
       500,
-      "Local Paystack testing must use a test secret key that starts with sk_test_.",
+      "Paystack secret key must start with sk_test_ or sk_live_.",
     );
   }
 }

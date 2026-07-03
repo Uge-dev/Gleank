@@ -84,8 +84,13 @@ SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
 EMAIL_FROM=Gleank <no-reply@your-domain.com>
+SMTP_FROM_NAME=Gleank
+SMTP_FROM_EMAIL=no-reply@your-domain.com
+EMAIL_DIAGNOSTIC_TOKEN=replace-with-a-private-random-token
 
 PAYMENT_PROVIDER=paystack
+PAYSTACK_MODE=live
+ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION=false
 PAYSTACK_SECRET_KEY=sk_live_...
 PAYSTACK_PUBLIC_KEY=pk_live_...
 PAYSTACK_CALLBACK_URL=https://your-frontend-domain.com/payment/callback
@@ -101,6 +106,16 @@ Run:
 cd Backend
 npm run production:check
 ```
+
+If the Paystack account is still in test mode on a deployed backend, set:
+
+```env
+PAYSTACK_MODE=test
+PAYSTACK_SECRET_KEY=sk_test_...
+PAYSTACK_PUBLIC_KEY=pk_test_...
+```
+
+While testing email delivery on Render, set `EMAIL_DIAGNOSTIC_TOKEN` to a private random value and call `/api/diagnostics/email/test` with that token. Remove or rotate the token after debugging.
 
 ## 5. Frontend production environment
 
@@ -148,7 +163,7 @@ npm --prefix Backend start
 
 Use this order:
 
-1. Deploy backend with local SQLite only for staging tests, not live production.
+1. Deploy backend with local SQLite only for staging tests, not live production. Render free instances use ephemeral storage, so SQLite accounts can disappear after redeploy/restart.
 2. Confirm Cloudinary uploads work.
 3. Confirm SMTP verification works.
 4. Complete async Postgres repository migration.
@@ -157,4 +172,3 @@ Use this order:
 7. Deploy backend with `DATABASE_PROVIDER=postgres`.
 8. Deploy frontend with `VITE_API_URL` pointing to the backend `/api`.
 9. Create one buyer, one seller, upload images, create a product, message, order, and verify notifications.
-

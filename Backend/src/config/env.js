@@ -23,6 +23,7 @@ function normalizeUrl(value) {
 
 const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
+const paystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
 const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
 const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
 
@@ -64,6 +65,11 @@ export const env = {
   paymentProvider,
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || "",
+  paystackMode,
+  allowPaystackTestKeysInProduction: booleanFromEnv(
+    process.env.ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION,
+    false,
+  ),
   paystackBaseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
   paystackCallbackUrl:
     process.env.PAYSTACK_CALLBACK_URL ||
@@ -100,6 +106,7 @@ export const env = {
   emailFrom: process.env.EMAIL_FROM || "",
   smtpFromName: process.env.SMTP_FROM_NAME || "Gleank",
   smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.EMAIL_FROM || "",
+  emailDiagnosticToken: process.env.EMAIL_DIAGNOSTIC_TOKEN || "",
   isProduction: process.env.NODE_ENV === "production",
 };
 
@@ -143,9 +150,24 @@ if (env.isProduction && env.databaseProvider !== "postgres") {
 if (
   env.isProduction &&
   env.paymentProvider === "paystack" &&
-  !env.paystackSecretKey.startsWith("sk_live_")
+  env.paystackSecretKey.startsWith("sk_test_") &&
+  (env.paystackMode === "test" || env.allowPaystackTestKeysInProduction)
 ) {
   console.warn(
-    "PAYMENT_PROVIDER=paystack is enabled without a live PAYSTACK_SECRET_KEY. The API will start, but Paystack checkout will be blocked until a sk_live_ key is configured.",
+    "Paystack is running with test keys on a production deployment. Checkout is in test mode and will not collect real payments.",
+  );
+}
+
+if (
+  env.isProduction &&
+  env.paymentProvider === "paystack" &&
+  !env.paystackSecretKey.startsWith("sk_live_") &&
+  !(
+    env.paystackSecretKey.startsWith("sk_test_") &&
+    (env.paystackMode === "test" || env.allowPaystackTestKeysInProduction)
+  )
+) {
+  console.warn(
+    "PAYMENT_PROVIDER=paystack is enabled without an allowed PAYSTACK_SECRET_KEY. The API will start, but Paystack checkout will be blocked until a sk_live_ key is configured or PAYSTACK_MODE=test is set for test keys.",
   );
 }

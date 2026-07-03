@@ -61,13 +61,24 @@ function passwordResetExpiry() {
 const resetRequestMessage =
   "If an active account matches that email, password reset instructions are being prepared.";
 
-function queueAuthEmail(label, send) {
-  void send().catch((error) => {
+async function deliverAuthEmail(label, send, options = {}) {
+  try {
+    return await send();
+  } catch (error) {
     console.error(
       `[auth-email:${label}]`,
       error instanceof Error ? error.message : error,
     );
-  });
+
+    if (options.required) {
+      throw new HttpError(
+        502,
+        "Gleank could not send the email right now. Please check the Brevo SMTP setup and try again.",
+      );
+    }
+
+    return { sent: false };
+  }
 }
 
 function normalizeMeta(meta = {}) {
@@ -146,7 +157,7 @@ export async function registerUser(input, meta = {}) {
   });
 
   if (result.verification) {
-    queueAuthEmail("verification", () => sendEmailVerificationEmail({
+    void deliverAuthEmail("verification", () => sendEmailVerificationEmail({
       to: result.user.email,
       name: result.user.name,
       token: result.verification.token,
@@ -251,12 +262,15 @@ export async function resendEmailVerification(userId, meta = {}) {
 
   const verification = createEmailVerificationToken(row.id);
 
-  queueAuthEmail("verification-resend", () =>
+  await deliverAuthEmail(
+    "verification-resend",
+    () =>
     sendEmailVerificationEmail({
       to: row.email,
       name: row.name,
       token: verification.token,
     }),
+    { required: env.isProduction },
   );
 
   createSecurityEvent(row.id, "email_verification_resent", {}, normalizeMeta(meta));
@@ -314,12 +328,15 @@ export async function requestPasswordReset(input, meta = {}) {
     createSecurityEvent(user.id, "password_reset_requested", {}, cleanMeta);
   });
 
-  queueAuthEmail("password-reset", () =>
+  await deliverAuthEmail(
+    "password-reset",
+    () =>
     sendPasswordResetEmail({
       to: user.email,
       name: user.name,
       token,
     }),
+    { required: env.isProduction },
   );
 
   return {

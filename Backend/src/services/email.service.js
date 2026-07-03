@@ -25,6 +25,31 @@ function fromAddress() {
   return "";
 }
 
+function preview(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (text.length <= 8) return "configured";
+  return `${text.slice(0, 4)}…${text.slice(-4)}`;
+}
+
+export function getEmailConfigReport() {
+  const sender = fromAddress();
+
+  return {
+    smtpHostPresent: Boolean(env.smtpHost),
+    smtpHost: env.smtpHost || "",
+    smtpPort: env.smtpPort,
+    smtpSecure: env.smtpSecure,
+    smtpUserPresent: Boolean(env.smtpUser),
+    smtpUserPreview: preview(env.smtpUser),
+    smtpPassPresent: Boolean(env.smtpPass),
+    senderPresent: Boolean(sender),
+    senderPreview: preview(sender),
+    frontendUrl: env.frontendUrl,
+    production: env.isProduction,
+  };
+}
+
 let transporter = null;
 
 function getTransporter() {
@@ -72,7 +97,7 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
 
   const mailer = getTransporter();
 
-  await mailer.sendMail({
+  const info = await mailer.sendMail({
     from: fromAddress(),
     to,
     subject,
@@ -80,7 +105,43 @@ async function sendTransactionalEmail({ to, subject, text, html }) {
     html,
   });
 
-  return { sent: true, development: false };
+  return {
+    sent: true,
+    development: false,
+    accepted: info.accepted || [],
+    rejected: info.rejected || [],
+    response: info.response || "",
+    messageId: info.messageId || "",
+  };
+}
+
+export async function verifyEmailTransport() {
+  const mailer = getTransporter();
+  await mailer.verify();
+
+  return {
+    ok: true,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
+export async function sendDiagnosticEmail({ to }) {
+  return sendTransactionalEmail({
+    to,
+    subject: "Gleank email delivery diagnostic",
+    text: `This is a Gleank email diagnostic sent at ${new Date().toISOString()}.
+
+If you received this email, the deployed backend can connect to Brevo and deliver transactional emails.`,
+    html: `
+      <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:22px;padding:28px;">
+          <p style="margin:0 0 10px;color:#16a34a;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;">Gleank diagnostic</p>
+          <h1 style="margin:0 0 12px;font-size:26px;line-height:1.15;color:#020617;">Email delivery is connected</h1>
+          <p style="margin:0;color:#475569;font-size:15px;line-height:1.6;">This message confirms that the deployed Gleank backend can connect to Brevo and send transactional emails.</p>
+        </div>
+      </div>
+    `,
+  });
 }
 
 export async function sendEmailVerificationEmail({ to, name, token }) {

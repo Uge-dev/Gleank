@@ -27,6 +27,7 @@ import { paymentRouter } from "./routes/payment.routes.js";
 import { cartRouter } from "./routes/cart.routes.js";
 import { userRouter } from "./routes/user.routes.js";
 import { notificationRouter } from "./routes/notification.routes.js";
+import { diagnosticsRouter } from "./routes/diagnostics.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import { deliveryRouter } from "./routes/delivery.routes.js";
 
@@ -111,6 +112,7 @@ app.use("/api/seller-verification", sellerVerificationRouter);
 app.use("/api/payments", paymentRouter);
 app.use("/api/cart", cartRouter);
 app.use("/api/notifications", notificationRouter);
+app.use("/api/diagnostics", diagnosticsRouter);
 app.use("/api/admin", adminRoutes);
 
 app.use(notFoundHandler);
