@@ -44,11 +44,18 @@ function assertPasswordPolicy(password) {
 }
 
 function isSmtpConfigured() {
-  return Boolean(env.smtpHost && env.smtpUser && env.smtpPass);
+  return Boolean(env.smtpHost && env.smtpUser && env.smtpPass && getMailFrom());
 }
 
 function getMailFrom() {
-  return env.emailFrom || env.smtpUser || "no-reply@gleank.local";
+  if (env.emailFrom) return env.emailFrom;
+
+  if (env.smtpFromEmail) {
+    const safeName = String(env.smtpFromName || "Gleank").replace(/[<>]/g, "").trim();
+    return safeName ? `"${safeName}" <${env.smtpFromEmail}>` : env.smtpFromEmail;
+  }
+
+  return env.smtpUser || "";
 }
 
 function queueSecurityEmail(label, send) {
@@ -64,7 +71,7 @@ async function sendLoggedInPasswordResetCodeEmail({ to, name, code, expiresAt })
   if (!isSmtpConfigured()) {
     throw new HttpError(
       500,
-      "Email delivery is not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM in Backend/.env.",
+      "Email delivery is not configured. Add SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM or SMTP_FROM_EMAIL in Backend/.env.",
     );
   }
 

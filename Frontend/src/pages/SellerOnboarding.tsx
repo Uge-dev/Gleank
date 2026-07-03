@@ -212,7 +212,7 @@ function SellerOnboarding() {
           </label>
 
           <button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Submitting..." : "Submit seller verification"}
+            {isSubmitting ? "Submitting..." : "Submit"}
           </button>
         </form>
 
