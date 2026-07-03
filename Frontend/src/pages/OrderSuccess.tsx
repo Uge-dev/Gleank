@@ -12,7 +12,7 @@ import {
 
 import EmptyState from "../components/EmptyState";
 import { getOrder } from "../services/order.service";
-import type { GleankOrder } from "../types/domain";
+import type { GleencOrder } from "../types/domain";
 import { formatNaira } from "../utils/price";
 
 function readSessionOrders() {
@@ -20,7 +20,7 @@ function readSessionOrders() {
     const saved = sessionStorage.getItem("gleank_last_orders");
     if (!saved) return [];
     const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? (parsed as GleankOrder[]) : [];
+    return Array.isArray(parsed) ? (parsed as GleencOrder[]) : [];
   } catch {
     return [];
   }
@@ -29,7 +29,7 @@ function readSessionOrders() {
 function OrderSuccess() {
   const [searchParams] = useSearchParams();
   const referenceFromUrl = searchParams.get("ref") || "";
-  const [orders, setOrders] = useState<GleankOrder[]>(() => readSessionOrders());
+  const [orders, setOrders] = useState<GleencOrder[]>(() => readSessionOrders());
 
   const references = useMemo(
     () =>

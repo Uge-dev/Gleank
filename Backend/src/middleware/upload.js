@@ -75,7 +75,7 @@ async function compressImage(file, inputBuffer) {
   }
 }
 
-class GleankImageStorage {
+class GleencImageStorage {
   async _handleFile(req, file, callback) {
     try {
       const originalBuffer = await collectFileBuffer(file);
@@ -142,7 +142,7 @@ class GleankImageStorage {
 }
 
 export const upload = multer({
-  storage: new GleankImageStorage(),
+  storage: new GleencImageStorage(),
   limits: {
     fileSize: env.maxUploadMb * 1024 * 1024,
     files: 15,

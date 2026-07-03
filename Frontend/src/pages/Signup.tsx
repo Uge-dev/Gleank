@@ -61,7 +61,7 @@ function Signup() {
 
   return (
     <AuthLayout
-      eyebrow="Join Gleank"
+      eyebrow="Join Gleenc"
       title="Create a real campus marketplace account."
       description="Choose a buyer account for shopping or a seller account with an automatically created store workspace."
     >
@@ -69,7 +69,7 @@ function Signup() {
         <div className="auth-form-header">
           <span>Create account</span>
           <h2>Get started</h2>
-          <p>Your account and store data will be saved in the Gleank database.</p>
+          <p>Your account and store data will be saved in the Gleenc database.</p>
         </div>
 
         <div className="account-type-toggle">
@@ -200,7 +200,7 @@ function Signup() {
           <label className="terms-row">
             <input type="checkbox" required />
             <span>
-              I agree to Gleank&apos;s <Link to="/help">Terms</Link> and{" "}
+              I agree to Gleenc&apos;s <Link to="/help">Terms</Link> and{" "}
               <Link to="/help">Privacy Policy</Link>.
             </span>
           </label>

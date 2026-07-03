@@ -24,7 +24,7 @@ import {
   getConversations,
   sendConversationMessage,
 } from "../services/message.service";
-import type { GleankConversation, GleankMessage } from "../types/domain";
+import type { GleencConversation, GleencMessage } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
 type MessageFilter = "All" | "Unread" | "Orders" | "Sellers" | "Support";
@@ -53,44 +53,44 @@ function formatChatTime(value?: string | null) {
   }).format(date);
 }
 
-function conversationName(conversation: GleankConversation) {
-  if (conversation.contextType === "support") return "Gleank Support";
+function conversationName(conversation: GleencConversation) {
+  if (conversation.contextType === "support") return "Gleenc Support";
   return (
     conversation.otherUserName ||
     conversation.storeName ||
     conversation.sellerName ||
-    "Gleank user"
+    "Gleenc user"
   );
 }
 
-function conversationHandle(conversation: GleankConversation) {
+function conversationHandle(conversation: GleencConversation) {
   if (conversation.contextType === "support") return "support";
   return conversation.storeSlug || conversation.contextType.replaceAll("_", "-");
 }
 
-function conversationAvatar(conversation: GleankConversation) {
+function conversationAvatar(conversation: GleencConversation) {
   const name = conversationName(conversation);
   return name.slice(0, 1).toUpperCase();
 }
 
-function conversationImage(conversation: GleankConversation) {
+function conversationImage(conversation: GleencConversation) {
   return resolveMediaUrl(
     conversation.storeLogoUrl || conversation.listingImageUrl,
     "",
   );
 }
 
-function conversationCampus(conversation: GleankConversation) {
+function conversationCampus(conversation: GleencConversation) {
   if (conversation.contextType === "support") return "Admin support";
   return conversation.storeCampus || "Campus chat";
 }
 
-function conversationPreview(conversation: GleankConversation) {
+function conversationPreview(conversation: GleencConversation) {
   if (conversation.contextType === "support") {
     return {
       id: conversation.id,
       href: "/help",
-      name: "Gleank admin support",
+      name: "Gleenc admin support",
       price: "Live help",
       image: chatFallback,
       status: "Support",
@@ -135,10 +135,10 @@ function Messages() {
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [conversationList, setConversationList] = useState<
-    GleankConversation[]
+    GleencConversation[]
   >([]);
   const [activeConversationId, setActiveConversationId] = useState("");
-  const [messages, setMessages] = useState<GleankMessage[]>([]);
+  const [messages, setMessages] = useState<GleencMessage[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<MessageFilter>("All");
   const [messageText, setMessageText] = useState("");
@@ -314,7 +314,7 @@ function Messages() {
     });
   }, [activeFilter, conversationList, searchTerm]);
 
-  function selectConversation(conversation: GleankConversation) {
+  function selectConversation(conversation: GleencConversation) {
     setActiveConversationId(conversation.id);
     setMobileChatOpen(true);
   }
@@ -351,7 +351,7 @@ function Messages() {
       <section className="messages-page">
         <LoadingState
           title="Loading messages"
-          message="Opening your live Gleank inbox."
+          message="Opening your live Gleenc inbox."
         />
       </section>
     );
@@ -364,7 +364,7 @@ function Messages() {
           icon={<FiMessageCircle />}
           eyebrow="No messages yet"
           title="Your inbox is empty"
-          message="When you message sellers, buyers, or Gleank support, your conversations will appear here."
+          message="When you message sellers, buyers, or Gleenc support, your conversations will appear here."
           actionLabel="Chat with support"
           onAction={() => {
             window.location.href = "/messages?support=1";

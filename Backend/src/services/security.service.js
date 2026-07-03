@@ -51,7 +51,7 @@ function getMailFrom() {
   if (env.emailFrom) return env.emailFrom;
 
   if (env.smtpFromEmail) {
-    const safeName = String(env.smtpFromName || "Gleank").replace(/[<>]/g, "").trim();
+    const safeName = String(env.smtpFromName || "Gleenc").replace(/[<>]/g, "").trim();
     return safeName ? `"${safeName}" <${env.smtpFromEmail}>` : env.smtpFromEmail;
   }
 
@@ -94,12 +94,12 @@ async function sendLoggedInPasswordResetCodeEmail({ to, name, code, expiresAt })
     timeStyle: "short",
   }).format(new Date(expiresAt));
 
-  const subject = "Your Gleank password reset code";
-  const text = `Hi ${displayName},\n\nYour Gleank password reset code is ${code}.\n\nThis code expires at ${expiryText}. If you did not request this, ignore this email and keep your account secure.\n\nGleank Security`;
+  const subject = "Your Gleenc password reset code";
+  const text = `Hi ${displayName},\n\nYour Gleenc password reset code is ${code}.\n\nThis code expires at ${expiryText}. If you did not request this, ignore this email and keep your account secure.\n\nGleenc Security`;
   const html = `
     <div style="font-family:Inter,Arial,sans-serif;background:#f8fafc;padding:28px;color:#0f172a;">
       <div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:24px;padding:28px;">
-        <p style="margin:0 0 10px;color:#f97316;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:12px;">Gleank Security</p>
+        <p style="margin:0 0 10px;color:#f97316;font-weight:800;letter-spacing:.08em;text-transform:uppercase;font-size:12px;">Gleenc Security</p>
         <h1 style="margin:0 0 12px;font-size:28px;line-height:1.1;">Password reset code</h1>
         <p style="margin:0 0 18px;color:#475569;line-height:1.6;">Hi ${displayName}, use this code to confirm it is really you before changing your password.</p>
         <div style="font-size:34px;font-weight:900;letter-spacing:8px;background:#fff7ed;color:#f97316;border-radius:18px;padding:18px;text-align:center;">${code}</div>

@@ -118,8 +118,8 @@ function Search() {
     return (
       <section className="search-page">
         <LoadingState
-          title="Searching Gleank"
-          message="Loading current products, sellers, and services from Gleank."
+          title="Searching Gleenc"
+          message="Loading current products, sellers, and services from Gleenc."
         />
       </section>
     );
@@ -175,7 +175,7 @@ function Search() {
         <span>Live marketplace search</span>
         <h1>{query ? `Results for “${query}”` : "Find anything around campus"}</h1>
         <p>
-          These results come directly from active Gleank stores, products, and
+          These results come directly from active Gleenc stores, products, and
           services in the shared database.
         </p>
         <div className="search-result-count">

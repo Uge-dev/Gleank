@@ -79,7 +79,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
           Real account authentication
         </div>
 
-        <h2 id="gleank-login-title">Log in to Gleank</h2>
+        <h2 id="gleank-login-title">Log in to Gleenc</h2>
         <p className="auth-modal-intro">
           Continue to protected shopping, messaging, checkout, and seller tools.
         </p>
@@ -153,7 +153,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
         </form>
 
         <p className="auth-policy-text">
-          Authentication is handled by the local Gleank API using a secure
+          Authentication is handled by the local Gleenc API using a secure
           HTTP-only session cookie. Passwords are never stored in the browser.
         </p>
 

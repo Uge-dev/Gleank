@@ -3,7 +3,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 
 import { applyTheme, getSavedTheme } from "./utils/theme";
 
-import GleankNav from "./components/GleankNav";
+import GleencNav from "./components/GleencNav";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedPage from "./components/ProtectedPage";
 
@@ -68,7 +68,7 @@ function App() {
 
   return (
     <div className="gleank-app">
-      <GleankNav />
+      <GleencNav />
       <CartDrawer />
 
       <main className="gleank-main">

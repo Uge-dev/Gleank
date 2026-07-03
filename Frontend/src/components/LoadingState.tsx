@@ -8,7 +8,7 @@ type LoadingStateProps = {
 
 function LoadingState({
   title = "Loading content",
-  message = "Please wait while Gleank prepares this section for you.",
+  message = "Please wait while Gleenc prepares this section for you.",
   variant = "page",
 }: LoadingStateProps) {
   return (

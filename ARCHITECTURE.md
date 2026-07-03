@@ -1,4 +1,4 @@
-# Gleank Architecture
+# Gleenc Architecture
 
 ## Frontend
 

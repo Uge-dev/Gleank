@@ -19,7 +19,7 @@ export default defineConfig([
       globals: globals.browser,
     },
     rules: {
-      // Gleank intentionally hydrates auth/cart data and API resources after mount.
+      // Gleenc intentionally hydrates auth/cart data and API resources after mount.
       // These updates occur in controlled initialization effects.
       'react-hooks/set-state-in-effect': 'off',
       // Context modules export both providers and their companion hooks.

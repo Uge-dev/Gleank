@@ -13,7 +13,7 @@ if (existing) {
 const now = new Date().toISOString();
 const userId = createId("usr");
 const storeId = createId("sto");
-const passwordHash = await bcrypt.hash("Gleank123!", 12);
+const passwordHash = await bcrypt.hash("Gleenc123!", 12);
 
 transaction(() => {
   db.prepare(`
@@ -32,8 +32,8 @@ transaction(() => {
   `).run(
     storeId,
     userId,
-    slugify("Gleank Demo Store"),
-    "Gleank Demo Store",
+    slugify("Gleenc Demo Store"),
+    "Gleenc Demo Store",
     "A ready-to-test campus store for local development.",
     now,
     now,
@@ -42,4 +42,4 @@ transaction(() => {
 
 console.log("Demo seller created.");
 console.log("Email: seller@gleank.local");
-console.log("Password: Gleank123!");
+console.log("Password: Gleenc123!");

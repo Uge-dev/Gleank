@@ -169,7 +169,7 @@ function SubmitUsedProduct() {
           <h1>
             {createdListing.status === "active"
               ? "Your item is live in the Used Market."
-              : "Your item is waiting for Gleank review."}
+              : "Your item is waiting for Gleenc review."}
           </h1>
           <p>
             We saved your listing, trust profile, payout account, ownership proof,
@@ -201,7 +201,7 @@ function SubmitUsedProduct() {
         <h1>Upload used items with proof, payout details, and buyer trust.</h1>
         <p>
           Used products go through ownership and seller checks before buyers can
-          trust them. This protects buyers, sellers, and Gleank.
+          trust them. This protects buyers, sellers, and Gleenc.
         </p>
       </div>
 
@@ -222,7 +222,7 @@ function SubmitUsedProduct() {
               <div>
                 <span>Step 1</span>
                 <h2>Seller trust profile</h2>
-                <p>These details plus liveness verification help Gleank verify the seller before approval.</p>
+                <p>These details plus liveness verification help Gleenc verify the seller before approval.</p>
               </div>
             </div>
 
@@ -431,7 +431,7 @@ function SubmitUsedProduct() {
 
             <button type="submit" disabled={isSubmitting || isLoadingTrust}>
               <FiShield />
-              {isSubmitting ? "Submitting securely..." : "Submit for Gleank Review"}
+              {isSubmitting ? "Submitting securely..." : "Submit for Gleenc Review"}
             </button>
           </section>
         </form>

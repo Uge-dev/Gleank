@@ -1,6 +1,6 @@
-# Gleank Secure Auth + Seller Commercial Workflow Implementation
+# Gleenc Secure Auth + Seller Commercial Workflow Implementation
 
-This version adds a hardened authentication and seller access workflow while preserving the existing Gleank buyer, seller, used-market, order, messaging, saved, and dashboard flows.
+This version adds a hardened authentication and seller access workflow while preserving the existing Gleenc buyer, seller, used-market, order, messaging, saved, and dashboard flows.
 
 ## Added
 
@@ -24,12 +24,12 @@ This version adds a hardened authentication and seller access workflow while pre
 
 ## Commercial pricing behavior
 
-When a seller enters an item price, the backend treats it as seller base price and adds Gleank's 5% platform fee.
+When a seller enters an item price, the backend treats it as seller base price and adds Gleenc's 5% platform fee.
 
 Example:
 
 - Seller enters: ₦10,000
-- Gleank fee: ₦500
+- Gleenc fee: ₦500
 - Buyer-facing price: ₦10,500
 
 The database stores seller price, platform fee, and buyer price separately for future payout and accounting.

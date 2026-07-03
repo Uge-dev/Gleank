@@ -138,7 +138,7 @@ function UsedCheckout() {
           <FiShield />
           Protected Used Checkout
         </span>
-        <h1>Reserve this item safely through Gleank protection.</h1>
+        <h1>Reserve this item safely through Gleenc protection.</h1>
         <p>
           Your payment record is tied to delivery confirmation. The seller sees the order and can message you immediately.
         </p>

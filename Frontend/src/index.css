@@ -1373,7 +1373,7 @@ img {
 }
 
 /* ========================================================= */
-/* GLEANK SHARED AUTH + SELLER FOUNDATION                     */
+/* GLEENC SHARED AUTH + SELLER FOUNDATION                     */
 /* ========================================================= */
 
 .auth-modal-secure {
@@ -3509,7 +3509,7 @@ html[data-theme="dark"] .seller-listing-form textarea {
 
 
 /* ========================= */
-/* TIKTOK-STYLE GLEANK SIDEBAR UPDATE */
+/* TIKTOK-STYLE GLEENC SIDEBAR UPDATE */
 /* ========================= */
 
 .gleank-sidebar-menu {
@@ -15768,7 +15768,7 @@ html[data-theme="dark"] .not-found-card {
 
 
 /* ========================================================= */
-/* GLEANK FINAL GLOBAL UI POLISH + RESPONSIVE CLEANUP */
+/* GLEENC FINAL GLOBAL UI POLISH + RESPONSIVE CLEANUP */
 /* ========================================================= */
 
 /*
@@ -23954,7 +23954,7 @@ html[data-theme="dark"] .notification-card {
 
 
 /* =========================================================
-   GLEANK ORDERS + CHECKOUT PREMIUM UI
+   GLEENC ORDERS + CHECKOUT PREMIUM UI
    Covers: Checkout, Orders, OrderDetails, OrderSuccess
 ========================================================= */
 
@@ -25855,7 +25855,7 @@ html[data-theme="dark"] .notification-card {
 
 
 /* =========================================================
-   GLEANK SECURE USED MARKET UI
+   GLEENC SECURE USED MARKET UI
    Add to bottom of Frontend/src/index.css
 ========================================================= */
 
@@ -26940,7 +26940,7 @@ html[data-theme="dark"] .notification-card {
 
 
 /* =========================================================
-   GLEANK SECURE USED MARKET WORKFLOW
+   GLEENC SECURE USED MARKET WORKFLOW
    Pages: details, checkout, orders, dashboard, messages
 ========================================================= */
 
@@ -27999,7 +27999,7 @@ html[data-theme="dark"] .notification-card {
 
 
 /* =========================================================
-   GLEANK USED MARKET FINAL REVIEW OVERRIDES
+   GLEENC USED MARKET FINAL REVIEW OVERRIDES
    Keep this after the secure + workflow CSS sections.
 ========================================================= */
 
@@ -28093,7 +28093,7 @@ html[data-theme="dark"] .notification-card {
 }
 
 /* =========================================================
-   GLEANK SECURE AUTH + SELLER ONBOARDING UI
+   GLEENC SECURE AUTH + SELLER ONBOARDING UI
    Scoped styles for verification, account security, seller subscription
 ========================================================= */
 .verify-email-page,
@@ -28924,7 +28924,7 @@ html[data-theme="dark"] .notification-card {
 }
 
 /* =========================================
-   GLEANK THEME + SUPPORT + PROFILE FINAL PASS
+   GLEENC THEME + SUPPORT + PROFILE FINAL PASS
 ========================================= */
 
 body,

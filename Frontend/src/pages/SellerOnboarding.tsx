@@ -16,7 +16,7 @@ import {
   updateSellerVerification,
   type SellerVerificationResponse,
 } from "../services/seller-verification.service";
-import { activateSellerSubscriptionForDevelopment } from "../services/subscription.service";
+import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 
 function SellerOnboarding() {
   const { user, store, refreshSession } = useAuth();
@@ -84,9 +84,8 @@ function SellerOnboarding() {
     setMessage("");
     setIsSubmitting(true);
     try {
-      await activateSellerSubscriptionForDevelopment();
-      await load();
-      setMessage("Development subscription activated for 30 days.");
+      const response = await initializeSellerSubscriptionPayment();
+      window.location.href = response.payment.authorizationUrl;
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -120,8 +119,8 @@ function SellerOnboarding() {
         <h1>{store ? "Complete your verified seller workspace." : "Turn your buyer account into a seller profile."}</h1>
         <p>
           {store
-            ? "Complete seller identity, accept the seller agreement, and keep your ₦3,000 monthly subscription active before publishing campus products or services."
-            : "You do not need another login. Add store details, complete verification, and Gleank will upgrade this account into a seller account."}
+            ? "Complete seller identity, accept the seller agreement, and keep your ₦1,999 monthly subscription active before publishing campus products or services."
+            : "You do not need another login. Add store details, complete verification, and Gleenc will upgrade this account into a seller account."}
         </p>
       </div>
 
@@ -142,7 +141,7 @@ function SellerOnboarding() {
                 <span>Store name</span>
                 <input
                   name="storeName"
-                  defaultValue={`${user?.name?.split(" ")[0] || "Gleank"} Store`}
+                  defaultValue={`${user?.name?.split(" ")[0] || "Gleenc"} Store`}
                   placeholder="Destiny Gadgets"
                   required
                 />
@@ -207,7 +206,7 @@ function SellerOnboarding() {
           <label className="seller-agreement-row">
             <input name="agreementAccepted" type="checkbox" value="true" defaultChecked={verification?.agreementAccepted || false} required />
             <span>
-              I confirm that my seller information is correct and I understand that Gleank charges a ₦3,000 monthly seller fee and adds a 5% platform fee to buyer-facing prices.
+              I confirm that my seller information is correct and I understand that Gleenc charges a ₦1,999 monthly seller fee and adds a 5% platform fee to buyer-facing prices.
             </span>
           </label>
 
@@ -227,14 +226,14 @@ function SellerOnboarding() {
           <div className="seller-status-card subscription">
             <FiCreditCard />
             <span>Monthly seller fee</span>
-            <h3>₦{(subscription?.amount || 3000).toLocaleString()} / month</h3>
+            <h3>₦{(subscription?.amount || 1999).toLocaleString()} / month</h3>
             <p>
               Status: <strong>{subscription?.status || "inactive"}</strong>
               {subscription?.currentPeriodEnd ? ` · Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString()}` : ""}
             </p>
             {!subscription?.isActive && (
               <button type="button" onClick={handleDevelopmentSubscription} disabled={isSubmitting}>
-                Activate development subscription
+                Pay with Paystack
               </button>
             )}
           </div>

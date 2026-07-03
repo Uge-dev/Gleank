@@ -23,7 +23,7 @@ function UsedMarketTrustGate({ trust }: UsedMarketTrustGateProps) {
       <span>Secure seller setup</span>
       <h2>Build buyer trust before your used item goes live.</h2>
       <p>
-        Gleank checks identity proof, ownership proof, and payout details before
+        Gleenc checks identity proof, ownership proof, and payout details before
         used products are approved for buyers.
       </p>
 

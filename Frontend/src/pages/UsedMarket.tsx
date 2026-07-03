@@ -302,7 +302,7 @@ function UsedMarket() {
                   />
                   <div>
                     <strong>{listing.name}</strong>
-                    <p>{listing.status === "pending" ? "Pending Gleank review" : listing.status}</p>
+                    <p>{listing.status === "pending" ? "Pending Gleenc review" : listing.status}</p>
                   </div>
                   <button type="button" onClick={() => void handleStatus(listing)}>
                     {listing.status === "sold" ? "Mark active" : "Mark sold"}

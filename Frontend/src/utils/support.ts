@@ -1,6 +1,6 @@
 const fallbackSupportNumber = "2340000000000";
 
-export function getSupportWhatsAppUrl(message = "Hello Gleank Support") {
+export function getSupportWhatsAppUrl(message = "Hello Gleenc Support") {
   const configuredNumber =
     import.meta.env.VITE_SUPPORT_WHATSAPP_NUMBER ||
     import.meta.env.VITE_SUPPORT_WHATSAPP ||

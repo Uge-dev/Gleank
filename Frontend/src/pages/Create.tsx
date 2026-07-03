@@ -241,7 +241,7 @@ function Create() {
       <section className="create-page seller-create-page">
         <LoadingState
           title="Loading listing"
-          message="Gleank is preparing the listing editor."
+          message="Gleenc is preparing the listing editor."
         />
       </section>
     );
@@ -265,7 +265,7 @@ function Create() {
 
         <p>
           Add accurate pricing, availability, details, and clear images. Every
-          change is stored in the Gleank database and reflected in your seller
+          change is stored in the Gleenc database and reflected in your seller
           workspace.
         </p>
       </div>

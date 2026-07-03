@@ -15,7 +15,7 @@ import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import { getOrders } from "../services/order.service";
 import { initializeOrdersPayment } from "../services/payment.service";
-import type { GleankOrder, OrderStatus } from "../types/domain";
+import type { GleencOrder, OrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { formatNaira } from "../utils/price";
 import "./Orders.css";
@@ -70,12 +70,12 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function canContinuePayment(order: GleankOrder) {
+function canContinuePayment(order: GleencOrder) {
   return order.paymentStatus === "unpaid" || order.status === "pending_payment";
 }
 
 function Orders() {
-  const [orders, setOrders] = useState<GleankOrder[]>([]);
+  const [orders, setOrders] = useState<GleencOrder[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -113,7 +113,7 @@ function Orders() {
     return orders.filter((order) => statusGroup(order.status) === activeFilter);
   }, [activeFilter, orders]);
 
-  async function handleContinuePayment(order: GleankOrder) {
+  async function handleContinuePayment(order: GleencOrder) {
     if (!canContinuePayment(order) || payingOrderId) return;
 
     setPaymentError("");
@@ -197,7 +197,7 @@ function Orders() {
 
                 <div className="order-card-main">
                   <span className="order-code">{order.orderCode}</span>
-                  <h2>{firstItem?.productName || "Gleank order"}</h2>
+                  <h2>{firstItem?.productName || "Gleenc order"}</h2>
                   <p>
                     {order.storeName} • {order.items.length} item(s)
                   </p>

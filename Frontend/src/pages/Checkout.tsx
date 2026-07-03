@@ -228,7 +228,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
       <div className="checkout-pro-hero">
         <div>
           <span className="eyebrow">Secure campus checkout</span>
-          <h1>Complete your Gleank order</h1>
+          <h1>Complete your Gleenc order</h1>
           <p>
             Confirm your details, choose pickup or campus delivery, then pay securely.
             Your cart will only clear after payment is verified.

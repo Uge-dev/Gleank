@@ -89,7 +89,7 @@ function ForgotPassword() {
   return (
     <AuthLayout
       eyebrow="Account recovery"
-      title="Get back into Gleank"
+      title="Get back into Gleenc"
       description="Securely reset your buyer or seller password using the email attached to your account."
     >
       <div className="auth-form-card recovery-card">
@@ -114,7 +114,7 @@ function ForgotPassword() {
 
           <p>
             {step === "request"
-              ? "Enter the email connected to your Gleank account. If the account exists, a secure reset link will be sent there."
+              ? "Enter the email connected to your Gleenc account. If the account exists, a secure reset link will be sent there."
               : step === "reset"
                 ? "Create a strong new password for this buyer or seller account."
                 : "Your account is ready for a fresh login."}

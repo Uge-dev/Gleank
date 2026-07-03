@@ -5,13 +5,13 @@ export type PaymentPurpose =
   | "used_order"
   | "seller_subscription";
 
-export type GleankPaymentStatus =
+export type GleencPaymentStatus =
   | "initialized"
   | "paid"
   | "failed"
   | "cancelled";
 
-export type GleankPayment = {
+export type GleencPayment = {
   id: string;
   reference: string;
   provider: string;
@@ -23,7 +23,7 @@ export type GleankPayment = {
   amountKobo: number;
   amount: number;
   currency: "NGN";
-  status: GleankPaymentStatus;
+  status: GleencPaymentStatus;
   authorizationUrl: string;
   providerReference: string;
   providerStatus?: string;
@@ -32,21 +32,21 @@ export type GleankPayment = {
   updatedAt: string;
 };
 
-export type InitializedPayment = GleankPayment;
-export type VerifyPaymentResult = GleankPayment;
+export type InitializedPayment = GleencPayment;
+export type VerifyPaymentResult = GleencPayment;
 
 export function initializePayment(input: {
   purpose: PaymentPurpose;
   targetId?: string;
 }) {
-  return apiRequest<{ payment: GleankPayment }>("/payments/initialize", {
+  return apiRequest<{ payment: GleencPayment }>("/payments/initialize", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export function verifyPayment(reference: string) {
-  return apiRequest<{ payment: GleankPayment }>("/payments/verify", {
+  return apiRequest<{ payment: GleencPayment }>("/payments/verify", {
     method: "POST",
     body: JSON.stringify({ reference }),
   });
@@ -78,7 +78,7 @@ export function initializeSellerSubscriptionPayment() {
   });
 }
 
-export function getPaymentRedirectUrl(payment: GleankPayment) {
+export function getPaymentRedirectUrl(payment: GleencPayment) {
   if (!payment.authorizationUrl) {
     throw new Error("Payment authorization URL was not returned.");
   }
@@ -86,6 +86,6 @@ export function getPaymentRedirectUrl(payment: GleankPayment) {
   return payment.authorizationUrl;
 }
 
-export function isPaymentSuccessful(payment: GleankPayment) {
+export function isPaymentSuccessful(payment: GleencPayment) {
   return payment.status === "paid";
 }

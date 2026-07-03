@@ -1,6 +1,6 @@
-# Gleank
+# Gleenc
 
-Gleank is a campus marketplace for buyers, verified sellers, service providers,
+Gleenc is a campus marketplace for buyers, verified sellers, service providers,
 used-item sellers, dispatch riders, and platform administrators.
 
 This repository contains:
@@ -21,7 +21,7 @@ Requirements:
 - Node.js 24 or newer
 - npm 11 or newer
 
-From the `Gleank` folder:
+From the `Gleenc` folder:
 
 ```bash
 npm run setup
@@ -34,7 +34,7 @@ Demo seller:
 
 ```text
 Email: seller@gleank.local
-Password: Gleank123!
+Password: Gleenc123!
 ```
 
 See [SETUP.md](./SETUP.md) for the complete local-development guide and

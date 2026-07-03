@@ -17,11 +17,11 @@ import {
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-  type GleankNotification,
-  type GleankNotificationType,
+  type GleencNotification,
+  type GleencNotificationType,
 } from "../services/notification.service";
 
-type NotificationFilter = "all" | "unread" | GleankNotificationType;
+type NotificationFilter = "all" | "unread" | GleencNotificationType;
 
 const filters: {
   label: string;
@@ -60,7 +60,7 @@ function formatNotificationTime(value: string) {
   }).format(date);
 }
 
-function getNotificationIcon(type: GleankNotificationType) {
+function getNotificationIcon(type: GleencNotificationType) {
   if (type === "order") return FiShoppingBag;
   if (type === "message") return FiMessageCircle;
   if (type === "seller") return FiShoppingBag;
@@ -71,7 +71,7 @@ function getNotificationIcon(type: GleankNotificationType) {
   return FiHeart;
 }
 
-function getNotificationLabel(type: GleankNotificationType) {
+function getNotificationLabel(type: GleencNotificationType) {
   if (type === "order") return "Order";
   if (type === "message") return "Message";
   if (type === "seller") return "Seller";
@@ -82,7 +82,7 @@ function getNotificationLabel(type: GleankNotificationType) {
   return "Activity";
 }
 
-function getNotificationAccent(type: GleankNotificationType) {
+function getNotificationAccent(type: GleencNotificationType) {
   if (type === "order") return "green";
   if (type === "message") return "blue";
   if (type === "seller") return "orange";
@@ -94,7 +94,7 @@ function getNotificationAccent(type: GleankNotificationType) {
 }
 
 function Notifications() {
-  const [notifications, setNotifications] = useState<GleankNotification[]>([]);
+  const [notifications, setNotifications] = useState<GleencNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
   const [isLoading, setIsLoading] = useState(true);

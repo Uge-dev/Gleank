@@ -28,7 +28,7 @@ router.post("/login", (req, res) => {
   res.json({
     token,
     admin: {
-      name: "Gleank Admin",
+      name: "Gleenc Admin",
       email: adminEmail,
       role: "admin",
     },

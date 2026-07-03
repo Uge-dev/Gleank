@@ -305,7 +305,7 @@ function Dashboard() {
       <section className="seller-workspace-page">
         <LoadingState
           title="Loading your seller workspace"
-          message="Gleank is syncing your store, products, services, highlights, and inventory."
+          message="Gleenc is syncing your store, products, services, highlights, and inventory."
         />
       </section>
     );

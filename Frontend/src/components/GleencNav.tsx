@@ -41,7 +41,7 @@ type NavItem = {
   showOnMobile: boolean;
 };
 
-function GleankNav() {
+function GleencNav() {
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuth();
 
@@ -253,7 +253,7 @@ function GleankNav() {
     <>
       <aside className="gleank-sidebar">
         <NavLink to="/" className="gleank-logo">
-          <span className="gleank-logo-full">Gleank</span>
+          <span className="gleank-logo-full">Gleenc</span>
           <span className="gleank-logo-small">G</span>
         </NavLink>
 
@@ -322,11 +322,11 @@ function GleankNav() {
             <div className="sidebar-user-box">
               <NavLink to="/profile" className="sidebar-user-profile">
                 <span>
-                  {(user?.name || "Gleank User").charAt(0).toUpperCase()}
+                  {(user?.name || "Gleenc User").charAt(0).toUpperCase()}
                 </span>
 
                 <div>
-                  <strong>{user?.name || "Gleank User"}</strong>
+                  <strong>{user?.name || "Gleenc User"}</strong>
                   <small>{user?.role === "seller" ? "Seller" : "Buyer"}</small>
                 </div>
               </NavLink>
@@ -347,7 +347,7 @@ function GleankNav() {
             <span>Company</span>
             <span>Program</span>
             <span>Terms & Policies</span>
-            <span>© 2026 Gleank</span>
+            <span>© 2026 Gleenc</span>
           </div>
         </div>
       </aside>
@@ -382,4 +382,4 @@ function GleankNav() {
   );
 }
 
-export default GleankNav;
+export default GleencNav;

@@ -190,7 +190,7 @@ export function createUsedListing(userId, input, files) {
   const price = computePlatformPrice(input.price);
   const status = env.autoApproveUsedListings ? "active" : "pending";
   const reviewNote = status === "pending"
-    ? "Your listing is in Gleank review. Buyers cannot see it until it is approved."
+    ? "Your listing is in Gleenc review. Buyers cannot see it until it is approved."
     : "Auto-approved for local development.";
 
   db.prepare(`

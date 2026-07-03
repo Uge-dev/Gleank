@@ -11,7 +11,7 @@ import {
   getConversations,
   sendConversationMessage,
 } from "../services/message.service";
-import type { GleankConversation, GleankMessage } from "../types/domain";
+import type { GleencConversation, GleencMessage } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
 const usedFallback =
@@ -20,8 +20,8 @@ const usedFallback =
 function UsedMessages() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [conversations, setConversations] = useState<GleankConversation[]>([]);
-  const [messages, setMessages] = useState<GleankMessage[]>([]);
+  const [conversations, setConversations] = useState<GleencConversation[]>([]);
+  const [messages, setMessages] = useState<GleencMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [body, setBody] = useState("");

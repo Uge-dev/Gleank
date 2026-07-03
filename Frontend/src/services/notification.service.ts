@@ -1,6 +1,6 @@
 import { apiRequest } from "../lib/api";
 
-export type GleankNotificationType =
+export type GleencNotificationType =
   | "order"
   | "message"
   | "seller"
@@ -9,9 +9,9 @@ export type GleankNotificationType =
   | "admin"
   | "used_market";
 
-export type GleankNotification = {
+export type GleencNotification = {
   id: string;
-  type: GleankNotificationType;
+  type: GleencNotificationType;
   title: string;
   message: string;
   actionLabel: string;
@@ -23,7 +23,7 @@ export type GleankNotification = {
 };
 
 export type NotificationListResponse = {
-  notifications: GleankNotification[];
+  notifications: GleencNotification[];
   unreadCount: number;
 };
 

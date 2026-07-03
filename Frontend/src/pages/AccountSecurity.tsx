@@ -203,7 +203,7 @@ function AccountSecurity() {
         </Link>
 
         <span className="eyebrow">Account Security</span>
-        <h1>Secure your Gleank identity.</h1>
+        <h1>Secure your Gleenc identity.</h1>
         <p>
           Manage email verification, password safety, active sessions, and
           security activity from one protected workspace.
@@ -420,7 +420,7 @@ function AccountSecurity() {
             <h2 id="new-password-title">Create a new password</h2>
             <p>
               Your email code is confirmed. Choose a strong password to protect
-              your Gleank account.
+              your Gleenc account.
             </p>
 
             <form onSubmit={handleCompletePasswordReset} className="security-modal-form">

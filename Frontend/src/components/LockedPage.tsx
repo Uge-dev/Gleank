@@ -58,7 +58,7 @@ function LockedPage({
                 <FiArrowRight />
               </button>
 
-              <Link to="/search">Explore Gleank</Link>
+              <Link to="/search">Explore Gleenc</Link>
             </div>
           </div>
 

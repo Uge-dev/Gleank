@@ -349,7 +349,7 @@ export type OrderItem = {
   createdAt: string;
 };
 
-export type GleankOrder = {
+export type GleencOrder = {
   id: string;
   orderCode: string;
   buyerId: string;
@@ -441,7 +441,7 @@ export type UsedMarketOrder = {
   events: UsedMarketOrderEvent[];
 };
 
-export type GleankConversation = {
+export type GleencConversation = {
   id: string;
   contextType: "used_listing" | "used_order" | "store" | "support";
   contextId: string;
@@ -466,7 +466,7 @@ export type GleankConversation = {
   updatedAt: string;
 };
 
-export type GleankMessage = {
+export type GleencMessage = {
   id: string;
   conversationId: string;
   senderId: string;

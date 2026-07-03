@@ -98,7 +98,7 @@ export const notifications: NotificationItem[] = [
   {
     id: "notif-system-1",
     type: "system",
-    title: "Welcome to Gleank",
+    title: "Welcome to Gleenc",
     message:
       "Complete your profile to get better campus product recommendations.",
     time: "Yesterday",

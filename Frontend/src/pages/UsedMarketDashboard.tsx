@@ -13,7 +13,7 @@ import LoadingState from "../components/LoadingState";
 import { getConversations } from "../services/message.service";
 import { getOwnUsedListings } from "../services/marketplace.service";
 import { getUsedOrders } from "../services/used-order.service";
-import type { GleankConversation, UsedListing, UsedMarketOrder } from "../types/domain";
+import type { GleencConversation, UsedListing, UsedMarketOrder } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
 const usedFallback =
@@ -31,7 +31,7 @@ function UsedMarketDashboard() {
   const navigate = useNavigate();
   const [listings, setListings] = useState<UsedListing[]>([]);
   const [orders, setOrders] = useState<UsedMarketOrder[]>([]);
-  const [conversations, setConversations] = useState<GleankConversation[]>([]);
+  const [conversations, setConversations] = useState<GleencConversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {

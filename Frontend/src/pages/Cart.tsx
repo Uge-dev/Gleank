@@ -36,7 +36,7 @@ function Cart() {
           icon={<FiLock />}
           eyebrow="Login required"
           title="Sign in to view your cart"
-          message="Your cart is protected and tied to your Gleank account so another user cannot see your selected products on this device."
+          message="Your cart is protected and tied to your Gleenc account so another user cannot see your selected products on this device."
           actionLabel="Login to Continue"
           onAction={() => {
             window.location.href = "/login";
@@ -53,7 +53,7 @@ function Cart() {
           icon={<FiShoppingCart />}
           eyebrow="Your cart is empty"
           title="No items in your cart yet"
-          message="When you add products from Gleank stores, they will appear here before checkout."
+          message="When you add products from Gleenc stores, they will appear here before checkout."
           actionLabel="Start Shopping"
           onAction={() => {
             window.location.href = "/search";

@@ -29,7 +29,7 @@ function serializeConversation(row) {
     sellerName: row.seller_name || "",
     otherUserName:
       row.context_type === "support"
-        ? "Gleank Support"
+        ? "Gleenc Support"
         : row.other_user_name || "",
     listingName: row.listing_name || "",
     listingImageUrl: parseImages(row.listing_image_urls)[0] || null,
@@ -96,8 +96,8 @@ function getSupportAdmin() {
       last_login_at, last_password_change_at, created_at, updated_at
     )
     VALUES (
-      ?, 'Gleank Support', 'support@gleank.local', 'support-account',
-      'admin', 'Gleank HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
+      ?, 'Gleenc Support', 'support@gleank.local', 'support-account',
+      'admin', 'Gleenc HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
       NULL, ?, ?, ?
     )
   `).run(id, now, now, now, now);
@@ -110,7 +110,7 @@ function serializeMessage(row) {
     id: row.id,
     conversationId: row.conversation_id,
     senderId: row.sender_id,
-    senderName: row.sender_name || "Gleank user",
+    senderName: row.sender_name || "Gleenc user",
     body: row.body,
     attachmentUrl: row.attachment_url || null,
     isRead: Boolean(row.is_read),
@@ -406,7 +406,7 @@ export function createSupportConversation(userId) {
     INSERT INTO conversations (
       id, context_type, context_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'support', 'admin', ?, ?, 'Gleank support is ready to help.', ?, ?, ?)
+    ) VALUES (?, 'support', 'admin', ?, ?, 'Gleenc support is ready to help.', ?, ?, ?)
   `).run(id, userId, support.id, now, now, now);
 
   db.prepare(`
@@ -416,7 +416,7 @@ export function createSupportConversation(userId) {
     createId("msg"),
     id,
     support.id,
-    "Hi, this is Gleank Support. Send your message here and an admin can follow up.",
+    "Hi, this is Gleenc Support. Send your message here and an admin can follow up.",
     now,
   );
 
@@ -506,7 +506,7 @@ export function sendMessage(userId, conversationId, input) {
     createNotification({
       userId: recipientId,
       type: "message",
-      title: `New message from ${sender?.name || "Gleank user"}`,
+      title: `New message from ${sender?.name || "Gleenc user"}`,
       body,
       actionLabel: "Open chat",
       actionPath: conversation.contextType === "used_order" || conversation.contextType === "used_listing"

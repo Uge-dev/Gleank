@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FiAlertCircle, FiCheckCircle, FiMail, FiRefreshCw } from "react-icons/fi";
 import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../context/AuthContext";
@@ -7,6 +7,7 @@ import { resendVerification, verifyEmail } from "../services/auth.service";
 
 function VerifyEmail() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const token = searchParams.get("token") || "";
   const { refreshSession, user } = useAuth();
   const [message, setMessage] = useState("");
@@ -23,6 +24,9 @@ function VerifyEmail() {
         if (!active) return;
         setMessage(result.message || "Email verified successfully.");
         await refreshSession();
+        window.setTimeout(() => {
+          if (active) navigate("/", { replace: true });
+        }, 900);
       })
       .catch((requestError) => {
         if (active) {
@@ -40,7 +44,7 @@ function VerifyEmail() {
     return () => {
       active = false;
     };
-  }, [refreshSession, token]);
+  }, [navigate, refreshSession, token]);
 
   async function handleResend() {
     setError("");
@@ -64,7 +68,7 @@ function VerifyEmail() {
   return (
     <AuthLayout
       eyebrow="Email verification"
-      title="Protect your Gleank account before you trade."
+      title="Protect your Gleenc account before you trade."
       description="Verified emails help secure orders, seller dashboards, used-market chats, payout records, and account recovery."
     >
       <div className="auth-form-card verification-card">
@@ -77,7 +81,7 @@ function VerifyEmail() {
           <h2>{user?.emailVerified || message ? "Email verified" : "Verify your email"}</h2>
           <p>
             {user?.emailVerified || message
-              ? "Your account can now access protected Gleank actions."
+              ? "Your account can now access protected Gleenc actions."
               : "Open the verification link sent after signup, or request a fresh one."}
           </p>
         </div>

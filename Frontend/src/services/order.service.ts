@@ -1,5 +1,5 @@
 import { apiRequest } from "../lib/api";
-import type { GleankOrder, OrderStatus } from "../types/domain";
+import type { GleencOrder, OrderStatus } from "../types/domain";
 
 export type CreateOrderItemInput = {
   productId: string;
@@ -18,18 +18,18 @@ export type CreateOrderInput = {
 };
 
 export function createOrders(input: CreateOrderInput) {
-  return apiRequest<{ orders: GleankOrder[] }>("/orders", {
+  return apiRequest<{ orders: GleencOrder[] }>("/orders", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export function getOrders() {
-  return apiRequest<{ orders: GleankOrder[] }>("/orders");
+  return apiRequest<{ orders: GleencOrder[] }>("/orders");
 }
 
 export function getOrder(id: string) {
-  return apiRequest<{ order: GleankOrder }>(
+  return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}`,
   );
 }
@@ -39,7 +39,7 @@ export function updateOrderStatus(
   status: OrderStatus,
   note = "",
 ) {
-  return apiRequest<{ order: GleankOrder }>(
+  return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}/status`,
     {
       method: "PATCH",
@@ -49,7 +49,7 @@ export function updateOrderStatus(
 }
 
 export function payOrder(id: string, reference = "") {
-  return apiRequest<{ order: GleankOrder }>(
+  return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}/pay`,
     {
       method: "POST",
@@ -63,7 +63,7 @@ export function verifyOrderDelivery(
   verificationCode: string,
   note = "",
 ) {
-  return apiRequest<{ order: GleankOrder }>(
+  return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}/verify-delivery`,
     {
       method: "POST",

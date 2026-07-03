@@ -642,7 +642,7 @@ db.exec(`
     user_id TEXT NOT NULL UNIQUE,
     store_id TEXT,
     plan_name TEXT NOT NULL DEFAULT 'Campus Seller Monthly',
-    amount_kobo INTEGER NOT NULL DEFAULT 300000 CHECK (amount_kobo >= 0),
+    amount_kobo INTEGER NOT NULL DEFAULT 199900 CHECK (amount_kobo >= 0),
     status TEXT NOT NULL DEFAULT 'inactive'
       CHECK (status IN ('inactive', 'active', 'expired', 'past_due', 'cancelled')),
     starts_at TEXT,
@@ -775,6 +775,12 @@ ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
 
 ensureColumn("product_comments", "parent_comment_id", "TEXT");
 ensureColumn("product_comments", "is_deleted", "INTEGER NOT NULL DEFAULT 0");
+
+db.prepare(`
+  UPDATE seller_subscriptions
+  SET amount_kobo = ?
+  WHERE amount_kobo = 300000
+`).run(env.sellerMonthlyFeeKobo);
 
 
 

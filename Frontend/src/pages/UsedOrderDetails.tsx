@@ -271,7 +271,7 @@ function UsedOrderDetails() {
             {isBuyer && order.status === "pending_payment" && (
               <button type="button" onClick={() => void handlePay()} disabled={isWorking}>
                 <FiCreditCard />
-                Pay with Gleank protection
+                Pay with Gleenc protection
               </button>
             )}
 
@@ -321,7 +321,7 @@ function UsedOrderDetails() {
             )}
 
             {(isBuyer || isSeller) && !["completed", "cancelled", "disputed"].includes(order.status) && (
-              <button type="button" className="danger" onClick={() => void handleStatus("disputed", "Issue reported for Gleank review.")} disabled={isWorking}>
+              <button type="button" className="danger" onClick={() => void handleStatus("disputed", "Issue reported for Gleenc review.")} disabled={isWorking}>
                 <FiAlertTriangle />
                 Report issue
               </button>

@@ -16,7 +16,7 @@ import { getSupportWhatsAppUrl } from "../utils/support";
 const moreLinks = [
   {
     title: "Profile",
-    description: "View and manage your Gleank profile.",
+    description: "View and manage your Gleenc profile.",
     icon: <FiUser />,
     path: "/profile",
   },
@@ -64,7 +64,7 @@ const moreLinks = [
   },
   {
     title: "Chat with Admin",
-    description: "Open a live support chat with Gleank admin.",
+    description: "Open a live support chat with Gleenc admin.",
     icon: <FiMessageCircle />,
     path: "/messages?support=1",
   },
@@ -97,7 +97,7 @@ function More() {
         ))}
 
         <a
-          href={getSupportWhatsAppUrl("Hello Gleank Support, I need help with my account.")}
+          href={getSupportWhatsAppUrl("Hello Gleenc Support, I need help with my account.")}
           className="more-page-card whatsapp"
           target="_blank"
           rel="noreferrer"
@@ -108,7 +108,7 @@ function More() {
 
           <div>
             <strong>WhatsApp Support</strong>
-            <p>Chat with Gleank admin on WhatsApp.</p>
+            <p>Chat with Gleenc admin on WhatsApp.</p>
           </div>
 
           <FiChevronRight />

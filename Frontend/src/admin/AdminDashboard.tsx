@@ -166,7 +166,7 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
         <div className="admin-login-brand">
           <div className="admin-brand-mark">G</div>
           <div>
-            <p>Gleank Admin</p>
+            <p>Gleenc Admin</p>
             <h1>Platform Control Center</h1>
           </div>
         </div>
@@ -647,7 +647,7 @@ function AdminDashboard() {
           <div className="admin-logo-row">
             <div className="admin-brand-mark">G</div>
             <div>
-              <strong>Gleank</strong>
+              <strong>Gleenc</strong>
               <span>Admin Console</span>
             </div>
           </div>
@@ -704,7 +704,7 @@ function AdminDashboard() {
               <section className="admin-hero-card">
                 <div>
                   <span className="admin-pill"><FaShieldAlt /> Platform safety center</span>
-                  <h2>Control the full Gleank marketplace from one full-page admin dashboard.</h2>
+                  <h2>Control the full Gleenc marketplace from one full-page admin dashboard.</h2>
                   <p>
                     This area is connected to live users, sellers, products, used-market listings, orders, payments, payouts, deliveries, disputes and activity logs.
                   </p>
@@ -935,7 +935,7 @@ function AdminDashboard() {
           {activeTab === "payments" ? (
             <DataTable<AdminPayment>
               title="Payment Monitoring"
-              subtitle="Track payment reference, buyer, seller, order amount, Gleank fee, seller amount and payout status."
+              subtitle="Track payment reference, buyer, seller, order amount, Gleenc fee, seller amount and payout status."
               rows={data.payments}
               search={search}
               onView={(payment) => openRecord(payment.id, payment)}
@@ -945,7 +945,7 @@ function AdminDashboard() {
                 { label: "Buyer", render: (payment) => payment.buyer },
                 { label: "Seller", render: (payment) => payment.seller },
                 { label: "Amount paid", render: (payment) => payment.amount },
-                { label: "Gleank fee", render: (payment) => payment.gleankFee },
+                { label: "Gleenc fee", render: (payment) => payment.gleankFee },
                 { label: "Seller amount", render: (payment) => payment.sellerAmount },
                 { label: "Payment", render: (payment) => <StatusBadge status={payment.status} /> },
                 { label: "Payout", render: (payment) => <StatusBadge status={payment.payoutStatus} /> },
@@ -973,7 +973,7 @@ function AdminDashboard() {
                 { label: "Payment", render: (payment) => payment.id },
                 { label: "Seller", render: (payment) => payment.seller },
                 { label: "Seller amount", render: (payment) => payment.sellerAmount },
-                { label: "Gleank fee", render: (payment) => payment.gleankFee },
+                { label: "Gleenc fee", render: (payment) => payment.gleankFee },
                 { label: "Payment", render: (payment) => <StatusBadge status={payment.status} /> },
                 { label: "Payout", render: (payment) => <StatusBadge status={payment.payoutStatus} /> },
                 { label: "Date", render: (payment) => payment.createdAt },

@@ -43,13 +43,13 @@ function Login() {
     <AuthLayout
       eyebrow="Welcome back"
       title="Login to continue shopping, selling, and chatting."
-      description="Your Gleank account now uses real server authentication and persistent sessions."
+      description="Your Gleenc account now uses real server authentication and persistent sessions."
     >
       <div className="auth-form-card">
         <div className="auth-form-header">
           <span>Secure login</span>
           <h2>Welcome back</h2>
-          <p>Enter the account details registered with Gleank.</p>
+          <p>Enter the account details registered with Gleenc.</p>
         </div>
 
         {error && (
@@ -114,7 +114,7 @@ function Login() {
         </form>
 
         <p className="auth-switch-text">
-          New to Gleank? <Link to="/signup">Create account</Link>
+          New to Gleenc? <Link to="/signup">Create account</Link>
         </p>
       </div>
     </AuthLayout>

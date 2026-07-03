@@ -117,7 +117,7 @@ function Saved() {
         <span>Saved Items</span>
         <h1>Your marketplace shortlist</h1>
         <p>
-          Everything here is synced to your Gleank account and is available on
+          Everything here is synced to your Gleenc account and is available on
           your phone or any other signed-in device.
         </p>
       </div>

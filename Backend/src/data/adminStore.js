@@ -376,7 +376,7 @@ function buildPayments() {
         id: row.reference,
         orderId: row.order_code || row.used_order_code || row.order_id || row.used_order_id || row.subscription_id || "",
         buyer: row.buyer_name || row.used_buyer_name || "Seller subscription",
-        seller: row.store_name || row.used_seller_name || "Gleank",
+        seller: row.store_name || row.used_seller_name || "Gleenc",
         amount: naira(amountKobo),
         gleankFee: naira(feeKobo),
         sellerAmount: naira(Math.max(0, amountKobo - feeKobo)),
@@ -564,8 +564,8 @@ function supportAdminRow() {
       last_login_at, last_password_change_at, created_at, updated_at
     )
     VALUES (
-      ?, 'Gleank Support', 'support@gleank.local', 'support-account',
-      'admin', 'Gleank HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
+      ?, 'Gleenc Support', 'support@gleank.local', 'support-account',
+      'admin', 'Gleenc HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
       NULL, ?, ?, ?
     )
   `).run(id, now, now, now, now);
@@ -614,7 +614,7 @@ function buildSupportConversations() {
       const conversationMessages = messages.all(row.id).map((message) => ({
         id: message.id,
         senderId: message.sender_id,
-        senderName: message.sender_name || "Gleank user",
+        senderName: message.sender_name || "Gleenc user",
         senderRole: mapSupportRole(message.sender_role),
         body: message.body,
         isAdmin: message.sender_role === "admin",
@@ -775,7 +775,7 @@ export function sendAdminSupportMessage(conversationId, input) {
     createNotification({
       userId: conversation.buyer_id,
       type: "message",
-      title: "Gleank Support replied",
+      title: "Gleenc Support replied",
       body,
       actionLabel: "Open support chat",
       actionPath: "/messages?support=1",
@@ -828,8 +828,8 @@ function updateUser(id, fields) {
       type: "admin",
       title: active ? "Account activated" : "Account status changed",
       body: active
-        ? "Admin has activated your Gleank account."
-        : "Admin has changed your Gleank account status. Contact support if this seems wrong.",
+        ? "Admin has activated your Gleenc account."
+        : "Admin has changed your Gleenc account status. Contact support if this seems wrong.",
       actionLabel: "View profile",
       actionPath: "/profile",
     });

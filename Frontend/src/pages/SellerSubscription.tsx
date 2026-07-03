@@ -61,8 +61,8 @@ function SellerSubscription() {
       <Link to="/seller/onboarding" className="seller-onboarding-back"><FiArrowLeft /> Seller onboarding</Link>
       <div className="seller-onboarding-hero subscription-hero">
         <span><FiCreditCard /> Seller Subscription</span>
-        <h1>₦3,000 monthly seller access.</h1>
-        <p>Seller publishing tools stay active only while the monthly fee is active. Real payment verification will replace the development activation button before production.</p>
+        <h1>₦1,999 monthly seller access.</h1>
+        <p>Seller publishing tools stay active only while the monthly fee is active. Use Paystack checkout in test mode until live payment activation is ready.</p>
       </div>
 
       {error && <div className="seller-onboarding-message error">{error}</div>}
@@ -71,7 +71,7 @@ function SellerSubscription() {
       <div className="subscription-plan-card">
         <div className="subscription-plan-icon"><FiCreditCard /></div>
         <span>Campus Seller Monthly</span>
-        <h2>₦{(subscription?.amount || 3000).toLocaleString()} / month</h2>
+        <h2>₦{(subscription?.amount || 1999).toLocaleString()} / month</h2>
         <p>Status: <strong>{subscription?.status || "inactive"}</strong></p>
         {subscription?.currentPeriodEnd && <p>Active until {new Date(subscription.currentPeriodEnd).toLocaleString()}</p>}
         {!subscription?.isActive ? (

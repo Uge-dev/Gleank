@@ -14,7 +14,7 @@ import {
 import LoadingState from "../components/LoadingState";
 import { getOrder } from "../services/order.service";
 import { initializeOrdersPayment } from "../services/payment.service";
-import type { GleankOrder, OrderStatus } from "../types/domain";
+import type { GleencOrder, OrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { formatNaira } from "../utils/price";
 import "./OrderDetails.css";
@@ -45,13 +45,13 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function canContinuePayment(order: GleankOrder) {
+function canContinuePayment(order: GleencOrder) {
   return order.paymentStatus === "unpaid" || order.status === "pending_payment";
 }
 
 function OrderDetails() {
   const { id = "" } = useParams();
-  const [order, setOrder] = useState<GleankOrder | null>(null);
+  const [order, setOrder] = useState<GleencOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isOpeningPayment, setIsOpeningPayment] = useState(false);

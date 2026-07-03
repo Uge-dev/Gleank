@@ -49,7 +49,7 @@ if (!fs.existsSync(backendEnv)) {
       "SMTP_SECURE=false",
       "SMTP_USER=your_brevo_smtp_login_email_here",
       "SMTP_PASS=your_brevo_smtp_key_here",
-      "EMAIL_FROM=\"Gleank <your_verified_sender_email@example.com>\"",
+      "EMAIL_FROM=\"Gleenc <your_verified_sender_email@example.com>\"",
       "",
     ].join("\n"),
   );
@@ -65,5 +65,5 @@ await run("npm", ["install"], path.join(root, "Backend"));
 await run("npm", ["install"], path.join(root, "Frontend"));
 await run("npm", ["run", "seed"], path.join(root, "Backend"));
 
-console.log("\nGleank local setup is complete.");
+console.log("\nGleenc local setup is complete.");
 console.log("Run: npm run dev");

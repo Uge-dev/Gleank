@@ -28,7 +28,7 @@ function uniqueStoreSlug(storeName) {
 }
 
 function defaultStoreName(user) {
-  const firstName = clean(user?.name, 60).split(/\s+/)[0] || "Gleank";
+  const firstName = clean(user?.name, 60).split(/\s+/)[0] || "Gleenc";
   return `${firstName} Store`;
 }
 

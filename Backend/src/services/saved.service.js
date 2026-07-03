@@ -155,7 +155,7 @@ export function saveItem(userId, input) {
         userId: target.owner_id,
         type: input.itemType === "used_listing" ? "used_market" : "product",
         title: "Item saved",
-        body: `${user?.name || "A Gleank user"} saved ${target.name}.`,
+        body: `${user?.name || "A Gleenc user"} saved ${target.name}.`,
         actionLabel: "View item",
         actionPath: input.itemType === "used_listing"
           ? `/used-market/${input.itemId}`

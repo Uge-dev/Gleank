@@ -52,7 +52,7 @@ function getCommentAuthor(comment: ProductComment) {
     item.authorName ||
     item.user?.name ||
     item.author?.name ||
-    "Gleank user"
+    "Gleenc user"
   );
 }
 

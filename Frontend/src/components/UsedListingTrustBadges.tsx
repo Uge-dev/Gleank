@@ -32,7 +32,7 @@ function UsedListingTrustBadges({ listing, compact = false }: UsedListingTrustBa
       icon: <FiCreditCard />,
     },
     {
-      label: listing.status === "active" ? "Gleank reviewed" : "Pending review",
+      label: listing.status === "active" ? "Gleenc reviewed" : "Pending review",
       ok: listing.status === "active",
       icon: <FiEye />,
     },

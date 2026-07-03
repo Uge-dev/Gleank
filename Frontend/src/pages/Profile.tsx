@@ -116,7 +116,7 @@ function Profile() {
   const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState("");
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
-  const displayName = user?.name || "Gleank User";
+  const displayName = user?.name || "Gleenc User";
   const displayEmail = user?.email || "user@gleank.com";
   const displayCampus = user?.campus || "Campus not set";
   const accountType = user?.role === "seller" ? "Campus Seller" : "Campus Buyer";
@@ -337,8 +337,8 @@ function Profile() {
 
               <h3>
                 {user?.role === "seller"
-                  ? store?.name || "Your Gleank Store"
-                  : "Start selling on Gleank"}
+                  ? store?.name || "Your Gleenc Store"
+                  : "Start selling on Gleenc"}
               </h3>
 
               <p>

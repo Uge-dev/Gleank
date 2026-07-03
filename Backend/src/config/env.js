@@ -59,7 +59,7 @@ export const env = {
   loginMaxFailedAttempts: numberFromEnv(process.env.LOGIN_MAX_FAILED_ATTEMPTS, 5),
   sellerMonthlyFeeKobo: numberFromEnv(
     process.env.SELLER_MONTHLY_FEE_KOBO,
-    300000,
+    199900,
   ),
   platformFeePercent: numberFromEnv(process.env.PLATFORM_FEE_PERCENT, 5),
 
@@ -105,7 +105,7 @@ export const env = {
   smtpUser: process.env.SMTP_USER || "",
   smtpPass: process.env.SMTP_PASS || "",
   emailFrom: process.env.EMAIL_FROM || "",
-  smtpFromName: process.env.SMTP_FROM_NAME || "Gleank",
+  smtpFromName: process.env.SMTP_FROM_NAME || "Gleenc",
   smtpFromEmail: process.env.SMTP_FROM_EMAIL || process.env.EMAIL_FROM || "",
   emailProvider,
   brevoApiKey: process.env.BREVO_API_KEY || "",

@@ -28,7 +28,7 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
       <section className="protected-popup-page">
         <LoadingState
           title="Checking your session"
-          message="Gleank is securely loading your account."
+          message="Gleenc is securely loading your account."
         />
       </section>
     );
@@ -65,7 +65,7 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
             <h1>Login to continue</h1>
             <p>
               Your cart, checkout, messages, orders, saved items, profile, and
-              seller tools are protected by your Gleank account.
+              seller tools are protected by your Gleenc account.
             </p>
             <button type="button" onClick={() => setAuthModalOpen(true)}>
               Open secure login

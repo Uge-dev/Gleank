@@ -7,13 +7,13 @@ import {
   FiClock,
   FiLoader,
 } from "react-icons/fi";
-import { verifyPayment, type GleankPayment } from "../services/payment.service";
+import { verifyPayment, type GleencPayment } from "../services/payment.service";
 import { useCart } from "../context/CartContext";
 import "./PaymentCallback.css";
 
 type CallbackState = "loading" | "success" | "pending" | "failed";
 
-function getPaymentRedirectPath(payment: GleankPayment) {
+function getPaymentRedirectPath(payment: GleencPayment) {
   if (payment.purpose === "used_order" && payment.usedOrderId) {
     return `/used-orders/${payment.usedOrderId}`;
   }
@@ -144,7 +144,7 @@ function PaymentCallback() {
       <section className={`payment-callback-card is-${state}`}>
         <div className="payment-callback-icon">{icon}</div>
 
-        <span className="payment-callback-eyebrow">Gleank secure payment</span>
+        <span className="payment-callback-eyebrow">Gleenc secure payment</span>
 
         <h1>
           {state === "loading"

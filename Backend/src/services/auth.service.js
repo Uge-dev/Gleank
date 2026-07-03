@@ -73,7 +73,7 @@ async function deliverAuthEmail(label, send, options = {}) {
     if (options.required) {
       throw new HttpError(
         502,
-        "Gleank could not send the email right now. Please check the Brevo SMTP setup and try again.",
+        "Gleenc could not send the email right now. Please check the Brevo SMTP setup and try again.",
       );
     }
 

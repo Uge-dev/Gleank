@@ -47,7 +47,7 @@ function generateVerificationCode() {
 function statusLabel(status) {
   const labels = {
     pending_payment: "Pending payment",
-    paid: "Paid safely to Gleank",
+    paid: "Paid safely to Gleenc",
     seller_confirmed: "Seller confirmed",
     meetup_or_delivery: "Pickup or delivery in progress",
     delivered: "Delivered",

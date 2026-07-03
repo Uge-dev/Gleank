@@ -1,6 +1,6 @@
-# Gleank production deployment runbook
+# Gleenc production deployment runbook
 
-This document is the production setup checklist for Gleank.
+This document is the production setup checklist for Gleenc.
 
 ## 1. Third-party accounts required
 
@@ -29,7 +29,7 @@ cd Backend
 npm run neon:check
 ```
 
-Important: the current Gleank runtime still uses the synchronous SQLite data layer. The app now refuses to start with `DATABASE_PROVIDER=postgres` so it cannot accidentally pretend to be using Neon while writing to SQLite. The next required backend task is the full async Postgres repository migration.
+Important: the current Gleenc runtime still uses the synchronous SQLite data layer. The app now refuses to start with `DATABASE_PROVIDER=postgres` so it cannot accidentally pretend to be using Neon while writing to SQLite. The next required backend task is the full async Postgres repository migration.
 
 Do not accept live production traffic on Neon until that migration is complete.
 
@@ -83,8 +83,8 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
-EMAIL_FROM=Gleank <no-reply@your-domain.com>
-SMTP_FROM_NAME=Gleank
+EMAIL_FROM=Gleenc <no-reply@your-domain.com>
+SMTP_FROM_NAME=Gleenc
 SMTP_FROM_EMAIL=no-reply@your-domain.com
 EMAIL_PROVIDER=brevo-api
 BREVO_API_KEY=

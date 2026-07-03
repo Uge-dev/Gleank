@@ -24,7 +24,7 @@ function AuthLayout({
       <div className="auth-brand-panel">
         <Link to="/" className="auth-logo">
           <span>G</span>
-          Gleank
+          Gleenc
         </Link>
 
         <div className="auth-brand-content">

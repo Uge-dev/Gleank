@@ -1,4 +1,4 @@
-# Gleank Local Development Setup
+# Gleenc Local Development Setup
 
 This guide prepares the frontend, backend, database, authentication, store
 management, product management, service management, and local image uploads.
@@ -25,14 +25,14 @@ git --version
 In Visual Studio Code, choose **File → Open Folder** and open:
 
 ```text
-/Users/apple/Documents/Gleank
+/Users/apple/Documents/Gleenc
 ```
 
 Do not open only `Frontend` when you need to run the complete application.
 
 ## 3. First-time setup
 
-Open the VS Code terminal in the root `Gleank` folder and run:
+Open the VS Code terminal in the root `Gleenc` folder and run:
 
 ```bash
 npm run setup
@@ -73,7 +73,7 @@ Use this account to test the seller workflow:
 
 ```text
 Email: seller@gleank.local
-Password: Gleank123!
+Password: Gleenc123!
 ```
 
 The demo account is created only for local development.

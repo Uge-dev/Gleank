@@ -5,17 +5,17 @@ function Help() {
       <h1>How can we help?</h1>
       <p>
         Find help for buying, selling, messaging sellers, reporting products,
-        managing orders, and using Gleank safely.
+        managing orders, and using Gleenc safely.
       </p>
 
       <div className="simple-info-grid">
         <article>
-          <h3>Buying on Gleank</h3>
+          <h3>Buying on Gleenc</h3>
           <p>Learn how to find products, message sellers, and place orders.</p>
         </article>
 
         <article>
-          <h3>Selling on Gleank</h3>
+          <h3>Selling on Gleenc</h3>
           <p>Learn how seller stores, product uploads, and reels work.</p>
         </article>
 

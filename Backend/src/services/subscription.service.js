@@ -60,7 +60,18 @@ export function getSellerSubscription(userId) {
 export function ensureSellerSubscription(userId) {
   const store = findStoreByOwnerId(userId);
   const existing = db.prepare("SELECT * FROM seller_subscriptions WHERE user_id = ?").get(userId);
-  if (existing) return serializeSubscription(existing);
+  if (existing) {
+    if (Number(existing.amount_kobo || 0) !== env.sellerMonthlyFeeKobo) {
+      db.prepare("UPDATE seller_subscriptions SET amount_kobo = ?, updated_at = ? WHERE id = ?").run(
+        env.sellerMonthlyFeeKobo,
+        nowIso(),
+        existing.id,
+      );
+      return getSellerSubscription(userId);
+    }
+
+    return serializeSubscription(existing);
+  }
 
   const now = new Date();
   const id = createId("sub");
@@ -178,7 +189,7 @@ export function renewSellerSubscriptionFromPayment(userId, paymentReference) {
 export function assertSellerSubscriptionActive(userId) {
   const subscription = ensureSellerSubscription(userId);
   if (!subscription.isActive) {
-    throw new HttpError(402, "Your seller monthly subscription is inactive. Renew the ₦3,000 monthly fee before publishing new listings.");
+    throw new HttpError(402, "Your seller monthly subscription is inactive. Renew the ₦1,999 monthly fee before publishing new listings.");
   }
   return subscription;
 }

@@ -265,7 +265,7 @@ function SellerStore() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: `${workspace.store.name} on Gleank`,
+          title: `${workspace.store.name} on Gleenc`,
           text: workspace.store.description,
           url,
         });
@@ -481,7 +481,7 @@ async function handleProductViewed(productId: string) {
       <section className="seller-store-page">
         <LoadingState
           title="Loading seller profile"
-          message="Gleank is syncing this seller's products and services."
+          message="Gleenc is syncing this seller's products and services."
         />
       </section>
     );
@@ -587,7 +587,7 @@ async function handleProductViewed(productId: string) {
 
               <p className="seller-bio-text">
                 {store.description ||
-                  "This seller is building their Gleank store."}
+                  "This seller is building their Gleenc store."}
               </p>
 
               <p className="seller-campus-text">{store.campus}</p>

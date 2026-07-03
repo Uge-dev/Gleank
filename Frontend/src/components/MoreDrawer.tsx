@@ -88,7 +88,7 @@ function MoreDrawer({
       >
         <div className="more-drawer-header">
           <div>
-            <span>Gleank Menu</span>
+            <span>Gleenc Menu</span>
             <h2>More</h2>
           </div>
 
@@ -100,7 +100,7 @@ function MoreDrawer({
         {!isLoggedIn ? (
           <div className="more-drawer-auth-card">
             <div>
-              <h3>Join Gleank</h3>
+              <h3>Join Gleenc</h3>
               <p>Login to sell, order, message sellers, and save products.</p>
             </div>
 
@@ -112,7 +112,7 @@ function MoreDrawer({
         ) : (
           <div className="more-drawer-auth-card">
             <div>
-              <h3>{user?.name || "Gleank User"}</h3>
+              <h3>{user?.name || "Gleenc User"}</h3>
               <p>{user?.role === "seller" ? "Seller account" : "Buyer account"}</p>
             </div>
 
@@ -153,7 +153,7 @@ function MoreDrawer({
             </span>
 
             <div>
-              <strong>Sell on Gleank</strong>
+              <strong>Sell on Gleenc</strong>
               <small>Upload products and services</small>
             </div>
 
@@ -294,7 +294,7 @@ function MoreDrawer({
 
             <div>
               <strong>Help & Support</strong>
-              <small>Get help using Gleank</small>
+              <small>Get help using Gleenc</small>
             </div>
 
             <FiChevronRight />
@@ -319,7 +319,7 @@ function MoreDrawer({
 
           <a
             className="more-menu-row"
-            href={getSupportWhatsAppUrl("Hello Gleank Support, I need help.")}
+            href={getSupportWhatsAppUrl("Hello Gleenc Support, I need help.")}
             target="_blank"
             rel="noreferrer"
             onClick={onClose}
@@ -398,7 +398,7 @@ function MoreDrawer({
         </div>
 
         <p className="more-drawer-footer">
-          © 2026 Gleank. Campus commerce made social.
+          © 2026 Gleenc. Campus commerce made social.
         </p>
       </aside>
     </div>

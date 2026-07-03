@@ -81,7 +81,7 @@ app.use(optionalAuth);
 
 app.get("/", (_req, res) => {
   res.json({
-    message: "Gleank backend is running",
+    message: "Gleenc backend is running",
     service: "gleank-api",
   });
 });

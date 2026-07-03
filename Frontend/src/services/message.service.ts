@@ -1,8 +1,8 @@
 import { apiRequest } from "../lib/api";
-import type { GleankConversation, GleankMessage } from "../types/domain";
+import type { GleencConversation, GleencMessage } from "../types/domain";
 
 export function getConversations() {
-  return apiRequest<{ conversations: GleankConversation[] }>(
+  return apiRequest<{ conversations: GleencConversation[] }>(
     "/messages/conversations",
   );
 }
@@ -15,7 +15,7 @@ export function createConversation(input: {
   contextType: "used_listing" | "used_order" | "store" | "order" | "support";
   contextId?: string;
 }) {
-  return apiRequest<{ conversation: GleankConversation }>(
+  return apiRequest<{ conversation: GleencConversation }>(
     "/messages/conversations",
     {
       method: "POST",
@@ -25,19 +25,19 @@ export function createConversation(input: {
 }
 
 export function getConversation(id: string) {
-  return apiRequest<{ conversation: GleankConversation }>(
+  return apiRequest<{ conversation: GleencConversation }>(
     `/messages/conversations/${encodeURIComponent(id)}`,
   );
 }
 
 export function getConversationMessages(conversationId: string) {
-  return apiRequest<{ messages: GleankMessage[] }>(
+  return apiRequest<{ messages: GleencMessage[] }>(
     `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
   );
 }
 
 export function sendConversationMessage(conversationId: string, body: string) {
-  return apiRequest<{ message: GleankMessage }>(
+  return apiRequest<{ message: GleencMessage }>(
     `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
     {
       method: "POST",

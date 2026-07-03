@@ -41,7 +41,7 @@ function NotFound() {
 
           <Link to="/search">
             <FiSearch />
-            Search Gleank
+            Search Gleenc
           </Link>
 
           <button onClick={() => window.history.back()}>

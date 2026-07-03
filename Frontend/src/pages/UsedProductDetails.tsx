@@ -142,7 +142,7 @@ function UsedProductDetails() {
           reason: "Suspicious used listing",
           details: "Buyer requested review from listing details page.",
         });
-        setReportMessage("Report sent to Gleank review team.");
+        setReportMessage("Report sent to Gleenc review team.");
       } catch (requestError) {
         setReportMessage(
           requestError instanceof Error
@@ -330,7 +330,7 @@ function UsedProductDetails() {
             <div className="secure-payment-note">
               <FiLock />
               <p>
-                Buyer protection: pay through Gleank, inspect the item, then confirm delivery.
+                Buyer protection: pay through Gleenc, inspect the item, then confirm delivery.
                 Seller payout becomes eligible only after completion or review.
               </p>
             </div>
