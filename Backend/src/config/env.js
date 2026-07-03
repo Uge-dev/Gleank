@@ -140,10 +140,12 @@ if (env.isProduction && env.databaseProvider !== "postgres") {
   );
 }
 
-if (env.isProduction && env.paymentProvider === "paystack") {
-  if (!env.paystackSecretKey.startsWith("sk_live_")) {
-    throw new Error(
-      "PAYSTACK_SECRET_KEY must be configured with a live secret key in production.",
-    );
-  }
+if (
+  env.isProduction &&
+  env.paymentProvider === "paystack" &&
+  !env.paystackSecretKey.startsWith("sk_live_")
+) {
+  console.warn(
+    "PAYMENT_PROVIDER=paystack is enabled without a live PAYSTACK_SECRET_KEY. The API will start, but Paystack checkout will be blocked until a sk_live_ key is configured.",
+  );
 }

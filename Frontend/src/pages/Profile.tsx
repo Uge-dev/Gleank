@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
   FiAlertCircle,
@@ -113,6 +113,8 @@ function Profile() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
+  const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState("");
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const displayName = user?.name || "Gleank User";
   const displayEmail = user?.email || "user@gleank.com";
@@ -121,9 +123,11 @@ function Profile() {
   const profileAvatarUrl =
     user?.role === "seller" && store?.logoUrl
       ? resolveMediaUrl(store.logoUrl, "")
-      : user?.avatarUrl
-        ? resolveMediaUrl(user.avatarUrl, "")
-        : "";
+      : uploadedAvatarUrl
+        ? uploadedAvatarUrl
+        : user?.avatarUrl
+          ? resolveMediaUrl(user.avatarUrl, "")
+          : "";
 
   async function handleLogoutConfirm() {
     setIsLoggingOut(true);
@@ -147,7 +151,12 @@ function Profile() {
     setIsUploadingAvatar(true);
 
     try {
-      await uploadProfileAvatar(file);
+      const result = await uploadProfileAvatar(file);
+      const nextAvatarUrl = result.user.avatarUrl
+        ? resolveMediaUrl(result.user.avatarUrl, "")
+        : "";
+
+      setUploadedAvatarUrl(nextAvatarUrl);
       await refreshSession();
       setProfileMessage("Profile photo updated successfully.");
     } catch (requestError) {
@@ -179,6 +188,7 @@ function Profile() {
                 <FiCamera />
                 <span>{isUploadingAvatar ? "Uploading..." : "Change photo"}</span>
                 <input
+                  ref={avatarInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   disabled={isUploadingAvatar}
@@ -216,9 +226,22 @@ function Profile() {
             </div>
           </div>
 
-          <button type="button" className="profile-edit-btn">
+          <button
+            type="button"
+            className="profile-edit-btn"
+            disabled={isUploadingAvatar || user?.role === "seller"}
+            onClick={() => {
+              if (user?.role !== "seller") {
+                avatarInputRef.current?.click();
+              }
+            }}
+          >
             <FiEdit3 />
-            {user?.role === "seller" ? "Store logo controls profile" : "Upload buyer photo"}
+            {user?.role === "seller"
+              ? "Store logo controls profile"
+              : isUploadingAvatar
+                ? "Uploading..."
+                : "Upload buyer photo"}
           </button>
         </div>
       </div>
