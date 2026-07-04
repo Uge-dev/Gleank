@@ -139,14 +139,16 @@
   box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.12);
 }
 
-.delivery-choice-grid {
+.delivery-choice-grid,
+.payment-choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.9rem;
   margin: 1rem 0;
 }
 
-.delivery-choice-grid button {
+.delivery-choice-grid button,
+.payment-choice-grid button {
   display: grid;
   gap: 0.35rem;
   min-height: 132px;
@@ -159,21 +161,25 @@
   cursor: pointer;
 }
 
-.delivery-choice-grid button svg {
+.delivery-choice-grid button svg,
+.payment-choice-grid button svg {
   font-size: 1.35rem;
 }
 
-.delivery-choice-grid button strong {
+.delivery-choice-grid button strong,
+.payment-choice-grid button strong {
   color: #111827;
   font-size: 1rem;
 }
 
-.delivery-choice-grid button span {
+.delivery-choice-grid button span,
+.payment-choice-grid button span {
   font-size: 0.85rem;
   line-height: 1.45;
 }
 
-.delivery-choice-grid button.selected {
+.delivery-choice-grid button.selected,
+.payment-choice-grid button.selected {
   border-color: rgba(249, 115, 22, 0.55);
   background: #fff7ed;
   color: #9a3412;
@@ -268,7 +274,8 @@
 
   .checkout-trust-strip,
   .checkout-field-grid,
-  .delivery-choice-grid {
+  .delivery-choice-grid,
+  .payment-choice-grid {
     grid-template-columns: 1fr;
   }
 
@@ -286,7 +293,8 @@
     border-radius: 18px;
   }
 
-  .delivery-choice-grid button {
+  .delivery-choice-grid button,
+  .payment-choice-grid button {
     min-height: 112px;
   }
 }

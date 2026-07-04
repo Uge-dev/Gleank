@@ -59,7 +59,7 @@ function AuthLayout({
 
           <section>
             <strong>Campus commerce made social</strong>
-            <p>Products, sellers, reels, services, and used items in one app.</p>
+            <p>Products, sellers, services, and used items in one app.</p>
           </section>
         </div>
       </div>

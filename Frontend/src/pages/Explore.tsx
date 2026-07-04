@@ -13,7 +13,6 @@ type ExploreTag =
   | "Academic"
   | "Services"
   | "Used Market"
-  | "Reels"
   | "Beauty"
   | "Sports"
   | "Gaming"
@@ -48,7 +47,6 @@ function Explore() {
     "Academic",
     "Services",
     "Used Market",
-    "Reels",
     "Beauty",
     "Sports",
     "Gaming",
@@ -78,10 +76,10 @@ function Explore() {
       campus: "FUPRE",
       seller: "Tasty Bowl",
       mediaType: "video" as const,
-      tag: "Reel",
+      tag: "Video",
       videoUrl:
         "https://videos.pexels.com/video-files/3195944/3195944-uhd_2560_1440_25fps.mp4",
-      tags: ["All", "Trending", "Food", "Reels"],
+      tags: ["All", "Trending", "Food"],
     },
     {
       id: "phone-accessory",
@@ -117,10 +115,10 @@ function Explore() {
       campus: "FUPRE",
       seller: "Beauty Corner",
       mediaType: "video" as const,
-      tag: "Reel",
+      tag: "Video",
       videoUrl:
         "https://videos.pexels.com/video-files/3997798/3997798-uhd_2560_1440_25fps.mp4",
-      tags: ["All", "Beauty", "Services", "Reels"],
+      tags: ["All", "Beauty", "Services"],
     },
     {
       id: "used-laptop",

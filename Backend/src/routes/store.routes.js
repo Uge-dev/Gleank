@@ -149,6 +149,7 @@ function buildStoreHighlights(storeId, products, services) {
 storeRouter.get("/", (req, res) => {
   const query = String(req.query.q || "").trim().slice(0, 100);
   const pattern = `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
+  const campusPriority = query ? "" : String(req.auth?.campus || "").trim().slice(0, 120);
 
   const stores = db
     .prepare(`
@@ -161,10 +162,13 @@ storeRouter.get("/", (req, res) => {
           OR campus LIKE ? ESCAPE '\\'
           OR category LIKE ? ESCAPE '\\'
         )
-      ORDER BY verified DESC, updated_at DESC
+      ORDER BY
+        CASE WHEN ? != '' AND LOWER(campus) = LOWER(?) THEN 0 ELSE 1 END,
+        verified DESC,
+        updated_at DESC
       LIMIT 50
     `)
-    .all(query, pattern, pattern, pattern, pattern)
+    .all(query, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
     .map((row) => ({
       ...serializeStore(row),
       interaction: storeInteraction(row.id, req.auth?.user_id),
@@ -184,10 +188,12 @@ storeRouter.get("/", (req, res) => {
           OR products.category LIKE ? ESCAPE '\\'
           OR stores.name LIKE ? ESCAPE '\\'
         )
-      ORDER BY products.updated_at DESC
+      ORDER BY
+        CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
+        products.updated_at DESC
       LIMIT 50
     `)
-    .all(query, pattern, pattern, pattern, pattern)
+    .all(query, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
     .map((row) => ({
       ...serializeProduct(row),
       storeName: row.store_name,
@@ -215,10 +221,12 @@ storeRouter.get("/", (req, res) => {
           OR used_listings.campus LIKE ? ESCAPE '\\'
           OR users.name LIKE ? ESCAPE '\\'
         )
-      ORDER BY used_listings.updated_at DESC
+      ORDER BY
+        CASE WHEN ? != '' AND LOWER(used_listings.campus) = LOWER(?) THEN 0 ELSE 1 END,
+        used_listings.updated_at DESC
       LIMIT 50
     `)
-    .all(query, pattern, pattern, pattern, pattern, pattern, pattern)
+    .all(query, pattern, pattern, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
     .map((row) => serializeUsedListing(row));
 
   res.json({ stores, products, services, usedListings });

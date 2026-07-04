@@ -108,10 +108,18 @@ function replaceKeywordOutsideQuotes(sql, keyword, replacement) {
   return output;
 }
 
+function replaceSqliteAggregates(sql) {
+  return sql.replace(
+    /GROUP_CONCAT\s*\(\s*([A-Za-z0-9_."`]+)\s*,\s*'([^']*)'\s*\)/gi,
+    (_match, column, separator) => `STRING_AGG(${column}, '${separator}')`,
+  );
+}
+
 function normalizeQuerySql(sql) {
   const trimmed = normalizeExecSql(sql);
   const postgresSearchSql = replaceKeywordOutsideQuotes(trimmed, "LIKE", "ILIKE");
-  return convertPlaceholders(postgresSearchSql);
+  const postgresAggregateSql = replaceSqliteAggregates(postgresSearchSql);
+  return convertPlaceholders(postgresAggregateSql);
 }
 
 function pragmaTableInfoQuery(sql) {

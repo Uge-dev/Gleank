@@ -36,11 +36,12 @@ const fallbackZones: DeliveryZone[] = [
 ];
 
 function Checkout() {
-  const { cartItems, cartSubtotal } = useCart();
+  const { cartItems, cartSubtotal, clearCart } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
   const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery">("Pickup");
+  const [paymentMethod, setPaymentMethod] = useState<"pay_now" | "pay_on_delivery">("pay_now");
   const [campus, setCampus] = useState(user?.campus || "FUPRE");
   const [deliveryZone, setDeliveryZone] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
@@ -167,19 +168,26 @@ function Checkout() {
         deliveryAddress,
         pickupLocation,
         note,
+        paymentMethod,
         items: cartItems.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
         })),
       });
 
+      sessionStorage.setItem(
+        "gleank_last_orders",
+        JSON.stringify(response.orders),
+      );
+
+      if (paymentMethod === "pay_on_delivery") {
+        clearCart();
+        navigate(`/orders/${response.orders[0]?.id || ""}`);
+        return;
+      }
+
       const paymentResponse = await initializeOrdersPayment(
   response.orders.map((order) => order.id),
-);
-
-sessionStorage.setItem(
-  "gleank_last_orders",
-  JSON.stringify(response.orders),
 );
 
 sessionStorage.setItem(
@@ -379,6 +387,38 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               />
             </label>
           </section>
+
+          <section className="checkout-block">
+            <div className="checkout-section-title">
+              <FiCreditCard />
+              <div>
+                <h2>Payment option</h2>
+                <p>Pay online now, or let the seller collect payment when the order is delivered or picked up.</p>
+              </div>
+            </div>
+
+            <div className="payment-choice-grid">
+              <button
+                type="button"
+                className={paymentMethod === "pay_now" ? "selected" : ""}
+                onClick={() => setPaymentMethod("pay_now")}
+              >
+                <FiCreditCard />
+                <strong>Pay now</strong>
+                <span>Use Paystack checkout. Seller processes after payment is confirmed.</span>
+              </button>
+
+              <button
+                type="button"
+                className={paymentMethod === "pay_on_delivery" ? "selected" : ""}
+                onClick={() => setPaymentMethod("pay_on_delivery")}
+              >
+                <FiTruck />
+                <strong>Pay on delivery</strong>
+                <span>Send the order to the seller and pay when you receive or pick up.</span>
+              </button>
+            </div>
+          </section>
         </div>
 
         <aside className="checkout-summary-card checkout-pro-summary">
@@ -425,17 +465,19 @@ window.location.href = paymentResponse.payment.authorizationUrl;
           <div className="checkout-safe-note">
             <FiCheckCircle />
             <p>
-              Your order is created first, then payment is verified before sellers are
-              allowed to process it.
+              {paymentMethod === "pay_now"
+                ? "Your order is created first, then payment is verified before sellers process it."
+                : "Your order will go straight to the seller as pay on delivery. Keep your verification code private until delivery."}
             </p>
           </div>
 
           <button className="checkout-submit-btn" type="submit" disabled={isSubmitting || isQuoting}>
             {isSubmitting ? (
-              "Opening secure payment..."
+              paymentMethod === "pay_now" ? "Opening secure payment..." : "Creating order..."
             ) : (
               <>
-                <FiCreditCard /> Pay securely
+                {paymentMethod === "pay_now" ? <FiCreditCard /> : <FiTruck />}
+                {paymentMethod === "pay_now" ? "Pay now" : "Place order"}
               </>
             )}
           </button>

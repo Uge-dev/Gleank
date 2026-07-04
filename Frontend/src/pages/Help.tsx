@@ -16,7 +16,7 @@ function Help() {
 
         <article>
           <h3>Selling on Gleenc</h3>
-          <p>Learn how seller stores, product uploads, and reels work.</p>
+          <p>Learn how seller stores, product uploads, services, and orders work.</p>
         </article>
 
         <article>

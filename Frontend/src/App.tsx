@@ -43,7 +43,6 @@ import SellerOnboarding from "./pages/SellerOnboarding";
 import SellerSubscription from "./pages/SellerSubscription";
 import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
-import Reels from "./pages/Reels";
 import AdminDashboard from "./admin/AdminDashboard";
 import PaymentCallback from "./pages/PaymentCallback";
 
@@ -122,7 +121,6 @@ function App() {
 
           <Route path="/products/:id" element={<ProductDetails />} />
           <Route path="/stores/:id" element={<SellerStore />} />
-          <Route path="/reels" element={<Reels />} />
           <Route path="/more" element={<More />} />
 
           <Route

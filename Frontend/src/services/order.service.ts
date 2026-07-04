@@ -11,6 +11,7 @@ export type CreateOrderInput = {
   buyerPhone: string;
   campus: string;
   deliveryOption: "Pickup" | "Delivery";
+  paymentMethod?: "pay_now" | "pay_on_delivery";
   deliveryAddress: string;
   pickupLocation: string;
   note?: string;

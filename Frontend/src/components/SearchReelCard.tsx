@@ -8,7 +8,7 @@ type SearchReelCardProps = {
 
 function SearchReelCard({ reel }: SearchReelCardProps) {
   return (
-    <Link to="/reels" className="search-reel-card">
+    <Link to="/search" className="search-reel-card">
       <div className="search-reel-media">
         <video src={reel.videoUrl} autoPlay loop muted playsInline />
         <span>

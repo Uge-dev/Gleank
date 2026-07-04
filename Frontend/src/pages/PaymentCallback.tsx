@@ -19,7 +19,7 @@ function getPaymentRedirectPath(payment: GleencPayment) {
   }
 
   if (payment.purpose === "seller_subscription") {
-    return "/seller-subscription";
+    return "/seller/onboarding";
   }
 
   if (payment.purpose === "store_order" && payment.orderId) {

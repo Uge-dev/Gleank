@@ -92,7 +92,7 @@ export const notifications: NotificationItem[] = [
     time: "3h ago",
     unread: true,
     actionLabel: "Watch reel",
-    actionPath: "/reels",
+    actionPath: "/search",
     avatarText: "T",
   },
   {

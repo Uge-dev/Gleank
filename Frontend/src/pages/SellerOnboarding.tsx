@@ -67,7 +67,11 @@ function SellerOnboarding() {
       const result = await updateSellerVerification(new FormData(event.currentTarget));
       setState(result);
       await refreshSession();
-      setMessage("Seller verification submitted successfully.");
+      setMessage(
+        result.verification?.status === "verified"
+          ? "Seller profile completed successfully. Your seller dashboard is ready."
+          : "Seller verification submitted successfully. Admin review is pending.",
+      );
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -107,6 +111,12 @@ function SellerOnboarding() {
 
   const verification = state?.verification;
   const subscription = state?.subscription;
+  const subscriptionActive = Boolean(subscription?.isActive);
+  const verificationReady = verification?.status === "verified";
+  const verificationSubmitted =
+    verificationReady || verification?.status === "pending_verification";
+  const platformFeeReady = subscriptionActive && verificationSubmitted;
+  const sellerSetupComplete = verificationReady && subscriptionActive && platformFeeReady;
 
   return (
     <section className="seller-onboarding-page">
@@ -126,6 +136,13 @@ function SellerOnboarding() {
 
       {error && <div className="seller-onboarding-message error"><FiAlertCircle />{error}</div>}
       {message && <div className="seller-onboarding-message success"><FiCheckCircle />{message}</div>}
+      {sellerSetupComplete && (
+        <div className="seller-onboarding-message success">
+          <FiCheckCircle />
+          <span>Your seller profile, payment, face check, and 5% buyer-facing platform fee are ready.</span>
+          <Link to="/dashboard">Open seller dashboard</Link>
+        </div>
+      )}
 
       <div className="seller-onboarding-grid">
         <form className="seller-onboarding-form" onSubmit={handleSubmit}>
@@ -241,9 +258,9 @@ function SellerOnboarding() {
           <div className="seller-status-list">
             <span className={user?.emailVerified ? "done" : ""}>Email verified</span>
             <span className={faceVerified ? "done" : ""}>Face verification complete</span>
-            <span className={verification?.status === "verified" ? "done" : ""}>Seller verified</span>
-            <span className={subscription?.isActive ? "done" : ""}>Subscription active</span>
-            <span>5% buyer-facing platform fee ready</span>
+            <span className={verificationReady ? "done" : ""}>Seller verified</span>
+            <span className={subscriptionActive ? "done" : ""}>Subscription active</span>
+            <span className={platformFeeReady ? "done" : ""}>5% buyer-facing platform fee ready</span>
           </div>
         </aside>
       </div>

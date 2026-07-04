@@ -127,7 +127,8 @@ function buildUsers() {
       LEFT JOIN used_listings ON used_listings.seller_id = users.id
       LEFT JOIN user_trust_profiles trust ON trust.user_id = users.id
       LEFT JOIN user_payout_accounts payout ON payout.user_id = users.id
-      GROUP BY users.id
+      GROUP BY users.id, trust.id, trust.face_verified, payout.id,
+               payout.bank_name, payout.account_name
       ORDER BY users.created_at DESC
       LIMIT 500
     `)
@@ -169,7 +170,11 @@ function buildSellers() {
       LEFT JOIN products ON products.store_id = stores.id
       LEFT JOIN services ON services.store_id = stores.id
       LEFT JOIN orders ON orders.store_id = stores.id
-      GROUP BY stores.id
+      GROUP BY stores.id, users.name, users.email, users.phone,
+               seller_verification_profiles.status,
+               user_payout_accounts.bank_name,
+               user_payout_accounts.account_name,
+               seller_subscriptions.status
       ORDER BY stores.created_at DESC
       LIMIT 500
     `)
@@ -296,7 +301,7 @@ function buildOrders() {
       JOIN users buyer ON buyer.id = orders.buyer_id
       JOIN stores ON stores.id = orders.store_id
       LEFT JOIN order_items ON order_items.order_id = orders.id
-      GROUP BY orders.id
+      GROUP BY orders.id, buyer.name, stores.name
       ORDER BY orders.created_at DESC
       LIMIT 500
     `)

@@ -56,10 +56,6 @@ function NotFound() {
             Visit Used Market
           </Link>
 
-          <Link to="/reels">
-            Watch Reels
-          </Link>
-
           <Link to="/dashboard">
             Seller Dashboard
           </Link>

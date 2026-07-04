@@ -247,6 +247,8 @@ export function createOrders(userId, input) {
   const campus = String(input?.campus || "").trim().slice(0, 120);
   const deliveryOption =
     input?.deliveryOption === "Delivery" ? "Delivery" : "Pickup";
+  const paymentMethod =
+    input?.paymentMethod === "pay_on_delivery" ? "pay_on_delivery" : "pay_now";
   const deliveryAddress = String(input?.deliveryAddress || "").trim().slice(0, 240);
   const pickupLocation = String(input?.pickupLocation || "").trim().slice(0, 240);
   const note = String(input?.note || "").trim().slice(0, 1000);
@@ -311,6 +313,7 @@ export function createOrders(userId, input) {
       const group = grouped.get(product.store_id) || {
         storeId: product.store_id,
         sellerId: product.seller_id,
+        storeName: product.store_name,
         products: [],
       };
 
@@ -344,6 +347,12 @@ export function createOrders(userId, input) {
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
       const orderCode = generateOrderCode();
+      const initialStatus =
+        paymentMethod === "pay_on_delivery" ? "seller_confirmed" : "pending_payment";
+      const initialNote =
+        paymentMethod === "pay_on_delivery"
+          ? "Buyer selected pay on delivery. Seller can process the order and collect payment at delivery/pickup."
+          : "Your order has been created and is waiting for payment.";
 
       db.prepare(`
         INSERT INTO orders (
@@ -359,7 +368,7 @@ export function createOrders(userId, input) {
         userId,
         group.sellerId,
         group.storeId,
-        "pending_payment",
+        initialStatus,
         "unpaid",
         subtotalKobo,
         deliveryFeeKobo,
@@ -398,16 +407,22 @@ export function createOrders(userId, input) {
 
       insertOrderEvent(
         orderId,
-        "pending_payment",
-        "Your order has been created and is waiting for payment.",
+        initialStatus,
+        initialNote,
       );
 
       const firstProductName = group.products[0]?.product?.name || "a product";
       createNotification({
         userId: group.sellerId,
         type: "order",
-        title: "New order received",
-        body: `${buyerName} placed an order for ${firstProductName}.`,
+        title:
+          paymentMethod === "pay_on_delivery"
+            ? "New pay-on-delivery order"
+            : "New order received",
+        body:
+          paymentMethod === "pay_on_delivery"
+            ? `${buyerName} placed a pay-on-delivery order for ${firstProductName}.`
+            : `${buyerName} placed an order for ${firstProductName}.`,
         actionLabel: "View order",
         actionPath: `/orders/${orderId}`,
         imageUrl: firstImage(group.products[0]?.product?.image_urls),
@@ -416,8 +431,14 @@ export function createOrders(userId, input) {
       createNotification({
         userId,
         type: "order",
-        title: "Order created",
-        body: `Your order ${orderCode} is waiting for payment.`,
+        title:
+          paymentMethod === "pay_on_delivery"
+            ? "Pay-on-delivery order created"
+            : "Order created",
+        body:
+          paymentMethod === "pay_on_delivery"
+            ? `Your order ${orderCode} was sent to the seller for pay on delivery.`
+            : `Your order ${orderCode} is waiting for payment.`,
         actionLabel: "Continue order",
         actionPath: `/orders/${orderId}`,
         imageUrl: firstImage(group.products[0]?.product?.image_urls),

@@ -57,6 +57,35 @@ function GleencNav() {
   const isLoggedIn = isAuthenticated;
 
   useEffect(() => {
+    const root = document.documentElement;
+
+    function updateMobileNavOffset() {
+      const viewport = window.visualViewport;
+      const offset = viewport
+        ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+        : 0;
+
+      root.style.setProperty(
+        "--gleank-mobile-nav-viewport-offset",
+        `${Math.round(offset)}px`,
+      );
+    }
+
+    updateMobileNavOffset();
+
+    window.visualViewport?.addEventListener("resize", updateMobileNavOffset);
+    window.visualViewport?.addEventListener("scroll", updateMobileNavOffset);
+    window.addEventListener("resize", updateMobileNavOffset);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateMobileNavOffset);
+      window.visualViewport?.removeEventListener("scroll", updateMobileNavOffset);
+      window.removeEventListener("resize", updateMobileNavOffset);
+      root.style.removeProperty("--gleank-mobile-nav-viewport-offset");
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isLoggedIn) {
       setMessageUnreadCount(0);
       setNotificationUnreadCount(0);

@@ -23108,8 +23108,8 @@ html[data-theme="dark"] .notification-card {
     backdrop-filter: blur(18px) !important;
     -webkit-backdrop-filter: blur(18px) !important;
 
-    transform: translate3d(0, 0, 0) !important;
-    -webkit-transform: translate3d(0, 0, 0) !important;
+    transform: translate3d(0, var(--gleank-mobile-nav-viewport-offset, 0px), 0) !important;
+    -webkit-transform: translate3d(0, var(--gleank-mobile-nav-viewport-offset, 0px), 0) !important;
     backface-visibility: hidden !important;
     -webkit-backface-visibility: hidden !important;
     will-change: transform !important;

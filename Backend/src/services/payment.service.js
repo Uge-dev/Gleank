@@ -49,7 +49,7 @@ function getPaymentRedirectPath(row) {
   }
 
   if (row.purpose === "seller_subscription") {
-    return "/seller-subscription";
+    return "/seller/onboarding";
   }
 
   if (row.purpose === "store_order" && row.order_id) {
@@ -211,7 +211,7 @@ async function initializeWithPaystack({
       reference: paymentReference,
       callback_url: getPaystackCallbackUrl(),
       metadata: {
-        app: "gleank",
+        app: "gleenc",
         purpose,
         targetId,
         userId: user.id,

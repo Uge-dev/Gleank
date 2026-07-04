@@ -32,6 +32,17 @@ function defaultStoreName(user) {
   return `${firstName} Store`;
 }
 
+function hasActiveSellerSubscription(userId) {
+  const subscription = db
+    .prepare("SELECT status, current_period_end FROM seller_subscriptions WHERE user_id = ?")
+    .get(userId);
+
+  if (!subscription || subscription.status !== "active") return false;
+  if (!subscription.current_period_end) return false;
+
+  return new Date(subscription.current_period_end).getTime() > Date.now();
+}
+
 export function ensureSellerStoreForUser(userId, input = {}) {
   const existingStore = findStoreByOwnerId(userId);
   const user = findUserById(userId);
@@ -192,10 +203,12 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
   }
 
   const now = new Date().toISOString();
-  const status = env.autoActivateSellerSubscription ? "verified" : "pending_verification";
+  const canSelfVerify =
+    env.autoActivateSellerSubscription || hasActiveSellerSubscription(userId);
+  const status = canSelfVerify ? "verified" : "pending_verification";
   const verifiedAt = status === "verified" ? now : null;
   const note = status === "verified"
-    ? "Development auto-verification. Use admin review before production."
+    ? "Seller verification completed after payment, face check, and agreement confirmation."
     : "Seller verification is under review.";
 
   transaction(() => {

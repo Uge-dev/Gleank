@@ -52,7 +52,7 @@ const moreLinks = [
   },
   {
     title: "Seller Dashboard",
-    description: "Manage your store, products, orders, and reels.",
+    description: "Manage your store, products, services, and orders.",
     icon: <FiSettings />,
     path: "/dashboard",
   },
