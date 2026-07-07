@@ -30,22 +30,20 @@ productRouter.delete("/:id/like", requireAuth, (req, res) => {
   });
 });
 
-productRouter.post("/:id/share", (req, res) => {
+productRouter.post("/:id/share", requireAuth, (req, res) => {
   res.json({
     interaction: recordProductShare(
-      req.auth?.user_id,
+      req.auth.user_id,
       req.params.id,
-      req.body?.anonKey,
     ),
   });
 });
 
-productRouter.post("/:id/view", (req, res) => {
+productRouter.post("/:id/view", requireAuth, (req, res) => {
   res.json({
     interaction: recordProductView(
-      req.auth?.user_id,
+      req.auth.user_id,
       req.params.id,
-      req.body?.anonKey,
     ),
   });
 });

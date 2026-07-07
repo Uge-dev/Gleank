@@ -5,8 +5,12 @@ const DEFAULT_CAMPUS_KEY = "default";
 const DELIVERY_PRICING = {
   baseFeeKobo: 30000,
   perKmKobo: 18000,
+  pickupBaseFeeKobo: 15000,
+  pickupPerKmKobo: 9000,
   minimumFeeKobo: 30000,
+  pickupMinimumFeeKobo: 15000,
   maximumFeeKobo: 150000,
+  pickupMaximumFeeKobo: 80000,
   freeRadiusKm: 0.25,
   roundToKobo: 5000,
 };
@@ -126,37 +130,36 @@ export function calculateDeliveryQuote(input = {}) {
   const map = getCampusMap(campus);
   const pricing = map.pricing || DELIVERY_PRICING;
 
-  if (deliveryOption !== "Delivery") {
-    return {
-      campus: map.label,
-      deliveryOption,
-      origin: null,
-      destination: null,
-      distanceKm: 0,
-      feeKobo: 0,
-      fee: 0,
-      label: "Pickup is free",
-    };
-  }
-
   const origin =
     findZone(map, input.origin, map.defaultOrigin) ||
     findZone(map, map.defaultOrigin) ||
     map.zones[0];
 
-  const destination = findZone(map, input.destination || input.deliveryAddress);
+  const destination = findZone(
+    map,
+    deliveryOption === "Delivery"
+      ? input.destination || input.deliveryAddress
+      : input.pickupLocation || input.destination,
+  );
 
   if (!destination) {
     throw new HttpError(
       422,
-      "Select a valid campus delivery zone so delivery fee can be calculated.",
+      deliveryOption === "Delivery"
+        ? "Select a valid campus delivery zone so delivery fee can be calculated."
+        : "Select a valid pickup location so the pickup rider fee can be calculated.",
     );
   }
 
   const distance = Number(distanceKm(origin, destination).toFixed(2));
   let feeKobo = 0;
 
-  if (distance > pricing.freeRadiusKm) {
+  if (deliveryOption === "Pickup") {
+    feeKobo = pricing.pickupBaseFeeKobo + distance * pricing.pickupPerKmKobo;
+    feeKobo = roundFee(feeKobo, pricing.roundToKobo);
+    feeKobo = Math.max(pricing.pickupMinimumFeeKobo, feeKobo);
+    feeKobo = Math.min(pricing.pickupMaximumFeeKobo, feeKobo);
+  } else if (distance > pricing.freeRadiusKm) {
     feeKobo = pricing.baseFeeKobo + distance * pricing.perKmKobo;
     feeKobo = roundFee(feeKobo, pricing.roundToKobo);
     feeKobo = Math.max(pricing.minimumFeeKobo, feeKobo);
@@ -172,9 +175,11 @@ export function calculateDeliveryQuote(input = {}) {
     feeKobo,
     fee: toNaira(feeKobo),
     label:
-      feeKobo === 0
-        ? "Same-zone campus delivery is free"
-        : `${distance}km campus delivery`,
+      deliveryOption === "Pickup"
+        ? `${distance}km pickup point rider fee`
+        : feeKobo === 0
+          ? "Same-zone doorstep delivery is free"
+          : `${distance}km door step delivery`,
   };
 }
 

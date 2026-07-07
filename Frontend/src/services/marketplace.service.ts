@@ -27,22 +27,20 @@ export function unlikePublicProduct(id: string) {
   );
 }
 
-export function sharePublicProduct(id: string, anonKey = "") {
+export function sharePublicProduct(id: string) {
   return apiRequest<{ interaction: ProductInteraction }>(
     `/products/${encodeURIComponent(id)}/share`,
     {
       method: "POST",
-      body: JSON.stringify({ anonKey }),
     },
   );
 }
 
-export function viewPublicProduct(id: string, anonKey = "") {
+export function viewPublicProduct(id: string) {
   return apiRequest<{ interaction: ProductInteraction }>(
     `/products/${encodeURIComponent(id)}/view`,
     {
       method: "POST",
-      body: JSON.stringify({ anonKey }),
     },
   );
 }

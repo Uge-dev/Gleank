@@ -43,6 +43,7 @@ type FeedPostCardProps = {
   onShare?: () => void;
 onViewed?: () => void;
 maxQuantity?: number;
+isOwnProduct?: boolean;
 };
 
 function compactNumber(value: number) {
@@ -98,9 +99,10 @@ function FeedPostCard({
   onToggleStoreFollow,
   onToggleLike,
   onComment,
-  onShare,
+onShare,
 onViewed,
 maxQuantity,
+isOwnProduct = false,
 }: FeedPostCardProps) {
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -153,7 +155,7 @@ const { addToCart } = useCart();
   }
 
   function handleAddToCart() {
-    if (maxQuantity === 0) return;
+    if (maxQuantity === 0 || isOwnProduct) return;
 
     addToCart({
       id,
@@ -399,7 +401,9 @@ const { addToCart } = useCart();
           type="button"
           className="add-cart-btn"
           onClick={handleAddToCart}
-          disabled={maxQuantity === 0}
+          disabled={maxQuantity === 0 || isOwnProduct}
+          aria-label={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
+          title={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
         >
           <FiShoppingCart />
         </button>

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { db } from "../db/database.js";
 import {
   deleteRecord,
   getAdminDataset,
@@ -8,9 +9,54 @@ import {
   updateRecordFields,
   updateRecordStatus,
 } from "../data/adminStore.js";
+import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
+import { createId } from "../lib/ids.js";
 
 const router = Router();
+
+function getConfiguredAdminEmail() {
+  return process.env.ADMIN_EMAIL || "admin@gleank.com";
+}
+
+function serializeAdminProfile(row) {
+  return {
+    name: row?.name || "Gleenc Admin",
+    email: row?.email || getConfiguredAdminEmail(),
+    role: "admin",
+    avatarUrl: row?.avatar_url || null,
+  };
+}
+
+function ensureAdminProfile() {
+  const adminEmail = getConfiguredAdminEmail();
+  const emailLookup = adminEmail.toLowerCase().trim();
+
+  const existing = db
+    .prepare("SELECT * FROM users WHERE role = 'admin' AND LOWER(email) = ? LIMIT 1")
+    .get(emailLookup);
+
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  const id = createId("adm");
+
+  db.prepare(`
+    INSERT INTO users (
+      id, name, email, password_hash, role, campus, phone,
+      avatar_url, is_active, email_verified, email_verified_at,
+      phone_verified, phone_verified_at, failed_login_count, locked_until,
+      last_login_at, last_password_change_at, created_at, updated_at
+    )
+    VALUES (
+      ?, 'Gleenc Admin', ?, 'admin-console-account',
+      'admin', 'Gleenc HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
+      NULL, ?, ?, ?
+    )
+  `).run(id, adminEmail, now, now, now, now);
+
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+}
 
 router.post("/login", (req, res) => {
   const { email, password } = req.body || {};
@@ -25,18 +71,47 @@ router.post("/login", (req, res) => {
     return res.status(401).json({ message: "Invalid admin login details" });
   }
 
+  const adminProfile = ensureAdminProfile();
+
   res.json({
     token,
-    admin: {
-      name: "Gleenc Admin",
-      email: adminEmail,
-      role: "admin",
-    },
+    admin: serializeAdminProfile(adminProfile),
   });
 });
 
 router.get("/overview", requireAdmin, (_req, res) => {
   res.json(getAdminDataset());
+});
+
+router.get("/profile", requireAdmin, (_req, res) => {
+  res.json({ admin: serializeAdminProfile(ensureAdminProfile()) });
+});
+
+router.post("/profile/avatar", requireAdmin, upload.single("avatar"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Choose an admin profile image to upload." });
+    }
+
+    const existing = ensureAdminProfile();
+    const avatarUrl = fileUrl(req, req.file);
+    const now = new Date().toISOString();
+
+    db.prepare("UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?").run(
+      avatarUrl,
+      now,
+      existing.id,
+    );
+
+    if (existing.avatar_url) {
+      deleteUploadedFiles([existing.avatar_url]);
+    }
+
+    const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(existing.id);
+    res.json({ admin: serializeAdminProfile(updated) });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || "Could not upload admin profile image" });
+  }
 });
 
 router.post("/support/:conversationId/messages", requireAdmin, (req, res) => {

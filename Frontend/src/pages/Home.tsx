@@ -34,7 +34,6 @@ import {
 } from "../services/seller.service";
 import type { SavedItemType, SearchResults } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
-import { getAnonViewerId } from "../utils/visitor";
 
 type FeedTab = "hot" | "vendors" | "following";
 
@@ -67,7 +66,7 @@ function getStoreInitials(storeName: string) {
 
 function Home() {
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { isSaved, toggleSaved } = useSaved();
   const viewedProductIdsRef = useRef<Set<string>>(new Set());
 
@@ -123,12 +122,13 @@ function Home() {
 }
 
 async function handleProductViewed(productId: string) {
+  if (!isAuthenticated) return;
   if (viewedProductIdsRef.current.has(productId)) return;
 
   viewedProductIdsRef.current.add(productId);
 
   try {
-    const response = await viewPublicProduct(productId, getAnonViewerId());
+    const response = await viewPublicProduct(productId);
 
     setMarketplace((current) => ({
       ...current,
@@ -200,6 +200,8 @@ async function handleProductViewed(productId: string) {
   }
 
   async function shareProduct(productId: string, productName: string) {
+  if (!requireAuth()) return;
+
   const product = marketplace.products.find((item) => item.id === productId);
 
   if (!product) return;
@@ -404,6 +406,7 @@ async function handleProductViewed(productId: string) {
                         : [productFallback]
                       ).map((image) => resolveMediaUrl(image, productFallback))}
                       maxQuantity={product.stock}
+                      isOwnProduct={Boolean(user?.id && productStore?.ownerId === user.id)}
                       productSaved={isSaved("product", product.id)}
                       productLiked={product.interaction.liked}
                       likeCount={product.interaction.likeCount}

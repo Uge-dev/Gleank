@@ -10,6 +10,13 @@ export type AdminLoginPayload = {
   password: string;
 };
 
+export type AdminProfile = {
+  name: string;
+  email: string;
+  role: "admin";
+  avatarUrl: string | null;
+};
+
 export function getAdminToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY);
 }
@@ -24,13 +31,20 @@ export function clearAdminToken() {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getAdminToken();
+  const isFormData = options.body instanceof FormData;
+  const headers = new Headers(options.headers);
+
+  if (!isFormData && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -46,12 +60,26 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function adminLogin(payload: AdminLoginPayload) {
-  const result = await request<{ token: string; admin: { name: string; email: string; role: "admin" } }>("/admin/login", {
+  const result = await request<{ token: string; admin: AdminProfile }>("/admin/login", {
     method: "POST",
     body: JSON.stringify(payload),
   });
   setAdminToken(result.token);
   return result;
+}
+
+export async function fetchAdminProfile() {
+  return request<{ admin: AdminProfile }>("/admin/profile");
+}
+
+export async function uploadAdminAvatar(file: File) {
+  const formData = new FormData();
+  formData.append("avatar", file);
+
+  return request<{ admin: AdminProfile }>("/admin/profile/avatar", {
+    method: "POST",
+    body: formData,
+  });
 }
 
 export async function fetchAdminDataset(): Promise<AdminDataset> {

@@ -44,6 +44,7 @@ function Checkout() {
   const [paymentMethod, setPaymentMethod] = useState<"pay_now" | "pay_on_delivery">("pay_now");
   const [campus, setCampus] = useState(user?.campus || "FUPRE");
   const [deliveryZone, setDeliveryZone] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
@@ -51,7 +52,8 @@ function Checkout() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const deliveryFee = deliveryOption === "Delivery" ? deliveryQuote?.fee || 0 : 0;
+  const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
+  const deliveryFee = deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
 
   const sellerCount = useMemo(() => {
@@ -80,13 +82,7 @@ function Checkout() {
   }, [campus]);
 
   useEffect(() => {
-    if (deliveryOption !== "Delivery") {
-      setDeliveryQuote(null);
-      setQuoteError("");
-      return;
-    }
-
-    if (!campus.trim() || !deliveryZone) {
+    if (!campus.trim() || !selectedLocation) {
       setDeliveryQuote(null);
       setQuoteError("");
       return;
@@ -99,7 +95,7 @@ function Checkout() {
     void quoteDeliveryFee({
       campus,
       deliveryOption,
-      destination: deliveryZone,
+      destination: selectedLocation,
     })
       .then((response) => {
         if (!active) return;
@@ -121,7 +117,7 @@ function Checkout() {
     return () => {
       active = false;
     };
-  }, [campus, deliveryOption, deliveryZone]);
+  }, [campus, deliveryOption, selectedLocation]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -137,15 +133,20 @@ function Checkout() {
     const buyerName = String(formData.get("buyerName") || "").trim();
     const buyerPhone = String(formData.get("buyerPhone") || "").trim();
     const preciseDeliveryAddress = String(formData.get("deliveryAddress") || "").trim();
-    const pickupLocation = String(formData.get("pickupLocation") || "").trim();
+    const selectedPickupLocation = String(formData.get("pickupLocation") || "").trim();
     const note = String(formData.get("note") || "").trim();
 
     if (deliveryOption === "Delivery" && !deliveryZone) {
-      setError("Select a campus delivery zone before payment.");
+      setError("Select a door step delivery zone before payment.");
       return;
     }
 
-    if (deliveryOption === "Delivery" && quoteError) {
+    if (deliveryOption === "Pickup" && !selectedPickupLocation) {
+      setError("Select a pickup location before payment.");
+      return;
+    }
+
+    if (quoteError) {
       setError(quoteError);
       return;
     }
@@ -155,6 +156,9 @@ function Checkout() {
 
     try {
       const selectedZone = zones.find((zone) => zone.id === deliveryZone)?.label || deliveryZone;
+      const selectedPickup =
+        zones.find((zone) => zone.id === selectedPickupLocation)?.label ||
+        selectedPickupLocation;
       const deliveryAddress =
         deliveryOption === "Delivery"
           ? [selectedZone, preciseDeliveryAddress].filter(Boolean).join(" - ")
@@ -166,7 +170,7 @@ function Checkout() {
         campus,
         deliveryOption,
         deliveryAddress,
-        pickupLocation,
+        pickupLocation: deliveryOption === "Pickup" ? selectedPickup : "",
         note,
         paymentMethod,
         items: cartItems.map((item) => ({
@@ -295,7 +299,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <FiMapPin />
               <div>
                 <h2>Delivery method</h2>
-                <p>Pickup is free. Delivery fee changes by campus distance.</p>
+                <p>Pickup uses approved campus points. Door step delivery allows exact location and costs more.</p>
               </div>
             </div>
 
@@ -307,7 +311,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               >
                 <FiShoppingCart />
                 <strong>Pickup</strong>
-                <span>Meet the seller at an agreed point.</span>
+                <span>Select a fixed pickup point from the campus list.</span>
               </button>
 
               <button
@@ -316,24 +320,53 @@ window.location.href = paymentResponse.payment.authorizationUrl;
                 onClick={() => setDeliveryOption("Delivery")}
               >
                 <FiTruck />
-                <strong>Campus delivery</strong>
-                <span>Pay a fair fee based on campus distance.</span>
+                <strong>Door step delivery</strong>
+                <span>Send to your exact room, lodge, office, or landmark.</span>
               </button>
             </div>
 
             {deliveryOption === "Pickup" ? (
-              <label className="checkout-full-field">
-                <span>Pickup location</span>
-                <input
-                  name="pickupLocation"
-                  placeholder="Example: Main Gate, Campus Market, Faculty entrance"
-                  required
-                />
-              </label>
+              <div className="delivery-zone-card">
+                <label>
+                  <span>Pickup location</span>
+                  <select
+                    name="pickupLocation"
+                    value={pickupLocation}
+                    onChange={(event) => setPickupLocation(event.target.value)}
+                    required
+                  >
+                    <option value="">Select an approved pickup point</option>
+                    {zones.map((zone) => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="delivery-quote-box">
+                  <FiNavigation />
+                  <div>
+                    <strong>
+                      {isQuoting
+                        ? "Calculating pickup fee..."
+                        : deliveryQuote
+                          ? `${deliveryQuote.label} • ${formatNaira(deliveryQuote.fee)}`
+                          : "Select a pickup location"}
+                    </strong>
+                    <p>
+                      {quoteError ||
+                        (deliveryQuote?.distanceKm
+                          ? `Estimated distance: ${deliveryQuote.distanceKm}km from dispatch point.`
+                          : "Pickup uses approved points only, so riders can verify handoff safely.")}
+                    </p>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="delivery-zone-card">
                 <label>
-                  <span>Delivery zone</span>
+                  <span>Door step delivery zone</span>
                   <select
                     value={deliveryZone}
                     onChange={(event) => setDeliveryZone(event.target.value)}
@@ -349,7 +382,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
                 </label>
 
                 <label>
-                  <span>Exact delivery details</span>
+                  <span>Exact door step details</span>
                   <input
                     name="deliveryAddress"
                     placeholder="Example: Hostel B, Room 204 / beside library stairs"
@@ -365,7 +398,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
                         ? "Calculating delivery fee..."
                         : deliveryQuote
                           ? `${deliveryQuote.label} • ${formatNaira(deliveryQuote.fee)}`
-                          : "Select a delivery zone"}
+                          : "Select a door step delivery zone"}
                     </strong>
                     <p>
                       {quoteError ||
@@ -393,7 +426,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <FiCreditCard />
               <div>
                 <h2>Payment option</h2>
-                <p>Pay online now, or let the seller collect payment when the order is delivered or picked up.</p>
+                <p>Pay now for protected payment, or pay on delivery after the rider reaches you.</p>
               </div>
             </div>
 
@@ -415,7 +448,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               >
                 <FiTruck />
                 <strong>Pay on delivery</strong>
-                <span>Send the order to the seller and pay when you receive or pick up.</span>
+                <span>Seller confirms, rider delivers, payment is verified, then your delivery code unlocks.</span>
               </button>
             </div>
           </section>
@@ -467,7 +500,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             <p>
               {paymentMethod === "pay_now"
                 ? "Your order is created first, then payment is verified before sellers process it."
-                : "Your order will go straight to the seller as pay on delivery. Keep your verification code private until delivery."}
+                : "Your order goes to the seller first. The delivery code unlocks after payment is verified."}
             </p>
           </div>
 

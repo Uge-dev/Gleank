@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import {
-  FiAtSign,
   FiHeart,
-  FiImage,
   FiMessageCircle,
   FiSend,
   FiSmile,
@@ -43,6 +41,8 @@ type FlexibleComment = ProductComment & {
     avatarUrl?: string | null;
   };
 };
+
+const commentEmojis = ["😀", "😂", "😍", "🔥", "👏", "🙏", "💚", "💯", "😭", "🤝", "👍", "✨"];
 
 function getCommentAuthor(comment: ProductComment) {
   const item = comment as FlexibleComment;
@@ -93,6 +93,7 @@ function ProductCommentDrawer({
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [activeCommentAction, setActiveCommentAction] = useState("");
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [error, setError] = useState("");
 
   const title = useMemo(() => {
@@ -253,6 +254,12 @@ function ProductCommentDrawer({
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }
 
+  function addEmoji(emoji: string) {
+    setCommentBody((current) => `${current}${emoji}`);
+    setEmojiOpen(false);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
   if (!isOpen || !productId) return null;
 
   return (
@@ -390,18 +397,28 @@ function ProductCommentDrawer({
               maxLength={500}
             />
 
-            <button type="button" aria-label="Add image">
-              <FiImage />
-            </button>
-
-            <button type="button" aria-label="Emoji">
+            <button
+              type="button"
+              aria-label="Emoji"
+              onClick={() => setEmojiOpen((current) => !current)}
+            >
               <FiSmile />
             </button>
-
-            <button type="button" aria-label="Mention">
-              <FiAtSign />
-            </button>
           </div>
+
+          {emojiOpen && (
+            <div className="product-comment-emoji-panel">
+              {commentEmojis.map((emoji) => (
+                <button
+                  type="button"
+                  key={emoji}
+                  onClick={() => addEmoji(emoji)}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          )}
 
           <button
             type="submit"

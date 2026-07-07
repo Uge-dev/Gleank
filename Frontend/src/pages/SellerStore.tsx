@@ -40,7 +40,6 @@ import type {
   SellerService,
 } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
-import { getAnonViewerId } from "../utils/visitor";
 
 type StoreTab = "Products" | "Services" | "Favorites" | "About";
 
@@ -394,12 +393,13 @@ function SellerStore() {
 }
 
 async function handleProductViewed(productId: string) {
+  if (!isAuthenticated) return;
   if (viewedProductIdsRef.current.has(productId)) return;
 
   viewedProductIdsRef.current.add(productId);
 
   try {
-    const response = await viewPublicProduct(productId, getAnonViewerId());
+    const response = await viewPublicProduct(productId);
     updateProductInteraction(productId, response.interaction);
   } catch {
     // View tracking should never break the seller profile.
@@ -454,6 +454,8 @@ async function handleProductViewed(productId: string) {
 }
 
   async function shareProduct(product: SellerProduct) {
+    if (!requireAuth()) return;
+
     const url = `${window.location.origin}/products/${product.id}`;
 
     try {
@@ -834,6 +836,8 @@ function ProductGrid({
   onView: (productId: string) => void | Promise<void>;
   favorite?: boolean;
 }) {
+  const { user } = useAuth();
+
   if (!products.length) {
     return (
       <div className="seller-empty-box">
@@ -877,6 +881,7 @@ function ProductGrid({
               resolveMediaUrl(image, productFallback),
             )}
             maxQuantity={product.stock}
+            isOwnProduct={Boolean(user?.id && store.ownerId === user.id)}
             productSaved={isProductSaved(product.id)}
             productLiked={Boolean(product.interaction?.liked)}
             likeCount={product.interaction?.likeCount || 0}

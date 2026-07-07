@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent, JSX } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent, JSX } from "react";
 import {
   FaBan,
   FaBars,
@@ -48,11 +48,14 @@ import {
   clearAdminToken,
   deleteAdminRecord,
   fetchAdminDataset,
+  fetchAdminProfile,
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
+  type AdminProfile,
   updateAdminRecordFields,
   updateAdminRecordStatus,
+  uploadAdminAvatar,
 } from "./adminApi";
 import LogoutConfirmModal from "../components/LogoutConfirmModal";
 import { apiUrl } from "../lib/api";
@@ -478,13 +481,27 @@ function AdminDashboard() {
   const [supportDrafts, setSupportDrafts] = useState<Record<string, string>>({});
   const [replyingConversationId, setReplyingConversationId] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<{ title: string; item: Record<string, unknown> } | null>(null);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile>({
+    name: "Gleenc Admin",
+    email: "",
+    role: "admin",
+    avatarUrl: null,
+  });
+  const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
+  const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadAdminData = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     setLoadError("");
 
     try {
-      setData(await fetchAdminDataset());
+      const [nextData, profileResult] = await Promise.all([
+        fetchAdminDataset(),
+        fetchAdminProfile(),
+      ]);
+
+      setData(nextData);
+      setAdminProfile(profileResult.admin);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Admin data could not be loaded.";
@@ -624,6 +641,29 @@ function AdminDashboard() {
     await loadAdminData();
   }
 
+  async function handleAdminAvatarChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.currentTarget.value = "";
+
+    if (!file || isUploadingAdminAvatar) return;
+
+    setIsUploadingAdminAvatar(true);
+    setLoadError("");
+
+    try {
+      const response = await uploadAdminAvatar(file);
+      setAdminProfile(response.admin);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Admin profile image could not be uploaded.",
+      );
+    } finally {
+      setIsUploadingAdminAvatar(false);
+    }
+  }
+
   function selectTab(tab: AdminTab) {
     setActiveTab(tab);
     setSearch("");
@@ -684,10 +724,27 @@ function AdminDashboard() {
               <FaBell />
               <span>{data.overview.openDisputes + data.overview.unreadFeedback}</span>
             </button>
-            <div className="admin-profile-pill">
-              <FaUserShield />
-              <span>Admin</span>
-            </div>
+            <input
+              ref={adminAvatarInputRef}
+              className="admin-profile-input"
+              type="file"
+              accept="image/*"
+              onChange={handleAdminAvatarChange}
+            />
+            <button
+              className="admin-profile-pill"
+              type="button"
+              onClick={() => adminAvatarInputRef.current?.click()}
+              disabled={isUploadingAdminAvatar}
+              title="Upload admin profile image"
+            >
+              {adminProfile.avatarUrl ? (
+                <img src={apiUrl(adminProfile.avatarUrl)} alt={adminProfile.name || "Admin"} />
+              ) : (
+                <FaUserShield />
+              )}
+              <span>{isUploadingAdminAvatar ? "Uploading..." : adminProfile.name || "Admin"}</span>
+            </button>
           </div>
         </header>
 

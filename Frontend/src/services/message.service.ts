@@ -36,7 +36,25 @@ export function getConversationMessages(conversationId: string) {
   );
 }
 
-export function sendConversationMessage(conversationId: string, body: string) {
+export function sendConversationMessage(
+  conversationId: string,
+  body: string,
+  attachment?: File | null,
+) {
+  if (attachment) {
+    const formData = new FormData();
+    formData.append("body", body);
+    formData.append("attachment", attachment);
+
+    return apiRequest<{ message: GleencMessage }>(
+      `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
+  }
+
   return apiRequest<{ message: GleencMessage }>(
     `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
     {

@@ -37,6 +37,8 @@ const messageFilters: MessageFilter[] = [
   "Support",
 ];
 
+const chatEmojis = ["😀", "😂", "😍", "🔥", "👏", "🙏", "💚", "💯", "😭", "🤝", "👍", "✨"];
+
 const chatFallback =
   "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=600&q=80";
 
@@ -142,6 +144,8 @@ function Messages() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<MessageFilter>("All");
   const [messageText, setMessageText] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -149,6 +153,8 @@ function Messages() {
   const [error, setError] = useState("");
 
   const messageEndRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const openedContextRef = useRef("");
 
   const loadConversations = useCallback(
@@ -317,12 +323,20 @@ function Messages() {
   function selectConversation(conversation: GleencConversation) {
     setActiveConversationId(conversation.id);
     setMobileChatOpen(true);
+    setEmojiOpen(false);
+    setSelectedAttachment(null);
+  }
+
+  function addEmoji(emoji: string) {
+    setMessageText((current) => `${current}${emoji}`);
+    setEmojiOpen(false);
+    window.setTimeout(() => messageInputRef.current?.focus(), 0);
   }
 
   async function sendMessage() {
     const cleanMessage = messageText.trim();
 
-    if (!cleanMessage || !activeConversation || isSending) return;
+    if ((!cleanMessage && !selectedAttachment) || !activeConversation || isSending) return;
 
     setIsSending(true);
     setError("");
@@ -331,9 +345,12 @@ function Messages() {
       const response = await sendConversationMessage(
         activeConversation.id,
         cleanMessage,
+        selectedAttachment,
       );
       setMessages((current) => [...current, response.message]);
       setMessageText("");
+      setSelectedAttachment(null);
+      setEmojiOpen(false);
       await loadConversations(activeConversation.id);
     } catch (requestError) {
       setError(
@@ -589,7 +606,14 @@ function Messages() {
                     {message.senderId !== user?.id && (
                       <strong>{message.senderName}</strong>
                     )}
-                    <p>{message.body}</p>
+                    {message.body && <p>{message.body}</p>}
+                    {message.attachmentUrl && (
+                      <img
+                        className="chat-attachment-image"
+                        src={resolveMediaUrl(message.attachmentUrl, "")}
+                        alt="Message attachment"
+                      />
+                    )}
                     <time>{formatChatTime(message.createdAt)}</time>
                   </div>
                 </div>
@@ -599,16 +623,36 @@ function Messages() {
             </div>
 
             <div className="chat-input-panel">
-              <button type="button" aria-label="Attach file">
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept="image/*"
+                className="chat-file-input"
+                onChange={(event) => {
+                  setSelectedAttachment(event.target.files?.[0] || null);
+                  event.currentTarget.value = "";
+                }}
+              />
+
+              <button
+                type="button"
+                aria-label="Attach file"
+                onClick={() => attachmentInputRef.current?.click()}
+              >
                 <FiPaperclip />
               </button>
 
-              <button type="button" aria-label="Attach image">
+              <button
+                type="button"
+                aria-label="Attach image"
+                onClick={() => attachmentInputRef.current?.click()}
+              >
                 <FiImage />
               </button>
 
               <div className="chat-input-box">
                 <textarea
+                  ref={messageInputRef}
                   placeholder="Write a message..."
                   value={messageText}
                   onChange={(event) => setMessageText(event.target.value)}
@@ -616,9 +660,27 @@ function Messages() {
                   enterKeyHint="enter"
                 />
 
-                <button type="button" aria-label="Add emoji">
+                <button
+                  type="button"
+                  aria-label="Add emoji"
+                  onClick={() => setEmojiOpen((open) => !open)}
+                >
                   <FiSmile />
                 </button>
+
+                {emojiOpen && (
+                  <div className="chat-emoji-panel" role="listbox" aria-label="Choose emoji">
+                    {chatEmojis.map((emoji) => (
+                      <button
+                        type="button"
+                        key={emoji}
+                        onClick={() => addEmoji(emoji)}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <button
@@ -626,10 +688,19 @@ function Messages() {
                 className="chat-send-button"
                 onClick={() => void sendMessage()}
                 aria-label="Send message"
-                disabled={isSending || !messageText.trim()}
+                disabled={isSending || (!messageText.trim() && !selectedAttachment)}
               >
                 <FiSend />
               </button>
+
+              {selectedAttachment && (
+                <div className="chat-attachment-preview">
+                  <span>{selectedAttachment.name}</span>
+                  <button type="button" onClick={() => setSelectedAttachment(null)}>
+                    Remove
+                  </button>
+                </div>
+              )}
             </div>
           </section>
         ) : (

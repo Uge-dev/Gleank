@@ -46,7 +46,10 @@ function formatDate(value: string) {
 }
 
 function canContinuePayment(order: GleencOrder) {
-  return order.paymentStatus === "unpaid" || order.status === "pending_payment";
+  return (
+    order.paymentStatus === "unpaid" &&
+    !["delivered", "completed", "cancelled", "disputed"].includes(order.status)
+  );
 }
 
 function OrderDetails() {
@@ -236,8 +239,12 @@ function OrderDetails() {
 
           <section className="delivery-code-panel">
             <span>Delivery Code</span>
-            <strong>{order.verificationCode}</strong>
-            <p>Keep this private. Share it only after receiving the correct item.</p>
+            <strong>{order.verificationCode || "Locked"}</strong>
+            <p>
+              {order.verificationCode
+                ? "Keep this private. Share it only after receiving the correct item."
+                : "Your delivery code unlocks only after Gleenc verifies payment."}
+            </p>
           </section>
 
           <section>

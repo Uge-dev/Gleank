@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
+import { fileUrl, upload } from "../middleware/upload.js";
 import {
   createStoreConversation,
   createStoreOrderConversation,
@@ -54,6 +55,15 @@ messageRouter.get("/conversations/:id/messages", (req, res) => {
   res.json({ messages: listMessages(req.auth.user_id, req.params.id) });
 });
 
-messageRouter.post("/conversations/:id/messages", (req, res) => {
-  res.status(201).json({ message: sendMessage(req.auth.user_id, req.params.id, req.body) });
-});
+messageRouter.post(
+  "/conversations/:id/messages",
+  upload.single("attachment"),
+  (req, res) => {
+    res.status(201).json({
+      message: sendMessage(req.auth.user_id, req.params.id, {
+        ...req.body,
+        attachmentUrl: fileUrl(req, req.file),
+      }),
+    });
+  },
+);

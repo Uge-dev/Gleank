@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { FiMessageCircle, FiSend } from "react-icons/fi";
+import { FiArrowLeft, FiImage, FiMessageCircle, FiSend, FiSmile } from "react-icons/fi";
 
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
@@ -17,6 +17,8 @@ import { resolveMediaUrl } from "../utils/media";
 const usedFallback =
   "https://images.unsplash.com/photo-1523206489230-c012c64b2b48?auto=format&fit=crop&w=900&q=80";
 
+const chatEmojis = ["😀", "😂", "😍", "🔥", "👏", "🙏", "💚", "💯", "😭", "🤝", "👍", "✨"];
+
 function UsedMessages() {
   const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -25,6 +27,10 @@ function UsedMessages() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [body, setBody] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const bodyInputRef = useRef<HTMLInputElement | null>(null);
   const activeConversationId = searchParams.get("conversation") || "";
 
   const activeConversation = useMemo(
@@ -70,16 +76,28 @@ function UsedMessages() {
   async function handleSend(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const clean = body.trim();
-    if (!activeConversationId || !clean) return;
+    if (!activeConversationId || (!clean && !selectedAttachment)) return;
 
     setIsSending(true);
     try {
-      const response = await sendConversationMessage(activeConversationId, clean);
+      const response = await sendConversationMessage(
+        activeConversationId,
+        clean,
+        selectedAttachment,
+      );
       setMessages((current) => [...current, response.message]);
       setBody("");
+      setSelectedAttachment(null);
+      setEmojiOpen(false);
     } finally {
       setIsSending(false);
     }
+  }
+
+  function addEmoji(emoji: string) {
+    setBody((current) => `${current}${emoji}`);
+    setEmojiOpen(false);
+    window.setTimeout(() => bodyInputRef.current?.focus(), 0);
   }
 
   if (isLoading) {
@@ -97,7 +115,7 @@ function UsedMessages() {
         <h1>Message buyers and sellers around specific used items.</h1>
       </div>
 
-      <div className="used-messages-layout">
+      <div className={activeConversationId ? "used-messages-layout chat-open" : "used-messages-layout"}>
         <aside className="used-conversation-list">
           {conversations.length === 0 ? (
             <EmptyState icon={<FiMessageCircle />} title="No messages yet" message="Start from a used item details page." />
@@ -107,7 +125,11 @@ function UsedMessages() {
                 type="button"
                 key={conversation.id}
                 className={conversation.id === activeConversationId ? "active" : ""}
-                onClick={() => setSearchParams({ conversation: conversation.id })}
+                onClick={() => {
+                  setSearchParams({ conversation: conversation.id });
+                  setEmojiOpen(false);
+                  setSelectedAttachment(null);
+                }}
               >
                 <img src={resolveMediaUrl(conversation.listingImageUrl, usedFallback)} alt={conversation.listingName || "Used item"} />
                 <div>
@@ -124,6 +146,14 @@ function UsedMessages() {
           {activeConversation ? (
             <>
               <header>
+                <button
+                  type="button"
+                  className="used-chat-back"
+                  onClick={() => setSearchParams({})}
+                  aria-label="Back to used market conversations"
+                >
+                  <FiArrowLeft />
+                </button>
                 <img src={resolveMediaUrl(activeConversation.listingImageUrl, usedFallback)} alt={activeConversation.listingName} />
                 <div>
                   <strong>{activeConversation.listingName || "Used Market conversation"}</strong>
@@ -138,20 +168,73 @@ function UsedMessages() {
                     className={message.senderId === user?.id ? "mine" : "theirs"}
                   >
                     <span>{message.senderName}</span>
-                    <p>{message.body}</p>
+                    {message.body && <p>{message.body}</p>}
+                    {message.attachmentUrl && (
+                      <img
+                        className="chat-attachment-image"
+                        src={resolveMediaUrl(message.attachmentUrl, "")}
+                        alt="Message attachment"
+                      />
+                    )}
                   </div>
                 ))}
               </div>
 
               <form onSubmit={handleSend} className="used-chat-form">
                 <input
+                  ref={attachmentInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="chat-file-input"
+                  onChange={(event) => {
+                    setSelectedAttachment(event.target.files?.[0] || null);
+                    event.currentTarget.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  className="used-chat-icon-button"
+                  onClick={() => attachmentInputRef.current?.click()}
+                  aria-label="Attach image"
+                >
+                  <FiImage />
+                </button>
+                <input
+                  ref={bodyInputRef}
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
                   placeholder="Type message..."
                 />
-                <button type="submit" disabled={isSending || !body.trim()}>
+                <button
+                  type="button"
+                  className="used-chat-icon-button"
+                  onClick={() => setEmojiOpen((open) => !open)}
+                  aria-label="Add emoji"
+                >
+                  <FiSmile />
+                </button>
+                <button type="submit" disabled={isSending || (!body.trim() && !selectedAttachment)}>
                   <FiSend />
                 </button>
+
+                {emojiOpen && (
+                  <div className="chat-emoji-panel used-chat-emoji-panel" role="listbox" aria-label="Choose emoji">
+                    {chatEmojis.map((emoji) => (
+                      <button type="button" key={emoji} onClick={() => addEmoji(emoji)}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedAttachment && (
+                  <div className="chat-attachment-preview used-chat-attachment-preview">
+                    <span>{selectedAttachment.name}</span>
+                    <button type="button" onClick={() => setSelectedAttachment(null)}>
+                      Remove
+                    </button>
+                  </div>
+                )}
               </form>
             </>
           ) : (

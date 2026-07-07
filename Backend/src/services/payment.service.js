@@ -293,7 +293,15 @@ function getStoreOrderForPayment(userId, orderId) {
     throw new HttpError(422, "This order has already been paid.");
   }
 
-  if (order.status !== "pending_payment") {
+  const payableStatuses = new Set([
+    "pending_payment",
+    "seller_confirmed",
+    "processing",
+    "ready_for_delivery",
+    "out_for_delivery",
+  ]);
+
+  if (!payableStatuses.has(order.status)) {
     throw new HttpError(422, "This order is not awaiting payment.");
   }
 
@@ -358,14 +366,15 @@ function markStoreOrderPaid(row) {
   }
 
   const now = nowIso();
+  const nextStatus = order.status === "pending_payment" ? "paid" : order.status;
 
   db.prepare(`
     UPDATE orders
-    SET status = 'paid',
+    SET status = ?,
         payment_status = 'paid',
         updated_at = ?
     WHERE id = ?
-  `).run(now, order.id);
+  `).run(nextStatus, now, order.id);
 
   insertOrderEvent(
     order.id,

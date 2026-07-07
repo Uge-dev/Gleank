@@ -28,6 +28,7 @@ import {
   commentOnPublicProduct,
   getPublicProduct,
   likePublicProduct,
+  sharePublicProduct,
   unlikePublicProduct,
 } from "../services/marketplace.service";
 import {
@@ -54,7 +55,7 @@ function formatPrice(price: number) {
 function ProductDetails() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { addToCart } = useCart();
   const { isSaved, toggleSaved } = useSaved();
   const [data, setData] = useState<ProductDetailsResponse | null>(null);
@@ -186,6 +187,11 @@ function ProductDetails() {
 
   function handleAddToCart() {
     if (!product || product.status === "out_of_stock") return;
+    if (user?.id === product.store.ownerId) {
+      setShareNotice("You cannot order your own product.");
+      window.setTimeout(() => setShareNotice(""), 2200);
+      return;
+    }
     addToCart({
       id: product.id,
       name: product.name,
@@ -207,14 +213,23 @@ function ProductDetails() {
   }
 
   async function shareProduct() {
+    if (!product || !requireAuth()) return;
+
     const url = window.location.href;
     if (navigator.share) {
       await navigator.share({ title: product?.name, url });
-      return;
+    } else {
+      await navigator.clipboard.writeText(url);
+      setShareNotice("Product link copied");
+      window.setTimeout(() => setShareNotice(""), 2200);
     }
-    await navigator.clipboard.writeText(url);
-    setShareNotice("Product link copied");
-    window.setTimeout(() => setShareNotice(""), 2200);
+
+    const response = await sharePublicProduct(product.id);
+    setData((current) =>
+      current
+        ? { ...current, interaction: response.interaction }
+        : current,
+    );
   }
 
   if (isLoading) {
@@ -261,6 +276,7 @@ function ProductDetails() {
 
   const productSaved = isSaved("product", product.id);
   const inStock = product.status !== "out_of_stock" && product.stock > 0;
+  const isOwnProduct = user?.id === product.store.ownerId;
   const specs = [
     { label: "Category", value: product.category },
     { label: "Store", value: product.store.name },
@@ -347,19 +363,19 @@ function ProductDetails() {
               <button
                 type="button"
                 className="product-cart-btn"
-                disabled={!inStock}
+                disabled={!inStock || isOwnProduct}
                 onClick={handleAddToCart}
               >
                 <FiShoppingCart />
-                Add to Cart
+                {isOwnProduct ? "Your Product" : "Add to Cart"}
               </button>
               <button
                 type="button"
                 className="product-buy-btn"
-                disabled={!inStock}
+                disabled={!inStock || isOwnProduct}
                 onClick={handleOrderNow}
               >
-                Order Now
+                {isOwnProduct ? "Seller Own Product" : "Order Now"}
               </button>
             </div>
 

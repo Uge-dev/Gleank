@@ -118,7 +118,7 @@ function serializeOrder(row, items = [], events = []) {
     deliveryAddress: row.delivery_address || "",
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
-    verificationCode: row.verification_code || "",
+    verificationCode: row.payment_status === "paid" ? row.verification_code || "" : "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     items,
@@ -303,6 +303,10 @@ export function createOrders(userId, input) {
         throw new HttpError(404, "One of the products in your cart is no longer available.");
       }
 
+      if (product.seller_id === userId) {
+        throw new HttpError(403, "Sellers cannot order their own products.");
+      }
+
       if (product.stock < requested.quantity) {
         throw new HttpError(
           422,
@@ -334,16 +338,14 @@ export function createOrders(userId, input) {
         (total, item) => total + item.lineTotalKobo,
         0,
       );
-      const deliveryFeeKobo =
-  deliveryOption === "Delivery"
-    ? calculateDeliveryFeeKobo({
+      const deliveryFeeKobo = calculateDeliveryFeeKobo({
         campus,
         deliveryOption,
         origin: group.storeName || "Campus Market",
-        destination: deliveryAddress,
+        destination: deliveryOption === "Delivery" ? deliveryAddress : pickupLocation,
         deliveryAddress,
-      })
-    : 0;
+        pickupLocation,
+      });
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
       const orderCode = generateOrderCode();
@@ -517,6 +519,10 @@ export function verifyOrderDelivery(user, orderId, verificationCode, note = "") 
 
   if (row.status !== "out_for_delivery" && row.status !== "ready_for_delivery") {
     throw new HttpError(422, "Delivery can only be verified after the order is ready or out for delivery.");
+  }
+
+  if (row.payment_status !== "paid") {
+    throw new HttpError(422, "Payment must be verified before the delivery code can be used.");
   }
 
   if (String(verificationCode || "").trim() !== row.verification_code) {

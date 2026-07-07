@@ -290,7 +290,7 @@ export function productInteraction(productId, viewerId) {
   };
 }
 
-export function recordProductShare(userId, productId, anonKey = "") {
+export function recordProductShare(userId, productId) {
   activeProduct(productId);
   const target = productNotificationTarget(productId);
 
@@ -299,8 +299,8 @@ export function recordProductShare(userId, productId, anonKey = "") {
     VALUES (?, ?, ?, ?, ?)
   `).run(
     createId("shr"),
-    userId || null,
-    String(anonKey || ""),
+    userId,
+    "",
     productId,
     new Date().toISOString(),
   );
@@ -324,21 +324,16 @@ export function recordProductShare(userId, productId, anonKey = "") {
 export function recordProductView(userId, productId, anonKey = "") {
   activeProduct(productId);
 
-  const safeAnonKey = String(anonKey || "");
+  if (!userId) {
+    throw new HttpError(401, "Please log in before views can be counted.");
+  }
 
-  const existingView = userId
-    ? db
-        .prepare(`
-          SELECT 1 FROM product_views
-          WHERE product_id = ? AND user_id = ?
-        `)
-        .get(productId, userId)
-    : db
-        .prepare(`
-          SELECT 1 FROM product_views
-          WHERE product_id = ? AND user_id IS NULL AND anon_key = ?
-        `)
-        .get(productId, safeAnonKey);
+  const existingView = db
+    .prepare(`
+      SELECT 1 FROM product_views
+      WHERE product_id = ? AND user_id = ?
+    `)
+    .get(productId, userId);
 
   if (!existingView) {
     db.prepare(`
@@ -346,8 +341,8 @@ export function recordProductView(userId, productId, anonKey = "") {
       VALUES (?, ?, ?, ?, ?)
     `).run(
       createId("viw"),
-      userId || null,
-      safeAnonKey,
+      userId,
+      "",
       productId,
       new Date().toISOString(),
     );

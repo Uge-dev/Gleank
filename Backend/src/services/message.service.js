@@ -483,23 +483,25 @@ export function sendMessage(userId, conversationId, input) {
   const conversation = getConversation(userId, conversationId);
 
   const body = clean(input?.body, 1600);
-  if (!body) throw new HttpError(422, "Message cannot be empty.");
+  const attachmentUrl = clean(input?.attachmentUrl, 2000);
+  if (!body && !attachmentUrl) throw new HttpError(422, "Message cannot be empty.");
 
   const now = new Date().toISOString();
   const id = createId("msg");
   const recipientId =
     conversation.buyerId === userId ? conversation.sellerId : conversation.buyerId;
+  const previewBody = body || "Sent an image";
 
   db.prepare(`
     INSERT INTO messages (id, conversation_id, sender_id, body, attachment_url, is_read, created_at)
-    VALUES (?, ?, ?, ?, NULL, 0, ?)
-  `).run(id, conversationId, userId, body, now);
+    VALUES (?, ?, ?, ?, ?, 0, ?)
+  `).run(id, conversationId, userId, body, attachmentUrl || null, now);
 
   db.prepare(`
     UPDATE conversations
     SET last_message_body = ?, last_message_at = ?, updated_at = ?
     WHERE id = ?
-  `).run(body, now, now, conversationId);
+  `).run(previewBody, now, now, conversationId);
 
   if (recipientId && recipientId !== userId) {
     const sender = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
@@ -507,7 +509,7 @@ export function sendMessage(userId, conversationId, input) {
       userId: recipientId,
       type: "message",
       title: `New message from ${sender?.name || "Gleenc user"}`,
-      body,
+      body: previewBody,
       actionLabel: "Open chat",
       actionPath: conversation.contextType === "used_order" || conversation.contextType === "used_listing"
         ? `/used-messages?conversation=${conversation.id}`
