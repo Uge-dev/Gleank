@@ -9,6 +9,12 @@ import ProtectedPage from "./components/ProtectedPage";
 
 import Home from "./pages/Home";
 import Search from "./pages/Search";
+import Market from "./pages/Market";
+import CampusMarket from "./pages/CampusMarket";
+import LocalMarkets from "./pages/LocalMarkets";
+import LocalMarketDetails from "./pages/LocalMarketDetails";
+import NearbySellers from "./pages/NearbySellers";
+import MarketSearchResults from "./pages/MarketSearchResults";
 
 import UsedMarket from "./pages/UsedMarket";
 import SubmitUsedProduct from "./pages/SubmitUsedProduct";
@@ -45,6 +51,7 @@ import Help from "./pages/Help";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./admin/AdminDashboard";
 import PaymentCallback from "./pages/PaymentCallback";
+import RiderModule from "./rider/RiderModule";
 
 function App() {
   useEffect(() => {
@@ -53,6 +60,7 @@ function App() {
 
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
+  const isRiderRoute = location.pathname.startsWith("/rider");
 
   if (isAdminRoute) {
     return (
@@ -65,6 +73,10 @@ function App() {
     );
   }
 
+  if (isRiderRoute) {
+    return <RiderModule />;
+  }
+
   return (
     <div className="gleank-app">
       <GleencNav />
@@ -74,6 +86,12 @@ function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
+          <Route path="/market" element={<Market />} />
+          <Route path="/market/search" element={<MarketSearchResults />} />
+          <Route path="/market/campus" element={<CampusMarket />} />
+          <Route path="/market/local" element={<LocalMarkets />} />
+          <Route path="/market/local/:marketId" element={<LocalMarketDetails />} />
+          <Route path="/market/nearby" element={<NearbySellers />} />
 
           <Route path="/used-market" element={<UsedMarket />} />
           <Route

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   IoHome,
   IoHomeOutline,
@@ -21,6 +21,8 @@ import {
   IoNotifications,
   IoNotificationsOutline,
   IoLogOutOutline,
+  IoStorefront,
+  IoStorefrontOutline,
 } from "react-icons/io5";
 
 import AuthModal from "./AuthModal";
@@ -39,10 +41,13 @@ type NavItem = {
   activeIcon: ReactNode;
   showOnDesktop: boolean;
   showOnMobile: boolean;
+  buyerOnly?: boolean;
+  sellerOnly?: boolean;
 };
 
 function GleencNav() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -55,6 +60,7 @@ function GleencNav() {
   const { cartCount, openCartDrawer } = useCart();
 
   const isLoggedIn = isAuthenticated;
+  const isSellerExperience = user?.role === "seller" || user?.role === "admin";
 
   useEffect(() => {
     const root = document.documentElement;
@@ -172,9 +178,9 @@ function GleencNav() {
       showOnMobile: false,
     },
     {
-      label: "Used Market",
+      label: "Market",
       mobileLabel: "Market",
-      path: "/used-market",
+      path: "/market",
       icon: <IoBagHandleOutline />,
       activeIcon: <IoBagHandle />,
       showOnDesktop: true,
@@ -188,6 +194,7 @@ function GleencNav() {
       activeIcon: <IoNotifications />,
       showOnDesktop: true,
       showOnMobile: true,
+      buyerOnly: true,
     },
     {
       label: "Messages",
@@ -206,6 +213,17 @@ function GleencNav() {
       activeIcon: <IoAddCircle />,
       showOnDesktop: true,
       showOnMobile: false,
+      sellerOnly: true,
+    },
+    {
+      label: "Store",
+      mobileLabel: "Store",
+      path: "/dashboard",
+      icon: <IoStorefrontOutline />,
+      activeIcon: <IoStorefront />,
+      showOnDesktop: true,
+      showOnMobile: true,
+      sellerOnly: true,
     },
     {
       label: "Cart",
@@ -227,7 +245,24 @@ function GleencNav() {
     },
   ];
 
-  const desktopNavItems = navItems.filter((item) => item.showOnDesktop);
+  function allowedForRole(item: NavItem) {
+    if (item.sellerOnly) return Boolean(isSellerExperience);
+    if (item.buyerOnly) return !isSellerExperience;
+    return true;
+  }
+
+  function isMarketPath(pathname: string) {
+    return pathname.startsWith("/market") || pathname.startsWith("/used-market");
+  }
+
+  function itemIsActive(item: NavItem, isActive: boolean) {
+    if (item.label === "Market") return isActive || isMarketPath(location.pathname);
+    return isActive;
+  }
+
+  const desktopNavItems = navItems.filter(
+    (item) => item.showOnDesktop && allowedForRole(item),
+  );
 
   function badgeCountFor(label: string) {
     if (label === "Messages") return messageUnreadCount;
@@ -237,11 +272,16 @@ function GleencNav() {
 
   const mobileNavItems = [
     navItems.find((item) => item.label === "For You"),
-    navItems.find((item) => item.label === "Used Market"),
+    navItems.find((item) => item.label === "Market"),
     navItems.find((item) => item.label === "Cart"),
-    navItems.find((item) => item.label === "Notifications"),
+    navItems.find((item) =>
+      isSellerExperience ? item.label === "Store" : item.label === "Notifications",
+    ),
     navItems.find((item) => item.label === "Profile"),
-  ].filter(Boolean) as NavItem[];
+  ].filter((item): item is NavItem => {
+    if (!item) return false;
+    return allowedForRole(item);
+  });
 
   const mobileNav = (
     <nav className="gleank-mobile-nav">
@@ -250,29 +290,35 @@ function GleencNav() {
           key={item.label}
           to={item.path}
           className={({ isActive }) =>
-            isActive ? "gleank-mobile-link active" : "gleank-mobile-link"
+            itemIsActive(item, isActive)
+              ? "gleank-mobile-link active"
+              : "gleank-mobile-link"
           }
           aria-label={item.mobileLabel}
         >
-          {({ isActive }) => (
-            <>
-              <span className="gleank-mobile-icon">
-                {isActive ? item.activeIcon : item.icon}
+          {({ isActive }) => {
+            const active = itemIsActive(item, isActive);
 
-                {item.label === "Cart" && cartCount > 0 && (
-                  <small>{cartCount}</small>
-                )}
+            return (
+              <>
+                <span className="gleank-mobile-icon">
+                  {active ? item.activeIcon : item.icon}
 
-                {item.label !== "Cart" && badgeCountFor(item.label) > 0 && (
-                  <small>{badgeCountFor(item.label)}</small>
-                )}
-              </span>
+                  {item.label === "Cart" && cartCount > 0 && (
+                    <small>{cartCount}</small>
+                  )}
 
-              <span className="gleank-mobile-label">
-                {item.mobileLabel}
-              </span>
-            </>
-          )}
+                  {item.label !== "Cart" && badgeCountFor(item.label) > 0 && (
+                    <small>{badgeCountFor(item.label)}</small>
+                  )}
+                </span>
+
+                <span className="gleank-mobile-label">
+                  {item.mobileLabel}
+                </span>
+              </>
+            );
+          }}
         </NavLink>
       ))}
     </nav>
@@ -292,21 +338,27 @@ function GleencNav() {
               key={item.label}
               to={item.path}
               className={({ isActive }) =>
-                isActive ? "gleank-nav-link active" : "gleank-nav-link"
+                itemIsActive(item, isActive)
+                  ? "gleank-nav-link active"
+                  : "gleank-nav-link"
               }
             >
-              {({ isActive }) => (
-                <>
-                  <span className="gleank-nav-icon">
-                    {isActive ? item.activeIcon : item.icon}
+              {({ isActive }) => {
+                const active = itemIsActive(item, isActive);
+
+                return (
+                  <>
+                    <span className="gleank-nav-icon">
+                      {active ? item.activeIcon : item.icon}
                     {badgeCountFor(item.label) > 0 && (
                       <small>{badgeCountFor(item.label)}</small>
                     )}
-                  </span>
+                    </span>
 
-                  <span className="gleank-nav-text">{item.label}</span>
-                </>
-              )}
+                    <span className="gleank-nav-text">{item.label}</span>
+                  </>
+                );
+              }}
             </NavLink>
           ))}
 
@@ -384,6 +436,26 @@ function GleencNav() {
       {typeof document !== "undefined"
         ? createPortal(mobileNav, document.body)
         : mobileNav}
+
+      {isLoggedIn && isSellerExperience && (
+        typeof document !== "undefined"
+          ? createPortal(
+              <NavLink
+                to="/notifications"
+                className={({ isActive }) =>
+                  isActive
+                    ? "seller-top-notification-link active"
+                    : "seller-top-notification-link"
+                }
+                aria-label="Seller notifications"
+              >
+                <IoNotifications />
+                {notificationUnreadCount > 0 && <small>{notificationUnreadCount}</small>}
+              </NavLink>,
+              document.body,
+            )
+          : null
+      )}
 
       <MoreDrawer
         isOpen={moreDrawerOpen}

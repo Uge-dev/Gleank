@@ -16,6 +16,7 @@ import { orderRouter } from "./routes/order.routes.js";
 import { savedRouter } from "./routes/saved.routes.js";
 import { sellerRouter } from "./routes/seller.routes.js";
 import { storeRouter } from "./routes/store.routes.js";
+import { marketRouter } from "./routes/market.routes.js";
 import { usedMarketRouter } from "./routes/used-market.routes.js";
 import { usedOrderRouter } from "./routes/used-order.routes.js";
 import { messageRouter } from "./routes/message.routes.js";
@@ -30,6 +31,7 @@ import { notificationRouter } from "./routes/notification.routes.js";
 import { diagnosticsRouter } from "./routes/diagnostics.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import { deliveryRouter } from "./routes/delivery.routes.js";
+import { riderRouter } from "./routes/rider.routes.js";
 
 export const app = express();
 
@@ -101,6 +103,7 @@ app.use("/api/delivery", deliveryRouter);
 app.use("/api/saved", savedRouter);
 app.use("/api/users", userRouter);
 app.use("/api/stores", storeRouter);
+app.use("/api/market", marketRouter);
 app.use("/api/seller", sellerRouter);
 app.use("/api/used-market", usedMarketRouter);
 app.use("/api/used-orders", usedOrderRouter);
@@ -115,5 +118,6 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/diagnostics", diagnosticsRouter);
 app.use("/api/admin", adminRoutes);
 
+app.use("/api/rider", riderRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);

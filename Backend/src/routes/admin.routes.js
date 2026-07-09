@@ -12,6 +12,14 @@ import {
 import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { createId } from "../lib/ids.js";
+import {
+  adminCreateMarket,
+  adminListMarkets,
+  adminListMarketSellers,
+  adminUpdateMarket,
+  adminUpdateMarketCategories,
+  adminUpdateMarketStatus,
+} from "../services/market.service.js";
 
 const router = Router();
 
@@ -129,6 +137,79 @@ router.patch("/support/:conversationId/read", requireAdmin, (req, res) => {
     res.json({ success: true, data });
   } catch (error) {
     res.status(error.statusCode || 500).json({ message: error.message || "Could not mark support conversation as read" });
+  }
+});
+
+router.get("/markets", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      markets: adminListMarkets({
+        query: String(req.query.q || ""),
+      }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load markets" });
+  }
+});
+
+router.post("/markets", requireAdmin, (req, res) => {
+  try {
+    res.status(201).json({
+      success: true,
+      market: adminCreateMarket(req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not create market" });
+  }
+});
+
+router.patch("/markets/:marketId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      market: adminUpdateMarket(req.params.marketId, req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market" });
+  }
+});
+
+router.patch("/markets/:marketId/status", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      market: adminUpdateMarketStatus(req.params.marketId, req.body?.status),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market status" });
+  }
+});
+
+router.get("/markets/:marketId/sellers", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminListMarketSellers(req.params.marketId, {
+        viewerId: req.auth?.user_id || req.auth?.id || "",
+      }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load market sellers" });
+  }
+});
+
+router.patch("/markets/:marketId/categories", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      market: adminUpdateMarketCategories(
+        req.params.marketId,
+        req.body?.categories || req.body?.allowedCategories || req.body?.allowed_categories || [],
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market categories" });
   }
 });
 

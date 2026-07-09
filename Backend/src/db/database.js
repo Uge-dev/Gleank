@@ -570,6 +570,69 @@ db.exec(`
     ON used_market_delivery_proofs(order_id);
 `);
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS markets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    landmark TEXT NOT NULL DEFAULT '',
+    latitude REAL,
+    longitude REAL,
+    radius_km REAL NOT NULL DEFAULT 3,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'active', 'disabled')),
+    allowed_categories TEXT NOT NULL DEFAULT '[]',
+    cover_url TEXT,
+    icon_url TEXT,
+    delivery_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS markets_slug_idx ON markets(slug);
+  CREATE INDEX IF NOT EXISTS markets_status_idx ON markets(status);
+  CREATE INDEX IF NOT EXISTS markets_location_idx ON markets(state, city, area);
+
+  CREATE TABLE IF NOT EXISTS market_categories (
+    id TEXT PRIMARY KEY,
+    market_id TEXT NOT NULL,
+    category_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE CASCADE,
+    UNIQUE(market_id, category_key)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS market_categories_market_id_idx
+    ON market_categories(market_id);
+
+  CREATE TABLE IF NOT EXISTS seller_market_profiles (
+    id TEXT PRIMARY KEY,
+    market_id TEXT NOT NULL,
+    store_id TEXT NOT NULL UNIQUE,
+    stall_number TEXT NOT NULL DEFAULT '',
+    address_note TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'approved', 'rejected')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE CASCADE,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS seller_market_profiles_market_id_idx
+    ON seller_market_profiles(market_id);
+  CREATE INDEX IF NOT EXISTS seller_market_profiles_status_idx
+    ON seller_market_profiles(status);
+`);
+
 
 
 db.exec(`
