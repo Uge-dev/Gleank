@@ -20,6 +20,10 @@ import {
   adminUpdateMarketCategories,
   adminUpdateMarketStatus,
 } from "../services/market.service.js";
+import {
+  adminListRiders,
+  adminUpdateRiderVerification,
+} from "../services/rider.service.js";
 
 const router = Router();
 
@@ -210,6 +214,32 @@ router.patch("/markets/:marketId/categories", requireAdmin, (req, res) => {
     });
   } catch (error) {
     res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market categories" });
+  }
+});
+
+router.get("/riders", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      riders: adminListRiders({ role: "admin" }, String(req.query.status || "")),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load riders" });
+  }
+});
+
+router.patch("/riders/:riderId/verification", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      riderProfile: adminUpdateRiderVerification(
+        { role: "admin" },
+        req.params.riderId,
+        req.body || {},
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update rider verification" });
   }
 });
 

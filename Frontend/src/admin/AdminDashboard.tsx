@@ -37,6 +37,7 @@ import {
   type AdminOrder,
   type AdminPayment,
   type AdminProduct,
+  type AdminRider,
   type AdminSeller,
   type AdminStatus,
   type AdminSupportConversation,
@@ -49,12 +50,14 @@ import {
   deleteAdminRecord,
   fetchAdminDataset,
   fetchAdminProfile,
+  fetchAdminRiders,
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
   type AdminProfile,
   updateAdminRecordFields,
   updateAdminRecordStatus,
+  updateAdminRiderVerification,
   uploadAdminAvatar,
 } from "./adminApi";
 import LogoutConfirmModal from "../components/LogoutConfirmModal";
@@ -71,6 +74,7 @@ type AdminTab =
   | "payments"
   | "payouts"
   | "deliveries"
+  | "riders"
   | "disputes"
   | "support"
   | "feedback"
@@ -94,6 +98,7 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "payments", label: "Payments", icon: <FaCreditCard />, description: "Gateway records" },
   { id: "payouts", label: "Payouts", icon: <FaMoneyBillWave />, description: "Seller funds" },
   { id: "deliveries", label: "Deliveries", icon: <FaTruck />, description: "Rider and codes" },
+  { id: "riders", label: "Riders", icon: <FaTruck />, description: "Rider approvals" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
   { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
   { id: "feedback", label: "Feedback", icon: <FaCommentDots />, description: "Platform feedback" },
@@ -474,6 +479,7 @@ function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
+  const [riders, setRiders] = useState<AdminRider[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -495,13 +501,15 @@ function AdminDashboard() {
     setLoadError("");
 
     try {
-      const [nextData, profileResult] = await Promise.all([
+      const [nextData, profileResult, riderRows] = await Promise.all([
         fetchAdminDataset(),
         fetchAdminProfile(),
+        fetchAdminRiders(),
       ]);
 
       setData(nextData);
       setAdminProfile(profileResult.admin);
+      setRiders(riderRows);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Admin data could not be loaded.";
@@ -559,6 +567,22 @@ function AdminDashboard() {
   async function changeFields(collection: AdminCollection, id: string, fields: Record<string, unknown>) {
     const response = await updateAdminRecordFields(collection, id, fields);
     setData(response.data);
+  }
+
+  async function changeRiderVerification(
+    rider: AdminRider,
+    verificationStatus: "draft" | "pending_review" | "verified" | "rejected" | "suspended",
+    verificationNote: string,
+    safetyStatus: "normal" | "flagged" | "suspended" = "normal",
+  ) {
+    await updateAdminRiderVerification(rider.userId, {
+      verificationStatus,
+      verificationNote,
+      safetyStatus,
+      verificationLevel: rider.verificationLevel || 1,
+      maxPackageValueKobo: Math.max(0, Math.round((rider.maxPackageValue || 0) * 100)),
+    });
+    setRiders(await fetchAdminRiders());
   }
 
   function updateSupportDraft(conversationId: string, value: string) {
@@ -1069,6 +1093,63 @@ function AdminDashboard() {
                   <ActionButton tone="soft" onClick={() => changeStatus("deliveries", delivery.id, "out_for_delivery")}>Out Delivery</ActionButton>
                   <ActionButton tone="success" onClick={() => changeStatus("deliveries", delivery.id, "verified")}>Verify Code</ActionButton>
                   <ActionButton tone="danger" onClick={() => changeStatus("deliveries", delivery.id, "failed")}>Problem</ActionButton>
+                </>
+              )}
+            />
+          ) : null}
+
+          {activeTab === "riders" ? (
+            <DataTable<AdminRider>
+              title="Rider Management"
+              subtitle="Review rider accounts, email/phone readiness, vehicle details, safety status, and admin verification before riders can handle deliveries."
+              rows={riders}
+              search={search}
+              onView={(rider) => openRecord(rider.fullName || rider.name, rider as unknown as Record<string, unknown>)}
+              columns={[
+                { label: "Rider", render: (rider) => rider.fullName || rider.name },
+                { label: "Email", render: (rider) => rider.email },
+                { label: "Email verified", render: (rider) => <StatusBadge status={rider.emailVerified ? "verified" : "pending"} /> },
+                { label: "Phone", render: (rider) => rider.phone },
+                { label: "Phone verified", render: (rider) => <StatusBadge status={rider.phoneVerified ? "verified" : "pending"} /> },
+                { label: "Vehicle", render: (rider) => rider.vehiclePlate ? `${rider.vehicleType} · ${rider.vehiclePlate}` : rider.vehicleType || "Not added" },
+                { label: "Coverage", render: (rider) => rider.coverageArea || "Not set" },
+                { label: "Verification", render: (rider) => <StatusBadge status={rider.verificationStatus} /> },
+                { label: "Safety", render: (rider) => <StatusBadge status={rider.safetyStatus} /> },
+                { label: "Availability", render: (rider) => <StatusBadge status={rider.availability} /> },
+                { label: "Completed", render: (rider) => rider.completedDeliveries },
+              ]}
+              actions={(rider) => (
+                <>
+                  <ActionButton
+                    tone="soft"
+                    onClick={() => openRecord(`${rider.fullName || rider.name} details`, rider as unknown as Record<string, unknown>)}
+                  >
+                    Details
+                  </ActionButton>
+                  <ActionButton
+                    tone="success"
+                    onClick={() => changeRiderVerification(rider, "verified", "Admin verified rider profile. Rider may receive delivery assignments.", "normal")}
+                  >
+                    Verify
+                  </ActionButton>
+                  <ActionButton
+                    tone="soft"
+                    onClick={() => changeRiderVerification(rider, "pending_review", "Admin needs more rider profile details before approval.", "flagged")}
+                  >
+                    Needs Info
+                  </ActionButton>
+                  <ActionButton
+                    tone="danger"
+                    onClick={() => changeRiderVerification(rider, "rejected", "Rider profile was rejected by admin review.", "flagged")}
+                  >
+                    Reject
+                  </ActionButton>
+                  <ActionButton
+                    tone="danger"
+                    onClick={() => changeRiderVerification(rider, "suspended", "Rider account suspended by admin.", "suspended")}
+                  >
+                    Suspend
+                  </ActionButton>
                 </>
               )}
             />

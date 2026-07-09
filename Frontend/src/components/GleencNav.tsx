@@ -437,26 +437,6 @@ function GleencNav() {
         ? createPortal(mobileNav, document.body)
         : mobileNav}
 
-      {isLoggedIn && isSellerExperience && (
-        typeof document !== "undefined"
-          ? createPortal(
-              <NavLink
-                to="/notifications"
-                className={({ isActive }) =>
-                  isActive
-                    ? "seller-top-notification-link active"
-                    : "seller-top-notification-link"
-                }
-                aria-label="Seller notifications"
-              >
-                <IoNotifications />
-                {notificationUnreadCount > 0 && <small>{notificationUnreadCount}</small>}
-              </NavLink>,
-              document.body,
-            )
-          : null
-      )}
-
       <MoreDrawer
         isOpen={moreDrawerOpen}
         onClose={() => setMoreDrawerOpen(false)}

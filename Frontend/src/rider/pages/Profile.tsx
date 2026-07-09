@@ -41,6 +41,13 @@ export default function Profile() {
             <Info label="Phone Number" value={rider.phone} />
             <Info label="Email" value={rider.email} />
             <Info label="Vehicle Type" value={rider.vehicleType} />
+            <Info label="Admin Verification" value={rider.verificationStatus.replace(/_/g, ' ')} />
+            <Info label="Phone Verification" value="SMS OTP required before phone changes" />
+          </div>
+          <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+            <strong className="block text-amber-950">Profile completion rule</strong>
+            Your email must be verified and admin must approve your rider profile before you can receive deliveries.
+            Phone number changes should go through OTP verification once the SMS provider is connected.
           </div>
           <div className="mt-7">
             <label className="text-sm font-bold text-slate-700">Availability</label>

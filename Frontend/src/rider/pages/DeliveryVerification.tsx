@@ -30,11 +30,11 @@ export default function DeliveryVerification() {
     setSearching(true);
     const result = await verifyPickupCode(pickupCode, assignmentId, fileName, proofNote, locationLabel || assignment?.pickupLocation);
     setSearching(false);
-    if (!result.ok || !result.order) {
+    if (!result.ok) {
       setError(result.message || 'No order found.');
       return;
     }
-    navigate(`/rider/delivery/${result.order.id}`);
+    navigate(result.order ? `/rider/delivery/${result.order.id}` : '/rider/active');
   }
 
   return (

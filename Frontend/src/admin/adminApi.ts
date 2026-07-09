@@ -1,4 +1,4 @@
-import type { AdminDataset, AdminStatus } from "./adminData";
+import type { AdminDataset, AdminRider, AdminStatus } from "./adminData";
 
 const API_BASE = (import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api");
 const ADMIN_TOKEN_KEY = "gleank_admin_token";
@@ -84,6 +84,101 @@ export async function uploadAdminAvatar(file: File) {
 
 export async function fetchAdminDataset(): Promise<AdminDataset> {
   return request<AdminDataset>("/admin/overview");
+}
+
+function normalizeRider(row: {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    emailVerified?: boolean;
+    emailVerifiedAt?: string | null;
+    phoneVerified?: boolean;
+    phoneVerifiedAt?: string | null;
+    isActive: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  riderProfile: Record<string, unknown> | null;
+}): AdminRider {
+  const profile = row.riderProfile || {};
+
+  return {
+    id: row.user.id,
+    userId: row.user.id,
+    name: row.user.name,
+    email: row.user.email,
+    phone: row.user.phone,
+    emailVerified: Boolean(row.user.emailVerified),
+    emailVerifiedAt: row.user.emailVerifiedAt || null,
+    phoneVerified: Boolean(row.user.phoneVerified),
+    phoneVerifiedAt: row.user.phoneVerifiedAt || null,
+    isActive: Boolean(row.user.isActive),
+    fullName: String(profile.fullName || row.user.name || ""),
+    whatsappPhone: String(profile.whatsappPhone || row.user.phone || ""),
+    vehicleType: String(profile.vehicleType || ""),
+    vehiclePlate: String(profile.vehiclePlate || ""),
+    coverageArea: String(profile.coverageArea || ""),
+    homeAddress: String(profile.homeAddress || ""),
+    emergencyContactName: String(profile.emergencyContactName || ""),
+    emergencyContactPhone: String(profile.emergencyContactPhone || ""),
+    guarantorName: String(profile.guarantorName || ""),
+    guarantorPhone: String(profile.guarantorPhone || ""),
+    verificationStatus: String(profile.verificationStatus || "pending_review"),
+    verificationNote: String(profile.verificationNote || ""),
+    verificationLevel: Number(profile.verificationLevel || 1),
+    maxPackageValue: Number(profile.maxPackageValue || 0),
+    availability: String(profile.availability || "offline"),
+    safetyStatus: String(profile.safetyStatus || "normal"),
+    ratingAverage: Number(profile.ratingAverage || 0),
+    completedDeliveries: Number(profile.completedDeliveries || 0),
+    createdAt: String(profile.createdAt || row.user.createdAt || ""),
+    updatedAt: String(profile.updatedAt || row.user.updatedAt || ""),
+  };
+}
+
+export async function fetchAdminRiders(): Promise<AdminRider[]> {
+  const response = await request<{
+    success: boolean;
+    riders: Array<{
+      user: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string;
+        emailVerified?: boolean;
+        emailVerifiedAt?: string | null;
+        phoneVerified?: boolean;
+        phoneVerifiedAt?: string | null;
+        isActive: boolean;
+        createdAt?: string;
+        updatedAt?: string;
+      };
+      riderProfile: Record<string, unknown> | null;
+    }>;
+  }>("/admin/riders");
+
+  return response.riders.map(normalizeRider);
+}
+
+export async function updateAdminRiderVerification(
+  riderId: string,
+  fields: {
+    verificationStatus: "draft" | "pending_review" | "verified" | "rejected" | "suspended";
+    verificationNote?: string;
+    verificationLevel?: number;
+    maxPackageValueKobo?: number;
+    safetyStatus?: "normal" | "flagged" | "suspended";
+  },
+) {
+  return request<{ success: boolean; riderProfile: Record<string, unknown> }>(
+    `/admin/riders/${riderId}/verification`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    },
+  );
 }
 
 export async function updateAdminRecordStatus(collection: AdminCollection, id: string, status: AdminStatus, field = "status") {

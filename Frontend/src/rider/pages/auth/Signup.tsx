@@ -8,7 +8,15 @@ import Button from '../../components/ui/Button';
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
-  const [form, setForm] = useState({ fullName: '', phone: '', email: '', password: '', vehicleType: 'Motorcycle' });
+  const [form, setForm] = useState({
+    fullName: '',
+    phone: '',
+    email: '',
+    password: '',
+    vehicleType: 'Motorcycle',
+    vehiclePlate: '',
+    activeZone: '',
+  });
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
@@ -22,7 +30,10 @@ export default function Signup() {
         <div className="mb-8">
           <p className="text-sm font-bold uppercase tracking-[0.28em] text-gleenc-cyan">Gleenc Rider</p>
           <h1 className="mt-2 text-3xl font-black text-slate-950">Create Rider Account</h1>
-          <p className="mt-2 text-sm text-slate-500">Your account remains pending until Gleenc approves your rider profile.</p>
+          <p className="mt-2 text-sm text-slate-500">
+            Create your rider account, verify your email, then wait for admin approval before handling deliveries.
+            Phone OTP verification is required before changing your rider contact number once SMS is connected.
+          </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -52,17 +63,27 @@ export default function Signup() {
             </select>
           </label>
           <label className="block">
+            <span className="text-sm font-bold text-slate-700">Coverage Area</span>
+            <input value={form.activeZone} onChange={(event) => setForm({ ...form, activeZone: event.target.value })} placeholder="FUPRE, Ugbomro, Effurun..." className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+          </label>
+          <label className="block">
             <span className="text-sm font-bold text-slate-700">Government ID</span>
             <input type="file" className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Bike Number</span>
-            <input className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input value={form.vehiclePlate} onChange={(event) => setForm({ ...form, vehiclePlate: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Profile Picture</span>
             <input type="file" className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
+        </div>
+
+        <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+          <strong className="block text-amber-900">Verification flow</strong>
+          1. Verify email after signup. 2. Admin reviews your rider details. 3. Complete phone OTP verification when SMS is connected.
+          Riders cannot go online or receive delivery assignments until admin marks the profile verified.
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

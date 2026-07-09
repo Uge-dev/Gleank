@@ -182,6 +182,11 @@ function SellerOnboarding() {
             <label>
               <span>Phone number</span>
               <input name="phone" defaultValue={verification?.phone || user?.phone || ""} required />
+              <small className="seller-phone-verify-note">
+                {user?.phoneVerified
+                  ? "Phone verified. Contact changes should still be confirmed with OTP."
+                  : "Phone OTP verification is required before changing this number once SMS is connected."}
+              </small>
             </label>
             <label>
               <span>Campus</span>
@@ -257,6 +262,7 @@ function SellerOnboarding() {
 
           <div className="seller-status-list">
             <span className={user?.emailVerified ? "done" : ""}>Email verified</span>
+            <span className={user?.phoneVerified ? "done" : ""}>Phone verification ready</span>
             <span className={faceVerified ? "done" : ""}>Face verification complete</span>
             <span className={verificationReady ? "done" : ""}>Seller verified</span>
             <span className={subscriptionActive ? "done" : ""}>Subscription active</span>

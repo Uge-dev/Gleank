@@ -4,7 +4,6 @@ import type React from "react";
 import {
   FiAlertCircle,
   FiBookmark,
-  FiBox,
   FiGrid,
   FiRefreshCw,
   FiSearch,
@@ -23,7 +22,7 @@ import { searchMarketplace } from "../services/search.service";
 import type { SavedItemType, SearchResults } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
-type SearchTab = "all" | "products" | "sellers" | "services" | "used";
+type SearchTab = "all" | "products" | "sellers" | "used";
 
 const searchTabs: {
   label: string;
@@ -33,7 +32,6 @@ const searchTabs: {
   { label: "All", value: "all", icon: <FiGrid /> },
   { label: "Products", value: "products", icon: <FiShoppingBag /> },
   { label: "Sellers", value: "sellers", icon: <FiUser /> },
-  { label: "Services", value: "services", icon: <FiBox /> },
   { label: "Used Market", value: "used", icon: <FiRefreshCw /> },
 ];
 
@@ -48,8 +46,6 @@ const productFallback =
   "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=900&q=80";
 const storeFallback =
   "https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=900&q=80";
-const serviceFallback =
-  "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=900&q=80";
 const usedFallback =
   "https://images.unsplash.com/photo-1523206489230-c012c64b2b48?auto=format&fit=crop&w=900&q=80";
 
@@ -111,7 +107,6 @@ function Search() {
   const totalResults =
     results.products.length +
     results.stores.length +
-    results.services.length +
     results.usedListings.length;
 
   if (isLoading && totalResults === 0) {
@@ -119,7 +114,7 @@ function Search() {
       <section className="search-page">
         <LoadingState
           title="Searching Gleenc"
-          message="Loading current products, sellers, and services from Gleenc."
+          message="Loading current products, sellers, and used market listings from Gleenc."
         />
       </section>
     );
@@ -145,7 +140,7 @@ function Search() {
           <FiSearch />
           <input
             type="search"
-            placeholder="Search products, sellers, and services..."
+            placeholder="Search products, sellers, and used market listings..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -176,7 +171,7 @@ function Search() {
         <h1>{query ? `Results for “${query}”` : "Find anything around campus"}</h1>
         <p>
           These results come directly from active Gleenc stores, products, and
-          services in the shared database.
+          used market listings in the shared database.
         </p>
         <div className="search-result-count">
           <FiAlertCircle />
@@ -332,65 +327,6 @@ function Search() {
                           }
                         />
                       </button>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          )}
-
-          {(activeTab === "all" || activeTab === "services") && (
-            <section className="search-section">
-              <div className="search-section-heading">
-                <div>
-                  <span>Services</span>
-                  <h2>Services around campus</h2>
-                </div>
-                <small>{results.services.length}</small>
-              </div>
-
-              {results.services.length === 0 ? (
-                <EmptyState
-                  icon={<FiBox />}
-                  eyebrow="No services"
-                  title="No service result"
-                  message="Published services matching your search will appear here."
-                  variant="card"
-                />
-              ) : (
-                <div className="search-grid">
-                  {results.services.map((service) => (
-                    <article className="search-service-card" key={service.id}>
-                      <img
-                        src={resolveMediaUrl(service.imageUrls[0], serviceFallback)}
-                        alt={service.name}
-                      />
-                      <div className="search-service-content">
-                        <span>{service.category}</span>
-                        <h3>{service.name}</h3>
-                        <p>{service.storeName}</p>
-                        <strong>From {formatPrice(service.price)}</strong>
-                        <div className="search-service-actions">
-                          <Link to={`/stores/${service.storeSlug}`}>View store</Link>
-                          <Link to="/messages">Message</Link>
-                          <button
-                            type="button"
-                            className="market-save-button"
-                            onClick={() =>
-                              void handleToggleSave("service", service.id)
-                            }
-                            aria-label="Save service"
-                          >
-                            <FiBookmark
-                              fill={
-                                isSaved("service", service.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                          </button>
-                        </div>
-                      </div>
                     </article>
                   ))}
                 </div>

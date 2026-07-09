@@ -162,3 +162,211 @@ html[data-theme="dark"] .order-action-row a:last-child {
     gap: 0.45rem;
   }
 }
+
+/* Final structured Orders layout override */
+.orders-upgraded-page {
+  width: min(1120px, calc(100% - 32px)) !important;
+  margin: 0 auto !important;
+  padding: 28px 0 calc(var(--gleank-bottom-nav-height, 64px) + 48px) !important;
+}
+
+.orders-upgraded-page .orders-header {
+  margin: 0 0 18px !important;
+  padding: clamp(20px, 4vw, 34px) !important;
+  border: 1px solid var(--border-color, #e5e7eb) !important;
+  border-radius: 30px !important;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(22, 163, 74, 0.16), transparent 34%),
+    linear-gradient(135deg, var(--card-bg, #ffffff), var(--soft-bg, #f8fafc)) !important;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.08) !important;
+}
+
+.orders-upgraded-page .orders-header .eyebrow {
+  display: inline-flex !important;
+  width: fit-content !important;
+  margin-bottom: 10px !important;
+  padding: 7px 11px !important;
+  border-radius: 999px !important;
+  background: #ecfdf5 !important;
+  color: #15803d !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+}
+
+.orders-upgraded-page .orders-filter-bar {
+  position: sticky !important;
+  top: 66px !important;
+  z-index: 20 !important;
+  overflow-x: auto !important;
+  margin: 0 0 18px !important;
+  padding: 8px !important;
+  border: 1px solid var(--border-color, #e5e7eb) !important;
+  border-radius: 22px !important;
+  background: color-mix(in srgb, var(--card-bg, #ffffff) 94%, transparent) !important;
+  backdrop-filter: blur(14px) !important;
+  display: flex !important;
+  gap: 8px !important;
+}
+
+.orders-upgraded-page .orders-filter-bar button {
+  min-height: 40px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 0 15px !important;
+  background: transparent !important;
+  color: var(--text-muted, #64748b) !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  white-space: nowrap !important;
+}
+
+.orders-upgraded-page .orders-filter-bar button.active {
+  background: var(--brand-green, #16a34a) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 28px rgba(22, 163, 74, 0.22) !important;
+}
+
+.orders-upgraded-page .orders-list {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 14px !important;
+}
+
+.orders-upgraded-page .upgraded-order-card {
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 14px !important;
+  border: 1px solid var(--border-color, #e5e7eb) !important;
+  border-radius: 28px !important;
+  background: var(--card-bg, #ffffff) !important;
+  box-shadow: 0 18px 55px rgba(15, 23, 42, 0.07) !important;
+  display: grid !important;
+  grid-template-columns: 118px minmax(0, 1fr) minmax(210px, 250px) !important;
+  gap: 16px !important;
+  align-items: center !important;
+}
+
+.orders-upgraded-page .upgraded-order-card > img {
+  width: 118px !important;
+  height: 118px !important;
+  border-radius: 22px !important;
+  object-fit: cover !important;
+  background: var(--soft-bg, #f8fafc) !important;
+}
+
+.orders-upgraded-page .order-card-main {
+  min-width: 0 !important;
+}
+
+.orders-upgraded-page .order-code {
+  display: inline-flex !important;
+  width: fit-content !important;
+  margin-bottom: 8px !important;
+  padding: 6px 10px !important;
+  border-radius: 999px !important;
+  background: var(--soft-bg, #f8fafc) !important;
+  color: var(--brand-green, #16a34a) !important;
+  font-size: 11px !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.04em !important;
+}
+
+.orders-upgraded-page .order-card-main h2 {
+  margin: 0 !important;
+  color: var(--text-main, #111827) !important;
+  font-size: clamp(17px, 2vw, 22px) !important;
+  font-weight: 950 !important;
+  line-height: 1.16 !important;
+}
+
+.orders-upgraded-page .order-card-main p,
+.orders-upgraded-page .order-meta-row span {
+  color: var(--text-muted, #64748b) !important;
+}
+
+.orders-upgraded-page .order-meta-row {
+  margin-top: 12px !important;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+
+.orders-upgraded-page .order-meta-row span {
+  min-height: 30px !important;
+  padding: 6px 9px !important;
+  border-radius: 999px !important;
+  background: var(--soft-bg, #f8fafc) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 12px !important;
+  font-weight: 850 !important;
+}
+
+.orders-upgraded-page .order-card-side {
+  min-width: 0 !important;
+  justify-items: stretch !important;
+  align-content: center !important;
+}
+
+.orders-upgraded-page .order-card-side > strong {
+  color: var(--text-main, #111827) !important;
+  font-size: 22px !important;
+  font-weight: 950 !important;
+  text-align: right !important;
+}
+
+.orders-upgraded-page .order-action-row {
+  justify-content: flex-end !important;
+}
+
+@media (max-width: 820px) {
+  .orders-upgraded-page {
+    width: min(100% - 20px, 1120px) !important;
+    padding-top: 18px !important;
+  }
+
+  .orders-upgraded-page .orders-filter-bar {
+    top: 52px !important;
+  }
+
+  .orders-upgraded-page .upgraded-order-card {
+    grid-template-columns: 92px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    border-radius: 24px !important;
+  }
+
+  .orders-upgraded-page .upgraded-order-card > img {
+    width: 92px !important;
+    height: 92px !important;
+    border-radius: 18px !important;
+  }
+
+  .orders-upgraded-page .order-card-side {
+    grid-column: 1 / -1 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .orders-upgraded-page .order-card-side > strong {
+    text-align: left !important;
+  }
+
+  .orders-upgraded-page .order-action-row {
+    justify-content: stretch !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .orders-upgraded-page .upgraded-order-card {
+    grid-template-columns: 1fr !important;
+  }
+
+  .orders-upgraded-page .upgraded-order-card > img {
+    width: 100% !important;
+    height: 178px !important;
+  }
+}

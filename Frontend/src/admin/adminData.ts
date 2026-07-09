@@ -155,6 +155,39 @@ export type AdminDelivery = {
   updatedAt: string;
 };
 
+export type AdminRider = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+  phoneVerified: boolean;
+  phoneVerifiedAt: string | null;
+  isActive: boolean;
+  fullName: string;
+  whatsappPhone: string;
+  vehicleType: string;
+  vehiclePlate: string;
+  coverageArea: string;
+  homeAddress: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  guarantorName: string;
+  guarantorPhone: string;
+  verificationStatus: string;
+  verificationNote: string;
+  verificationLevel: number;
+  maxPackageValue: number;
+  availability: string;
+  safetyStatus: string;
+  ratingAverage: number;
+  completedDeliveries: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminDispute = {
   id: string;
   orderId: string;
@@ -237,6 +270,7 @@ export type AdminDataset = {
   orders: AdminOrder[];
   payments: AdminPayment[];
   deliveries: AdminDelivery[];
+  riders: AdminRider[];
   disputes: AdminDispute[];
   supportConversations: AdminSupportConversation[];
   feedback: AdminFeedback[];
@@ -266,6 +300,7 @@ export const emptyAdminDataset: AdminDataset = {
   orders: [],
   payments: [],
   deliveries: [],
+  riders: [],
   disputes: [],
   supportConversations: [],
   feedback: [],

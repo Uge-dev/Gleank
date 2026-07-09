@@ -85,7 +85,7 @@ export default function DeliveryDetails() {
             <div className="mt-5 grid gap-3 sm:grid-cols-4">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Delivery OTP</p>
-                <p className="mt-2 text-sm font-black text-slate-950">Required from buyer</p>
+                <p className="mt-2 text-sm font-black text-slate-950">Enter only after buyer provides it</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Amount</p>
@@ -162,7 +162,10 @@ export default function DeliveryDetails() {
           />
           <ProofUploader fileName={fileName} note={proofNote} locationLabel={locationLabel} onFileNameChange={setFileName} onNoteChange={setProofNote} onLocationChange={setLocationLabel} compact />
           {completeError && <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{completeError}</p>}
-          <p className="text-xs font-semibold leading-6 text-slate-400">Demo delivery OTP is the 6-digit order code shown to the buyer: {order.customerDeliveryCode}</p>
+          <p className="text-xs font-semibold leading-6 text-slate-400">
+            For security, Gleenc never displays the buyer&apos;s delivery code to riders.
+            Ask the buyer to provide the OTP in person after payment is confirmed.
+          </p>
           <Button size="lg" disabled={deliveryCode.length < 6} fullWidth>Confirm Delivery</Button>
         </form>
       </Modal>

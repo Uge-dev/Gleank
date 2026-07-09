@@ -62,6 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRider(nextRider);
       } catch (error) {
         setApiConnected(false);
+        if (shouldUseApi()) {
+          throw error instanceof Error ? error : new Error('Rider login failed.');
+        }
         const nextRider = riderLocalStore.login(email);
         setRider(nextRider);
       } finally {
@@ -79,8 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         const nextRider = riderLocalStore.signup(payload);
         setRider(nextRider);
-      } catch {
+      } catch (error) {
         setApiConnected(false);
+        if (shouldUseApi()) {
+          throw error instanceof Error ? error : new Error('Rider signup failed.');
+        }
         const nextRider = riderLocalStore.signup(payload);
         setRider(nextRider);
       } finally {
@@ -99,7 +105,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         if (shouldUseApi()) {
           const response = await riderApi.updateAvailability(availability);
-          setRider(response.rider);
+          setRider((current) => ({
+            ...(current || response.rider),
+            ...response.rider,
+            email: response.rider.email || current?.email || '',
+            profilePhoto: response.rider.profilePhoto || current?.profilePhoto || '',
+          }));
           setApiConnected(true);
           return;
         }

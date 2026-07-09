@@ -83,6 +83,14 @@ function serializeProfile(row) {
     vehicleType: row.vehicle_type,
     vehiclePlate: row.vehicle_plate,
     coverageArea: row.coverage_area,
+    homeAddress: row.home_address || "",
+    emergencyContactName: row.emergency_contact_name || "",
+    emergencyContactPhone: row.emergency_contact_phone || "",
+    guarantorName: row.guarantor_name || "",
+    guarantorPhone: row.guarantor_phone || "",
+    identityDocumentUrl: row.identity_document_url || null,
+    selfieUrl: row.selfie_url || null,
+    ninLast4: row.nin_last4 || "",
     verificationStatus: row.verification_status,
     verificationNote: row.verification_note,
     verificationLevel: row.verification_level,
@@ -811,7 +819,10 @@ export function adminListRiders(auth, status = "") {
     params.push(status);
   }
   return db.prepare(`
-    SELECT users.id AS user_id, users.name, users.email, users.phone AS user_phone, users.is_active,
+    SELECT users.id AS user_id, users.name, users.email, users.phone AS user_phone,
+           users.is_active, users.email_verified, users.email_verified_at,
+           users.phone_verified, users.phone_verified_at, users.created_at AS user_created_at,
+           users.updated_at AS user_updated_at,
            rider_profiles.*
     FROM users
     LEFT JOIN rider_profiles ON rider_profiles.user_id = users.id
@@ -824,7 +835,13 @@ export function adminListRiders(auth, status = "") {
       name: row.name,
       email: row.email,
       phone: row.user_phone,
+      emailVerified: Boolean(row.email_verified),
+      emailVerifiedAt: row.email_verified_at || null,
+      phoneVerified: Boolean(row.phone_verified),
+      phoneVerifiedAt: row.phone_verified_at || null,
       isActive: Boolean(row.is_active),
+      createdAt: row.user_created_at,
+      updatedAt: row.user_updated_at,
     },
     riderProfile: serializeProfile(row.id ? row : null),
   }));

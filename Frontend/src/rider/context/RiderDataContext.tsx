@@ -147,8 +147,10 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
         try {
           const response = await riderApi.verifyPickup(assignmentId, { sellerPickupCode, proofFileName, proofNote, locationLabel });
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
-          setOrders((current) => current.map((item) => (item.id === response.order.id ? response.order : item)));
-          setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order.id])));
+          if (response.order) {
+            setOrders((current) => current.map((item) => (item.id === response.order?.id ? response.order : item)));
+            setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order!.id])));
+          }
           setApiConnected(true);
           return { ok: true, order: response.order };
         } catch (error) {
@@ -177,8 +179,10 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
         try {
           const response = await riderApi.completeDelivery(orderId, { customerDeliveryCode, proofFileName, proofNote, locationLabel });
           setOrders((current) => current.filter((item) => item.id !== orderId));
-          setCompleted((current) => [response.order, ...current.filter((item) => item.id !== orderId)]);
-          setAssignments((current) => current.filter((item) => item.id !== response.order.assignmentId));
+          if (response.order) {
+            setCompleted((current) => [response.order!, ...current.filter((item) => item.id !== orderId)]);
+          }
+          setAssignments((current) => current.filter((item) => item.id !== response.assignment.id));
           setUnlockedOrderIds((current) => current.filter((id) => id !== orderId));
           setApiConnected(true);
           return { ok: true, order: response.order };
