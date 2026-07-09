@@ -30680,10 +30680,14 @@ html[data-theme="dark"] select {
 }
 
 .seller-top-notification-link {
- display: none;
+ display: none !important;
 }
 
 
+
+.seller-top-notification-link small {
+ display:none !important;
+}
 
 
 
@@ -30746,4 +30750,7 @@ html[data-theme="dark"] select {
     min-height: 0;
   }
 
+  .seller-top-notification-link {
+    display: none !important;
+  }
 }
