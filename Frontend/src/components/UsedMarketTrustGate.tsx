@@ -34,7 +34,7 @@ function UsedMarketTrustGate({ trust }: UsedMarketTrustGateProps) {
           <small>
             {profileDone
               ? "Identity details submitted"
-              : "Add student ID and campus details"}
+              : "Add identity, phone, area and pickup preference"}
           </small>
         </div>
 

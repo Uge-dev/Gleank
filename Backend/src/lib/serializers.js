@@ -7,6 +7,17 @@ function safeJsonArray(value) {
   }
 }
 
+function safeJsonObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function numberOrFallback(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -70,6 +81,18 @@ export function serializeStore(row) {
     verificationStatus: row.verification_status || (row.verified ? "verified" : "draft"),
     verificationNote: row.verification_note || "",
     verifiedAt: row.verified_at || null,
+    sellerType: row.seller_type || "campus",
+    operatingHours: row.operating_hours || "",
+    whatsappPhone: row.whatsapp_phone || "",
+    allowRiderWhatsAppContact: row.allow_rider_whatsapp_contact !== 0,
+    locationArea: row.location_area || "",
+    pickupLocation: row.pickup_location || "",
+    nearestLandmark: row.nearest_landmark || "",
+    marketId: row.market_id || null,
+    shopStallNumber: row.shop_stall_number || "",
+    shopSection: row.shop_section || "",
+    pickupLat: row.pickup_lat === null || row.pickup_lat === undefined ? null : Number(row.pickup_lat),
+    pickupLng: row.pickup_lng === null || row.pickup_lng === undefined ? null : Number(row.pickup_lng),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -138,6 +161,7 @@ export function serializeUsedListing(row, includePrivate = false) {
     condition: row.condition,
     ...pricePayload(row),
     campus: row.campus || "",
+    areaLocation: row.area_location || row.campus || "",
     pickupLocation: row.pickup_location || "",
     deliveryOption: row.delivery_option,
     imageUrls: safeJsonArray(row.image_urls),
@@ -152,5 +176,9 @@ export function serializeUsedListing(row, includePrivate = false) {
     defectsDisclosed: row.defects_disclosed || "",
     confirmationText: includePrivate ? row.confirmation_text || "" : "",
     reviewNote: includePrivate ? row.review_note || "" : "",
+    categoryMetadata: safeJsonObject(row.category_metadata),
+    riskLevel: row.risk_level || "standard",
+    reviewRequired: Boolean(row.review_required),
+    sellerVerificationLevel: Number(row.seller_verification_level || 1),
   };
 }

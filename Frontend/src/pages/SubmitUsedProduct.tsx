@@ -23,6 +23,175 @@ import type { UsedListing, UsedMarketTrustStatus } from "../types/domain";
 
 const MAX_USED_IMAGES = 10;
 
+type UsedCategoryField = {
+  name: string;
+  label: string;
+  placeholder?: string;
+  type?: "text" | "number" | "date" | "textarea";
+  required?: boolean;
+};
+
+type UsedCategoryConfig = {
+  label: string;
+  value: string;
+  highRisk?: boolean;
+  reviewNote: string;
+  fields: UsedCategoryField[];
+};
+
+const USED_CATEGORY_CONFIGS: UsedCategoryConfig[] = [
+  {
+    label: "Phones/Tablets",
+    value: "Phones/Tablets",
+    highRisk: true,
+    reviewNote: "Phones/tablets need stronger review. Add IMEI/serial and ownership proof where possible.",
+    fields: [
+      { name: "brand", label: "Brand", placeholder: "Apple, Samsung, Tecno", required: true },
+      { name: "model", label: "Model", placeholder: "iPhone 12 Pro", required: true },
+      { name: "storage", label: "Storage", placeholder: "128GB", required: true },
+      { name: "ram", label: "RAM", placeholder: "6GB" },
+      { name: "color", label: "Color", placeholder: "Black" },
+      { name: "batteryHealth", label: "Battery health", placeholder: "87%" },
+      { name: "imei", label: "IMEI/serial number", placeholder: "Optional but recommended" },
+      { name: "accessories", label: "Accessories included", placeholder: "Charger, pouch, box" },
+    ],
+  },
+  {
+    label: "Laptops/Computers",
+    value: "Laptops/Computers",
+    highRisk: true,
+    reviewNote: "Laptops/computers require detailed specs and stronger ownership review.",
+    fields: [
+      { name: "brand", label: "Brand", placeholder: "HP, Dell, Lenovo", required: true },
+      { name: "model", label: "Model", placeholder: "EliteBook 840 G6", required: true },
+      { name: "processor", label: "Processor", placeholder: "Core i5 8th Gen", required: true },
+      { name: "ram", label: "RAM", placeholder: "8GB", required: true },
+      { name: "storage", label: "Storage type/size", placeholder: "256GB SSD", required: true },
+      { name: "screenSize", label: "Screen size", placeholder: "14 inches" },
+      { name: "batteryCondition", label: "Battery condition", placeholder: "2 hours backup" },
+      { name: "chargerIncluded", label: "Charger included", placeholder: "Yes/No" },
+      { name: "serialNumber", label: "Serial number", placeholder: "Optional but recommended" },
+    ],
+  },
+  {
+    label: "Electronics",
+    value: "Electronics",
+    highRisk: true,
+    reviewNote: "Electronics stay under review until admin confirms risk and proof.",
+    fields: [
+      { name: "brand", label: "Brand", required: true },
+      { name: "model", label: "Model" },
+      { name: "workingStatus", label: "Working status", placeholder: "Fully working / needs repair", required: true },
+      { name: "powerRating", label: "Power rating", placeholder: "Optional" },
+      { name: "warrantyReceipt", label: "Warranty/receipt", placeholder: "Available / Not available" },
+      { name: "accessories", label: "Accessories included" },
+    ],
+  },
+  {
+    label: "Appliances",
+    value: "Appliances",
+    highRisk: true,
+    reviewNote: "Appliances need pickup/delivery handling notes and proof where possible.",
+    fields: [
+      { name: "brand", label: "Brand", required: true },
+      { name: "model", label: "Model" },
+      { name: "capacitySize", label: "Capacity/size", placeholder: "120L, 6kg, etc." },
+      { name: "workingStatus", label: "Working status", required: true },
+      { name: "powerRating", label: "Power rating" },
+      { name: "handlingNote", label: "Pickup/delivery handling note", type: "textarea" },
+    ],
+  },
+  {
+    label: "Fashion/Clothing",
+    value: "Fashion/Clothing",
+    reviewNote: "Fashion listings need size, condition, and branded-item disclosure.",
+    fields: [
+      { name: "clothingType", label: "Clothing type", required: true },
+      { name: "size", label: "Size", required: true },
+      { name: "color", label: "Color" },
+      { name: "genderFit", label: "Gender fit/unisex" },
+      { name: "brandDisclosure", label: "Original/replica disclosure", placeholder: "Original / Replica / Not branded" },
+    ],
+  },
+  {
+    label: "Shoes/Bags",
+    value: "Shoes/Bags",
+    reviewNote: "Shoes/bags need size and branded-item disclosure when applicable.",
+    fields: [
+      { name: "itemType", label: "Item type", required: true },
+      { name: "brand", label: "Brand" },
+      { name: "size", label: "Size if shoes" },
+      { name: "color", label: "Color" },
+      { name: "brandDisclosure", label: "Original/replica disclosure" },
+    ],
+  },
+  {
+    label: "Furniture/Hostel/Home Items",
+    value: "Furniture/Hostel/Home Items",
+    reviewNote: "Furniture needs dimensions and transport notes so riders can plan properly.",
+    fields: [
+      { name: "itemType", label: "Item type", required: true },
+      { name: "dimensions", label: "Dimensions", placeholder: "4ft x 2ft" },
+      { name: "material", label: "Material" },
+      { name: "transportNote", label: "Delivery/transport note", type: "textarea" },
+    ],
+  },
+  {
+    label: "Books/Academic Items",
+    value: "Books/Academic Items",
+    reviewNote: "Academic items need edition/course relevance and missing-page disclosure.",
+    fields: [
+      { name: "title", label: "Title", required: true },
+      { name: "author", label: "Author" },
+      { name: "edition", label: "Edition" },
+      { name: "courseRelevance", label: "Subject/course relevance" },
+      { name: "missingPagesMarks", label: "Missing pages/marks", type: "textarea" },
+    ],
+  },
+  {
+    label: "Beauty/Personal Care Items",
+    value: "Beauty/Personal Care Items",
+    reviewNote: "Only safe, hygienic, clearly disclosed beauty/personal care items should be listed.",
+    fields: [
+      { name: "itemType", label: "Item type", required: true },
+      { name: "sealedStatus", label: "New/sealed/opened", required: true },
+      { name: "expiryDate", label: "Expiry date", type: "date" },
+      { name: "hygieneCondition", label: "Hygiene condition", required: true },
+      { name: "brand", label: "Brand" },
+    ],
+  },
+  {
+    label: "Sports/Gym Items",
+    value: "Sports/Gym Items",
+    reviewNote: "Sports/gym items need size/weight and condition details.",
+    fields: [
+      { name: "itemType", label: "Item type", required: true },
+      { name: "brand", label: "Brand" },
+      { name: "sizeWeight", label: "Size/weight" },
+    ],
+  },
+  {
+    label: "Musical Instruments",
+    value: "Musical Instruments",
+    reviewNote: "Musical instruments need model, accessories, and condition details.",
+    fields: [
+      { name: "instrumentType", label: "Instrument type", required: true },
+      { name: "brand", label: "Brand" },
+      { name: "model", label: "Model" },
+      { name: "accessories", label: "Accessories included" },
+    ],
+  },
+  {
+    label: "Other Items",
+    value: "Other Items",
+    reviewNote: "Other items still require clear defects, reason for selling, and original photos.",
+    fields: [
+      { name: "itemType", label: "Item type", required: true },
+      { name: "extraDetails", label: "Extra details", type: "textarea" },
+    ],
+  },
+];
+
 function revokePreview(preview: string) {
   if (preview.startsWith("blob:")) URL.revokeObjectURL(preview);
 }
@@ -35,6 +204,7 @@ function SubmitUsedProduct() {
   const previewsRef = useRef<string[]>([]);
   const [faceVerified, setFaceVerified] = useState(false);
   const [faceReference, setFaceReference] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("");
   const [ownershipProof, setOwnershipProof] = useState<File | null>(null);
   const [receipt, setReceipt] = useState<File | null>(null);
   const [createdListing, setCreatedListing] = useState<UsedListing | null>(null);
@@ -121,6 +291,16 @@ function SubmitUsedProduct() {
       form.delete("ownershipProof");
       form.delete("receipt");
 
+      const metadata: Record<string, string> = {};
+      for (const [key, value] of form.entries()) {
+        if (!key.startsWith("metadata.")) continue;
+        const metadataKey = key.replace(/^metadata\./, "");
+        metadata[metadataKey] = String(value || "").trim();
+      }
+
+      form.set("categoryMetadata", JSON.stringify(metadata));
+      form.set("campus", String(form.get("areaLocation") || "General"));
+
       imageFiles.forEach((file) => form.append("images", file));
       if (ownershipProof) form.append("ownershipProof", ownershipProof);
       if (receipt) form.append("receipt", receipt);
@@ -141,6 +321,7 @@ function SubmitUsedProduct() {
       setImageFiles([]);
       setOwnershipProof(null);
       setReceipt(null);
+      setSelectedCategory("");
 
       const updatedTrust = await getUsedMarketTrustStatus();
       setTrust(updatedTrust);
@@ -154,6 +335,10 @@ function SubmitUsedProduct() {
       setIsSubmitting(false);
     }
   }
+
+  const selectedCategoryConfig = USED_CATEGORY_CONFIGS.find(
+    (category) => category.value === selectedCategory,
+  );
 
   function handleLocalFaceCheck() {
     setFaceVerified(true);
@@ -236,16 +421,21 @@ function SubmitUsedProduct() {
                 <input name="trustPhone" defaultValue={trust?.trustProfile?.phone || user?.phone || ""} required />
               </label>
               <label>
-                Campus
-                <input name="trustCampus" defaultValue={trust?.trustProfile?.campus || user?.campus || ""} required />
+                Area / location
+                <input
+                  name="areaLocation"
+                  defaultValue={trust?.trustProfile?.areaLocation || trust?.trustProfile?.campus || user?.campus || ""}
+                  placeholder="Ugbomro, Effurun, Abraka, FUPRE area..."
+                  required
+                />
               </label>
               <label>
-                Department
-                <input name="department" defaultValue={trust?.trustProfile?.department || ""} placeholder="Chemical Engineering" />
-              </label>
-              <label>
-                Level
-                <input name="level" defaultValue={trust?.trustProfile?.level || ""} placeholder="400L" />
+                Pickup preference
+                <input
+                  name="pickupPreference"
+                  defaultValue={trust?.trustProfile?.pickupPreference || ""}
+                  placeholder="Meetup, rider pickup, safe pickup point..."
+                />
               </label>
             </div>
 
@@ -312,7 +502,19 @@ function SubmitUsedProduct() {
               </label>
               <label>
                 Category
-                <input name="category" placeholder="Phones, Laptops, Books..." required />
+                <select
+                  name="category"
+                  required
+                  value={selectedCategory}
+                  onChange={(event) => setSelectedCategory(event.target.value)}
+                >
+                  <option value="" disabled>Select category</option>
+                  {USED_CATEGORY_CONFIGS.map((category) => (
+                    <option value={category.value} key={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Price (₦)
@@ -330,12 +532,17 @@ function SubmitUsedProduct() {
                 </select>
               </label>
               <label>
-                Campus
-                <input name="campus" defaultValue={user?.campus || ""} required />
+                Area / location
+                <input
+                  name="areaLocation"
+                  defaultValue={trust?.trustProfile?.areaLocation || user?.campus || ""}
+                  placeholder="Where the item is located"
+                  required
+                />
               </label>
               <label>
                 Pickup location
-                <input name="pickupLocation" placeholder="Hostel area, campus gate, department..." required />
+                <input name="pickupLocation" placeholder="Safe pickup point, shop, estate, landmark..." required />
               </label>
               <label>
                 Delivery option
@@ -350,6 +557,38 @@ function SubmitUsedProduct() {
                 <input name="serialNumber" placeholder="Optional but recommended for gadgets" />
               </label>
             </div>
+
+            {selectedCategoryConfig && (
+              <div className="secure-category-panel">
+                <div className={selectedCategoryConfig.highRisk ? "secure-used-alert warning" : "secure-used-note"}>
+                  <FiInfo />
+                  <p>{selectedCategoryConfig.reviewNote}</p>
+                </div>
+
+                <div className="secure-form-grid two">
+                  {selectedCategoryConfig.fields.map((field) => (
+                    <label key={field.name}>
+                      {field.label}
+                      {field.type === "textarea" ? (
+                        <textarea
+                          name={`metadata.${field.name}`}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                          rows={3}
+                        />
+                      ) : (
+                        <input
+                          name={`metadata.${field.name}`}
+                          type={field.type || "text"}
+                          placeholder={field.placeholder}
+                          required={field.required}
+                        />
+                      )}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <label>
               Description

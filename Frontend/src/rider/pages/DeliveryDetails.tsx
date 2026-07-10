@@ -33,7 +33,7 @@ export default function DeliveryDetails() {
   if (!order) return <Navigate to="/rider/active" replace />;
   if (!unlockedOrderIds.includes(order.id)) return <Navigate to={`/rider/verify/${order.assignmentId}`} replace />;
 
-  const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_cash';
+  const isPaid = order.paymentStatus === 'paid';
 
   async function handleComplete(event: FormEvent) {
     event.preventDefault();

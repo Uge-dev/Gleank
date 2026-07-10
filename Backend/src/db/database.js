@@ -802,6 +802,11 @@ ensureColumn("used_listings", "confirmation_text", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("used_listings", "review_note", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("used_listings", "trust_profile_id", "TEXT");
 ensureColumn("used_listings", "payout_account_id", "TEXT");
+ensureColumn("used_listings", "area_location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("used_listings", "category_metadata", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("used_listings", "risk_level", "TEXT NOT NULL DEFAULT 'standard'");
+ensureColumn("used_listings", "review_required", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_listings", "seller_verification_level", "INTEGER NOT NULL DEFAULT 1");
 
 
 ensureColumn("users", "email_verified", "INTEGER NOT NULL DEFAULT 0");
@@ -821,6 +826,40 @@ ensureColumn("sessions", "revoked_at", "TEXT");
 ensureColumn("stores", "verification_status", "TEXT NOT NULL DEFAULT 'draft'");
 ensureColumn("stores", "verification_note", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("stores", "verified_at", "TEXT");
+ensureColumn("stores", "seller_type", "TEXT NOT NULL DEFAULT 'campus'");
+ensureColumn("stores", "operating_hours", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "whatsapp_phone", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "allow_rider_whatsapp_contact", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("stores", "location_area", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "pickup_location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "nearest_landmark", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "market_id", "TEXT");
+ensureColumn("stores", "shop_stall_number", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "shop_section", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("stores", "pickup_lat", "REAL");
+ensureColumn("stores", "pickup_lng", "REAL");
+
+ensureColumn("seller_market_profiles", "shop_section", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_market_profiles", "market_landmark", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_market_profiles", "pickup_point", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_market_profiles", "shop_photo_url", "TEXT");
+
+ensureColumn("seller_verification_profiles", "seller_type", "TEXT NOT NULL DEFAULT 'campus'");
+ensureColumn("seller_verification_profiles", "location_area", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "pickup_location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "nearest_landmark", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "market_id", "TEXT");
+ensureColumn("seller_verification_profiles", "market_request_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("seller_verification_profiles", "shop_stall_number", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "shop_section", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "whatsapp_phone", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("seller_verification_profiles", "allow_rider_whatsapp_contact", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("seller_verification_profiles", "operating_hours", "TEXT NOT NULL DEFAULT ''");
+
+ensureColumn("user_trust_profiles", "area_location", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "pickup_preference", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("user_trust_profiles", "seller_type", "TEXT NOT NULL DEFAULT 'used_market'");
+ensureColumn("user_trust_profiles", "verification_level", "INTEGER NOT NULL DEFAULT 1");
 
 ensureColumn("products", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("products", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");

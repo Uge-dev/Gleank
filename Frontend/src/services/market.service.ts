@@ -86,6 +86,9 @@ export type MarketStore = SearchStore & {
     marketId: string;
     stallNumber: string;
     addressNote: string;
+    shopSection?: string;
+    marketLandmark?: string;
+    pickupPoint?: string;
     status: string;
     createdAt: string;
     updatedAt: string;

@@ -1,4 +1,4 @@
-import { FiCheckCircle, FiClock, FiCreditCard, FiPackage, FiShield, FiTruck } from 'react-icons/fi';
+import { FiCheckCircle, FiCreditCard, FiPackage, FiShield, FiTruck } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import { useRiderData } from '../context/RiderDataContext';
 import { formatCurrency } from '../utils/format';
@@ -26,7 +26,7 @@ export default function Dashboard() {
         <StatCard label="Active Deliveries" value={activeDeliveries.length} icon={FiTruck} tone="green" />
         <StatCard label="Completed" value={completed.length} icon={FiCheckCircle} tone="dark" />
         <StatCard label="Today's Earnings" value={formatCurrency(earnings.today)} icon={FiCreditCard} tone="orange" />
-        <StatCard label="Cash to Reconcile" value={formatCurrency(earnings.cashCollected)} icon={FiClock} tone="purple" />
+        <StatCard label="Platform Payout Pending" value={formatCurrency(earnings.riderPayoutPending)} icon={FiCreditCard} tone="purple" />
         <StatCard label="High Risk Tasks" value={highRisk} icon={FiShield} tone="dark" />
       </div>
 

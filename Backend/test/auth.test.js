@@ -203,9 +203,9 @@ test("seller can register and load workspace", async () => {
 
   const usedListingResponse = await agent
     .post("/api/used-market")
-    .field("name", "Used Test Laptop")
-    .field("category", "Laptops")
-    .field("description", "A clean test laptop with charger and no hidden faults.")
+    .field("name", "Used Test Desk Chair")
+    .field("category", "Furniture")
+    .field("description", "A clean test chair with no hidden faults.")
     .field("condition", "Very Good")
     .field("price", "180000")
     .field("campus", "FUPRE")
@@ -240,13 +240,13 @@ test("seller can register and load workspace", async () => {
 
   const usedMarketResponse = await request(app)
     .get("/api/used-market")
-    .query({ q: "Test Laptop" });
+    .query({ q: "Test Chair" });
   assert.equal(usedMarketResponse.status, 200);
   assert.equal(usedMarketResponse.body.listings.length, 1);
 
   const globalUsedSearchResponse = await request(app)
     .get("/api/stores")
-    .query({ q: "Test Laptop" });
+    .query({ q: "Test Chair" });
   assert.equal(globalUsedSearchResponse.status, 200);
   assert.equal(globalUsedSearchResponse.body.usedListings.length, 1);
 

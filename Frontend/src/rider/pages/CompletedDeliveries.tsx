@@ -31,7 +31,7 @@ export default function CompletedDeliveries() {
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Payment Method</p>
-                  <p className="mt-2 text-sm font-bold text-slate-800">{order.paymentMethod === 'cash' ? 'Cash' : order.paymentMethod === 'paid_online' ? 'Paid Online' : 'Pay on Delivery'}</p>
+                  <p className="mt-2 text-sm font-bold text-slate-800">{order.paymentMethod === 'paid_online' ? 'Pay Now' : 'Pay at Delivery via Gleenc'}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Amount</p>

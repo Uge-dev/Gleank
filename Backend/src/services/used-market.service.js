@@ -38,6 +38,17 @@ function parseImages(value) {
   }
 }
 
+function parseObject(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
 }
@@ -47,6 +58,47 @@ function computePlatformPrice(price) {
   const platformFeeKobo = Math.round((sellerPriceKobo * env.platformFeePercent) / 100);
   const buyerPriceKobo = sellerPriceKobo + platformFeeKobo;
   return { sellerPriceKobo, platformFeeKobo, buyerPriceKobo };
+}
+
+const HIGH_RISK_CATEGORY_MATCHERS = [
+  "phone",
+  "tablet",
+  "laptop",
+  "computer",
+  "electronics",
+  "appliance",
+  "branded",
+];
+
+function categoryMetadataFromInput(input = {}) {
+  const explicit = parseObject(input.categoryMetadata || input.category_metadata || input.metadataJson);
+  const metadata = { ...explicit };
+
+  for (const [key, value] of Object.entries(input)) {
+    if (!key.startsWith("metadata.")) continue;
+    const metadataKey = key.replace(/^metadata\./, "");
+    metadata[metadataKey] = clean(value, 500);
+  }
+
+  return Object.fromEntries(
+    Object.entries(metadata)
+      .map(([key, value]) => [key, clean(value, 500)])
+      .filter(([, value]) => value),
+  );
+}
+
+function riskProfile(input, metadata) {
+  const category = clean(input.category, 80).toLowerCase();
+  const highRiskCategory = HIGH_RISK_CATEGORY_MATCHERS.some((item) => category.includes(item));
+  const highValue = Number(input.price || 0) >= 250_000;
+  const hasSerialOrProofHint = Boolean(clean(input.serialNumber, 120) || metadata.imei || metadata.serialNumber);
+  const reviewRequired = highRiskCategory || highValue;
+
+  return {
+    riskLevel: reviewRequired ? "high_value_review" : "standard",
+    reviewRequired,
+    verificationLevel: reviewRequired || hasSerialOrProofHint ? 2 : 1,
+  };
 }
 
 function serializeUsedListing(row, includePrivate = false) {
@@ -71,6 +123,7 @@ function serializeUsedListing(row, includePrivate = false) {
     priceKobo: row.buyer_price_kobo > 0 ? row.buyer_price_kobo : row.price_kobo,
     price: toPrice(row.buyer_price_kobo > 0 ? row.buyer_price_kobo : row.price_kobo),
     campus: row.campus,
+    areaLocation: row.area_location || row.campus,
     pickupLocation: row.pickup_location,
     deliveryOption: row.delivery_option,
     imageUrls: parseImages(row.image_urls),
@@ -85,6 +138,10 @@ function serializeUsedListing(row, includePrivate = false) {
     defectsDisclosed: row.defects_disclosed || "",
     confirmationText: includePrivate ? row.confirmation_text || "" : "",
     reviewNote: includePrivate ? row.review_note || "" : "",
+    categoryMetadata: parseObject(row.category_metadata),
+    riskLevel: row.risk_level || "standard",
+    reviewRequired: Boolean(row.review_required),
+    sellerVerificationLevel: Number(row.seller_verification_level || 1),
     sellerTrust: {
       profileCompleted: trustComplete,
       identityProofSubmitted: Boolean(row.trust_face_verified),
@@ -188,19 +245,25 @@ export function createUsedListing(userId, input, files) {
   }
 
   const price = computePlatformPrice(input.price);
-  const status = env.autoApproveUsedListings ? "active" : "pending";
+  const metadata = categoryMetadataFromInput(input);
+  const risk = riskProfile(input, metadata);
+  const status = env.autoApproveUsedListings && !risk.reviewRequired ? "active" : "pending";
   const reviewNote = status === "pending"
-    ? "Your listing is in Gleenc review. Buyers cannot see it until it is approved."
+    ? risk.reviewRequired
+      ? "This category/value requires stronger Gleenc review before it becomes public."
+      : "Your listing is in Gleenc review. Buyers cannot see it until it is approved."
     : "Auto-approved for local development.";
 
   db.prepare(`
     INSERT INTO used_listings (
       id, seller_id, name, category, description, condition, price_kobo,
-      seller_price_kobo, platform_fee_kobo, buyer_price_kobo, campus, pickup_location, delivery_option, serial_number, image_urls,
+      seller_price_kobo, platform_fee_kobo, buyer_price_kobo, campus, area_location,
+      pickup_location, delivery_option, serial_number, image_urls,
       ownership_proof_url, receipt_url, status, reason_for_selling,
       defects_disclosed, confirmation_text, review_note, trust_profile_id,
-      payout_account_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      payout_account_id, category_metadata, risk_level, review_required,
+      seller_verification_level, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     userId,
@@ -212,7 +275,8 @@ export function createUsedListing(userId, input, files) {
     price.sellerPriceKobo,
     price.platformFeeKobo,
     price.buyerPriceKobo,
-    clean(input.campus, 80),
+    clean(input.campus || input.areaLocation || "General", 80),
+    clean(input.areaLocation || input.locationArea || input.campus || "", 160),
     clean(input.pickupLocation, 160),
     clean(input.deliveryOption, 30),
     clean(input.serialNumber, 120),
@@ -226,6 +290,10 @@ export function createUsedListing(userId, input, files) {
     reviewNote,
     trustProfile?.id || trust.trustProfile?.id || null,
     payoutAccount?.id || trust.payoutAccount?.id || null,
+    JSON.stringify(metadata),
+    risk.riskLevel,
+    risk.reviewRequired ? 1 : 0,
+    risk.verificationLevel,
     now,
     now,
   );

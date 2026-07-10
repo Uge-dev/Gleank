@@ -67,6 +67,7 @@ import "./AdminDashboard.css";
 type AdminTab =
   | "overview"
   | "users"
+  | "buyers"
   | "sellers"
   | "products"
   | "usedMarket"
@@ -91,6 +92,7 @@ type TableColumn<T> = {
 const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: string }[] = [
   { id: "overview", label: "Overview", icon: <FaChartLine />, description: "Platform summary" },
   { id: "users", label: "Users", icon: <FaUsers />, description: "Buyer accounts" },
+  { id: "buyers", label: "Buyers", icon: <FaUserShield />, description: "Buyer locations" },
   { id: "sellers", label: "Sellers", icon: <FaStore />, description: "Store approvals" },
   { id: "products", label: "Products", icon: <FaBoxOpen />, description: "Seller listings" },
   { id: "usedMarket", label: "Used Market", icon: <FaShoppingBag />, description: "Used-item approvals" },
@@ -478,6 +480,8 @@ function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
+  const [buyerFilter, setBuyerFilter] = useState("all");
+  const [riderFilter, setRiderFilter] = useState("all");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [riders, setRiders] = useState<AdminRider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -539,6 +543,41 @@ function AdminDashboard() {
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
+  const buyerRows = useMemo(() => {
+    const buyers = data.users.filter((user) => user.role === "user");
+
+    if (buyerFilter === "active_orders") return buyers.filter((buyer) => buyer.orders > 0);
+    if (buyerFilter === "used_market") return buyers.filter((buyer) => buyer.usedUploads > 0);
+    if (buyerFilter === "payout_ready") return buyers.filter((buyer) => buyer.payoutReady);
+    if (buyerFilter === "flagged") return buyers.filter((buyer) => buyer.status !== "active");
+    if (buyerFilter !== "all") {
+      return buyers.filter((buyer) => buyer.campus.toLowerCase() === buyerFilter.toLowerCase());
+    }
+
+    return buyers;
+  }, [buyerFilter, data.users]);
+  const riderRows = useMemo(() => {
+    if (riderFilter === "online") return riders.filter((rider) => rider.availability === "online");
+    if (riderFilter === "offline") return riders.filter((rider) => rider.availability === "offline");
+    if (riderFilter === "busy") return riders.filter((rider) => rider.availability === "busy");
+    if (riderFilter === "pending") return riders.filter((rider) => rider.verificationStatus !== "verified");
+    if (riderFilter === "suspended") {
+      return riders.filter((rider) => rider.verificationStatus === "suspended" || rider.safetyStatus === "suspended");
+    }
+    if (riderFilter !== "all") {
+      return riders.filter((rider) => rider.coverageArea.toLowerCase().includes(riderFilter.toLowerCase()));
+    }
+
+    return riders;
+  }, [riderFilter, riders]);
+  const buyerLocations = useMemo(
+    () => Array.from(new Set(data.users.filter((user) => user.role === "user" && user.campus).map((user) => user.campus))).slice(0, 12),
+    [data.users],
+  );
+  const riderLocations = useMemo(
+    () => Array.from(new Set(riders.filter((rider) => rider.coverageArea).map((rider) => rider.coverageArea))).slice(0, 12),
+    [riders],
+  );
   const supportRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return data.supportConversations;
@@ -881,6 +920,68 @@ function AdminDashboard() {
             />
           ) : null}
 
+          {activeTab === "buyers" ? (
+            <section className="admin-filtered-table">
+              <div className="admin-filter-row" aria-label="Buyer filters">
+                {[
+                  ["all", "All buyers"],
+                  ["active_orders", "With orders"],
+                  ["used_market", "Used Market sellers"],
+                  ["payout_ready", "Payout ready"],
+                  ["flagged", "Flagged"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={buyerFilter === value ? "active" : ""}
+                    onClick={() => setBuyerFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+                {buyerLocations.map((location) => (
+                  <button
+                    key={location}
+                    type="button"
+                    className={buyerFilter === location ? "active" : ""}
+                    onClick={() => setBuyerFilter(location)}
+                  >
+                    {location}
+                  </button>
+                ))}
+              </div>
+
+              <DataTable<AdminUser>
+                title="Buyer Management"
+                subtitle="Monitor buyers by general campus/area, order count, used-market activity, dispute risk and account status. Exact addresses stay inside relevant orders, delivery, dispute or support context only."
+                rows={buyerRows}
+                search={search}
+                onView={(buyer) => openRecord(buyer.name, buyer)}
+                columns={[
+                  { label: "Buyer", render: (buyer) => buyer.name },
+                  { label: "Email", render: (buyer) => buyer.email },
+                  { label: "Phone", render: (buyer) => buyer.phone },
+                  { label: "General location", render: (buyer) => buyer.campus || "Not set" },
+                  { label: "Order count", render: (buyer) => buyer.orders },
+                  { label: "Saved", render: (buyer) => buyer.savedItems },
+                  { label: "Used uploads", render: (buyer) => buyer.usedUploads },
+                  { label: "Profile", render: (buyer) => <StatusBadge status={buyer.profileComplete ? "completed" : "pending"} /> },
+                  { label: "Status", render: (buyer) => <StatusBadge status={buyer.status} /> },
+                  { label: "Joined", render: (buyer) => buyer.joined },
+                ]}
+                actions={(buyer) => (
+                  <>
+                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} buyer profile`, { ...buyer, addressPrivacy: "Exact buyer addresses are only visible in order, delivery, dispute, or support context." })}>Details</ActionButton>
+                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} orders`, { buyer: buyer.name, orderCount: buyer.orders })}>Orders</ActionButton>
+                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} risk`, { buyer: buyer.name, status: buyer.status, profileComplete: buyer.profileComplete, usedUploads: buyer.usedUploads })}>Risk</ActionButton>
+                    <ActionButton tone="success" onClick={() => changeStatus("users", buyer.id, "active")}>Activate</ActionButton>
+                    <ActionButton tone="danger" onClick={() => changeStatus("users", buyer.id, "suspended")}>Suspend</ActionButton>
+                  </>
+                )}
+              />
+            </section>
+          ) : null}
+
           {activeTab === "sellers" ? (
             <DataTable<AdminSeller>
               title="Seller Management"
@@ -1099,60 +1200,93 @@ function AdminDashboard() {
           ) : null}
 
           {activeTab === "riders" ? (
-            <DataTable<AdminRider>
-              title="Rider Management"
-              subtitle="Review rider accounts, email/phone readiness, vehicle details, safety status, and admin verification before riders can handle deliveries."
-              rows={riders}
-              search={search}
-              onView={(rider) => openRecord(rider.fullName || rider.name, rider as unknown as Record<string, unknown>)}
-              columns={[
-                { label: "Rider", render: (rider) => rider.fullName || rider.name },
-                { label: "Email", render: (rider) => rider.email },
-                { label: "Email verified", render: (rider) => <StatusBadge status={rider.emailVerified ? "verified" : "pending"} /> },
-                { label: "Phone", render: (rider) => rider.phone },
-                { label: "Phone verified", render: (rider) => <StatusBadge status={rider.phoneVerified ? "verified" : "pending"} /> },
-                { label: "Vehicle", render: (rider) => rider.vehiclePlate ? `${rider.vehicleType} · ${rider.vehiclePlate}` : rider.vehicleType || "Not added" },
-                { label: "Coverage", render: (rider) => rider.coverageArea || "Not set" },
-                { label: "Verification", render: (rider) => <StatusBadge status={rider.verificationStatus} /> },
-                { label: "Safety", render: (rider) => <StatusBadge status={rider.safetyStatus} /> },
-                { label: "Availability", render: (rider) => <StatusBadge status={rider.availability} /> },
-                { label: "Completed", render: (rider) => rider.completedDeliveries },
-              ]}
-              actions={(rider) => (
-                <>
-                  <ActionButton
-                    tone="soft"
-                    onClick={() => openRecord(`${rider.fullName || rider.name} details`, rider as unknown as Record<string, unknown>)}
+            <section className="admin-filtered-table">
+              <div className="admin-filter-row" aria-label="Rider filters">
+                {[
+                  ["all", "All riders"],
+                  ["online", "Online"],
+                  ["offline", "Offline"],
+                  ["busy", "Busy"],
+                  ["pending", "Verification pending"],
+                  ["suspended", "Suspended"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={riderFilter === value ? "active" : ""}
+                    onClick={() => setRiderFilter(value)}
                   >
-                    Details
-                  </ActionButton>
-                  <ActionButton
-                    tone="success"
-                    onClick={() => changeRiderVerification(rider, "verified", "Admin verified rider profile. Rider may receive delivery assignments.", "normal")}
+                    {label}
+                  </button>
+                ))}
+                {riderLocations.map((location) => (
+                  <button
+                    key={location}
+                    type="button"
+                    className={riderFilter === location ? "active" : ""}
+                    onClick={() => setRiderFilter(location)}
                   >
-                    Verify
-                  </ActionButton>
-                  <ActionButton
-                    tone="soft"
-                    onClick={() => changeRiderVerification(rider, "pending_review", "Admin needs more rider profile details before approval.", "flagged")}
-                  >
-                    Needs Info
-                  </ActionButton>
-                  <ActionButton
-                    tone="danger"
-                    onClick={() => changeRiderVerification(rider, "rejected", "Rider profile was rejected by admin review.", "flagged")}
-                  >
-                    Reject
-                  </ActionButton>
-                  <ActionButton
-                    tone="danger"
-                    onClick={() => changeRiderVerification(rider, "suspended", "Rider account suspended by admin.", "suspended")}
-                  >
-                    Suspend
-                  </ActionButton>
-                </>
-              )}
-            />
+                    {location}
+                  </button>
+                ))}
+              </div>
+
+              <DataTable<AdminRider>
+                title="Rider Management"
+                subtitle="Review rider accounts by location/coverage, online status, verification, safety state and delivery history before riders can handle assignments."
+                rows={riderRows}
+                search={search}
+                onView={(rider) => openRecord(rider.fullName || rider.name, rider as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Rider", render: (rider) => rider.fullName || rider.name },
+                  { label: "Email", render: (rider) => rider.email },
+                  { label: "Email verified", render: (rider) => <StatusBadge status={rider.emailVerified ? "verified" : "pending"} /> },
+                  { label: "Phone", render: (rider) => rider.phone },
+                  { label: "Phone verified", render: (rider) => <StatusBadge status={rider.phoneVerified ? "verified" : "pending"} /> },
+                  { label: "Vehicle", render: (rider) => rider.vehiclePlate ? `${rider.vehicleType} · ${rider.vehiclePlate}` : rider.vehicleType || "Not added" },
+                  { label: "Coverage/location", render: (rider) => rider.coverageArea || rider.homeAddress || "Not set" },
+                  { label: "Verification", render: (rider) => <StatusBadge status={rider.verificationStatus} /> },
+                  { label: "Safety", render: (rider) => <StatusBadge status={rider.safetyStatus} /> },
+                  { label: "Availability", render: (rider) => <StatusBadge status={rider.availability} /> },
+                  { label: "Completed", render: (rider) => rider.completedDeliveries },
+                  { label: "Last updated", render: (rider) => rider.updatedAt ? formatAdminTime(rider.updatedAt) : "Not available" },
+                ]}
+                actions={(rider) => (
+                  <>
+                    <ActionButton
+                      tone="soft"
+                      onClick={() => openRecord(`${rider.fullName || rider.name} details`, rider as unknown as Record<string, unknown>)}
+                    >
+                      Details
+                    </ActionButton>
+                    <ActionButton
+                      tone="success"
+                      onClick={() => changeRiderVerification(rider, "verified", "Admin verified rider profile. Rider may receive delivery assignments.", "normal")}
+                    >
+                      Verify
+                    </ActionButton>
+                    <ActionButton
+                      tone="soft"
+                      onClick={() => changeRiderVerification(rider, "pending_review", "Admin needs more rider profile details before approval.", "flagged")}
+                    >
+                      Needs Info
+                    </ActionButton>
+                    <ActionButton
+                      tone="danger"
+                      onClick={() => changeRiderVerification(rider, "rejected", "Rider profile was rejected by admin review.", "flagged")}
+                    >
+                      Reject
+                    </ActionButton>
+                    <ActionButton
+                      tone="danger"
+                      onClick={() => changeRiderVerification(rider, "suspended", "Rider account suspended by admin.", "suspended")}
+                    >
+                      Suspend
+                    </ActionButton>
+                  </>
+                )}
+              />
+            </section>
           ) : null}
 
           {activeTab === "disputes" ? (

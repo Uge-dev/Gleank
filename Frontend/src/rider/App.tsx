@@ -17,7 +17,6 @@ import Profile from './pages/Profile';
 import Settings from './pages/Settings';
 import VerificationCenter from './pages/VerificationCenter';
 import SafetyCenter from './pages/SafetyCenter';
-import CashReconciliation from './pages/CashReconciliation';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
@@ -52,7 +51,6 @@ export default function App() {
           <Route path="notifications" element={<Notifications />} />
           <Route path="verification" element={<VerificationCenter />} />
           <Route path="safety" element={<SafetyCenter />} />
-          <Route path="cash-reconciliation" element={<CashReconciliation />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings />} />
         </Route>

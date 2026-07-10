@@ -26,6 +26,10 @@ export function serializeTrustProfile(row) {
     fullName: row.full_name,
     phone: row.phone,
     campus: row.campus,
+    areaLocation: row.area_location || row.campus || "",
+    pickupPreference: row.pickup_preference || "",
+    sellerType: row.seller_type || "used_market",
+    verificationLevel: Number(row.verification_level || 1),
     department: row.department,
     level: row.level,
     studentId: row.student_id,
@@ -38,7 +42,7 @@ export function serializeTrustProfile(row) {
     isComplete: Boolean(
       row.full_name &&
         row.phone &&
-        row.campus &&
+        (row.area_location || row.campus) &&
         row.face_verified,
     ),
     createdAt: row.created_at,
@@ -95,9 +99,13 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
   const next = {
     fullName: clean(input.fullName || input.name, 100),
     phone: clean(input.trustPhone || input.phone, 30),
-    campus: clean(input.trustCampus || input.campus, 80),
-    department: clean(input.department, 100),
-    level: clean(input.level, 40),
+    areaLocation: clean(input.areaLocation || input.locationArea || input.trustCampus || input.campus, 120),
+    pickupPreference: clean(input.pickupPreference || input.deliveryOption || "", 120),
+    sellerType: "used_market",
+    verificationLevel: Number(existing?.verification_level || 1),
+    campus: clean(input.trustCampus || input.campus || input.areaLocation || input.locationArea || "General", 80),
+    department: "",
+    level: "",
     studentId: clean(input.studentId, 80),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
     faceVerified:
@@ -116,10 +124,10 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
     ),
   };
 
-  if (!next.fullName || !next.phone || !next.campus) {
+  if (!next.fullName || !next.phone || !next.areaLocation) {
     throw new HttpError(
       422,
-      "Complete your trust profile with full name, phone, and campus before uploading used items.",
+      "Complete your trust profile with full name, phone, and area/location before uploading used items.",
     );
   }
 
@@ -133,7 +141,8 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       SET full_name = ?, phone = ?, campus = ?, department = ?, level = ?,
           student_id = ?, identity_proof_url = ?, face_verified = ?,
           face_provider = ?, face_reference = ?, face_verified_at = ?,
-          status = 'pending', updated_at = ?
+          area_location = ?, pickup_preference = ?, seller_type = ?,
+          verification_level = ?, status = 'pending', updated_at = ?
       WHERE user_id = ?
     `).run(
       next.fullName,
@@ -147,6 +156,10 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       next.faceProvider,
       next.faceReference,
       next.faceVerified ? existing?.face_verified_at || now : null,
+      next.areaLocation,
+      next.pickupPreference,
+      next.sellerType,
+      next.verificationLevel,
       now,
       userId,
     );
@@ -155,8 +168,9 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       INSERT INTO user_trust_profiles (
         id, user_id, full_name, phone, campus, department, level,
         student_id, identity_proof_url, face_verified, face_provider,
-        face_reference, face_verified_at, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        face_reference, face_verified_at, area_location, pickup_preference,
+        seller_type, verification_level, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     `).run(
       createId("trp"),
       userId,
@@ -171,6 +185,10 @@ export function upsertTrustProfile(userId, input, identityProofUrl = null) {
       next.faceProvider,
       next.faceReference,
       next.faceVerified ? now : null,
+      next.areaLocation,
+      next.pickupPreference,
+      next.sellerType,
+      next.verificationLevel,
       now,
       now,
     );

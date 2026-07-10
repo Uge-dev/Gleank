@@ -31,6 +31,18 @@ export type SellerStore = {
   verificationStatus?: "draft" | "pending_verification" | "verified" | "rejected" | "suspended";
   verificationNote?: string;
   verifiedAt?: string | null;
+  sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+  operatingHours?: string;
+  whatsappPhone?: string;
+  allowRiderWhatsAppContact?: boolean;
+  locationArea?: string;
+  pickupLocation?: string;
+  nearestLandmark?: string;
+  marketId?: string | null;
+  shopStallNumber?: string;
+  shopSection?: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -185,6 +197,10 @@ export type UsedMarketTrustProfile = {
   fullName: string;
   phone: string;
   campus: string;
+  areaLocation?: string;
+  pickupPreference?: string;
+  sellerType?: "used_market";
+  verificationLevel?: number;
   department: string;
   level: string;
   studentId: string;
@@ -258,6 +274,7 @@ export type UsedListing = {
   priceKobo: number;
   price: number;
   campus: string;
+  areaLocation?: string;
   pickupLocation: string;
   deliveryOption: "Pickup" | "Delivery" | "Pickup & Delivery";
   imageUrls: string[];
@@ -272,6 +289,10 @@ export type UsedListing = {
   defectsDisclosed?: string;
   confirmationText?: string;
   reviewNote?: string;
+  categoryMetadata?: Record<string, string>;
+  riskLevel?: string;
+  reviewRequired?: boolean;
+  sellerVerificationLevel?: number;
   sellerTrust?: UsedSellerTrust;
 };
 
@@ -492,6 +513,17 @@ export type SellerVerificationProfile = {
   fullName: string;
   phone: string;
   campus: string;
+  sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+  locationArea?: string;
+  pickupLocation?: string;
+  nearestLandmark?: string;
+  marketId?: string | null;
+  marketRequest?: Record<string, string>;
+  shopStallNumber?: string;
+  shopSection?: string;
+  whatsappPhone?: string;
+  allowRiderWhatsAppContact?: boolean;
+  operatingHours?: string;
   studentId: string;
   identityProofUrl: string | null;
   faceVerified: boolean;

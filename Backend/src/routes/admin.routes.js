@@ -18,6 +18,7 @@ import {
   adminListMarketSellers,
   adminUpdateMarket,
   adminUpdateMarketCategories,
+  adminUpdateMarketSellerStatus,
   adminUpdateMarketStatus,
 } from "../services/market.service.js";
 import {
@@ -214,6 +215,21 @@ router.patch("/markets/:marketId/categories", requireAdmin, (req, res) => {
     });
   } catch (error) {
     res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market categories" });
+  }
+});
+
+router.patch("/markets/:marketId/sellers/:profileId/status", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminUpdateMarketSellerStatus(
+        req.params.marketId,
+        req.params.profileId,
+        req.body?.status,
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market seller status" });
   }
 });
 

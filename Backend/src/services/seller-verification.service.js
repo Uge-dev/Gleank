@@ -14,6 +14,39 @@ function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
 }
 
+function booleanFromInput(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  return value === true || value === "true" || value === "on" || value === "1";
+}
+
+function sellerTypeFromInput(value) {
+  const next = clean(value || "campus", 40);
+  return ["used_market", "campus", "local_market", "nearby"].includes(next)
+    ? next
+    : "campus";
+}
+
+function jsonFromMarketRequest(input = {}) {
+  const marketRequest = {
+    marketName: clean(input.marketRequestName || input.requestedMarketName, 120),
+    state: clean(input.marketRequestState, 80),
+    cityArea: clean(input.marketRequestCityArea, 120),
+    addressLandmark: clean(input.marketRequestAddressLandmark, 240),
+    approximateLocation: clean(input.marketRequestApproximateLocation, 240),
+    sells: clean(input.marketRequestSells, 240),
+    shopDetails: clean(input.marketRequestShopDetails, 240),
+    contactPhone: clean(input.marketRequestContactPhone || input.phone, 40),
+  };
+
+  return Object.fromEntries(Object.entries(marketRequest).filter(([, value]) => value));
+}
+
+function numberOrNull(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function uniqueStoreSlug(storeName) {
   const base = slugify(storeName || "gleank-store") || "gleank-store";
   let candidate = base;
@@ -76,6 +109,18 @@ export function ensureSellerStoreForUser(userId, input = {}) {
     campus: clean(input.sellerCampus || input.campus || user.campus, 80),
     category: clean(input.storeCategory || input.category || "General", 80),
     phone: clean(input.sellerPhone || input.phone || user.phone, 30),
+    sellerType: sellerTypeFromInput(input.sellerType),
+    operatingHours: clean(input.operatingHours, 160),
+    whatsappPhone: clean(input.whatsappPhone || input.sellerWhatsapp || input.phone || user.phone, 30),
+    allowRiderWhatsAppContact: booleanFromInput(input.allowRiderWhatsAppContact, true),
+    locationArea: clean(input.locationArea || input.areaLocation || input.campus || user.campus, 160),
+    pickupLocation: clean(input.pickupLocation, 180),
+    nearestLandmark: clean(input.nearestLandmark || input.landmark, 160),
+    marketId: clean(input.marketId, 140) || null,
+    shopStallNumber: clean(input.shopStallNumber || input.stallNumber, 80),
+    shopSection: clean(input.shopSection, 120),
+    pickupLat: numberOrNull(input.pickupLat),
+    pickupLng: numberOrNull(input.pickupLng),
     status: "active",
     verified: false,
     createdAt: now,
@@ -96,6 +141,17 @@ export function serializeSellerVerification(row) {
       fullName: "",
       phone: "",
       campus: "",
+      sellerType: "campus",
+      locationArea: "",
+      pickupLocation: "",
+      nearestLandmark: "",
+      marketId: null,
+      marketRequest: {},
+      shopStallNumber: "",
+      shopSection: "",
+      whatsappPhone: "",
+      allowRiderWhatsAppContact: true,
+      operatingHours: "",
       studentId: "",
       identityProofUrl: null,
       faceVerified: false,
@@ -113,7 +169,9 @@ export function serializeSellerVerification(row) {
   const isComplete = Boolean(
     row.full_name &&
       row.phone &&
-      row.campus &&
+      (row.seller_type !== "campus" || row.campus) &&
+      (row.seller_type !== "local_market" || row.market_id || row.market_request_json) &&
+      (row.seller_type !== "nearby" || row.location_area) &&
       row.face_verified &&
       row.business_description &&
       row.agreement_accepted,
@@ -126,6 +184,23 @@ export function serializeSellerVerification(row) {
     fullName: row.full_name,
     phone: row.phone,
     campus: row.campus,
+    sellerType: row.seller_type || "campus",
+    locationArea: row.location_area || "",
+    pickupLocation: row.pickup_location || "",
+    nearestLandmark: row.nearest_landmark || "",
+    marketId: row.market_id || null,
+    marketRequest: (() => {
+      try {
+        return JSON.parse(row.market_request_json || "{}");
+      } catch {
+        return {};
+      }
+    })(),
+    shopStallNumber: row.shop_stall_number || "",
+    shopSection: row.shop_section || "",
+    whatsappPhone: row.whatsapp_phone || "",
+    allowRiderWhatsAppContact: row.allow_rider_whatsapp_contact !== 0,
+    operatingHours: row.operating_hours || "",
     studentId: row.student_id,
     identityProofUrl: row.identity_proof_url || null,
     faceVerified: Boolean(row.face_verified),
@@ -159,9 +234,22 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     .get(userId);
 
   const next = {
+    sellerType: sellerTypeFromInput(input.sellerType),
+    storeName: clean(input.storeName || input.businessName || store.name, 100),
+    storeCategory: clean(input.storeCategory || input.category || store.category || "General", 80),
     fullName: clean(input.fullName || input.name, 120),
     phone: clean(input.sellerPhone || input.phone, 40),
     campus: clean(input.sellerCampus || input.campus, 100),
+    locationArea: clean(input.locationArea || input.areaLocation || input.campus, 160),
+    pickupLocation: clean(input.pickupLocation, 180),
+    nearestLandmark: clean(input.nearestLandmark || input.landmark, 160),
+    marketId: clean(input.marketId, 140),
+    marketRequest: jsonFromMarketRequest(input),
+    shopStallNumber: clean(input.shopStallNumber || input.stallNumber, 80),
+    shopSection: clean(input.shopSection, 120),
+    whatsappPhone: clean(input.whatsappPhone || input.sellerWhatsapp || input.phone, 40),
+    allowRiderWhatsAppContact: booleanFromInput(input.allowRiderWhatsAppContact, true),
+    operatingHours: clean(input.operatingHours, 160),
     studentId: clean(input.studentId, 100),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
     faceVerified:
@@ -186,8 +274,20 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       input.agreementAccepted === "1",
   };
 
-  if (!next.fullName || !next.phone || !next.campus) {
-    throw new HttpError(422, "Complete seller name, phone, and campus.");
+  if (!next.fullName || !next.phone || !next.sellerType) {
+    throw new HttpError(422, "Complete seller name, phone, and seller type.");
+  }
+
+  if (next.sellerType === "campus" && !next.campus) {
+    throw new HttpError(422, "Campus sellers must select a campus.");
+  }
+
+  if (next.sellerType === "local_market" && !next.marketId && !Object.keys(next.marketRequest).length) {
+    throw new HttpError(422, "Select an approved local market or request market approval.");
+  }
+
+  if ((next.sellerType === "nearby" || next.sellerType === "used_market") && !next.locationArea) {
+    throw new HttpError(422, "Enter your area/location for this seller type.");
   }
 
   if (!next.faceVerified) {
@@ -195,7 +295,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
   }
 
   if (next.businessDescription.length < 20) {
-    throw new HttpError(422, "Describe what your campus store sells in at least 20 characters.");
+    throw new HttpError(422, "Describe what your store sells in at least 20 characters.");
   }
 
   if (!next.agreementAccepted) {
@@ -205,7 +305,8 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
   const now = new Date().toISOString();
   const canSelfVerify =
     env.autoActivateSellerSubscription || hasActiveSellerSubscription(userId);
-  const status = canSelfVerify ? "verified" : "pending_verification";
+  const requiresAdminApproval = ["local_market", "nearby"].includes(next.sellerType);
+  const status = canSelfVerify && !requiresAdminApproval ? "verified" : "pending_verification";
   const verifiedAt = status === "verified" ? now : null;
   const note = status === "verified"
     ? "Seller verification completed after payment, face check, and agreement confirmation."
@@ -215,7 +316,11 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     if (existing) {
       db.prepare(`
         UPDATE seller_verification_profiles
-        SET store_id = ?, full_name = ?, phone = ?, campus = ?, student_id = ?,
+        SET store_id = ?, seller_type = ?, full_name = ?, phone = ?, campus = ?,
+            location_area = ?, pickup_location = ?, nearest_landmark = ?,
+            market_id = ?, market_request_json = ?, shop_stall_number = ?,
+            shop_section = ?, whatsapp_phone = ?, allow_rider_whatsapp_contact = ?,
+            operating_hours = ?, student_id = ?,
             identity_proof_url = ?, face_verified = ?, face_provider = ?,
             face_reference = ?, face_verified_at = ?, business_description = ?,
             agreement_accepted = ?, status = ?, note = ?, submitted_at = ?,
@@ -223,9 +328,20 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         WHERE user_id = ?
       `).run(
         store.id,
+        next.sellerType,
         next.fullName,
         next.phone,
         next.campus,
+        next.locationArea,
+        next.pickupLocation,
+        next.nearestLandmark,
+        next.marketId || null,
+        JSON.stringify(next.marketRequest),
+        next.shopStallNumber,
+        next.shopSection,
+        next.whatsappPhone,
+        next.allowRiderWhatsAppContact ? 1 : 0,
+        next.operatingHours,
         next.studentId,
         next.identityProofUrl,
         next.faceVerified ? 1 : 0,
@@ -244,18 +360,32 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     } else {
       db.prepare(`
         INSERT INTO seller_verification_profiles (
-          id, user_id, store_id, full_name, phone, campus, student_id,
+          id, user_id, store_id, seller_type, full_name, phone, campus,
+          location_area, pickup_location, nearest_landmark, market_id,
+          market_request_json, shop_stall_number, shop_section, whatsapp_phone,
+          allow_rider_whatsapp_contact, operating_hours, student_id,
           identity_proof_url, face_verified, face_provider, face_reference,
           face_verified_at, business_description, agreement_accepted,
           status, note, submitted_at, verified_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         createId("svp"),
         userId,
         store.id,
+        next.sellerType,
         next.fullName,
         next.phone,
         next.campus,
+        next.locationArea,
+        next.pickupLocation,
+        next.nearestLandmark,
+        next.marketId || null,
+        JSON.stringify(next.marketRequest),
+        next.shopStallNumber,
+        next.shopSection,
+        next.whatsappPhone,
+        next.allowRiderWhatsAppContact ? 1 : 0,
+        next.operatingHours,
         next.studentId,
         next.identityProofUrl,
         next.faceVerified ? 1 : 0,
@@ -268,6 +398,65 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         note,
         now,
         verifiedAt,
+        now,
+        now,
+      );
+    }
+
+    db.prepare(`
+      UPDATE stores
+      SET name = ?, description = ?, category = ?, seller_type = ?, campus = ?, location_area = ?, pickup_location = ?,
+          nearest_landmark = ?, market_id = ?, shop_stall_number = ?,
+          shop_section = ?, whatsapp_phone = ?, allow_rider_whatsapp_contact = ?,
+          operating_hours = ?, phone = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      next.storeName,
+      next.businessDescription || store.description || "",
+      next.storeCategory,
+      next.sellerType,
+      next.campus || "",
+      next.locationArea,
+      next.pickupLocation,
+      next.nearestLandmark,
+      next.marketId || null,
+      next.shopStallNumber,
+      next.shopSection,
+      next.whatsappPhone,
+      next.allowRiderWhatsAppContact ? 1 : 0,
+      next.operatingHours,
+      next.phone,
+      now,
+      store.id,
+    );
+
+    if (next.sellerType === "local_market" && next.marketId) {
+      db.prepare(`
+        INSERT INTO seller_market_profiles (
+          id, market_id, store_id, stall_number, address_note, shop_section,
+          market_landmark, pickup_point, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        ON CONFLICT(store_id) DO UPDATE SET
+          market_id = excluded.market_id,
+          stall_number = excluded.stall_number,
+          address_note = excluded.address_note,
+          shop_section = excluded.shop_section,
+          market_landmark = excluded.market_landmark,
+          pickup_point = excluded.pickup_point,
+          status = CASE
+            WHEN seller_market_profiles.status = 'approved' THEN 'approved'
+            ELSE 'pending'
+          END,
+          updated_at = excluded.updated_at
+      `).run(
+        createId("smp"),
+        next.marketId,
+        store.id,
+        next.shopStallNumber,
+        next.locationArea || next.pickupLocation,
+        next.shopSection,
+        next.nearestLandmark,
+        next.pickupLocation,
         now,
         now,
       );

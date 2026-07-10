@@ -1,17 +1,15 @@
 import { useEffect, useState } from 'react';
-import { FiCheckCircle, FiCreditCard, FiLink, FiRefreshCw } from 'react-icons/fi';
+import { FiCreditCard, FiLink, FiRefreshCw } from 'react-icons/fi';
 import type { FullDeliveryOrder } from '../../types';
 import { formatCurrency } from '../../utils/format';
 import { paymentStatusLabel } from '../../utils/status';
 import { useRiderData } from '../../context/RiderDataContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
-import Modal from '../ui/Modal';
 import StatusBadge from '../ui/StatusBadge';
 
 export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
-  const { generatePayment, confirmOnlinePayment, markCashReceived } = useRiderData();
-  const [cashModal, setCashModal] = useState(false);
+  const { generatePayment, confirmOnlinePayment } = useRiderData();
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [paymentData, setPaymentData] = useState<{ paymentLink: string; reference: string } | null>(
     order.paymentLink && order.paymentReference ? { paymentLink: order.paymentLink, reference: order.paymentReference } : null
@@ -31,7 +29,7 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
     }, 2600);
   }
 
-  const isPaid = order.paymentStatus === 'paid' || order.paymentStatus === 'paid_cash';
+  const isPaid = order.paymentStatus === 'paid';
 
   return (
     <Card className="p-5">
@@ -46,7 +44,7 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Method</p>
-          <p className="mt-2 font-extrabold text-slate-950">{order.paymentMethod === 'paid_online' ? 'Paid Online' : order.paymentMethod === 'cash' ? 'Cash' : 'Pay on Delivery'}</p>
+          <p className="mt-2 font-extrabold text-slate-950">{order.paymentMethod === 'paid_online' ? 'Pay Now' : 'Pay at Delivery'}</p>
         </div>
         <div className="rounded-2xl bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Amount</p>
@@ -61,12 +59,11 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
       {!isPaid && (
         <div className="mt-5 rounded-[1.3rem] border border-rose-100 bg-rose-50 p-4">
           <p className="font-bold text-rose-700">Outstanding Amount: {formatCurrency(order.totalAmount)}</p>
-          <p className="mt-1 text-sm leading-6 text-rose-600">Generate a payment link for the customer or record cash payment after confirming cash has been received.</p>
+          <p className="mt-1 text-sm leading-6 text-rose-600">Generate a Gleenc/Paystack payment link for the buyer. Riders must never collect cash or mark payment manually.</p>
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
             <Button icon={FiCreditCard} onClick={handleGeneratePayment} disabled={loadingPayment} fullWidth>
               {loadingPayment ? 'Waiting for Payment...' : 'Generate Paystack Payment'}
             </Button>
-            <Button variant="secondary" icon={FiCheckCircle} onClick={() => setCashModal(true)} fullWidth>Cash Received</Button>
           </div>
         </div>
       )}
@@ -95,18 +92,6 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
           Payment confirmed. Complete Delivery is now enabled.
         </div>
       )}
-
-      <Modal
-        open={cashModal}
-        title="Confirm Cash Payment"
-        message={`Confirm that you have received ${formatCurrency(order.totalAmount)} cash from the customer.`}
-        confirmLabel="Confirm Cash Received"
-        onClose={() => setCashModal(false)}
-        onConfirm={() => {
-          markCashReceived(order.id);
-          setCashModal(false);
-        }}
-      />
     </Card>
   );
 }

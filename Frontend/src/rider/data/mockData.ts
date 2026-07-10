@@ -215,8 +215,8 @@ export const fullOrders: FullDeliveryOrder[] = [
     deliveryAddress: 'Hostel C Extension, Room 24, FUPRE Campus',
     deliveryNotes: 'Customer prefers WhatsApp call before arrival.',
     status: 'assigned',
-    cashReconciliationStatus: 'pending',
-    securityChecks: ['Seller pickup OTP required', 'Cash reconciliation required if cash is collected', 'Delivery OTP required']
+    cashReconciliationStatus: 'not_required',
+    securityChecks: ['Seller pickup OTP required', 'Buyer must pay through Gleenc at delivery', 'Delivery OTP required']
   },
   {
     id: 'order-003',
@@ -245,9 +245,9 @@ export const fullOrders: FullDeliveryOrder[] = [
     deliveryAddress: 'Petroleum Engineering Lecture Hall, Front Entrance',
     deliveryNotes: 'Meet customer near the main entrance.',
     status: 'package_picked_up',
-    cashReconciliationStatus: 'pending',
+    cashReconciliationStatus: 'not_required',
     pickupProof: { id: 'proof-003-pickup', type: 'pickup', fileName: 'pickup-proof-order-003.jpg', note: 'Package sealed by seller.', createdAt: iso(-35), locationLabel: 'ICT Complex Car Park' },
-    securityChecks: ['Pickup proof collected', 'Delivery OTP required', 'Cash reconciliation required']
+    securityChecks: ['Pickup proof collected', 'Buyer must pay through Gleenc before OTP unlocks', 'Delivery OTP required']
   },
   {
     id: 'order-004',
@@ -363,20 +363,20 @@ export const completedOrders: FullDeliveryOrder[] = [
     products: [
       { id: 'prod-901', name: 'Engineering Drawing Set', image: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=500&q=80', quantity: 1, price: 4800, condition: 'new', category: 'Books' }
     ],
-    paymentMethod: 'cash',
-    paymentStatus: 'paid_cash',
+    paymentMethod: 'pay_on_delivery',
+    paymentStatus: 'paid',
     escrowStatus: 'not_required',
     totalAmount: 4800,
     deliveryFee: 500,
     platformFee: 100,
     riderEarning: 400,
     deliveryAddress: 'Engineering Block',
-    deliveryNotes: 'Cash collected and reconciled.',
+    deliveryNotes: 'Pay at Delivery was confirmed through Gleenc before handover.',
     status: 'delivered',
     cashReconciliationStatus: 'approved',
     completedAt: iso(-1420),
-    deliveryProof: { id: 'proof-901-delivery', type: 'delivery', fileName: 'delivery-proof-order-901.jpg', note: 'Cash collected and submitted.', createdAt: iso(-1420), locationLabel: 'Engineering Block' },
-    securityChecks: ['Delivery OTP verified', 'Cash reconciled']
+    deliveryProof: { id: 'proof-901-delivery', type: 'delivery', fileName: 'delivery-proof-order-901.jpg', note: 'Platform payment confirmed before delivery.', createdAt: iso(-1420), locationLabel: 'Engineering Block' },
+    securityChecks: ['Delivery OTP verified', 'Platform payment confirmed']
   }
 ];
 
@@ -398,7 +398,7 @@ export const earningsSummary: EarningsSummary = {
   today: 2500,
   weekly: 14000,
   monthly: 68500,
-  cashCollected: 4800,
+  cashCollected: 0,
   onlinePaymentsDelivered: 22200,
   platformFeesHandled: 680,
   riderPayoutPending: 2600,

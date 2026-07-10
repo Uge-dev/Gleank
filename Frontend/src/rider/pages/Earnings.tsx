@@ -9,13 +9,13 @@ export default function Earnings() {
   const { earnings } = useRiderData();
   return (
     <div>
-      <PageHeader title="Earnings" subtitle="Track rider payouts, cash collected, online payments delivered, and delivery performance." />
+      <PageHeader title="Earnings" subtitle="Track rider payouts, platform-confirmed payments, and delivery performance." />
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <StatCard label="Today's Earnings" value={formatCurrency(earnings.today)} icon={FiDollarSign} tone="green" />
         <StatCard label="Weekly Earnings" value={formatCurrency(earnings.weekly)} icon={FiTrendingUp} tone="cyan" />
         <StatCard label="Monthly Earnings" value={formatCurrency(earnings.monthly)} icon={FiBarChart2} tone="purple" />
-        <StatCard label="Cash Collected" value={formatCurrency(earnings.cashCollected)} icon={FiCreditCard} tone="orange" />
-        <StatCard label="Online Payments Delivered" value={formatCurrency(earnings.onlinePaymentsDelivered)} icon={FiCreditCard} tone="dark" />
+        <StatCard label="Platform Payout Pending" value={formatCurrency(earnings.riderPayoutPending)} icon={FiCreditCard} tone="orange" />
+        <StatCard label="Platform Payments Delivered" value={formatCurrency(earnings.onlinePaymentsDelivered)} icon={FiCreditCard} tone="dark" />
         <StatCard label="Completed Deliveries Count" value={earnings.completedDeliveriesCount} icon={FiCheckCircle} tone="green" />
       </div>
       <div className="mt-6">

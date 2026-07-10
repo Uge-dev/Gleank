@@ -143,8 +143,8 @@ export const riderLocalStore = {
   },
   markCashReceived(orderId: string) {
     return mutate((state) => {
-      updateOrder(state, orderId, { paymentStatus: 'paid_cash', paymentMethod: 'cash', cashReconciliationStatus: 'pending' });
-      notify(state, 'Cash Collected', 'Cash has been recorded. Reconcile from the Cash page after delivery.', 'payment');
+      updateOrder(state, orderId, { paymentStatus: 'paid', paymentMethod: 'pay_on_delivery', cashReconciliationStatus: 'not_required' });
+      notify(state, 'Platform Payment Confirmed', 'Buyer payment has been confirmed through Gleenc before delivery completion.', 'payment');
       return state;
     });
   },
@@ -153,7 +153,7 @@ export const riderLocalStore = {
     const order = state.orders.find((item) => item.id === orderId);
     if (!order) return { ok: false as const, message: 'No delivery order found.' };
     if (order.customerDeliveryCode !== customerDeliveryCode.trim()) return { ok: false as const, message: 'Invalid customer delivery OTP.' };
-    if (!['paid', 'paid_cash'].includes(order.paymentStatus)) return { ok: false as const, message: 'Payment must be confirmed before completing delivery.' };
+    if (order.paymentStatus !== 'paid') return { ok: false as const, message: 'Platform payment must be confirmed before completing delivery.' };
     const proof: ProofRecord = { id: `proof-${Date.now()}`, type: 'delivery', fileName: proofFileName, note: proofNote, locationLabel, createdAt: new Date().toISOString() };
     const next = mutate((current) => {
       const changedOrder = current.orders.find((item) => item.id === orderId)!;
@@ -191,7 +191,7 @@ export const riderLocalStore = {
     return mutate((state) => {
       state.completed = state.completed.map((order) => (orderIds.includes(order.id) ? { ...order, cashReconciliationStatus: 'submitted' } : order));
       state.orders = state.orders.map((order) => (orderIds.includes(order.id) ? { ...order, cashReconciliationStatus: 'submitted' } : order));
-      notify(state, 'Cash Reconciliation Submitted', note || 'Cash reconciliation request has been submitted for admin approval.', 'payment');
+      notify(state, 'Payment Audit Submitted', note || 'Platform payment audit request has been submitted for admin approval.', 'payment');
       return state;
     });
   }

@@ -18,7 +18,7 @@ export function paymentStatusLabel(status: PaymentStatus): string {
   const labels: Record<PaymentStatus, string> = {
     paid: 'PAID',
     unpaid: 'UNPAID',
-    paid_cash: 'PAID (Cash)'
+    paid_cash: 'PAID (Platform Confirmed)'
   };
   return labels[status];
 }

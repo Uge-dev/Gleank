@@ -17,12 +17,44 @@ import {
   type SellerVerificationResponse,
 } from "../services/seller-verification.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
+import { getLocalMarkets, type LocalMarket } from "../services/market.service";
+
+type SellerType = "used_market" | "campus" | "local_market" | "nearby";
+
+const sellerTypeOptions: Array<{
+  value: SellerType;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "used_market",
+    label: "Used Market Seller",
+    description: "Sell fairly-used or pre-owned products safely.",
+  },
+  {
+    value: "campus",
+    label: "Campus Seller",
+    description: "Sell to students and buyers around your campus.",
+  },
+  {
+    value: "local_market",
+    label: "Local Market Seller",
+    description: "Sell from an approved physical market like Igbudu, Ugbomro, Jakpa, or Okha.",
+  },
+  {
+    value: "nearby",
+    label: "Nearby Independent Seller",
+    description: "Sell from your shop, hostel, home area, office, or business location.",
+  },
+];
 
 function SellerOnboarding() {
   const { user, store, refreshSession } = useAuth();
   const [state, setState] = useState<SellerVerificationResponse | null>(null);
   const [faceVerified, setFaceVerified] = useState(false);
   const [faceReference, setFaceReference] = useState("");
+  const [sellerType, setSellerType] = useState<SellerType>("campus");
+  const [localMarkets, setLocalMarkets] = useState<LocalMarket[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -35,6 +67,7 @@ function SellerOnboarding() {
       setState(result);
       setFaceVerified(Boolean(result.verification?.faceVerified));
       setFaceReference(result.verification?.faceReference || "");
+      setSellerType((result.verification?.sellerType as SellerType) || "campus");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -55,6 +88,9 @@ function SellerOnboarding() {
 
   useEffect(() => {
     void load();
+    void getLocalMarkets()
+      .then((response) => setLocalMarkets(response.markets))
+      .catch(() => setLocalMarkets([]));
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -149,30 +185,56 @@ function SellerOnboarding() {
           <div className="seller-onboarding-title">
             <span>Verification</span>
             <h2>Seller identity</h2>
-            <p>Use your real seller details and complete live face verification. Existing buyer details are prefilled where possible.</p>
+            <p>Use your real seller details, choose the correct seller type, and complete live face verification. Existing buyer details are prefilled where possible.</p>
           </div>
 
-          {!store && (
-            <div className="seller-onboarding-form-grid">
-              <label>
-                <span>Store name</span>
+          <div className="seller-onboarding-type-grid">
+            {sellerTypeOptions.map((option) => (
+              <label
+                className={sellerType === option.value ? "seller-type-card active" : "seller-type-card"}
+                key={option.value}
+              >
                 <input
-                  name="storeName"
-                  defaultValue={`${user?.name?.split(" ")[0] || "Gleenc"} Store`}
-                  placeholder="Destiny Gadgets"
-                  required
+                  type="radio"
+                  name="sellerType"
+                  value={option.value}
+                  checked={sellerType === option.value}
+                  onChange={() => setSellerType(option.value)}
                 />
+                <strong>{option.label}</strong>
+                <span>{option.description}</span>
               </label>
-              <label>
-                <span>Store category</span>
-                <input
-                  name="storeCategory"
-                  placeholder="Food, Fashion, Gadgets, Services..."
-                  required
-                />
-              </label>
-            </div>
-          )}
+            ))}
+          </div>
+
+          <div className="seller-onboarding-form-grid">
+            <label>
+              <span>Store name</span>
+              <input
+                name="storeName"
+                defaultValue={store?.name || `${user?.name?.split(" ")[0] || "Gleenc"} Store`}
+                placeholder="Destiny Gadgets"
+                required
+              />
+            </label>
+            <label>
+              <span>Primary category</span>
+              <input
+                name="storeCategory"
+                defaultValue={store?.category || ""}
+                placeholder="Food, Fashion, Gadgets, Services..."
+                required
+              />
+            </label>
+            <label>
+              <span>Operating hours</span>
+              <input
+                name="operatingHours"
+                defaultValue={verification?.operatingHours || store?.operatingHours || ""}
+                placeholder="Mon - Sat, 8am - 7pm"
+              />
+            </label>
+          </div>
 
           <div className="seller-onboarding-form-grid">
             <label>
@@ -189,10 +251,170 @@ function SellerOnboarding() {
               </small>
             </label>
             <label>
-              <span>Campus</span>
-              <input name="campus" defaultValue={verification?.campus || user?.campus || ""} required />
+              <span>WhatsApp contact</span>
+              <input
+                name="whatsappPhone"
+                defaultValue={verification?.whatsappPhone || store?.whatsappPhone || user?.phone || ""}
+                placeholder="WhatsApp number for pickup coordination"
+              />
+            </label>
+            <label>
+              <span>Can riders WhatsApp you?</span>
+              <select
+                name="allowRiderWhatsAppContact"
+                defaultValue={
+                  verification?.allowRiderWhatsAppContact === false ||
+                  store?.allowRiderWhatsAppContact === false
+                    ? "false"
+                    : "true"
+                }
+              >
+                <option value="true">Yes, allow rider WhatsApp contact</option>
+                <option value="false">No, use call/in-app messaging only</option>
+              </select>
             </label>
           </div>
+
+          {sellerType === "campus" && (
+            <div className="seller-onboarding-form-grid">
+              <label>
+                <span>Approved campus</span>
+                <input name="campus" defaultValue={verification?.campus || user?.campus || ""} placeholder="FUPRE" required />
+              </label>
+              <label>
+                <span>Campus pickup point</span>
+                <input
+                  name="pickupLocation"
+                  defaultValue={verification?.pickupLocation || store?.pickupLocation || ""}
+                  placeholder="Main gate, hostel area, department..."
+                  required
+                />
+              </label>
+              <label>
+                <span>Nearest landmark</span>
+                <input
+                  name="nearestLandmark"
+                  defaultValue={verification?.nearestLandmark || store?.nearestLandmark || ""}
+                  placeholder="Library, lecture hall, cafeteria..."
+                />
+              </label>
+            </div>
+          )}
+
+          {sellerType === "local_market" && (
+            <div className="seller-onboarding-special-block">
+              <div className="seller-onboarding-title compact">
+                <span>Local Market setup</span>
+                <h2>Join an approved market</h2>
+                <p>Local Market sellers remain hidden until admin approves the market seller profile.</p>
+              </div>
+              <div className="seller-onboarding-form-grid">
+                <label>
+                  <span>Select your market</span>
+                  <select name="marketId" defaultValue={verification?.marketId || store?.marketId || ""}>
+                    <option value="">Select approved Local Market</option>
+                    {localMarkets.map((market) => (
+                      <option value={market.id} key={market.id}>
+                        {market.name} · {market.area || market.city || market.state}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Shop/stall number</span>
+                  <input name="shopStallNumber" defaultValue={verification?.shopStallNumber || store?.shopStallNumber || ""} placeholder="Block A, Stall 24" />
+                </label>
+                <label>
+                  <span>Line/section/block</span>
+                  <input name="shopSection" defaultValue={verification?.shopSection || store?.shopSection || ""} placeholder="Phone line, foodstuff section..." />
+                </label>
+                <label>
+                  <span>Market landmark</span>
+                  <input name="nearestLandmark" defaultValue={verification?.nearestLandmark || store?.nearestLandmark || ""} placeholder="Near main gate, beside union office..." />
+                </label>
+                <label>
+                  <span>Pickup point</span>
+                  <input name="pickupLocation" defaultValue={verification?.pickupLocation || store?.pickupLocation || ""} placeholder="Exact rider pickup point" required />
+                </label>
+                <label>
+                  <span>Area/location note</span>
+                  <input name="locationArea" defaultValue={verification?.locationArea || store?.locationArea || ""} placeholder="Market area or address note" />
+                </label>
+              </div>
+
+              <div className="seller-onboarding-title compact">
+                <span>Can’t find your market?</span>
+                <h2>Request market approval</h2>
+                <p>This request goes to admin review and will not become public automatically.</p>
+              </div>
+              <div className="seller-onboarding-form-grid">
+                <label>
+                  <span>Market name</span>
+                  <input name="marketRequestName" placeholder="Example: Igbudu Market" />
+                </label>
+                <label>
+                  <span>State</span>
+                  <input name="marketRequestState" placeholder="Delta" />
+                </label>
+                <label>
+                  <span>City/area</span>
+                  <input name="marketRequestCityArea" placeholder="Warri, Ugbomro..." />
+                </label>
+                <label>
+                  <span>Address/landmark</span>
+                  <input name="marketRequestAddressLandmark" placeholder="Near main road, beside..." />
+                </label>
+                <label>
+                  <span>What do you sell?</span>
+                  <input name="marketRequestSells" placeholder="Phones, foodstuff, fashion..." />
+                </label>
+                <label>
+                  <span>Shop/stall details</span>
+                  <input name="marketRequestShopDetails" placeholder="Line, stall number, section..." />
+                </label>
+              </div>
+            </div>
+          )}
+
+          {sellerType === "nearby" && (
+            <div className="seller-onboarding-form-grid">
+              <label>
+                <span>Business area/location</span>
+                <input name="locationArea" defaultValue={verification?.locationArea || store?.locationArea || ""} placeholder="Effurun, Ugbomro, Abraka..." required />
+              </label>
+              <label>
+                <span>Business address / pickup location</span>
+                <input name="pickupLocation" defaultValue={verification?.pickupLocation || store?.pickupLocation || ""} placeholder="Shop, hostel, office, home area..." required />
+              </label>
+              <label>
+                <span>Nearest landmark</span>
+                <input name="nearestLandmark" defaultValue={verification?.nearestLandmark || store?.nearestLandmark || ""} placeholder="Nearest junction, filling station..." />
+              </label>
+            </div>
+          )}
+
+          {sellerType === "used_market" && (
+            <div className="seller-onboarding-special-block">
+              <div className="seller-onboarding-form-grid">
+                <label>
+                  <span>Area/location</span>
+                  <input name="locationArea" defaultValue={verification?.locationArea || store?.locationArea || user?.campus || ""} placeholder="Where buyers/riders can locate items" required />
+                </label>
+                <label>
+                  <span>Pickup preference</span>
+                  <input name="pickupLocation" defaultValue={verification?.pickupLocation || store?.pickupLocation || ""} placeholder="Meetup point, rider pickup point..." required />
+                </label>
+                <label>
+                  <span>Nearest landmark</span>
+                  <input name="nearestLandmark" defaultValue={verification?.nearestLandmark || store?.nearestLandmark || ""} placeholder="Safe landmark for pickup" />
+                </label>
+              </div>
+              <div className="seller-onboarding-message warning">
+                <FiShield />
+                <span>Used Market rules: only real items, no stolen/fake/restricted goods, actual item photos required, defects must be disclosed, and high-value items may need stronger verification.</span>
+              </div>
+            </div>
+          )}
 
           <div className="seller-face-check-card">
             <FiShield />
@@ -219,7 +441,7 @@ function SellerOnboarding() {
             <textarea
               name="businessDescription"
               defaultValue={verification?.businessDescription || store?.description || ""}
-              placeholder="Explain what you sell, how students receive orders, and your campus availability."
+              placeholder="Explain what you sell, pickup process, order confirmation rules, and availability."
               rows={6}
               required
             />

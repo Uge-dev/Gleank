@@ -474,6 +474,39 @@
   margin-bottom: 16px;
 }
 
+.admin-filtered-table {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 20px;
+  background: var(--admin-card);
+  border: 1px solid var(--admin-border);
+  box-shadow: var(--admin-shadow-soft);
+}
+
+.admin-filter-row button {
+  border: 1px solid var(--admin-border);
+  background: var(--admin-bg);
+  color: var(--admin-muted);
+  border-radius: 999px;
+  padding: 9px 13px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.admin-filter-row button.active {
+  color: #ffffff;
+  border-color: var(--admin-green);
+  background: linear-gradient(135deg, var(--admin-green), #0f8f4c);
+}
+
 .admin-hero-card h2 {
   max-width: 760px;
   font-size: clamp(1.7rem, 4vw, 3.2rem);

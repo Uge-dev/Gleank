@@ -185,6 +185,18 @@ function serializeMarketStore(row, viewerId = "") {
     verification_status: row.store_verification_status || row.verification_status,
     verification_note: row.store_verification_note || row.verification_note,
     verified_at: row.store_verified_at || row.verified_at,
+    seller_type: row.store_seller_type || row.seller_type,
+    operating_hours: row.store_operating_hours || row.operating_hours,
+    whatsapp_phone: row.store_whatsapp_phone || row.whatsapp_phone,
+    allow_rider_whatsapp_contact: row.store_allow_rider_whatsapp_contact ?? row.allow_rider_whatsapp_contact,
+    location_area: row.store_location_area || row.location_area,
+    pickup_location: row.store_pickup_location || row.pickup_location,
+    nearest_landmark: row.store_nearest_landmark || row.nearest_landmark,
+    market_id: row.store_market_id || row.market_id,
+    shop_stall_number: row.store_shop_stall_number || row.shop_stall_number,
+    shop_section: row.store_shop_section || row.shop_section,
+    pickup_lat: row.store_pickup_lat ?? row.pickup_lat,
+    pickup_lng: row.store_pickup_lng ?? row.pickup_lng,
     created_at: row.store_created_at || row.created_at,
     updated_at: row.store_updated_at || row.updated_at,
   });
@@ -200,6 +212,9 @@ function serializeMarketStore(row, viewerId = "") {
           marketId: row.market_id,
           stallNumber: row.stall_number || "",
           addressNote: row.address_note || "",
+          shopSection: row.shop_section || "",
+          marketLandmark: row.market_landmark || "",
+          pickupPoint: row.pickup_point || "",
           status: row.profile_status || "pending",
           createdAt: row.profile_created_at,
           updatedAt: row.profile_updated_at,
@@ -235,6 +250,18 @@ function serializeMarketProduct(row, viewerId = "") {
       verification_status: row.store_verification_status,
       verification_note: row.store_verification_note,
       verified_at: row.store_verified_at,
+      seller_type: row.store_seller_type,
+      operating_hours: row.store_operating_hours,
+      whatsapp_phone: row.store_whatsapp_phone,
+      allow_rider_whatsapp_contact: row.store_allow_rider_whatsapp_contact,
+      location_area: row.store_location_area,
+      pickup_location: row.store_pickup_location,
+      nearest_landmark: row.store_nearest_landmark,
+      market_id: row.store_market_id,
+      shop_stall_number: row.store_shop_stall_number,
+      shop_section: row.store_shop_section,
+      pickup_lat: row.store_pickup_lat,
+      pickup_lng: row.store_pickup_lng,
       created_at: row.store_created_at,
       updated_at: row.store_updated_at,
     }),
@@ -268,6 +295,18 @@ const productSelectSql = `
          stores.verification_status AS store_verification_status,
          stores.verification_note AS store_verification_note,
          stores.verified_at AS store_verified_at,
+         stores.seller_type AS store_seller_type,
+         stores.operating_hours AS store_operating_hours,
+         stores.whatsapp_phone AS store_whatsapp_phone,
+         stores.allow_rider_whatsapp_contact AS store_allow_rider_whatsapp_contact,
+         stores.location_area AS store_location_area,
+         stores.pickup_location AS store_pickup_location,
+         stores.nearest_landmark AS store_nearest_landmark,
+         stores.market_id AS store_market_id,
+         stores.shop_stall_number AS store_shop_stall_number,
+         stores.shop_section AS store_shop_section,
+         stores.pickup_lat AS store_pickup_lat,
+         stores.pickup_lng AS store_pickup_lng,
          stores.created_at AS store_created_at,
          stores.updated_at AS store_updated_at,
          (SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) AS like_count,
@@ -277,6 +316,22 @@ const productSelectSql = `
          (SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) AS view_count
   FROM products
   JOIN stores ON stores.id = products.store_id
+`;
+
+const publicSellerVisibilitySql = `
+  (
+    COALESCE(stores.seller_type, 'campus') IN ('campus', 'used_market')
+    OR (stores.seller_type = 'nearby' AND stores.verification_status = 'verified')
+    OR (
+      stores.seller_type = 'local_market'
+      AND EXISTS (
+        SELECT 1
+        FROM seller_market_profiles public_profile
+        WHERE public_profile.store_id = stores.id
+          AND public_profile.status = 'approved'
+      )
+    )
+  )
 `;
 
 function listPublicProducts({
@@ -307,6 +362,7 @@ function listPublicProducts({
     .prepare(`
       ${productSelectSql}
       WHERE stores.status = 'active'
+        AND ${publicSellerVisibilitySql}
         AND products.status IN ('active', 'out_of_stock')
         AND (
           ? = ''
@@ -381,6 +437,18 @@ function listActiveStores({ query = "", campus = "", viewerId = "", limit = 24 }
              stores.verification_status AS store_verification_status,
              stores.verification_note AS store_verification_note,
              stores.verified_at AS store_verified_at,
+             stores.seller_type AS store_seller_type,
+             stores.operating_hours AS store_operating_hours,
+             stores.whatsapp_phone AS store_whatsapp_phone,
+             stores.allow_rider_whatsapp_contact AS store_allow_rider_whatsapp_contact,
+             stores.location_area AS store_location_area,
+             stores.pickup_location AS store_pickup_location,
+             stores.nearest_landmark AS store_nearest_landmark,
+             stores.market_id AS store_market_id,
+             stores.shop_stall_number AS store_shop_stall_number,
+             stores.shop_section AS store_shop_section,
+             stores.pickup_lat AS store_pickup_lat,
+             stores.pickup_lng AS store_pickup_lng,
              stores.created_at AS store_created_at,
              stores.updated_at AS store_updated_at,
              users.name AS owner_name,
@@ -391,6 +459,7 @@ function listActiveStores({ query = "", campus = "", viewerId = "", limit = 24 }
       FROM stores
       JOIN users ON users.id = stores.owner_id
       WHERE stores.status = 'active'
+        AND ${publicSellerVisibilitySql}
         AND (
           ? = ''
           OR stores.name LIKE ? ESCAPE '\\'
@@ -451,6 +520,18 @@ function listLocalMarketStores(marketId, viewerId = "") {
              stores.verification_status AS store_verification_status,
              stores.verification_note AS store_verification_note,
              stores.verified_at AS store_verified_at,
+             stores.seller_type AS store_seller_type,
+             stores.operating_hours AS store_operating_hours,
+             stores.whatsapp_phone AS store_whatsapp_phone,
+             stores.allow_rider_whatsapp_contact AS store_allow_rider_whatsapp_contact,
+             stores.location_area AS store_location_area,
+             stores.pickup_location AS store_pickup_location,
+             stores.nearest_landmark AS store_nearest_landmark,
+             stores.market_id AS store_market_id,
+             stores.shop_stall_number AS store_shop_stall_number,
+             stores.shop_section AS store_shop_section,
+             stores.pickup_lat AS store_pickup_lat,
+             stores.pickup_lng AS store_pickup_lng,
              stores.created_at AS store_created_at,
              stores.updated_at AS store_updated_at,
              users.name AS owner_name,
@@ -465,6 +546,66 @@ function listLocalMarketStores(marketId, viewerId = "") {
         AND profile.status = 'approved'
         AND stores.status = 'active'
       ORDER BY stores.verified DESC, stores.updated_at DESC
+    `)
+    .all(marketId);
+
+  return rows.map((row) => serializeMarketStore(row, viewerId));
+}
+
+function listMarketStoresForAdmin(marketId, viewerId = "") {
+  const rows = db
+    .prepare(`
+      SELECT profile.id AS profile_id,
+             profile.market_id,
+             profile.stall_number,
+             profile.address_note,
+             profile.shop_section,
+             profile.market_landmark,
+             profile.pickup_point,
+             profile.status AS profile_status,
+             profile.created_at AS profile_created_at,
+             profile.updated_at AS profile_updated_at,
+             stores.id AS store_ref_id,
+             stores.owner_id AS store_owner_id,
+             stores.slug AS store_slug,
+             stores.name AS store_name,
+             stores.description AS store_description,
+             stores.campus AS store_campus,
+             stores.category AS store_category,
+             stores.phone AS store_phone,
+             stores.logo_url AS store_logo_url,
+             stores.cover_url AS store_cover_url,
+             stores.status AS store_status,
+             stores.verified AS store_verified,
+             stores.verification_status AS store_verification_status,
+             stores.verification_note AS store_verification_note,
+             stores.verified_at AS store_verified_at,
+             stores.seller_type AS store_seller_type,
+             stores.operating_hours AS store_operating_hours,
+             stores.whatsapp_phone AS store_whatsapp_phone,
+             stores.allow_rider_whatsapp_contact AS store_allow_rider_whatsapp_contact,
+             stores.location_area AS store_location_area,
+             stores.pickup_location AS store_pickup_location,
+             stores.nearest_landmark AS store_nearest_landmark,
+             stores.market_id AS store_market_id,
+             stores.shop_stall_number AS store_shop_stall_number,
+             stores.shop_section AS store_shop_section,
+             stores.pickup_lat AS store_pickup_lat,
+             stores.pickup_lng AS store_pickup_lng,
+             stores.created_at AS store_created_at,
+             stores.updated_at AS store_updated_at,
+             users.name AS owner_name,
+             users.email AS owner_email,
+             users.phone AS owner_phone,
+             (SELECT COUNT(*) FROM products WHERE products.store_id = stores.id AND products.status IN ('active', 'out_of_stock')) AS product_count,
+             (SELECT COUNT(*) FROM services WHERE services.store_id = stores.id AND services.status = 'active') AS service_count
+      FROM seller_market_profiles profile
+      JOIN stores ON stores.id = profile.store_id
+      JOIN users ON users.id = stores.owner_id
+      WHERE profile.market_id = ?
+      ORDER BY
+        CASE profile.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+        profile.updated_at DESC
     `)
     .all(marketId);
 
@@ -993,8 +1134,66 @@ export function adminListMarketSellers(marketId, { viewerId = "" } = {}) {
 
   return {
     market: serializeMarket(market),
-    sellers: listLocalMarketStores(market.id, viewerId),
+    sellers: listMarketStoresForAdmin(market.id, viewerId),
   };
+}
+
+export function adminUpdateMarketSellerStatus(marketId, profileId, status) {
+  const cleanStatus = clean(status, 40);
+
+  if (!["pending", "approved", "rejected"].includes(cleanStatus)) {
+    throw new HttpError(422, "Market seller status must be pending, approved, or rejected.");
+  }
+
+  const profile = db
+    .prepare(`
+      SELECT seller_market_profiles.*, stores.owner_id
+      FROM seller_market_profiles
+      JOIN stores ON stores.id = seller_market_profiles.store_id
+      WHERE seller_market_profiles.id = ? AND seller_market_profiles.market_id = ?
+    `)
+    .get(profileId, marketId);
+
+  if (!profile) {
+    throw new HttpError(404, "Market seller profile was not found.");
+  }
+
+  const now = nowIso();
+
+  db.prepare(`
+    UPDATE seller_market_profiles
+    SET status = ?, updated_at = ?
+    WHERE id = ? AND market_id = ?
+  `).run(cleanStatus, now, profileId, marketId);
+
+  if (cleanStatus === "approved") {
+    db.prepare(`
+      UPDATE stores
+      SET verification_status = 'verified', verified = 1, verified_at = COALESCE(verified_at, ?),
+          verification_note = 'Local Market seller approved by admin.',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, now, profile.store_id);
+
+    db.prepare(`
+      UPDATE seller_verification_profiles
+      SET status = 'verified', verified_at = COALESCE(verified_at, ?),
+          note = 'Local Market seller approved by admin.', updated_at = ?
+      WHERE store_id = ?
+    `).run(now, now, profile.store_id);
+  }
+
+  if (cleanStatus === "rejected") {
+    db.prepare(`
+      UPDATE stores
+      SET verification_status = 'rejected',
+          verification_note = 'Local Market seller rejected by admin review.',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, profile.store_id);
+  }
+
+  return adminListMarketSellers(marketId);
 }
 
 export function adminUpdateMarketCategories(marketId, categoriesInput) {
