@@ -35,7 +35,9 @@ export type AdminStatus =
   | "safe"
   | "unsafe"
   | "needs_review"
-  | "reported";
+  | "reported"
+  | "needs_more_info"
+  | "merged";
 
 export type AdminUser = {
   id: string;
@@ -61,6 +63,9 @@ export type AdminSeller = {
   phone: string;
   campus: string;
   category: string;
+  sellerType?: "campus" | "local_market" | "nearby" | "used_market" | string;
+  marketName?: string;
+  marketApprovalStatus?: AdminStatus | string;
   verificationStatus: AdminStatus;
   status: AdminStatus;
   products: number;
@@ -70,6 +75,70 @@ export type AdminSeller = {
   bankStatus: "completed" | "missing";
   rating: number;
   joined: string;
+};
+
+export type AdminMarket = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  state: string;
+  city: string;
+  area: string;
+  address: string;
+  landmark: string;
+  status: AdminStatus;
+  allowedCategories: string[];
+  deliveryNote: string;
+  counts: {
+    sellers: number;
+    products: number;
+    services: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminMarketRequest = {
+  id: string;
+  sellerId: string | null;
+  storeId: string | null;
+  storeName: string;
+  sellerName: string;
+  sellerEmail: string;
+  marketId: string | null;
+  marketName: string;
+  state: string;
+  city: string;
+  area: string;
+  address: string;
+  landmark: string;
+  sellerNote: string;
+  whatSells: string;
+  shopDetails: string;
+  contactPhone: string;
+  status: AdminStatus;
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminCategoryApproval = {
+  id: string;
+  sellerId: string;
+  storeId: string;
+  marketId: string | null;
+  marketName: string;
+  storeName: string;
+  sellerName: string;
+  sellerEmail: string;
+  categoryKey: string;
+  categoryName: string;
+  status: AdminStatus;
+  approvedBy: string | null;
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AdminProduct = {
@@ -259,6 +328,8 @@ export type AdminOverview = {
   openDisputes: number;
   unreadFeedback: number;
   unreadSupport: number;
+  pendingMarketRequests: number;
+  pendingCategoryApprovals: number;
 };
 
 export type AdminDataset = {
@@ -267,6 +338,9 @@ export type AdminDataset = {
   sellers: AdminSeller[];
   products: AdminProduct[];
   usedItems: AdminUsedItem[];
+  markets: AdminMarket[];
+  marketRequests: AdminMarketRequest[];
+  categoryApprovals: AdminCategoryApproval[];
   orders: AdminOrder[];
   payments: AdminPayment[];
   deliveries: AdminDelivery[];
@@ -292,11 +366,16 @@ export const emptyAdminDataset: AdminDataset = {
     openDisputes: 0,
     unreadFeedback: 0,
     unreadSupport: 0,
+    pendingMarketRequests: 0,
+    pendingCategoryApprovals: 0,
   },
   users: [],
   sellers: [],
   products: [],
   usedItems: [],
+  markets: [],
+  marketRequests: [],
+  categoryApprovals: [],
   orders: [],
   payments: [],
   deliveries: [],

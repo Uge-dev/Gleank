@@ -31,9 +31,12 @@ import {
   emptyAdminDataset,
   type AdminActivityLog,
   type AdminDataset,
+  type AdminCategoryApproval,
   type AdminDelivery,
   type AdminDispute,
   type AdminFeedback,
+  type AdminMarket,
+  type AdminMarketRequest,
   type AdminOrder,
   type AdminPayment,
   type AdminProduct,
@@ -69,6 +72,7 @@ type AdminTab =
   | "users"
   | "buyers"
   | "sellers"
+  | "markets"
   | "products"
   | "usedMarket"
   | "orders"
@@ -94,6 +98,7 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "users", label: "Users", icon: <FaUsers />, description: "Buyer accounts" },
   { id: "buyers", label: "Buyers", icon: <FaUserShield />, description: "Buyer locations" },
   { id: "sellers", label: "Sellers", icon: <FaStore />, description: "Store approvals" },
+  { id: "markets", label: "Markets", icon: <FaStore />, description: "Local market control" },
   { id: "products", label: "Products", icon: <FaBoxOpen />, description: "Seller listings" },
   { id: "usedMarket", label: "Used Market", icon: <FaShoppingBag />, description: "Used-item approvals" },
   { id: "orders", label: "Orders", icon: <FaClipboardList />, description: "Order control" },
@@ -840,6 +845,8 @@ function AdminDashboard() {
                 <StatCard label="Total Users" value={data.overview.totalUsers} helper="registered buyer accounts" icon={<FaUsers />} />
                 <StatCard label="Total Sellers" value={data.overview.totalSellers} helper="campus stores onboarded" icon={<FaStore />} />
                 <StatCard label="Pending Sellers" value={data.overview.pendingSellerVerifications} helper="verification reviews" icon={<FaShieldAlt />} />
+                <StatCard label="Market Requests" value={data.overview.pendingMarketRequests || 0} helper="seller requested markets" icon={<FaStore />} />
+                <StatCard label="Category Reviews" value={data.overview.pendingCategoryApprovals || 0} helper="seller category approvals" icon={<FaClipboardList />} />
                 <StatCard label="Active Products" value={data.overview.activeProducts} helper="approved listings" icon={<FaBoxOpen />} />
                 <StatCard label="Pending Products" value={data.overview.pendingProducts} helper="seller uploads awaiting review" icon={<FaClipboardList />} />
                 <StatCard label="Used Items" value={data.overview.pendingUsedItems} helper="used-market approvals" icon={<FaShoppingBag />} />
@@ -862,6 +869,8 @@ function AdminDashboard() {
                   </div>
                   <div className="admin-mini-grid">
                     <MiniQueue title="Seller verification" value={data.sellers.filter((seller) => seller.verificationStatus === "pending").length} helper="Approve or reject store onboarding" tone="orange" />
+                    <MiniQueue title="Market requests" value={data.marketRequests.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Approve missing local markets" tone="orange" />
+                    <MiniQueue title="Category approvals" value={data.categoryApprovals.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Control local/nearby seller categories" tone="blue" />
                     <MiniQueue title="Used market approvals" value={data.usedItems.filter((item) => item.status === "pending").length} helper="Review campus used-item uploads" tone="blue" />
                     <MiniQueue title="Open disputes" value={data.disputes.filter((item) => item.status === "open" || item.status === "reviewing").length} helper="Buyer/seller complaints" tone="red" />
                     <MiniQueue title="Support chat" value={data.overview.unreadSupport} helper="Unread admin chat messages" tone="blue" />
@@ -1016,6 +1025,83 @@ function AdminDashboard() {
                 </>
               )}
             />
+          ) : null}
+
+          {activeTab === "markets" ? (
+            <div className="admin-stage3-grid">
+              <DataTable<AdminMarket>
+                title="Local Market Management"
+                subtitle="Create, activate, disable and inspect approved Local Markets that buyers can browse publicly."
+                rows={data.markets}
+                search={search}
+                onView={(market) => openRecord(market.name, market as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Market", render: (market) => market.name },
+                  { label: "Location", render: (market) => [market.area, market.city, market.state].filter(Boolean).join(", ") || "Not set" },
+                  { label: "Sellers", render: (market) => market.counts?.sellers || 0 },
+                  { label: "Products", render: (market) => market.counts?.products || 0 },
+                  { label: "Categories", render: (market) => market.allowedCategories?.slice(0, 3).join(", ") || "Default" },
+                  { label: "Status", render: (market) => <StatusBadge status={market.status} /> },
+                  { label: "Updated", render: (market) => formatAdminTime(market.updatedAt) },
+                ]}
+                actions={(market) => (
+                  <>
+                    <ActionButton tone="success" onClick={() => changeStatus("markets", market.id, "active")}>Activate</ActionButton>
+                    <ActionButton tone="soft" onClick={() => changeStatus("markets", market.id, "disabled")}>Disable</ActionButton>
+                    <ActionButton tone="soft" onClick={() => openRecord(`${market.name} categories`, { allowedCategories: market.allowedCategories, deliveryNote: market.deliveryNote })}>Categories</ActionButton>
+                  </>
+                )}
+              />
+
+              <DataTable<AdminMarketRequest>
+                title="Pending Market Requests"
+                subtitle="Seller-submitted markets do not become public until admin approves, merges, rejects, or asks for more information."
+                rows={data.marketRequests}
+                search={search}
+                onView={(request) => openRecord(request.marketName, request as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Market", render: (request) => request.marketName },
+                  { label: "Seller", render: (request) => request.sellerName || request.storeName || "Seller" },
+                  { label: "Location", render: (request) => [request.area, request.city, request.state].filter(Boolean).join(", ") || request.address },
+                  { label: "Sells", render: (request) => request.whatSells || "Not set" },
+                  { label: "Shop details", render: (request) => request.shopDetails || "Not set" },
+                  { label: "Status", render: (request) => <StatusBadge status={request.status} /> },
+                  { label: "Updated", render: (request) => formatAdminTime(request.updatedAt) },
+                ]}
+                actions={(request) => (
+                  <>
+                    <ActionButton tone="success" onClick={() => changeFields("marketRequests", request.id, { status: "approved", adminNote: "Market approved by admin." })}>Approve</ActionButton>
+                    <ActionButton tone="soft" onClick={() => changeFields("marketRequests", request.id, { status: "needs_more_info", adminNote: "Admin needs more details before approval." })}>More Info</ActionButton>
+                    <ActionButton tone="danger" onClick={() => changeFields("marketRequests", request.id, { status: "rejected", adminNote: "Market request rejected by admin." })}>Reject</ActionButton>
+                  </>
+                )}
+              />
+
+              <DataTable<AdminCategoryApproval>
+                title="Seller Category Approvals"
+                subtitle="Local Market and Nearby sellers can only upload in approved categories. Campus sellers remain broadly open except dangerous/prohibited categories."
+                rows={data.categoryApprovals}
+                search={search}
+                onView={(approval) => openRecord(`${approval.storeName} · ${approval.categoryName}`, approval as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Store", render: (approval) => approval.storeName },
+                  { label: "Seller", render: (approval) => approval.sellerName },
+                  { label: "Market", render: (approval) => approval.marketName || "Nearby / platform" },
+                  { label: "Category", render: (approval) => approval.categoryName },
+                  { label: "Status", render: (approval) => <StatusBadge status={approval.status} /> },
+                  { label: "Note", render: (approval) => approval.adminNote || "—" },
+                  { label: "Updated", render: (approval) => formatAdminTime(approval.updatedAt) },
+                ]}
+                actions={(approval) => (
+                  <>
+                    <ActionButton tone="success" onClick={() => changeFields("categoryApprovals", approval.id, { status: "approved", adminNote: "Category approved by admin." })}>Approve</ActionButton>
+                    <ActionButton tone="soft" onClick={() => changeFields("categoryApprovals", approval.id, { status: "needs_more_info", adminNote: "Admin needs more category details." })}>More Info</ActionButton>
+                    <ActionButton tone="danger" onClick={() => changeFields("categoryApprovals", approval.id, { status: "rejected", adminNote: "Category rejected by admin." })}>Reject</ActionButton>
+                    <ActionButton tone="danger" onClick={() => changeFields("categoryApprovals", approval.id, { status: "suspended", adminNote: "Category suspended by admin." })}>Suspend</ActionButton>
+                  </>
+                )}
+              />
+            </div>
           ) : null}
 
           {activeTab === "products" ? (

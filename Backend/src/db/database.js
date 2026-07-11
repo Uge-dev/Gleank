@@ -620,7 +620,7 @@ db.exec(`
     stall_number TEXT NOT NULL DEFAULT '',
     address_note TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending'
-      CHECK (status IN ('pending', 'approved', 'rejected')),
+      CHECK (status IN ('pending', 'approved', 'rejected', 'suspended', 'needs_more_info')),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE CASCADE,
@@ -631,6 +631,66 @@ db.exec(`
     ON seller_market_profiles(market_id);
   CREATE INDEX IF NOT EXISTS seller_market_profiles_status_idx
     ON seller_market_profiles(status);
+
+  CREATE TABLE IF NOT EXISTS market_requests (
+    id TEXT PRIMARY KEY,
+    seller_id TEXT,
+    store_id TEXT,
+    market_id TEXT,
+    market_name TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    area TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    landmark TEXT NOT NULL DEFAULT '',
+    latitude REAL,
+    longitude REAL,
+    seller_note TEXT NOT NULL DEFAULT '',
+    what_sells TEXT NOT NULL DEFAULT '',
+    shop_details TEXT NOT NULL DEFAULT '',
+    contact_phone TEXT NOT NULL DEFAULT '',
+    photo_url TEXT,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'approved', 'rejected', 'merged', 'needs_more_info')),
+    admin_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE SET NULL,
+    FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS market_requests_seller_id_idx
+    ON market_requests(seller_id);
+  CREATE INDEX IF NOT EXISTS market_requests_status_idx
+    ON market_requests(status);
+
+  CREATE TABLE IF NOT EXISTS seller_category_approvals (
+    id TEXT PRIMARY KEY,
+    seller_id TEXT NOT NULL,
+    store_id TEXT NOT NULL,
+    market_id TEXT,
+    category_key TEXT NOT NULL,
+    category_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'approved', 'rejected', 'suspended', 'needs_more_info')),
+    approved_by TEXT,
+    admin_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+    FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE SET NULL,
+    FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(store_id, market_id, category_key)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS seller_category_approvals_seller_id_idx
+    ON seller_category_approvals(seller_id);
+  CREATE INDEX IF NOT EXISTS seller_category_approvals_store_id_idx
+    ON seller_category_approvals(store_id);
+  CREATE INDEX IF NOT EXISTS seller_category_approvals_status_idx
+    ON seller_category_approvals(status);
 `);
 
 
@@ -843,6 +903,101 @@ ensureColumn("seller_market_profiles", "shop_section", "TEXT NOT NULL DEFAULT ''
 ensureColumn("seller_market_profiles", "market_landmark", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("seller_market_profiles", "pickup_point", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("seller_market_profiles", "shop_photo_url", "TEXT");
+ensureColumn("seller_market_profiles", "pickup_lat", "REAL");
+ensureColumn("seller_market_profiles", "pickup_lng", "REAL");
+ensureColumn("seller_market_profiles", "risk_level", "TEXT NOT NULL DEFAULT 'standard'");
+ensureColumn("seller_market_profiles", "admin_note", "TEXT NOT NULL DEFAULT ''");
+
+ensureColumn("market_requests", "area", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("market_requests", "market_id", "TEXT");
+ensureColumn("market_requests", "photo_url", "TEXT");
+
+ensureColumn("seller_category_approvals", "approved_by", "TEXT");
+ensureColumn("seller_category_approvals", "admin_note", "TEXT NOT NULL DEFAULT ''");
+
+function ensureSellerMarketProfileStatusValues() {
+  if (usePostgres) {
+    db.exec(`
+      ALTER TABLE seller_market_profiles
+        DROP CONSTRAINT IF EXISTS seller_market_profiles_status_check;
+      ALTER TABLE seller_market_profiles
+        ADD CONSTRAINT seller_market_profiles_status_check
+        CHECK (status IN ('pending', 'approved', 'rejected', 'suspended', 'needs_more_info'));
+    `);
+    return;
+  }
+
+  const table = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+    .get("seller_market_profiles");
+
+  if (!table?.sql || table.sql.includes("needs_more_info")) return;
+
+  db.exec("PRAGMA foreign_keys = OFF;");
+  db.exec("BEGIN IMMEDIATE;");
+
+  try {
+    db.exec(`
+      CREATE TABLE seller_market_profiles_stage3 (
+        id TEXT PRIMARY KEY,
+        market_id TEXT NOT NULL,
+        store_id TEXT NOT NULL UNIQUE,
+        stall_number TEXT NOT NULL DEFAULT '',
+        address_note TEXT NOT NULL DEFAULT '',
+        shop_section TEXT NOT NULL DEFAULT '',
+        market_landmark TEXT NOT NULL DEFAULT '',
+        pickup_point TEXT NOT NULL DEFAULT '',
+        shop_photo_url TEXT,
+        pickup_lat REAL,
+        pickup_lng REAL,
+        risk_level TEXT NOT NULL DEFAULT 'standard',
+        admin_note TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'approved', 'rejected', 'suspended', 'needs_more_info')),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (market_id) REFERENCES markets(id) ON DELETE CASCADE,
+        FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+      ) STRICT;
+
+      INSERT INTO seller_market_profiles_stage3 (
+        id, market_id, store_id, stall_number, address_note, shop_section,
+        market_landmark, pickup_point, shop_photo_url, pickup_lat, pickup_lng,
+        risk_level, admin_note, status, created_at, updated_at
+      )
+      SELECT
+        id, market_id, store_id, stall_number, address_note,
+        COALESCE(shop_section, ''),
+        COALESCE(market_landmark, ''),
+        COALESCE(pickup_point, ''),
+        shop_photo_url,
+        pickup_lat,
+        pickup_lng,
+        COALESCE(risk_level, 'standard'),
+        COALESCE(admin_note, ''),
+        status,
+        created_at,
+        updated_at
+      FROM seller_market_profiles;
+
+      DROP TABLE seller_market_profiles;
+      ALTER TABLE seller_market_profiles_stage3 RENAME TO seller_market_profiles;
+
+      CREATE INDEX IF NOT EXISTS seller_market_profiles_market_id_idx
+        ON seller_market_profiles(market_id);
+      CREATE INDEX IF NOT EXISTS seller_market_profiles_status_idx
+        ON seller_market_profiles(status);
+    `);
+    db.exec("COMMIT;");
+  } catch (error) {
+    db.exec("ROLLBACK;");
+    throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
+ensureSellerMarketProfileStatusValues();
 
 ensureColumn("seller_verification_profiles", "seller_type", "TEXT NOT NULL DEFAULT 'campus'");
 ensureColumn("seller_verification_profiles", "location_area", "TEXT NOT NULL DEFAULT ''");

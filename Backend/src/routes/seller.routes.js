@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
-import { requireRole, requireVerifiedSellerAccess } from "../middleware/auth.js";
+import { requireAuth, requireRole, requireVerifiedSellerAccess } from "../middleware/auth.js";
 import {
   deleteUploadedFiles,
   upload,
@@ -32,8 +32,93 @@ import {
   updateProduct,
   updateService,
 } from "../services/listing.service.js";
+import {
+  applySellerToLocalMarket,
+  createMarketRequestForSeller,
+  getSellerMarketStatus,
+  getSellerOnboardingOptions,
+  listApprovedMarketsForSeller,
+} from "../services/market.service.js";
+import {
+  getSellerReadiness,
+  updateSellerOnboardingDraft,
+  upsertSellerVerification,
+} from "../services/seller-verification.service.js";
+import { ensureSellerSubscription, getSellerSubscription } from "../services/subscription.service.js";
 
 export const sellerRouter = Router();
+
+function sellerOnboardingPayload(req, verification) {
+  if (req.auth.role === "seller") {
+    ensureSellerSubscription(req.auth.user_id);
+  }
+
+  return {
+    verification,
+    readiness: getSellerReadiness(req.auth.user_id),
+    subscription: getSellerSubscription(req.auth.user_id),
+    options: getSellerOnboardingOptions(req.auth.user_id),
+  };
+}
+
+sellerRouter.get("/onboarding/options", requireAuth, (req, res) => {
+  res.json(getSellerOnboardingOptions(req.auth.user_id));
+});
+
+sellerRouter.post("/onboarding/start", requireAuth, (req, res) => {
+  const verification = updateSellerOnboardingDraft(req.auth.user_id, req.body || {});
+  ensureSellerSubscription(req.auth.user_id);
+  res.status(201).json(sellerOnboardingPayload(req, verification));
+});
+
+for (const section of ["type", "store", "location", "contact"]) {
+  sellerRouter.patch(`/onboarding/${section}`, requireAuth, (req, res) => {
+    const verification = updateSellerOnboardingDraft(req.auth.user_id, req.body || {});
+    ensureSellerSubscription(req.auth.user_id);
+    res.json(sellerOnboardingPayload(req, verification));
+  });
+}
+
+sellerRouter.post(
+  "/onboarding/submit",
+  requireAuth,
+  upload.single("identityProof"),
+  (req, res) => {
+    const identityProofUrl = req.file ? fileUrl(req, req.file) : null;
+    const verification = upsertSellerVerification(req.auth.user_id, req.body || {}, identityProofUrl);
+    ensureSellerSubscription(req.auth.user_id);
+    res.json(sellerOnboardingPayload(req, verification));
+  },
+);
+
+sellerRouter.get("/markets/available", requireAuth, (req, res) => {
+  res.json({
+    markets: listApprovedMarketsForSeller({
+      query: String(req.query.q || ""),
+    }),
+  });
+});
+
+sellerRouter.post("/markets/join", requireAuth, (req, res) => {
+  res.status(201).json(applySellerToLocalMarket(req.auth.user_id, req.body || {}));
+});
+
+sellerRouter.post(
+  "/markets/request",
+  requireAuth,
+  upload.single("marketPhoto"),
+  (req, res) => {
+    const request = createMarketRequestForSeller(req.auth.user_id, {
+      ...(req.body || {}),
+      photoUrl: req.file ? fileUrl(req, req.file) : "",
+    });
+    res.status(201).json({ request, status: getSellerMarketStatus(req.auth.user_id) });
+  },
+);
+
+sellerRouter.get("/markets/status", requireAuth, (req, res) => {
+  res.json(getSellerMarketStatus(req.auth.user_id));
+});
 
 sellerRouter.use(requireRole("seller", "admin"));
 

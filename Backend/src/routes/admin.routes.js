@@ -14,12 +14,17 @@ import { requireAdmin } from "../middleware/requireAdmin.js";
 import { createId } from "../lib/ids.js";
 import {
   adminCreateMarket,
+  adminListMarketRequests,
   adminListMarkets,
   adminListMarketSellers,
+  adminListSellerCategoryApprovals,
   adminUpdateMarket,
+  adminUpdateMarketRequestStatus,
   adminUpdateMarketCategories,
   adminUpdateMarketSellerStatus,
   adminUpdateMarketStatus,
+  adminUpdateSellerMarketApproval,
+  adminUpdateSellerCategoryApproval,
 } from "../services/market.service.js";
 import {
   adminListRiders,
@@ -158,6 +163,67 @@ router.get("/markets", requireAdmin, (req, res) => {
   }
 });
 
+router.get("/markets/requests", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      requests: adminListMarketRequests({
+        query: String(req.query.q || ""),
+        status: String(req.query.status || ""),
+      }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load market requests" });
+  }
+});
+
+router.patch("/markets/requests/:requestId/approve", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      request: adminUpdateMarketRequestStatus(req.params.requestId, "approved", req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not approve market request" });
+  }
+});
+
+router.patch("/markets/requests/:requestId/reject", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      request: adminUpdateMarketRequestStatus(req.params.requestId, "rejected", req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not reject market request" });
+  }
+});
+
+router.patch("/markets/requests/:requestId/status", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      request: adminUpdateMarketRequestStatus(req.params.requestId, req.body?.status, req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market request" });
+  }
+});
+
+router.get("/seller-category-approvals", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      approvals: adminListSellerCategoryApprovals({
+        query: String(req.query.q || ""),
+        status: String(req.query.status || ""),
+      }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load seller category approvals" });
+  }
+});
+
 router.post("/markets", requireAdmin, (req, res) => {
   try {
     res.status(201).json({
@@ -226,10 +292,52 @@ router.patch("/markets/:marketId/sellers/:profileId/status", requireAdmin, (req,
         req.params.marketId,
         req.params.profileId,
         req.body?.status,
+        req.body || {},
       ),
     });
   } catch (error) {
     res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market seller status" });
+  }
+});
+
+router.patch("/sellers/:sellerId/market-approval", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminUpdateSellerMarketApproval(req.params.sellerId, req.body || {}),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller market approval" });
+  }
+});
+
+router.patch("/sellers/:sellerId/category-approval", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      approval: adminUpdateSellerCategoryApproval(
+        req.body?.approvalId || req.params.sellerId,
+        req.body || {},
+        req.auth?.user_id || req.auth?.id || null,
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller category approval" });
+  }
+});
+
+router.patch("/seller-category-approvals/:approvalId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      approval: adminUpdateSellerCategoryApproval(
+        req.params.approvalId,
+        req.body || {},
+        req.auth?.user_id || req.auth?.id || null,
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller category approval" });
   }
 });
 

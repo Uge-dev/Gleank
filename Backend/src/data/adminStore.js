@@ -2,6 +2,14 @@ import { db, transaction } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
 import { createNotification, createNotificationForUsers } from "../services/notification.service.js";
+import {
+  adminListMarketRequests,
+  adminListMarkets,
+  adminListSellerCategoryApprovals,
+  adminUpdateMarket,
+  adminUpdateMarketRequestStatus,
+  adminUpdateSellerCategoryApproval,
+} from "../services/market.service.js";
 
 function naira(kobo = 0) {
   return new Intl.NumberFormat("en-NG", {
@@ -155,6 +163,8 @@ function buildSellers() {
     .prepare(`
       SELECT stores.*, users.name AS owner_name, users.email, users.phone AS owner_phone,
              seller_verification_profiles.status AS seller_verification_status,
+             seller_market_profiles.status AS market_approval_status,
+             markets.name AS market_name,
              user_payout_accounts.bank_name, user_payout_accounts.account_name,
              seller_subscriptions.status AS subscription_status,
              COUNT(DISTINCT products.id) AS product_count,
@@ -165,6 +175,8 @@ function buildSellers() {
       FROM stores
       JOIN users ON users.id = stores.owner_id
       LEFT JOIN seller_verification_profiles ON seller_verification_profiles.user_id = users.id
+      LEFT JOIN seller_market_profiles ON seller_market_profiles.store_id = stores.id
+      LEFT JOIN markets ON markets.id = seller_market_profiles.market_id
       LEFT JOIN user_payout_accounts ON user_payout_accounts.user_id = users.id
       LEFT JOIN seller_subscriptions ON seller_subscriptions.user_id = users.id
       LEFT JOIN products ON products.store_id = stores.id
@@ -172,6 +184,8 @@ function buildSellers() {
       LEFT JOIN orders ON orders.store_id = stores.id
       GROUP BY stores.id, users.name, users.email, users.phone,
                seller_verification_profiles.status,
+               seller_market_profiles.status,
+               markets.name,
                user_payout_accounts.bank_name,
                user_payout_accounts.account_name,
                seller_subscriptions.status
@@ -187,6 +201,9 @@ function buildSellers() {
       phone: row.phone || row.owner_phone || "",
       campus: row.campus || "",
       category: row.category || "General",
+      sellerType: row.seller_type || "campus",
+      marketName: row.market_name || "",
+      marketApprovalStatus: row.market_approval_status || "",
       verificationStatus: sellerVerificationStatus(row),
       status: row.status === "paused" ? "suspended" : "active",
       products: Number(row.product_count || 0) + Number(row.service_count || 0),
@@ -708,6 +725,8 @@ export function buildAdminOverview(data) {
     openDisputes: data.disputes.filter((dispute) => ["open", "reviewing"].includes(dispute.status)).length,
     unreadFeedback: data.feedback.filter((item) => item.status === "unread").length,
     unreadSupport: unreadSupportCount,
+    pendingMarketRequests: data.marketRequests.filter((item) => item.status === "pending" || item.status === "needs_more_info").length,
+    pendingCategoryApprovals: data.categoryApprovals.filter((item) => item.status === "pending" || item.status === "needs_more_info").length,
   };
 }
 
@@ -717,6 +736,9 @@ export function getAdminDataset() {
     sellers: buildSellers(),
     products: buildProducts(),
     usedItems: buildUsedItems(),
+    markets: adminListMarkets({}),
+    marketRequests: adminListMarketRequests({}),
+    categoryApprovals: adminListSellerCategoryApprovals({}),
     orders: buildOrders(),
     payments: buildPayments(),
     deliveries: buildDeliveries(),
@@ -791,7 +813,20 @@ export function sendAdminSupportMessage(conversationId, input) {
 }
 
 function assertKnownCollection(collection) {
-  const allowed = new Set(["users", "sellers", "products", "usedItems", "orders", "payments", "deliveries", "disputes", "feedback"]);
+  const allowed = new Set([
+    "users",
+    "sellers",
+    "products",
+    "usedItems",
+    "markets",
+    "marketRequests",
+    "categoryApprovals",
+    "orders",
+    "payments",
+    "deliveries",
+    "disputes",
+    "feedback",
+  ]);
   if (!allowed.has(collection)) throw new HttpError(404, "Unknown admin collection.");
 }
 
@@ -1015,6 +1050,18 @@ function updateDispute(id, fields) {
   }
 }
 
+function updateMarket(id, fields) {
+  adminUpdateMarket(id, fields);
+}
+
+function updateMarketRequest(id, fields) {
+  adminUpdateMarketRequestStatus(id, fields.status || "pending", fields);
+}
+
+function updateCategoryApproval(id, fields) {
+  adminUpdateSellerCategoryApproval(id, fields, null);
+}
+
 export function updateRecordFields(collection, id, fields) {
   assertKnownCollection(collection);
   transaction(() => {
@@ -1022,6 +1069,9 @@ export function updateRecordFields(collection, id, fields) {
     if (collection === "sellers") updateSeller(id, fields);
     if (collection === "products") updateProductOrService(id, fields);
     if (collection === "usedItems") updateUsedItem(id, fields);
+    if (collection === "markets") updateMarket(id, fields);
+    if (collection === "marketRequests") updateMarketRequest(id, fields);
+    if (collection === "categoryApprovals") updateCategoryApproval(id, fields);
     if (collection === "orders" || collection === "deliveries") updateOrder(id.replace(/^del-|^udel-/, ""), fields);
     if (collection === "payments") updatePayment(id, fields);
     if (collection === "disputes") updateDispute(id, fields);
@@ -1040,6 +1090,9 @@ export function deleteRecord(collection, id) {
     if (collection === "sellers") updateSeller(id, { status: "suspended" });
     if (collection === "products") updateProductOrService(id, { status: "hidden" });
     if (collection === "usedItems") updateUsedItem(id, { status: "removed", rejectionReason: "Removed by admin." });
+    if (collection === "markets") updateMarket(id, { status: "disabled" });
+    if (collection === "marketRequests") updateMarketRequest(id, { status: "rejected", adminNote: "Rejected by admin." });
+    if (collection === "categoryApprovals") updateCategoryApproval(id, { status: "rejected", adminNote: "Rejected by admin." });
     if (collection === "orders") updateOrder(id, { orderStatus: "cancelled" });
     if (collection === "payments") updatePayment(id, { status: "failed" });
     if (collection === "deliveries") updateOrder(id.replace(/^del-|^udel-/, ""), { deliveryStatus: "failed" });

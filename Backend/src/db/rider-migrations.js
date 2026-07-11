@@ -187,6 +187,13 @@ export function runRiderMigrations() {
       buyer_id TEXT NOT NULL,
       store_id TEXT,
       listing_id TEXT,
+      market_source TEXT NOT NULL DEFAULT '',
+      seller_type TEXT NOT NULL DEFAULT '',
+      market_id TEXT,
+      market_name TEXT NOT NULL DEFAULT '',
+      campus_name TEXT NOT NULL DEFAULT '',
+      pickup_landmark TEXT NOT NULL DEFAULT '',
+      seller_allows_whatsapp INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery','delivered','failed','cancelled')),
       payment_status TEXT NOT NULL DEFAULT 'paid' CHECK (payment_status IN ('paid','unpaid','failed','refunded')),
       payment_confirmed_at TEXT,
@@ -318,6 +325,14 @@ export function runRiderMigrations() {
 
     CREATE INDEX IF NOT EXISTS rider_contact_audit_rider_idx ON rider_contact_audit_logs(rider_id, created_at);
   `);
+
+  ensureColumn("rider_assignments", "market_source", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "seller_type", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "market_id", "TEXT");
+  ensureColumn("rider_assignments", "market_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "campus_name", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "pickup_landmark", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "seller_allows_whatsapp", "INTEGER NOT NULL DEFAULT 1");
 }
 
 runRiderMigrations();

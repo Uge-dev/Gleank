@@ -9,6 +9,10 @@ import {
 } from "../repositories/store.repository.js";
 import { findUserById, updateUserRole } from "../repositories/user.repository.js";
 import { getPayoutAccount } from "./trust.service.js";
+import {
+  createMarketRequestForSeller,
+  ensureSellerCategoryRequest,
+} from "./market.service.js";
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
@@ -226,6 +230,174 @@ export function getSellerVerification(userId) {
   return serializeSellerVerification(row);
 }
 
+function pickNext(inputValue, existingValue, fallback = "") {
+  const value = clean(inputValue, 1500);
+  return value || existingValue || fallback;
+}
+
+export function updateSellerOnboardingDraft(userId, input = {}) {
+  const store = ensureSellerStoreForUser(userId, input);
+  const existing = db
+    .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
+    .get(userId);
+  const now = new Date().toISOString();
+  const sellerType = sellerTypeFromInput(input.sellerType || existing?.seller_type || store.seller_type);
+  const marketRequest = Object.keys(jsonFromMarketRequest(input)).length
+    ? jsonFromMarketRequest(input)
+    : (() => {
+        try {
+          return JSON.parse(existing?.market_request_json || "{}");
+        } catch {
+          return {};
+        }
+      })();
+
+  const next = {
+    sellerType,
+    storeName: pickNext(input.storeName || input.businessName, store.name, defaultStoreName(findUserById(userId))),
+    storeCategory: pickNext(input.storeCategory || input.category, store.category, "General"),
+    fullName: pickNext(input.fullName || input.name, existing?.full_name, findUserById(userId)?.name || ""),
+    phone: pickNext(input.sellerPhone || input.phone, existing?.phone, store.phone),
+    campus: pickNext(input.sellerCampus || input.campus, existing?.campus, store.campus),
+    locationArea: pickNext(input.locationArea || input.areaLocation, existing?.location_area, store.location_area || store.campus),
+    pickupLocation: pickNext(input.pickupLocation, existing?.pickup_location, store.pickup_location),
+    nearestLandmark: pickNext(input.nearestLandmark || input.landmark, existing?.nearest_landmark, store.nearest_landmark),
+    marketId: pickNext(input.marketId, existing?.market_id, store.market_id || ""),
+    marketRequest,
+    shopStallNumber: pickNext(input.shopStallNumber || input.stallNumber, existing?.shop_stall_number, store.shop_stall_number),
+    shopSection: pickNext(input.shopSection, existing?.shop_section, store.shop_section),
+    whatsappPhone: pickNext(input.whatsappPhone || input.sellerWhatsapp, existing?.whatsapp_phone, store.whatsapp_phone || store.phone),
+    allowRiderWhatsAppContact: booleanFromInput(
+      input.allowRiderWhatsAppContact,
+      existing ? existing.allow_rider_whatsapp_contact !== 0 : store.allow_rider_whatsapp_contact !== 0,
+    ),
+    operatingHours: pickNext(input.operatingHours, existing?.operating_hours, store.operating_hours),
+    businessDescription: pickNext(input.businessDescription, existing?.business_description, store.description),
+  };
+
+  transaction(() => {
+    if (existing) {
+      db.prepare(`
+        UPDATE seller_verification_profiles
+        SET store_id = ?, seller_type = ?, full_name = ?, phone = ?, campus = ?,
+            location_area = ?, pickup_location = ?, nearest_landmark = ?,
+            market_id = ?, market_request_json = ?, shop_stall_number = ?,
+            shop_section = ?, whatsapp_phone = ?, allow_rider_whatsapp_contact = ?,
+            operating_hours = ?, business_description = ?,
+            status = CASE
+              WHEN status IN ('verified', 'suspended', 'rejected') THEN status
+              ELSE 'draft'
+            END,
+            updated_at = ?
+        WHERE user_id = ?
+      `).run(
+        store.id,
+        next.sellerType,
+        next.fullName,
+        next.phone,
+        next.campus,
+        next.locationArea,
+        next.pickupLocation,
+        next.nearestLandmark,
+        next.marketId || null,
+        JSON.stringify(next.marketRequest),
+        next.shopStallNumber,
+        next.shopSection,
+        next.whatsappPhone,
+        next.allowRiderWhatsAppContact ? 1 : 0,
+        next.operatingHours,
+        next.businessDescription,
+        now,
+        userId,
+      );
+    } else {
+      db.prepare(`
+        INSERT INTO seller_verification_profiles (
+          id, user_id, store_id, seller_type, full_name, phone, campus,
+          location_area, pickup_location, nearest_landmark, market_id,
+          market_request_json, shop_stall_number, shop_section, whatsapp_phone,
+          allow_rider_whatsapp_contact, operating_hours, business_description,
+          status, note, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', '', ?, ?)
+      `).run(
+        createId("svp"),
+        userId,
+        store.id,
+        next.sellerType,
+        next.fullName,
+        next.phone,
+        next.campus,
+        next.locationArea,
+        next.pickupLocation,
+        next.nearestLandmark,
+        next.marketId || null,
+        JSON.stringify(next.marketRequest),
+        next.shopStallNumber,
+        next.shopSection,
+        next.whatsappPhone,
+        next.allowRiderWhatsAppContact ? 1 : 0,
+        next.operatingHours,
+        next.businessDescription,
+        now,
+        now,
+      );
+    }
+
+    db.prepare(`
+      UPDATE stores
+      SET name = ?, description = ?, category = ?, seller_type = ?, campus = ?,
+          location_area = ?, pickup_location = ?, nearest_landmark = ?,
+          market_id = ?, shop_stall_number = ?, shop_section = ?,
+          whatsapp_phone = ?, allow_rider_whatsapp_contact = ?,
+          operating_hours = ?, phone = ?, updated_at = ?
+      WHERE id = ?
+    `).run(
+      next.storeName,
+      next.businessDescription || store.description || "",
+      next.storeCategory,
+      next.sellerType,
+      next.campus,
+      next.locationArea,
+      next.pickupLocation,
+      next.nearestLandmark,
+      next.marketId || null,
+      next.shopStallNumber,
+      next.shopSection,
+      next.whatsappPhone,
+      next.allowRiderWhatsAppContact ? 1 : 0,
+      next.operatingHours,
+      next.phone,
+      now,
+      store.id,
+    );
+
+    if (next.sellerType === "local_market" && Object.keys(next.marketRequest).length) {
+      createMarketRequestForSeller(userId, {
+        ...next.marketRequest,
+        marketName: next.marketRequest.marketName,
+        state: next.marketRequest.state,
+        cityArea: next.marketRequest.cityArea,
+        addressLandmark: next.marketRequest.addressLandmark,
+        approximateLocation: next.marketRequest.approximateLocation,
+        whatSells: next.marketRequest.sells || next.storeCategory,
+        shopDetails: next.marketRequest.shopDetails || next.shopStallNumber,
+        contactPhone: next.marketRequest.contactPhone || next.phone,
+      });
+    }
+
+    if (["local_market", "nearby"].includes(next.sellerType)) {
+      ensureSellerCategoryRequest({
+        sellerId: userId,
+        storeId: store.id,
+        marketId: next.sellerType === "local_market" ? next.marketId || null : null,
+        categoryName: next.storeCategory,
+      });
+    }
+  });
+
+  return getSellerVerification(userId);
+}
+
 export function upsertSellerVerification(userId, input, identityProofUrl = null) {
   const store = ensureSellerStoreForUser(userId, input);
 
@@ -434,8 +606,9 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       db.prepare(`
         INSERT INTO seller_market_profiles (
           id, market_id, store_id, stall_number, address_note, shop_section,
-          market_landmark, pickup_point, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+          market_landmark, pickup_point, pickup_lat, pickup_lng, risk_level,
+          admin_note, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'standard', '', 'pending', ?, ?)
         ON CONFLICT(store_id) DO UPDATE SET
           market_id = excluded.market_id,
           stall_number = excluded.stall_number,
@@ -443,6 +616,8 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
           shop_section = excluded.shop_section,
           market_landmark = excluded.market_landmark,
           pickup_point = excluded.pickup_point,
+          pickup_lat = excluded.pickup_lat,
+          pickup_lng = excluded.pickup_lng,
           status = CASE
             WHEN seller_market_profiles.status = 'approved' THEN 'approved'
             ELSE 'pending'
@@ -457,9 +632,34 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         next.shopSection,
         next.nearestLandmark,
         next.pickupLocation,
+        numberOrNull(input.pickupLat),
+        numberOrNull(input.pickupLng),
         now,
         now,
       );
+    }
+
+    if (next.sellerType === "local_market" && Object.keys(next.marketRequest).length) {
+      createMarketRequestForSeller(userId, {
+        ...next.marketRequest,
+        marketName: next.marketRequest.marketName,
+        state: next.marketRequest.state,
+        cityArea: next.marketRequest.cityArea,
+        addressLandmark: next.marketRequest.addressLandmark,
+        approximateLocation: next.marketRequest.approximateLocation,
+        whatSells: next.marketRequest.sells || next.storeCategory,
+        shopDetails: next.marketRequest.shopDetails || next.shopStallNumber,
+        contactPhone: next.marketRequest.contactPhone || next.phone,
+      });
+    }
+
+    if (["local_market", "nearby"].includes(next.sellerType)) {
+      ensureSellerCategoryRequest({
+        sellerId: userId,
+        storeId: store.id,
+        marketId: next.sellerType === "local_market" ? next.marketId || null : null,
+        categoryName: next.storeCategory,
+      });
     }
 
     if (status === "verified") {

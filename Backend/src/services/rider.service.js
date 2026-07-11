@@ -115,6 +115,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
   if (!row) return null;
   const pickedUp = ["picked_up", "out_for_delivery", "delivered"].includes(row.status);
   const reveal = revealPrivate || pickedUp;
+  const sellerAllowsWhatsApp = row.seller_allows_whatsapp !== 0;
   return {
     id: row.id,
     orderId: row.order_id,
@@ -124,6 +125,20 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     buyerId: reveal ? row.buyer_id : null,
     status: row.status,
     paymentStatus: row.payment_status,
+    marketSource: row.market_source || "",
+    sellerType: row.seller_type || "",
+    marketId: row.market_id || null,
+    marketName: row.market_name || "",
+    campusName: row.campus_name || "",
+    pickupLandmark: row.pickup_landmark || "",
+    pickupSource: {
+      label: row.market_source || "Seller pickup",
+      sellerType: row.seller_type || "",
+      marketId: row.market_id || null,
+      marketName: row.market_name || "",
+      campusName: row.campus_name || "",
+      landmark: row.pickup_landmark || "",
+    },
     pickupPoint: {
       address: row.pickup_address,
       lat: row.pickup_lat,
@@ -137,7 +152,8 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     deliveryLocation: row.delivery_address,
     sellerName: row.seller_name,
     sellerPhone: row.seller_phone,
-    sellerWhatsApp: phoneForWhatsapp(row.seller_whatsapp || row.seller_phone),
+    sellerWhatsApp: sellerAllowsWhatsApp ? phoneForWhatsapp(row.seller_whatsapp || row.seller_phone) : "",
+    sellerAllowsWhatsApp,
     buyerName: reveal ? row.buyer_name : "Locked until pickup",
     buyerPhone: reveal ? row.buyer_phone : "",
     packageSummary: reveal ? row.package_summary : "Package details unlock after seller pickup OTP is verified.",
@@ -225,6 +241,80 @@ function updateConnectedOrderDelivered(row) {
 function connectedOrder(row) {
   const table = orderTable(row.order_type);
   return db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(row.order_id);
+}
+
+function pointFrom(address, lat, lng) {
+  return {
+    address: clean(address, 260),
+    lat: numberOrNull(lat),
+    lng: numberOrNull(lng),
+  };
+}
+
+function sourceForOrder(orderType, order) {
+  if (orderType === "used_order") {
+    const listing = order.listing_id
+      ? db
+          .prepare("SELECT * FROM used_listings WHERE id = ?")
+          .get(order.listing_id)
+      : null;
+
+    return {
+      marketSource: "Used Market",
+      sellerType: "used_market",
+      marketId: null,
+      marketName: "Used Market",
+      campusName: listing?.area_location || listing?.campus || order.campus || "",
+      pickupLandmark: listing?.pickup_location || order.pickup_location || "",
+      pickupPoint: pointFrom(
+        order.pickup_location || listing?.pickup_location || listing?.area_location || listing?.campus || "",
+        order.pickup_lat,
+        order.pickup_lng,
+      ),
+      sellerAllowsWhatsApp: true,
+      sellerWhatsapp: "",
+    };
+  }
+
+  const store = order.store_id
+    ? db
+        .prepare(`
+          SELECT stores.*, markets.name AS market_name
+          FROM stores
+          LEFT JOIN markets ON markets.id = stores.market_id
+          WHERE stores.id = ?
+        `)
+        .get(order.store_id)
+    : null;
+  const sellerType = store?.seller_type || "campus";
+  const marketSource =
+    sellerType === "local_market"
+      ? "Local Market"
+      : sellerType === "nearby"
+        ? "Nearby Seller"
+        : sellerType === "used_market"
+          ? "Used Market"
+          : "Campus Market";
+
+  return {
+    marketSource,
+    sellerType,
+    marketId: store?.market_id || null,
+    marketName: store?.market_name || "",
+    campusName: store?.campus || order.campus || "",
+    pickupLandmark: store?.nearest_landmark || "",
+    pickupPoint: pointFrom(
+      order.pickup_location ||
+        store?.pickup_location ||
+        store?.location_area ||
+        store?.campus ||
+        "",
+      order.pickup_lat ?? store?.pickup_lat,
+      order.pickup_lng ?? store?.pickup_lng,
+    ),
+    sellerAllowsWhatsApp: store?.allow_rider_whatsapp_contact !== 0,
+    sellerWhatsapp: store?.whatsapp_phone || store?.phone || "",
+  };
 }
 
 function proofUrlFromInput(input) {
@@ -482,6 +572,22 @@ function loadOrderForAssignment(auth, orderType, orderId) {
 export function createRiderAssignment(auth, input) {
   if (!auth || !["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Only sellers or admins can assign deliveries.");
   const order = loadOrderForAssignment(auth, input.orderType, input.orderId);
+  const source = sourceForOrder(input.orderType, order);
+  const pickupPoint = input.pickupPoint || source.pickupPoint;
+  const deliveryPoint = input.deliveryPoint || pointFrom(
+    order.delivery_address || order.pickup_location || "",
+    order.delivery_lat,
+    order.delivery_lng,
+  );
+
+  if (!pickupPoint?.address) {
+    throw new HttpError(422, "Pickup location is missing from the seller profile or order.");
+  }
+
+  if (!deliveryPoint?.address) {
+    throw new HttpError(422, "Buyer delivery location is missing from the order.");
+  }
+
   const rider = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'rider' AND is_active = 1").get(input.riderId);
   if (!rider) throw new HttpError(404, "Selected rider was not found.");
   const riderProfile = requireVerifiedRider(input.riderId);
@@ -498,11 +604,13 @@ export function createRiderAssignment(auth, input) {
     db.prepare(`
       INSERT INTO rider_assignments (
         id, order_id, order_type, rider_id, seller_id, buyer_id, store_id, listing_id,
+        market_source, seller_type, market_id, market_name, campus_name, pickup_landmark,
+        seller_allows_whatsapp,
         status, payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
         pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
         package_value_kobo, delivery_fee_kobo, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'assigned', 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -512,18 +620,25 @@ export function createRiderAssignment(auth, input) {
       order.buyer_id,
       order.store_id || null,
       order.listing_id || null,
+      source.marketSource,
+      source.sellerType,
+      source.marketId,
+      source.marketName,
+      source.campusName,
+      source.pickupLandmark,
+      source.sellerAllowsWhatsApp ? 1 : 0,
       now,
       hashOtp(pickupCode),
       hashOtp(deliveryCode),
-      input.pickupPoint.address,
-      input.pickupPoint.lat,
-      input.pickupPoint.lng,
-      input.deliveryPoint.address,
-      input.deliveryPoint.lat,
-      input.deliveryPoint.lng,
+      pickupPoint.address,
+      pickupPoint.lat,
+      pickupPoint.lng,
+      deliveryPoint.address,
+      deliveryPoint.lat,
+      deliveryPoint.lng,
       input.sellerName || order.seller_name || "Seller",
       input.sellerPhone || "",
-      phoneForWhatsapp(input.sellerWhatsApp || input.sellerPhone || ""),
+      source.sellerAllowsWhatsApp ? phoneForWhatsapp(input.sellerWhatsApp || source.sellerWhatsapp || input.sellerPhone || "") : "",
       input.buyerName || order.buyer_name || "Buyer",
       input.buyerPhone || order.buyer_phone || "",
       input.packageSummary || order.note || "Gleank delivery package",
@@ -537,7 +652,7 @@ export function createRiderAssignment(auth, input) {
       userId: input.riderId,
       type: "order",
       title: "New delivery assigned",
-      body: `A paid Gleank delivery has been assigned to you for pickup at ${input.pickupPoint.address}.`,
+      body: `A paid Gleank delivery has been assigned to you for pickup at ${pickupPoint.address}.`,
       actionLabel: "View delivery",
       actionPath: `/rider/assignments/${id}`,
     });

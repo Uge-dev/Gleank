@@ -507,6 +507,11 @@
   background: linear-gradient(135deg, var(--admin-green), #0f8f4c);
 }
 
+.admin-stage3-grid {
+  display: grid;
+  gap: 18px;
+}
+
 .admin-hero-card h2 {
   max-width: 760px;
   font-size: clamp(1.7rem, 4vw, 3.2rem);
