@@ -88,6 +88,29 @@ function serializeProfile(row) {
     whatsappPhone: row.whatsapp_phone,
     vehicleType: row.vehicle_type,
     vehiclePlate: row.vehicle_plate,
+    transportType: row.transport_type || row.vehicle_type || "motorcycle",
+    maxPackageSize: row.max_package_size || "small_medium",
+    maxWeightClass: row.max_weight_class || "up_to_medium",
+    fragileHandlingAbility: row.fragile_handling_ability || "can_handle_fragile",
+    deliveryBagType: row.delivery_bag_type || "medium_delivery_bag",
+    maxPickupsPerBatch: row.max_pickups_per_batch || 4,
+    serviceZoneIds: (() => {
+      try {
+        const parsed = JSON.parse(row.service_zone_ids || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
+    currentZoneId: row.current_zone_id || null,
+    gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
+    availabilityMode: row.availability_mode || row.availability || "offline",
+    canReceiveAutoDispatch: row.can_receive_auto_dispatch !== 0,
+    currentActiveBatchCount: row.current_active_batch_count || 0,
+    acceptanceRate: row.acceptance_rate ?? 1,
+    rejectionRate: row.rejection_rate ?? 0,
+    responseSpeedScore: row.response_speed_score ?? 1,
+    reliabilityScore: row.reliability_score ?? 1,
     coverageArea: row.coverage_area,
     homeAddress: row.home_address || "",
     emergencyContactName: row.emergency_contact_name || "",
@@ -173,6 +196,8 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     packageValue: money(row.package_value_kobo),
     deliveryFeeKobo: row.delivery_fee_kobo,
     deliveryFee: money(row.delivery_fee_kobo),
+    deliveryBatchId: row.delivery_batch_id || null,
+    pickupTaskId: row.pickup_task_id || null,
     pickupProof: row.pickup_proof_created_at ? {
       url: row.pickup_proof_url || null,
       note: row.pickup_proof_note,
@@ -470,6 +495,12 @@ export function updateRiderAvailability(auth, input) {
   db.prepare(`
     UPDATE rider_profiles
     SET availability = ?,
+        availability_mode = CASE
+          WHEN ? = 'online' AND ? IS NOT NULL THEN 'online_gps_active'
+          WHEN ? = 'online' THEN 'online_zone_only'
+          WHEN ? = 'busy' THEN 'busy'
+          ELSE 'offline'
+        END,
         current_lat = COALESCE(?, current_lat),
         current_lng = COALESCE(?, current_lng),
         current_accuracy_meters = COALESCE(?, current_accuracy_meters),
@@ -477,6 +508,10 @@ export function updateRiderAvailability(auth, input) {
         updated_at = ?
     WHERE user_id = ?
   `).run(
+    input.availability,
+    input.availability,
+    location?.lat ?? null,
+    input.availability,
     input.availability,
     location?.lat ?? null,
     location?.lng ?? null,

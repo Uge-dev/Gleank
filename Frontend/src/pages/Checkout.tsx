@@ -21,6 +21,10 @@ import { createOrders } from "../services/order.service";
 import { quoteDeliveryFee, getDeliveryZones } from "../services/delivery.service";
 import type { DeliveryQuote, DeliveryZone } from "../services/delivery.service";
 import { initializeOrdersPayment } from "../services/payment.service";
+import {
+  getCheckoutGroupingPreview,
+  type CheckoutGroupingPreview,
+} from "../services/logistics.service";
 import { formatNaira } from "../utils/price";
 import "./Checkout.css";
 
@@ -47,13 +51,15 @@ function Checkout() {
   const [pickupLocation, setPickupLocation] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
+  const [groupingPreview, setGroupingPreview] = useState<CheckoutGroupingPreview | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
+  const [isGrouping, setIsGrouping] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
-  const deliveryFee = deliveryQuote?.fee || 0;
+  const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
 
   const sellerCount = useMemo(() => {
@@ -118,6 +124,36 @@ function Checkout() {
       active = false;
     };
   }, [campus, deliveryOption, selectedLocation]);
+
+  useEffect(() => {
+    if (!isAuthenticated || cartItems.length === 0) {
+      setGroupingPreview(null);
+      return;
+    }
+
+    let active = true;
+    setIsGrouping(true);
+
+    void getCheckoutGroupingPreview({
+      items: cartItems.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+      })),
+    })
+      .then((preview) => {
+        if (active) setGroupingPreview(preview);
+      })
+      .catch(() => {
+        if (active) setGroupingPreview(null);
+      })
+      .finally(() => {
+        if (active) setIsGrouping(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [cartItems, isAuthenticated]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -501,6 +537,34 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             </span>
           </div>
 
+          <div className="checkout-batch-preview">
+            <div>
+              <strong>Automated delivery grouping</strong>
+              <p>
+                {isGrouping
+                  ? "Checking package compatibility and rider requirements..."
+                  : groupingPreview?.groups.length
+                    ? `${groupingPreview.groups.length} delivery batch(es) planned for ${sellerCount} seller(s).`
+                    : "Gleenc will group compatible seller pickups after checkout."}
+              </p>
+            </div>
+
+            {groupingPreview?.groups.map((group, index) => (
+              <article key={group.id}>
+                <span>Delivery {index + 1}</span>
+                <strong>{group.batchType.replaceAll("_", " ")} • {formatNaira(group.deliveryFee)}</strong>
+                <p>
+                  {group.itemCount} item(s), {group.sellerCount} seller(s), {group.packageSizeSummary} /
+                  {" "}{group.weightClassSummary}, {group.fragilitySummary.replaceAll("_", " ")}
+                </p>
+                <small>
+                  {group.requiresGps ? "GPS rider required" : "Zone-based rider allowed"} •
+                  {" "}{group.requiresPhotoProof ? "Photo proof required" : "OTP proof required"}
+                </small>
+              </article>
+            ))}
+          </div>
+
           <div className="checkout-safe-note">
             <FiCheckCircle />
             <p>
@@ -510,7 +574,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             </p>
           </div>
 
-          <button className="checkout-submit-btn" type="submit" disabled={isSubmitting || isQuoting}>
+          <button className="checkout-submit-btn" type="submit" disabled={isSubmitting || isQuoting || isGrouping}>
             {isSubmitting ? (
               paymentMethod === "pay_now" ? "Opening secure payment..." : "Creating order..."
             ) : (

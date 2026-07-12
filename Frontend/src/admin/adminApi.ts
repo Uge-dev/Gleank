@@ -86,6 +86,93 @@ export async function fetchAdminDataset(): Promise<AdminDataset> {
   return request<AdminDataset>("/admin/overview");
 }
 
+export type AdminDispatchBatch = {
+  id: string;
+  parentOrderId?: string | null;
+  batchType?: string;
+  sourceZoneId?: string | null;
+  destinationZoneId?: string | null;
+  status?: string;
+  dispatchStatus?: string;
+  pickupCount?: number;
+  packageSizeSummary?: string;
+  weightClassSummary?: string;
+  fragilitySummary?: string;
+  requiredVehicleType?: string;
+  riskLevel?: string;
+  requiresGps?: boolean;
+  deliveryFee?: number;
+  packageValue?: number;
+  pickupTasks?: Array<Record<string, unknown>>;
+  attempts?: Array<Record<string, unknown>>;
+};
+
+export type AdminInterventionItem = {
+  id: string;
+  type?: string;
+  priority?: string;
+  reason?: string;
+  status?: string;
+  relatedBatchId?: string | null;
+  relatedOrderId?: string | null;
+  createdAt?: string;
+};
+
+export type AdminDeliveryZone = {
+  id: string;
+  name: string;
+  parentAreaId?: string | null;
+  zoneType?: string;
+  marketId?: string | null;
+  campusId?: string | null;
+  baseDeliveryFee?: number;
+  extraPickupFee?: number;
+  availabilityStatus?: string;
+  availabilityNote?: string;
+  isActive?: boolean;
+};
+
+export type AdminPackageRule = {
+  id: string;
+  categoryKey: string;
+  categoryName: string;
+  packageSize: string;
+  packageWeightClass: string;
+  fragilityLevel: string;
+  requiredVehicleType: string;
+  batchingEligibility: string;
+  riskLevel: string;
+  adminReviewRequired?: boolean;
+  isActive?: boolean;
+};
+
+export type AdminDispatchOperations = {
+  dispatches: AdminDispatchBatch[];
+  stats: {
+    pending: number;
+    offered: number;
+    accepted: number;
+    noRider: number;
+    highRisk: number;
+  };
+};
+
+export async function fetchAdminDispatchOperations() {
+  return request<AdminDispatchOperations>("/admin/live-dispatch");
+}
+
+export async function fetchAdminInterventionQueue() {
+  return request<{ queue: AdminInterventionItem[] }>("/admin/intervention-queue");
+}
+
+export async function fetchDeliveryZones() {
+  return request<{ zones: AdminDeliveryZone[] }>("/zones");
+}
+
+export async function fetchPackageRules() {
+  return request<{ rules: AdminPackageRule[] }>("/package-rules");
+}
+
 function normalizeRider(row: {
   user: {
     id: string;

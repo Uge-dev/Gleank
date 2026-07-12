@@ -105,6 +105,53 @@ export const env = {
     process.env.RIDER_DISPATCH_TIMEOUT_HEAVY_FRAGILE_SECONDS,
     900,
   ),
+  maxDispatchAttempts: numberFromEnv(process.env.MAX_DISPATCH_ATTEMPTS, 5),
+  sellerConfirmationWindowMinutes: numberFromEnv(
+    process.env.SELLER_CONFIRMATION_WINDOW_MINUTES,
+    10,
+  ),
+  riderLocationRefreshMs: numberFromEnv(process.env.RIDER_LOCATION_REFRESH_MS, 30000),
+  allowZoneOnlyRiderDispatch: booleanFromEnv(
+    process.env.ALLOW_ZONE_ONLY_RIDER_DISPATCH,
+    true,
+  ),
+  requireGpsForHighRiskDelivery: booleanFromEnv(
+    process.env.REQUIRE_GPS_FOR_HIGH_RISK_DELIVERY,
+    true,
+  ),
+  maxPickupsPerBatchDefault: numberFromEnv(
+    process.env.MAX_PICKUPS_PER_BATCH_DEFAULT,
+    4,
+  ),
+  enableAutomatedDispatch: booleanFromEnv(process.env.ENABLE_AUTOMATED_DISPATCH, true),
+  enableSellerRiderManualAssignment: booleanFromEnv(
+    process.env.ENABLE_SELLER_RIDER_MANUAL_ASSIGNMENT,
+    false,
+  ),
+  enableAutomatedOrderGrouping: booleanFromEnv(
+    process.env.ENABLE_AUTOMATED_ORDER_GROUPING,
+    true,
+  ),
+  enableAutomatedDeliveryFees: booleanFromEnv(
+    process.env.ENABLE_AUTOMATED_DELIVERY_FEES,
+    true,
+  ),
+  enableAutomatedReliabilityScoring: booleanFromEnv(
+    process.env.ENABLE_AUTOMATED_RELIABILITY_SCORING,
+    true,
+  ),
+  enableAutomatedInterventionQueue: booleanFromEnv(
+    process.env.ENABLE_AUTOMATED_INTERVENTION_QUEUE,
+    true,
+  ),
+  enableAutomatedSubstitutions: booleanFromEnv(
+    process.env.ENABLE_AUTOMATED_SUBSTITUTIONS,
+    true,
+  ),
+  enableZoneAvailabilityControl: booleanFromEnv(
+    process.env.ENABLE_ZONE_AVAILABILITY_CONTROL,
+    true,
+  ),
   maxUploadMb: numberFromEnv(process.env.MAX_UPLOAD_MB, 5),
   imageMaxWidth: numberFromEnv(process.env.IMAGE_MAX_WIDTH, 1800),
   imageWebpQuality: numberFromEnv(process.env.IMAGE_WEBP_QUALITY, 86),

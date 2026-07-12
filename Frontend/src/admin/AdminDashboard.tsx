@@ -52,11 +52,19 @@ import {
   clearAdminToken,
   deleteAdminRecord,
   fetchAdminDataset,
+  fetchAdminDispatchOperations,
+  fetchAdminInterventionQueue,
   fetchAdminProfile,
   fetchAdminRiders,
+  fetchDeliveryZones,
+  fetchPackageRules,
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
+  type AdminDeliveryZone,
+  type AdminDispatchBatch,
+  type AdminInterventionItem,
+  type AdminPackageRule,
   type AdminProfile,
   updateAdminRecordFields,
   updateAdminRecordStatus,
@@ -79,6 +87,7 @@ type AdminTab =
   | "payments"
   | "payouts"
   | "deliveries"
+  | "dispatchOps"
   | "riders"
   | "disputes"
   | "support"
@@ -105,6 +114,7 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "payments", label: "Payments", icon: <FaCreditCard />, description: "Gateway records" },
   { id: "payouts", label: "Payouts", icon: <FaMoneyBillWave />, description: "Seller funds" },
   { id: "deliveries", label: "Deliveries", icon: <FaTruck />, description: "Rider and codes" },
+  { id: "dispatchOps", label: "Dispatch Ops", icon: <FaTruck />, description: "Automation queues" },
   { id: "riders", label: "Riders", icon: <FaTruck />, description: "Rider approvals" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
   { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
@@ -489,6 +499,13 @@ function AdminDashboard() {
   const [riderFilter, setRiderFilter] = useState("all");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [riders, setRiders] = useState<AdminRider[]>([]);
+  const [dispatchOps, setDispatchOps] = useState<{
+    dispatches: AdminDispatchBatch[];
+    stats: { pending: number; offered: number; accepted: number; noRider: number; highRisk: number };
+  }>({ dispatches: [], stats: { pending: 0, offered: 0, accepted: 0, noRider: 0, highRisk: 0 } });
+  const [interventionQueue, setInterventionQueue] = useState<AdminInterventionItem[]>([]);
+  const [deliveryZones, setDeliveryZones] = useState<AdminDeliveryZone[]>([]);
+  const [packageRules, setPackageRules] = useState<AdminPackageRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -510,15 +527,23 @@ function AdminDashboard() {
     setLoadError("");
 
     try {
-      const [nextData, profileResult, riderRows] = await Promise.all([
+      const [nextData, profileResult, riderRows, dispatchResult, queueResult, zonesResult, rulesResult] = await Promise.all([
         fetchAdminDataset(),
         fetchAdminProfile(),
         fetchAdminRiders(),
+        fetchAdminDispatchOperations(),
+        fetchAdminInterventionQueue(),
+        fetchDeliveryZones(),
+        fetchPackageRules(),
       ]);
 
       setData(nextData);
       setAdminProfile(profileResult.admin);
       setRiders(riderRows);
+      setDispatchOps(dispatchResult);
+      setInterventionQueue(queueResult.queue);
+      setDeliveryZones(zonesResult.zones || []);
+      setPackageRules(rulesResult.rules || []);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Admin data could not be loaded.";
@@ -1285,6 +1310,59 @@ function AdminDashboard() {
             />
           ) : null}
 
+          {activeTab === "dispatchOps" ? (
+            <section className="admin-dispatch-ops">
+              <section className="admin-stats-grid">
+                <StatCard label="Pending batches" value={dispatchOps.stats.pending} helper="waiting for dispatch" icon={<FaClipboardList />} />
+                <StatCard label="Offered" value={dispatchOps.stats.offered} helper="rider offer active" icon={<FaTruck />} />
+                <StatCard label="Accepted" value={dispatchOps.stats.accepted} helper="rider accepted" icon={<FaCheckCircle />} />
+                <StatCard label="No rider" value={dispatchOps.stats.noRider} helper="needs admin action" icon={<FaExclamationTriangle />} />
+                <StatCard label="High risk" value={dispatchOps.stats.highRisk} helper="extra proof needed" icon={<FaShieldAlt />} />
+              </section>
+
+              <DataTable<AdminDispatchBatch>
+                title="Dispatch Operations"
+                subtitle="Automated delivery batches, pickup counts, rider offers, no-rider cases, risk levels and dispatch state."
+                rows={dispatchOps.dispatches}
+                search={search}
+                onView={(batch) => openRecord(String(batch.id || "Delivery batch"), batch)}
+                columns={[
+                  { label: "Batch", render: (batch) => String(batch.id || "") },
+                  { label: "Type", render: (batch) => String(batch.batchType || "").replace(/_/g, " ") },
+                  { label: "Pickups", render: (batch) => Number(batch.pickupCount || 0) },
+                  { label: "Package", render: (batch) => `${String(batch.packageSizeSummary || "")} / ${String(batch.weightClassSummary || "")}` },
+                  { label: "Risk", render: (batch) => <StatusBadge status={String(batch.riskLevel || "low")} /> },
+                  { label: "Status", render: (batch) => <StatusBadge status={String(batch.status || "")} /> },
+                  { label: "Dispatch", render: (batch) => <StatusBadge status={String(batch.dispatchStatus || "")} /> },
+                  { label: "Fee", render: (batch) => `₦${Number(batch.deliveryFee || 0).toLocaleString()}` },
+                ]}
+                actions={(batch) => (
+                  <>
+                    <ActionButton tone="soft" onClick={() => openRecord("Pickup tasks", { pickupTasks: batch.pickupTasks })}>Pickups</ActionButton>
+                    <ActionButton tone="soft" onClick={() => openRecord("Dispatch attempts", { attempts: batch.attempts })}>Attempts</ActionButton>
+                    <ActionButton tone="danger" onClick={() => openRecord("Admin action required", { batch, note: "Use backend admin dispatch endpoints to reassign, hold, split, or cancel this batch." })}>Review</ActionButton>
+                  </>
+                )}
+              />
+
+              <DataTable<AdminInterventionItem>
+                title="Admin Intervention Queue"
+                subtitle="Automation-created queue for no rider available, seller delays, failed OTPs, package mismatches, payout holds and other exceptions."
+                rows={interventionQueue}
+                search={search}
+                onView={(item) => openRecord(String(item.type || item.id || "Queue item"), item)}
+                columns={[
+                  { label: "Type", render: (item) => String(item.type || "").replace(/_/g, " ") },
+                  { label: "Priority", render: (item) => <StatusBadge status={String(item.priority || "medium")} /> },
+                  { label: "Reason", render: (item) => String(item.reason || "") },
+                  { label: "Batch", render: (item) => String(item.relatedBatchId || "—") },
+                  { label: "Status", render: (item) => <StatusBadge status={String(item.status || "open")} /> },
+                  { label: "Created", render: (item) => formatAdminTime(String(item.createdAt || "")) },
+                ]}
+              />
+            </section>
+          ) : null}
+
           {activeTab === "riders" ? (
             <section className="admin-filtered-table">
               <div className="admin-filter-row" aria-label="Rider filters">
@@ -1489,6 +1567,38 @@ function AdminDashboard() {
                   <button type="button" onClick={() => setLogoutModalOpen(true)}><FaBan /> Logout admin session</button>
                 </div>
               </div>
+
+              <DataTable<AdminDeliveryZone>
+                title="Delivery Zones"
+                subtitle="Zones and sub-zones used by checkout grouping, rider service coverage, zone-only fallback and delivery fee calculation."
+                rows={deliveryZones}
+                search={search}
+                onView={(zone) => openRecord(zone.name, zone)}
+                columns={[
+                  { label: "Zone", render: (zone) => zone.name },
+                  { label: "Type", render: (zone) => String(zone.zoneType || "").replace(/_/g, " ") },
+                  { label: "Base fee", render: (zone) => `₦${Number(zone.baseDeliveryFee || 0).toLocaleString()}` },
+                  { label: "Extra pickup", render: (zone) => `₦${Number(zone.extraPickupFee || 0).toLocaleString()}` },
+                  { label: "Availability", render: (zone) => <StatusBadge status={zone.availabilityStatus || "normal"} /> },
+                  { label: "Active", render: (zone) => <StatusBadge status={Boolean(zone.isActive)} /> },
+                ]}
+              />
+
+              <DataTable<AdminPackageRule>
+                title="Package Rules"
+                subtitle="Category-to-package rules used to auto-suggest size, weight, fragility, batching eligibility, vehicle type and risk."
+                rows={packageRules}
+                search={search}
+                onView={(rule) => openRecord(rule.categoryName, rule)}
+                columns={[
+                  { label: "Category", render: (rule) => rule.categoryName },
+                  { label: "Size", render: (rule) => String(rule.packageSize).replace(/_/g, " ") },
+                  { label: "Weight", render: (rule) => String(rule.packageWeightClass).replace(/_/g, " ") },
+                  { label: "Fragility", render: (rule) => String(rule.fragilityLevel).replace(/_/g, " ") },
+                  { label: "Vehicle", render: (rule) => String(rule.requiredVehicleType).replace(/_/g, " ") },
+                  { label: "Risk", render: (rule) => <StatusBadge status={rule.riskLevel || "low"} /> },
+                ]}
+              />
             </section>
           ) : null}
         </section>

@@ -32,6 +32,7 @@ import { diagnosticsRouter } from "./routes/diagnostics.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import { deliveryRouter } from "./routes/delivery.routes.js";
 import { riderRouter } from "./routes/rider.routes.js";
+import { logisticsRouter } from "./routes/logistics.routes.js";
 
 export const app = express();
 
@@ -102,6 +103,7 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api", logisticsRouter);
 app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/delivery", deliveryRouter);

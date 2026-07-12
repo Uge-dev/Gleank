@@ -26,6 +26,22 @@ const booleanValue = z.preprocess(
   z.boolean(),
 );
 
+const stringArrayValue = z.preprocess((value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    return Array.isArray(parsed) ? parsed : [trimmed];
+  } catch {
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+}, z.array(z.string().trim().max(80)).max(12));
+
 const sellerTypeSchema = z
   .enum(["used_market", "campus", "local_market", "nearby"])
   .default("campus");
@@ -75,6 +91,17 @@ export const productSchema = z.object({
   availabilityStatus: availabilitySchema,
   returnPolicy: returnPolicySchema,
   isFeatured: booleanValue.optional().default(false),
+  packageSize: z.enum(["small", "medium", "large", "extra_large"]).optional(),
+  packageWeightClass: z.enum(["very_light", "light", "medium", "heavy", "very_heavy"]).optional(),
+  fragilityLevel: z.enum(["not_fragile", "fragile", "very_fragile"]).optional(),
+  handlingInstructions: stringArrayValue.optional().default(["normal_handling"]),
+  packageShape: z.enum(["envelope_or_small_pack", "box", "bag", "bottle_or_container", "long_item", "bulky_item"]).optional(),
+  stackability: z.enum(["stackable", "not_stackable", "stack_only_with_light_items"]).optional(),
+  batchingEligibility: z.enum(["can_batch", "cannot_batch", "batch_only_with_light_items", "batch_only_with_non_fragile_items", "separate_delivery_required"]).optional(),
+  requiredVehicleType: z.enum(["any", "walking_ok", "bicycle_or_above", "motorcycle_or_above", "tricycle_or_above", "car_or_van_required"]).optional(),
+  specialDeliveryFlags: stringArrayValue.optional().default(["none"]),
+  estimatedPackageUnits: numberValue(1).pipe(z.number().int()).optional().default(1),
+  requiresSeparateDelivery: booleanValue.optional().default(false),
   retainedImageUrls: z.string().optional().default("[]"),
 });
 

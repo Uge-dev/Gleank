@@ -505,6 +505,151 @@ function Create() {
             </label>
           </div>
 
+          {createType === "product" && (
+            <section className="package-profile-panel">
+              <div>
+                <span>Delivery & Package Details</span>
+                <h3>Help Gleenc batch and dispatch this product safely</h3>
+                <p>
+                  These details let the platform calculate delivery fees, split unsafe batches,
+                  and match riders by capacity without relying on Google Maps.
+                </p>
+              </div>
+
+              <div className="create-form-grid">
+                <label>
+                  <span>Package size</span>
+                  <select name="packageSize" defaultValue={existingProduct?.packageProfile?.packageSize || "small"}>
+                    <option value="small">Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                    <option value="extra_large">Extra large</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Weight class</span>
+                  <select name="packageWeightClass" defaultValue={existingProduct?.packageProfile?.packageWeightClass || "light"}>
+                    <option value="very_light">Very light</option>
+                    <option value="light">Light</option>
+                    <option value="medium">Medium</option>
+                    <option value="heavy">Heavy</option>
+                    <option value="very_heavy">Very heavy</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Fragility</span>
+                  <select name="fragilityLevel" defaultValue={existingProduct?.packageProfile?.fragilityLevel || "not_fragile"}>
+                    <option value="not_fragile">Not fragile</option>
+                    <option value="fragile">Fragile</option>
+                    <option value="very_fragile">Very fragile</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Package shape</span>
+                  <select name="packageShape" defaultValue={existingProduct?.packageProfile?.packageShape || "box"}>
+                    <option value="envelope_or_small_pack">Envelope / small pack</option>
+                    <option value="box">Box</option>
+                    <option value="bag">Bag</option>
+                    <option value="bottle_or_container">Bottle / container</option>
+                    <option value="long_item">Long item</option>
+                    <option value="bulky_item">Bulky item</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Stackability</span>
+                  <select name="stackability" defaultValue={existingProduct?.packageProfile?.stackability || "stackable"}>
+                    <option value="stackable">Stackable</option>
+                    <option value="not_stackable">Not stackable</option>
+                    <option value="stack_only_with_light_items">Stack only with light items</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Batching eligibility</span>
+                  <select name="batchingEligibility" defaultValue={existingProduct?.packageProfile?.batchingEligibility || "can_batch"}>
+                    <option value="can_batch">Can batch</option>
+                    <option value="cannot_batch">Cannot batch</option>
+                    <option value="batch_only_with_light_items">Only with light items</option>
+                    <option value="batch_only_with_non_fragile_items">Only with non-fragile items</option>
+                    <option value="separate_delivery_required">Separate delivery required</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Required vehicle</span>
+                  <select name="requiredVehicleType" defaultValue={existingProduct?.packageProfile?.requiredVehicleType || "motorcycle_or_above"}>
+                    <option value="any">Any</option>
+                    <option value="walking_ok">Walking okay</option>
+                    <option value="bicycle_or_above">Bicycle or above</option>
+                    <option value="motorcycle_or_above">Motorcycle or above</option>
+                    <option value="tricycle_or_above">Tricycle or above</option>
+                    <option value="car_or_van_required">Car or van required</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Package units</span>
+                  <input
+                    name="estimatedPackageUnits"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={existingProduct?.packageProfile?.estimatedPackageUnits || 1}
+                  />
+                </label>
+              </div>
+
+              <div className="package-chip-grid">
+                {["normal_handling", "keep_upright", "do_not_bend", "do_not_stack", "keep_dry", "handle_with_care"].map((item) => (
+                  <label key={item}>
+                    <input
+                      type="checkbox"
+                      name="handlingInstructions"
+                      value={item}
+                      defaultChecked={(existingProduct?.packageProfile?.handlingInstructions || ["normal_handling"]).includes(item)}
+                    />
+                    <span>{item.replaceAll("_", " ")}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="package-chip-grid">
+                {["none", "fragile", "bulky", "high_value", "perishable", "requires_fast_delivery", "requires_admin_review"].map((item) => (
+                  <label key={item}>
+                    <input
+                      type="checkbox"
+                      name="specialDeliveryFlags"
+                      value={item}
+                      defaultChecked={(existingProduct?.packageProfile?.specialDeliveryFlags || ["none"]).includes(item)}
+                    />
+                    <span>{item.replaceAll("_", " ")}</span>
+                  </label>
+                ))}
+              </div>
+
+              <label className="create-feature-toggle">
+                <input
+                  name="requiresSeparateDelivery"
+                  type="checkbox"
+                  value="true"
+                  defaultChecked={existingProduct?.packageProfile?.requiresSeparateDelivery || false}
+                />
+                <span>This product should not be batched with other seller pickups</span>
+              </label>
+
+              {existingProduct?.packageProfile?.riskFlag && (
+                <div className="seller-workspace-message error">
+                  <FiAlertCircle />
+                  <span>{existingProduct.packageProfile.riskFlag}</span>
+                </div>
+              )}
+            </section>
+          )}
+
           {existingListing?.moderationStatus && (
             <div className="seller-workspace-message">
               <FiAlertCircle />

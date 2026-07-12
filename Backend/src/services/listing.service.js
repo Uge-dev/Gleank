@@ -14,6 +14,7 @@ import {
   moderationSqlPatch,
   upsertModerationRecord,
 } from "./moderation.service.js";
+import { applyProductPackageProfile } from "./logistics.service.js";
 const MAX_LISTING_IMAGES = 10;
 
 function computePlatformPrice(price) {
@@ -153,6 +154,7 @@ export function createProduct(userId, input, uploadedUrls) {
     now,
   );
   upsertModerationRecord({ itemId: id, itemType: "product", moderation });
+  applyProductPackageProfile(id, input, { actorId: userId });
 
   return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(id));
 }
@@ -213,6 +215,7 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
     store.id,
   );
   upsertModerationRecord({ itemId: productId, itemType: "product", moderation });
+  applyProductPackageProfile(productId, input, { actorId: userId });
 
   const oldImages = storedImages(existing.image_urls);
   deleteUploadedFiles(oldImages.filter((url) => !images.includes(url)));

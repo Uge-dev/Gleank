@@ -10,6 +10,7 @@ import {
   listOrderReturns,
   respondToReturnRequest,
 } from "./return-dispute.service.js";
+import { createParentOrderForOrders } from "./logistics.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -531,7 +532,12 @@ export function createOrders(userId, input) {
       output.push(hydrateOrder(getOrderRowByIdForUser(userId, orderId)));
     }
 
-    return output;
+    createParentOrderForOrders({
+      buyerId: userId,
+      orderIds: output.map((order) => order.id),
+    });
+
+    return output.map((order) => hydrateOrder(getOrderRowByIdForUser(userId, order.id)));
   });
 
   return createdOrders;

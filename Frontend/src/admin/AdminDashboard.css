@@ -1240,6 +1240,11 @@
   color: #c2410c;
 }
 
+.admin-dispatch-ops {
+  display: grid;
+  gap: 22px;
+}
+
 @media (max-width: 1280px) {
   .admin-stats-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

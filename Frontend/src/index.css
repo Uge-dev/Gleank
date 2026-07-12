@@ -4,6 +4,230 @@
   box-sizing: border-box;
 }
 
+.seller-order-readiness {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.seller-order-task-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1rem;
+}
+
+.seller-order-task-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border: 1px solid rgba(34, 197, 94, 0.14);
+  border-radius: 1.6rem;
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(255, 255, 255, 0.92) 32%),
+    var(--surface, #fff);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+}
+
+.seller-order-task-card.seller_rejected {
+  border-color: rgba(244, 63, 94, 0.2);
+  background:
+    linear-gradient(135deg, rgba(244, 63, 94, 0.08), rgba(255, 255, 255, 0.92) 32%),
+    var(--surface, #fff);
+}
+
+.seller-order-task-top,
+.seller-order-task-actions,
+.seller-order-item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.seller-order-task-top {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.seller-order-task-top span,
+.seller-order-task-top p,
+.seller-order-task-meta span,
+.seller-order-item-row span,
+.seller-order-empty-note {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.seller-order-task-top h3 {
+  margin: 0.2rem 0;
+  color: #0f172a;
+  font-size: 1.15rem;
+  font-weight: 900;
+}
+
+.seller-order-task-top p,
+.seller-order-task-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.seller-order-task-top > strong {
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.seller-order-task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.seller-order-task-meta span {
+  padding: 0.45rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.05);
+}
+
+.seller-order-items {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.seller-order-item-row {
+  padding: 0.7rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.seller-order-item-thumb {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #ecfdf5;
+  color: #16a34a;
+  flex: 0 0 auto;
+}
+
+.seller-order-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.seller-order-item-row strong {
+  display: block;
+  color: #0f172a;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+
+.seller-order-rejection-note {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  background: #fff1f2;
+  color: #be123c;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.seller-order-task-actions {
+  flex-wrap: wrap;
+}
+
+.seller-order-task-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.65rem;
+  padding: 0.7rem 0.9rem;
+  border: 0;
+  border-radius: 1rem;
+  color: #fff;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.seller-order-task-actions button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.seller-order-task-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.seller-order-task-actions .confirm {
+  background: #16a34a;
+}
+
+.seller-order-task-actions .ready {
+  background: #0f172a;
+}
+
+.seller-order-task-actions .reject {
+  background: #f43f5e;
+}
+
+html[data-theme="dark"] .seller-order-task-card {
+  border-color: rgba(34, 197, 94, 0.24);
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.12), rgba(15, 23, 42, 0.94) 34%),
+    #0f172a;
+}
+
+html[data-theme="dark"] .seller-order-task-top h3,
+html[data-theme="dark"] .seller-order-item-row strong {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .seller-order-task-top span,
+html[data-theme="dark"] .seller-order-task-top p,
+html[data-theme="dark"] .seller-order-task-meta span,
+html[data-theme="dark"] .seller-order-item-row span,
+html[data-theme="dark"] .seller-order-empty-note {
+  color: #cbd5e1;
+}
+
+html[data-theme="dark"] .seller-order-item-row,
+html[data-theme="dark"] .seller-order-task-meta span {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+@media (max-width: 640px) {
+  .seller-order-task-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .seller-order-task-card {
+    padding: 1rem;
+    border-radius: 1.25rem;
+  }
+
+  .seller-order-task-top,
+  .seller-order-task-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .seller-order-task-top > strong,
+  .seller-order-task-actions button {
+    width: 100%;
+  }
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -30768,6 +30992,66 @@ html[data-theme="dark"] select {
 
 .seller-top-notification-link small {
  display:none !important;
+}
+
+.package-profile-panel {
+  margin-top: 22px;
+  display: grid;
+  gap: 18px;
+  border: 1px solid rgba(34, 197, 94, 0.16);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at top left, rgba(34, 197, 94, 0.14), transparent 34%),
+    #ffffff;
+  padding: clamp(18px, 3vw, 26px);
+  box-shadow: 0 22px 60px rgba(15, 23, 42, 0.06);
+}
+
+.package-profile-panel > div:first-child span {
+  color: #16a34a;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.package-profile-panel > div:first-child h3 {
+  margin: 6px 0 6px;
+  color: #0f172a;
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.08;
+}
+
+.package-profile-panel > div:first-child p {
+  max-width: 720px;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.6;
+}
+
+.package-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.package-chip-grid label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.94);
+  padding: 9px 12px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: capitalize;
+}
+
+.package-chip-grid input {
+  accent-color: #16a34a;
 }
 
 

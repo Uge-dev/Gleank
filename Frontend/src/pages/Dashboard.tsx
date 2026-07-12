@@ -10,16 +10,19 @@ import {
   FiBarChart2,
   FiBox,
   FiCheckCircle,
+  FiClock,
   FiEdit3,
   FiEye,
   FiGrid,
   FiImage,
+  FiMapPin,
   FiPackage,
   FiPlus,
   FiRefreshCw,
   FiSave,
   FiShoppingBag,
   FiTrash2,
+  FiTruck,
   FiUploadCloud,
   FiUsers,
   FiX,
@@ -34,11 +37,16 @@ import {
   deleteSellerHighlight,
   deleteSellerProduct,
   deleteSellerService,
+  confirmSellerOrderItemAvailability,
+  getSellerPickupTasks,
+  markSellerPickupTaskReady,
   getSellerWorkspace,
+  rejectSellerOrderItemAvailability,
   reorderSellerHighlights,
   updateSellerHighlight,
   updateSellerStore,
 } from "../services/seller.service";
+import type { SellerPickupTask } from "../services/seller.service";
 import type {
   SellerProduct,
   SellerService,
@@ -46,7 +54,7 @@ import type {
   StoreHighlight,
 } from "../types/domain";
 
-type DashboardTab = "overview" | "products" | "services" | "highlights" | "store";
+type DashboardTab = "overview" | "orders" | "products" | "services" | "highlights" | "store";
 
 type HighlightFormState = {
   id: string | null;
@@ -68,6 +76,9 @@ const mediaFallback =
 function Dashboard() {
   const [workspace, setWorkspace] = useState<SellerWorkspace | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [taskActionId, setTaskActionId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
@@ -94,9 +105,22 @@ function Dashboard() {
     }
   }, []);
 
+  const loadPickupTasks = useCallback(async () => {
+    setIsLoadingTasks(true);
+    try {
+      const response = await getSellerPickupTasks();
+      setPickupTasks(response.pickupTasks || []);
+    } catch {
+      setPickupTasks([]);
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadWorkspace();
-  }, [loadWorkspace]);
+    void loadPickupTasks();
+  }, [loadPickupTasks, loadWorkspace]);
 
   const categories = useMemo(() => {
     const productCategories = (workspace?.products || []).map(
@@ -119,8 +143,18 @@ function Dashboard() {
       (total, item) => total + item.stock,
       0,
     );
+    const activePickupTasks = pickupTasks.filter(
+      (task) => !["picked_up", "seller_rejected", "cancelled"].includes(task.status),
+    );
 
     return [
+      {
+        label: "Order tasks",
+        value: activePickupTasks.length,
+        helper: `${pickupTasks.filter((task) => task.sellerMarkedReady).length} packages marked ready`,
+        icon: <FiTruck />,
+        tone: "green",
+      },
       {
         label: "Active products",
         value: activeProducts.length,
@@ -159,7 +193,7 @@ function Dashboard() {
         tone: "dark",
       },
     ];
-  }, [workspace]);
+  }, [pickupTasks, workspace]);
 
   function resetHighlightForm() {
     setHighlightForm(emptyHighlightForm);
@@ -300,6 +334,87 @@ function Dashboard() {
     }
   }
 
+  async function handleConfirmPickupTask(task: SellerPickupTask) {
+    if (!task.orderItems.length) {
+      setError("This pickup task has no order items to confirm.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setTaskActionId(`confirm-${task.id}`);
+
+    try {
+      for (const item of task.orderItems) {
+        await confirmSellerOrderItemAvailability(item.id, "Seller confirmed item availability from dashboard.");
+      }
+      setNotice("Availability confirmed. Mark the package ready once it is packed.");
+      await loadPickupTasks();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Availability could not be confirmed.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
+  async function handleRejectPickupTask(task: SellerPickupTask) {
+    if (!task.orderItems.length) {
+      setError("This pickup task has no order items to reject.");
+      return;
+    }
+
+    const reason = window.prompt(
+      "Why is this item unavailable? The buyer and admin will see this reason.",
+      task.sellerRejectionNote || "",
+    );
+
+    if (reason === null) return;
+
+    setError("");
+    setNotice("");
+    setTaskActionId(`reject-${task.id}`);
+
+    try {
+      for (const item of task.orderItems) {
+        await rejectSellerOrderItemAvailability(item.id, reason || "Seller marked item unavailable.");
+      }
+      setNotice("The buyer and admin have been notified that this item is unavailable.");
+      await loadPickupTasks();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The item could not be rejected.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
+  async function handleMarkPickupReady(task: SellerPickupTask) {
+    setError("");
+    setNotice("");
+    setTaskActionId(`ready-${task.id}`);
+
+    try {
+      await markSellerPickupTaskReady(task.id);
+      setNotice("Package marked ready. Gleenc will dispatch a compatible rider automatically.");
+      await loadPickupTasks();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Package could not be marked ready.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="seller-workspace-page">
@@ -393,6 +508,7 @@ function Dashboard() {
         {(
           [
             ["overview", "Overview", <FiBarChart2 />],
+            ["orders", "Orders", <FiTruck />],
             ["products", "Products", <FiPackage />],
             ["services", "Services", <FiBox />],
             ["highlights", "Highlights", <FiGrid />],
@@ -489,6 +605,18 @@ function Dashboard() {
             </aside>
           </div>
         </>
+      )}
+
+      {activeTab === "orders" && (
+        <SellerOrderReadinessPanel
+          tasks={pickupTasks}
+          loading={isLoadingTasks}
+          actionId={taskActionId}
+          onRefresh={loadPickupTasks}
+          onConfirm={handleConfirmPickupTask}
+          onReject={handleRejectPickupTask}
+          onMarkReady={handleMarkPickupReady}
+        />
       )}
 
       {activeTab === "products" && (
@@ -809,6 +937,161 @@ function CompactListingList({
         </article>
       ))}
     </div>
+  );
+}
+
+function formatDashboardDate(value?: string | null) {
+  if (!value) return "Not set";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function SellerOrderReadinessPanel({
+  tasks,
+  loading,
+  actionId,
+  onRefresh,
+  onConfirm,
+  onReject,
+  onMarkReady,
+}: {
+  tasks: SellerPickupTask[];
+  loading: boolean;
+  actionId: string;
+  onRefresh: () => Promise<void>;
+  onConfirm: (task: SellerPickupTask) => Promise<void>;
+  onReject: (task: SellerPickupTask) => Promise<void>;
+  onMarkReady: (task: SellerPickupTask) => Promise<void>;
+}) {
+  const activeTasks = tasks.filter((task) => !["picked_up", "cancelled"].includes(task.status));
+
+  return (
+    <section className="seller-order-readiness">
+      <div className="seller-workspace-panel-header">
+        <div>
+          <span>Order readiness</span>
+          <h2>Confirm, pack, and release orders to dispatch</h2>
+          <p>
+            Sellers confirm availability first, then mark packages ready. Once all sellers in a batch are ready,
+            Gleenc automatically offers the delivery to compatible riders.
+          </p>
+        </div>
+        <button type="button" onClick={() => void onRefresh()} disabled={loading}>
+          <FiRefreshCw />
+          {loading ? "Refreshing..." : "Refresh"}
+        </button>
+      </div>
+
+      {activeTasks.length ? (
+        <div className="seller-order-task-grid">
+          {activeTasks.map((task) => {
+            const isRejected = task.status === "seller_rejected";
+            const confirmBusy = actionId === `confirm-${task.id}`;
+            const rejectBusy = actionId === `reject-${task.id}`;
+            const readyBusy = actionId === `ready-${task.id}`;
+            const profile = task.packageProfileSnapshot || {};
+            const profileText = [
+              profile.packageSize,
+              profile.packageWeightClass,
+              profile.fragilityLevel,
+              profile.requiredVehicleType,
+            ]
+              .filter(Boolean)
+              .map(String)
+              .join(" · ");
+
+            return (
+              <article className={`seller-order-task-card ${task.status}`} key={task.id}>
+                <div className="seller-order-task-top">
+                  <div>
+                    <span>Batch #{task.deliveryBatchId.slice(-6)}</span>
+                    <h3>{task.orderCode || "Gleenc order"}</h3>
+                    <p>
+                      <FiClock />
+                      Confirm by {formatDashboardDate(task.confirmationDeadlineAt)}
+                    </p>
+                  </div>
+                  <strong>{task.status.replaceAll("_", " ")}</strong>
+                </div>
+
+                <div className="seller-order-task-meta">
+                  <span><FiMapPin /> {task.pickupLandmark || task.pickupZoneId || "Pickup location from store profile"}</span>
+                  <span><FiPackage /> {task.itemCount || task.orderItems.length} item(s)</span>
+                  {profileText ? <span><FiTruck /> {profileText.replaceAll("_", " ")}</span> : null}
+                </div>
+
+                <div className="seller-order-items">
+                  {task.orderItems.length ? task.orderItems.map((item) => (
+                    <div className="seller-order-item-row" key={item.id}>
+                      <div className="seller-order-item-thumb">
+                        {item.imageUrl ? <img src={resolveMediaUrl(item.imageUrl, mediaFallback)} alt={item.name} /> : <FiImage />}
+                      </div>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>Qty {item.quantity} · {formatNaira(item.total)}</span>
+                      </div>
+                    </div>
+                  )) : (
+                    <p className="seller-order-empty-note">Order items will appear here once the buyer checkout syncs.</p>
+                  )}
+                </div>
+
+                {isRejected && task.sellerRejectionNote ? (
+                  <div className="seller-order-rejection-note">
+                    <FiAlertCircle />
+                    {task.sellerRejectionNote}
+                  </div>
+                ) : null}
+
+                <div className="seller-order-task-actions">
+                  <button
+                    type="button"
+                    className="confirm"
+                    disabled={task.sellerConfirmedAvailability || isRejected || confirmBusy}
+                    onClick={() => void onConfirm(task)}
+                  >
+                    <FiCheckCircle />
+                    {confirmBusy ? "Confirming..." : task.sellerConfirmedAvailability ? "Confirmed" : "Confirm availability"}
+                  </button>
+                  <button
+                    type="button"
+                    className="ready"
+                    disabled={!task.sellerConfirmedAvailability || task.sellerMarkedReady || isRejected || readyBusy}
+                    onClick={() => void onMarkReady(task)}
+                  >
+                    <FiTruck />
+                    {readyBusy ? "Marking..." : task.sellerMarkedReady ? "Ready" : "Mark package ready"}
+                  </button>
+                  <button
+                    type="button"
+                    className="reject"
+                    disabled={isRejected || rejectBusy || task.sellerMarkedReady}
+                    onClick={() => void onReject(task)}
+                  >
+                    <FiX />
+                    {rejectBusy ? "Rejecting..." : "Reject item"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          icon={<FiTruck />}
+          title="No seller order tasks yet"
+          message="When a buyer places an order, availability confirmation and package readiness tasks will appear here."
+          actionLabel="Refresh orders"
+          onAction={() => {
+            void onRefresh();
+          }}
+        />
+      )}
+    </section>
   );
 }
 

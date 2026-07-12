@@ -97,6 +97,24 @@ export type SellerProduct = {
   availabilityStatus?: AvailabilityStatus;
   sellerConfirmationRequired?: boolean;
   returnPolicy?: "standard" | "limited" | "final_sale";
+  packageProfile?: {
+    packageSize: "small" | "medium" | "large" | "extra_large" | string;
+    packageWeightClass: "very_light" | "light" | "medium" | "heavy" | "very_heavy" | string;
+    fragilityLevel: "not_fragile" | "fragile" | "very_fragile" | string;
+    handlingInstructions: string[];
+    packageShape: string;
+    stackability: string;
+    batchingEligibility: string;
+    requiredVehicleType: string;
+    specialDeliveryFlags: string[];
+    estimatedPackageUnits: number;
+    requiresSeparateDelivery: boolean;
+    autoSuggested: boolean;
+    sellerEdited: boolean;
+    adminVerified: boolean;
+    riskFlag: string;
+  };
+  stockStatus?: "in_stock" | "low_stock" | "confirm_before_payment" | "out_of_stock" | "temporarily_unavailable" | string;
   reviewedAt?: string | null;
   reviewedBy?: string | null;
   isFeatured: boolean;

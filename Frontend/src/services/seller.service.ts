@@ -13,6 +13,75 @@ export function getSellerWorkspace() {
   return apiRequest<SellerWorkspace>("/seller/workspace");
 }
 
+export type SellerPickupTaskItem = {
+  id: string;
+  productId: string;
+  name: string;
+  imageUrl: string;
+  unitPrice: number;
+  quantity: number;
+  total: number;
+};
+
+export type SellerPickupTask = {
+  id: string;
+  deliveryBatchId: string;
+  orderId: string | null;
+  sellerId: string;
+  sellerName: string;
+  orderCode: string;
+  pickupZoneId: string | null;
+  pickupLandmark: string;
+  pickupSequence: number;
+  itemCount: number;
+  packageProfileSnapshot: Record<string, unknown>;
+  orderItems: SellerPickupTaskItem[];
+  status: string;
+  sellerConfirmedAvailability: boolean;
+  sellerMarkedReady: boolean;
+  confirmationDeadlineAt: string | null;
+  sellerConfirmedAt: string | null;
+  sellerRejectedAt: string | null;
+  sellerRejectionNote: string;
+  readyAt: string | null;
+  pickedUpAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function getSellerPickupTasks() {
+  return apiRequest<{ pickupTasks: SellerPickupTask[] }>("/seller/pickup-tasks");
+}
+
+export function confirmSellerOrderItemAvailability(orderItemId: string, note = "") {
+  return apiRequest<{ pickupTask: SellerPickupTask }>(
+    `/seller/order-items/${encodeURIComponent(orderItemId)}/confirm-availability`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+}
+
+export function rejectSellerOrderItemAvailability(orderItemId: string, note = "") {
+  return apiRequest<{ pickupTask: SellerPickupTask }>(
+    `/seller/order-items/${encodeURIComponent(orderItemId)}/reject-availability`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+}
+
+export function markSellerPickupTaskReady(pickupTaskId: string) {
+  return apiRequest<{ pickupTask: SellerPickupTask }>(
+    `/seller/pickup-tasks/${encodeURIComponent(pickupTaskId)}/mark-ready`,
+    {
+      method: "POST",
+    },
+  );
+}
+
 export function updateSellerStore(formData: FormData) {
   return apiRequest<{ store: SellerStore }>("/seller/store", {
     method: "PATCH",

@@ -87,6 +87,43 @@ type BackendDashboardResponse = BackendRiderAuthResponse & {
   }>;
 };
 
+export type RiderDispatchOffer = {
+  id: string;
+  deliveryBatchId: string;
+  riderId: string;
+  dispatchScore: number;
+  status: string;
+  offeredAt?: string;
+  expiresAt?: string | null;
+  attemptNumber: number;
+  remainingSeconds?: number | null;
+  batch?: {
+    id: string;
+    parentOrderId?: string | null;
+    batchType?: string;
+    sourceZoneId?: string | null;
+    destinationZoneId?: string | null;
+    status?: string;
+    dispatchStatus?: string;
+    pickupCount?: number;
+    packageSizeSummary?: string;
+    weightClassSummary?: string;
+    fragilitySummary?: string;
+    requiredVehicleType?: string;
+    riskLevel?: string;
+    requiresGps?: boolean;
+    deliveryFee?: number;
+    packageValue?: number;
+    pickupTasks?: Array<{
+      id: string;
+      sellerName?: string;
+      pickupLocation?: string;
+      pickupSequence?: number;
+      status?: string;
+    }>;
+  };
+};
+
 function mapVerificationStatus(status?: string): Rider['verificationStatus'] {
   if (status === 'verified') return 'approved';
   if (status === 'rejected') return 'rejected';
@@ -308,6 +345,22 @@ export const riderApi = {
   },
   dashboard() {
     return apiRequest<BackendDashboardResponse>('/api/rider/dashboard').then(normalizeDashboard);
+  },
+  activeDispatches() {
+    return apiRequest<{ dispatches: RiderDispatchOffer[] }>('/api/rider/dispatches/active');
+  },
+  acceptDispatch(dispatchId: string) {
+    return apiRequest<{ batch: unknown; assignments: BackendAssignment[] }>('/api/rider/dispatch/' + dispatchId + '/accept', { method: 'POST' })
+      .then((response) => ({
+        batch: response.batch,
+        assignments: (response.assignments || []).map(normalizeAssignment),
+      }));
+  },
+  rejectDispatch(dispatchId: string, reason = '') {
+    return apiRequest<{ batch?: unknown; attempt?: unknown; intervention?: unknown }>('/api/rider/dispatch/' + dispatchId + '/reject', {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   },
   acceptAssignment(assignmentId: string) {
     return apiRequest<{ assignment: BackendAssignment }>('/api/rider/assignments/' + assignmentId + '/accept', { method: 'POST' })
