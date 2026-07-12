@@ -3,8 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/pwa-maskable-icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>gleank-frontend</title>
+    <meta name="theme-color" content="#16A34A" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Gleenc" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>Gleenc - Buy & sell from any where</title>
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("gleenc-theme") || localStorage.getItem("gleank-theme") || "system";
+          var preference = /^(light|dark|system)$/.test(stored) ? stored : "system";
+          var resolved = preference === "system"
+            ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+            : preference;
+          var root = document.documentElement;
+          root.setAttribute("data-theme", resolved);
+          root.setAttribute("data-theme-preference", preference);
+          root.classList.toggle("dark", resolved === "dark");
+          root.style.colorScheme = resolved;
+          if (localStorage.getItem("gleank-theme") && !localStorage.getItem("gleenc-theme")) {
+            localStorage.setItem("gleenc-theme", preference);
+            localStorage.removeItem("gleank-theme");
+          }
+        } catch (error) {
+          document.documentElement.setAttribute("data-theme", "light");
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

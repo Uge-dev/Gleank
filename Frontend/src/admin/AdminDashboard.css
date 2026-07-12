@@ -23,6 +23,27 @@
   box-sizing: border-box;
 }
 
+html[data-theme="dark"] .admin-shell,
+html.dark .admin-shell,
+html[data-theme="dark"] .admin-login-page,
+html.dark .admin-login-page {
+  --admin-bg: var(--color-bg-app, #070a12);
+  --admin-card: var(--color-bg-surface, #111827);
+  --admin-border: var(--color-border-soft, rgba(148, 163, 184, 0.16));
+  --admin-text: var(--color-text-primary, #f8fafc);
+  --admin-muted: var(--color-text-muted, #94a3b8);
+  --admin-green: var(--color-brand-primary, #22c55e);
+  --admin-green-dark: var(--color-brand-primary-hover, #34d399);
+  --admin-green-soft: var(--color-brand-soft, rgba(34, 197, 94, 0.12));
+  --admin-orange: var(--color-warning, #f59e0b);
+  --admin-orange-soft: rgba(245, 158, 11, 0.12);
+  --admin-red: var(--color-danger, #ef4444);
+  --admin-red-soft: rgba(239, 68, 68, 0.12);
+  --admin-blue: var(--color-info, #3b82f6);
+  --admin-blue-soft: rgba(59, 130, 246, 0.12);
+  --admin-shadow: var(--color-shadow-card, 0 18px 45px rgba(0, 0, 0, 0.32));
+}
+
 .admin-shell *,
 .admin-login-page * {
   box-sizing: border-box;

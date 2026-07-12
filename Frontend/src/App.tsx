@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 
-import { applyTheme, getSavedTheme } from "./utils/theme";
+import { applyTheme, getSavedTheme, watchSystemTheme } from "./utils/theme";
 
 import GleencNav from "./components/GleencNav";
 import CartDrawer from "./components/CartDrawer";
@@ -56,6 +56,7 @@ import RiderModule from "./rider/RiderModule";
 function App() {
   useEffect(() => {
     applyTheme(getSavedTheme());
+    return watchSystemTheme();
   }, []);
 
   const location = useLocation();

@@ -1,0 +1,53 @@
+{
+  "id": "/",
+  "name": "Gleenc Marketplace",
+  "short_name": "Gleenc",
+  "description": "Shop, sell, dispatch, and manage campus and local-market orders on Gleenc.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "orientation": "portrait",
+  "background_color": "#070A12",
+  "theme_color": "#16A34A",
+  "categories": ["shopping", "business", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Search products",
+      "short_name": "Search",
+      "description": "Find products, sellers, and stores.",
+      "url": "/search?source=pwa-shortcut",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "My orders",
+      "short_name": "Orders",
+      "description": "Track buyer orders and delivery progress.",
+      "url": "/orders?source=pwa-shortcut",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "Seller dashboard",
+      "short_name": "Dashboard",
+      "description": "Manage seller products, services, and readiness tasks.",
+      "url": "/dashboard?source=pwa-shortcut",
+      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+    }
+  ]
+}
