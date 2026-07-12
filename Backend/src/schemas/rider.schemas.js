@@ -79,6 +79,10 @@ export const createRiderAssignmentSchema = z.object({
   buyerName: z.string().trim().max(120).optional().default(""),
   buyerPhone: z.string().trim().max(30).optional().default(""),
   packageSummary: z.string().trim().max(500).optional().default(""),
+  category: z.string().trim().max(120).optional().default(""),
+  packageType: z.string().trim().max(120).optional().default(""),
+  packageTags: z.array(z.string().trim().max(80)).max(12).optional().default([]),
+  isHeavyFragile: z.coerce.boolean().optional().default(false),
   packageValueKobo: z.coerce.number().int().min(0).optional().default(0),
   deliveryFeeKobo: z.coerce.number().int().min(0).optional().default(0),
 });

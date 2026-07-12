@@ -92,6 +92,19 @@ export const env = {
     process.env.AUTO_APPROVE_USED_LISTINGS,
     process.env.NODE_ENV !== "production",
   ),
+  riderDispatchTimeoutSeconds: numberFromEnv(process.env.RIDER_DISPATCH_TIMEOUT_SECONDS, 600),
+  riderDispatchTimeoutCampusSeconds: numberFromEnv(
+    process.env.RIDER_DISPATCH_TIMEOUT_CAMPUS_SECONDS,
+    600,
+  ),
+  riderDispatchTimeoutLocalMarketSeconds: numberFromEnv(
+    process.env.RIDER_DISPATCH_TIMEOUT_LOCAL_MARKET_SECONDS,
+    1200,
+  ),
+  riderDispatchTimeoutHeavyFragileSeconds: numberFromEnv(
+    process.env.RIDER_DISPATCH_TIMEOUT_HEAVY_FRAGILE_SECONDS,
+    900,
+  ),
   maxUploadMb: numberFromEnv(process.env.MAX_UPLOAD_MB, 5),
   imageMaxWidth: numberFromEnv(process.env.IMAGE_MAX_WIDTH, 1800),
   imageWebpQuality: numberFromEnv(process.env.IMAGE_WEBP_QUALITY, 86),

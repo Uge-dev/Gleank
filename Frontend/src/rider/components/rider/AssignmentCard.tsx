@@ -18,6 +18,16 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
   const [submitting, setSubmitting] = useState(false);
   const telLink = `tel:${assignment.sellerPhone}`;
   const whatsAppLink = `https://wa.me/${assignment.sellerWhatsApp}`;
+  const dispatchWindowLabel = assignment.dispatchTimeoutMinutes
+    ? `${assignment.dispatchTimeoutMinutes} min`
+    : assignment.dispatchTimeoutSeconds
+      ? `${Math.round(assignment.dispatchTimeoutSeconds / 60)} min`
+      : '';
+  const dispatchRemainingLabel = assignment.dispatchRemainingSeconds != null
+    ? `${Math.ceil(assignment.dispatchRemainingSeconds / 60)} min left`
+    : assignment.dispatchExpiresAt
+      ? `Expires ${formatDateTime(assignment.dispatchExpiresAt)}`
+      : '';
 
   async function handleStartDelivery() {
     setSubmitting(true);
@@ -35,6 +45,11 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-extrabold text-slate-600">{assignment.category}</span>
               <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-extrabold text-cyan-700">{assignment.orderChannel.replace(/_/g, ' ')}</span>
+              {dispatchWindowLabel && (
+                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-extrabold text-amber-700">
+                  Accept within {dispatchWindowLabel}
+                </span>
+              )}
               <StatusBadge value={assignment.status} />
             </div>
             <h3 className="mt-4 text-xl font-extrabold text-slate-950">{assignment.sellerName}</h3>
@@ -77,6 +92,9 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
 
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-500">
           <span className="inline-flex items-center gap-2"><FiClock /> Assigned {formatDateTime(assignment.assignedTime)}</span>
+          {dispatchRemainingLabel && assignment.status === 'assigned' && (
+            <span className="inline-flex items-center gap-2 text-amber-700"><FiClock /> Dispatch window: {dispatchRemainingLabel}</span>
+          )}
           <span className="inline-flex items-center gap-2"><FiTruck /> ETA {formatDateTime(assignment.expectedDeliveryTime)}</span>
         </div>
 

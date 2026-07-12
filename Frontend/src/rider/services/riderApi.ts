@@ -62,6 +62,11 @@ type BackendAssignment = {
   packageSummary?: string;
   packageValue?: number;
   deliveryFee?: number;
+  dispatchTimeoutSeconds?: number;
+  dispatchTimeoutMinutes?: number;
+  dispatchExpiresAt?: string | null;
+  dispatchTimeoutPolicy?: string;
+  dispatchRemainingSeconds?: number | null;
   createdAt?: string;
   acceptedAt?: string;
   updatedAt?: string;
@@ -159,6 +164,11 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     deliveryLocation,
     assignedTime: row.createdAt || row.acceptedAt || row.updatedAt || new Date().toISOString(),
     expectedDeliveryTime: row.updatedAt || row.createdAt || new Date().toISOString(),
+    dispatchTimeoutSeconds: row.dispatchTimeoutSeconds,
+    dispatchTimeoutMinutes: row.dispatchTimeoutMinutes,
+    dispatchExpiresAt: row.dispatchExpiresAt || null,
+    dispatchTimeoutPolicy: row.dispatchTimeoutPolicy,
+    dispatchRemainingSeconds: row.dispatchRemainingSeconds ?? null,
     status: mapAssignmentStatus(row.status),
     distanceKm: 0,
     category: mapCategory(row),

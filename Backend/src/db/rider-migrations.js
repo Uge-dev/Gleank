@@ -195,6 +195,9 @@ export function runRiderMigrations() {
       pickup_landmark TEXT NOT NULL DEFAULT '',
       seller_allows_whatsapp INTEGER NOT NULL DEFAULT 1,
       status TEXT NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery','delivered','failed','cancelled')),
+      dispatch_timeout_seconds INTEGER NOT NULL DEFAULT 600 CHECK (dispatch_timeout_seconds >= 60),
+      dispatch_expires_at TEXT,
+      dispatch_timeout_policy TEXT NOT NULL DEFAULT 'campus',
       payment_status TEXT NOT NULL DEFAULT 'paid' CHECK (payment_status IN ('paid','unpaid','failed','refunded')),
       payment_confirmed_at TEXT,
       pickup_code_hash TEXT NOT NULL,
@@ -333,6 +336,9 @@ export function runRiderMigrations() {
   ensureColumn("rider_assignments", "campus_name", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("rider_assignments", "pickup_landmark", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("rider_assignments", "seller_allows_whatsapp", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn("rider_assignments", "dispatch_timeout_seconds", "INTEGER NOT NULL DEFAULT 600");
+  ensureColumn("rider_assignments", "dispatch_expires_at", "TEXT");
+  ensureColumn("rider_assignments", "dispatch_timeout_policy", "TEXT NOT NULL DEFAULT 'campus'");
 }
 
 runRiderMigrations();

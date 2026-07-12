@@ -9,6 +9,11 @@ import { serializeUser } from "../lib/serializers.js";
 import { loginUser, registerUser } from "./auth.service.js";
 import { createNotification, listNotifications, markNotificationRead } from "./notification.service.js";
 import { markPayoutDeliveryVerified } from "./payout.service.js";
+import {
+  buildDispatchExpiresAt,
+  dispatchRemainingSeconds,
+  resolveDispatchTimeoutPolicy,
+} from "./dispatch-timeout.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -117,6 +122,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
   const pickedUp = ["picked_up", "out_for_delivery", "delivered"].includes(row.status);
   const reveal = revealPrivate || pickedUp;
   const sellerAllowsWhatsApp = row.seller_allows_whatsapp !== 0;
+  const timeoutSeconds = Number(row.dispatch_timeout_seconds || env.riderDispatchTimeoutCampusSeconds || 600);
   return {
     id: row.id,
     orderId: row.order_id,
@@ -125,6 +131,11 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     sellerId: row.seller_id,
     buyerId: reveal ? row.buyer_id : null,
     status: row.status,
+    dispatchTimeoutSeconds: timeoutSeconds,
+    dispatchTimeoutMinutes: Math.round(timeoutSeconds / 60),
+    dispatchExpiresAt: row.dispatch_expires_at || null,
+    dispatchTimeoutPolicy: row.dispatch_timeout_policy || "campus",
+    dispatchRemainingSeconds: dispatchRemainingSeconds(row.dispatch_expires_at),
     paymentStatus: row.payment_status,
     marketSource: row.market_source || "",
     sellerType: row.seller_type || "",
@@ -607,17 +618,30 @@ export function createRiderAssignment(auth, input) {
   const id = createId("ras");
   const assignmentPaymentStatus = order.payment_status === "paid" ? "paid" : "unpaid";
   const assignmentPaymentConfirmedAt = assignmentPaymentStatus === "paid" ? now : null;
+  const packageSummary = input.packageSummary || order.note || "Gleenc delivery package";
+  const dispatchPolicy = resolveDispatchTimeoutPolicy({
+    sellerType: source.sellerType,
+    marketSource: source.marketSource,
+    category: input.category || order.category || "",
+    packageSummary,
+    note: order.note || "",
+    packageTags: input.packageTags,
+    packageType: input.packageType,
+    isHeavyFragile: input.isHeavyFragile,
+  });
+  const dispatchExpiresAt = buildDispatchExpiresAt(now, dispatchPolicy.timeoutSeconds);
   transaction(() => {
     db.prepare(`
       INSERT INTO rider_assignments (
         id, order_id, order_type, rider_id, seller_id, buyer_id, store_id, listing_id,
         market_source, seller_type, market_id, market_name, campus_name, pickup_landmark,
         seller_allows_whatsapp,
-        status, payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
+        status, dispatch_timeout_seconds, dispatch_expires_at, dispatch_timeout_policy,
+        payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
         pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
         package_value_kobo, delivery_fee_kobo, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -634,6 +658,9 @@ export function createRiderAssignment(auth, input) {
       source.campusName,
       source.pickupLandmark,
       source.sellerAllowsWhatsApp ? 1 : 0,
+      dispatchPolicy.timeoutSeconds,
+      dispatchExpiresAt,
+      dispatchPolicy.policyKey,
       assignmentPaymentStatus,
       assignmentPaymentConfirmedAt,
       hashOtp(pickupCode),
@@ -649,7 +676,7 @@ export function createRiderAssignment(auth, input) {
       source.sellerAllowsWhatsApp ? phoneForWhatsapp(input.sellerWhatsApp || source.sellerWhatsapp || input.sellerPhone || "") : "",
       input.buyerName || order.buyer_name || "Buyer",
       input.buyerPhone || order.buyer_phone || "",
-      input.packageSummary || order.note || "Gleank delivery package",
+      packageSummary,
       input.packageValueKobo || order.total_kobo || 0,
       input.deliveryFeeKobo || order.delivery_fee_kobo || 0,
       now,
@@ -662,8 +689,8 @@ export function createRiderAssignment(auth, input) {
       title: "New delivery assigned",
       body:
         assignmentPaymentStatus === "paid"
-          ? `A paid Gleenc delivery has been assigned to you for pickup at ${pickupPoint.address}.`
-          : `A Pay at Delivery Gleenc order has been assigned for pickup at ${pickupPoint.address}. Delivery code stays locked until Paystack confirms payment.`,
+          ? `A paid Gleenc delivery has been assigned to you for pickup at ${pickupPoint.address}. Accept within ${dispatchPolicy.timeoutMinutes} minutes.`
+          : `A Pay at Delivery Gleenc order has been assigned for pickup at ${pickupPoint.address}. Accept within ${dispatchPolicy.timeoutMinutes} minutes. Delivery code stays locked until Paystack confirms payment.`,
       actionLabel: "View delivery",
       actionPath: `/rider/assignments/${id}`,
     });
@@ -683,6 +710,10 @@ export function acceptRiderAssignment(auth, assignmentId) {
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
   if (row.status !== "assigned") throw new HttpError(422, "This delivery cannot be accepted now.");
+  const remainingSeconds = dispatchRemainingSeconds(row.dispatch_expires_at);
+  if (remainingSeconds !== null && remainingSeconds <= 0) {
+    throw new HttpError(410, "This dispatch offer has expired and must be reassigned before it can be accepted.");
+  }
   const order = connectedOrder(row);
   const payAtDeliveryAllowed = order?.payment_method === "pay_on_delivery" && row.payment_status === "unpaid";
   if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {

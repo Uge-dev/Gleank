@@ -79,6 +79,11 @@ export interface PrivateAssignment {
   deliveryLocation: string;
   assignedTime: string;
   expectedDeliveryTime: string;
+  dispatchTimeoutSeconds?: number;
+  dispatchTimeoutMinutes?: number;
+  dispatchExpiresAt?: string | null;
+  dispatchTimeoutPolicy?: 'campus' | 'local_market' | 'heavy_fragile' | string;
+  dispatchRemainingSeconds?: number | null;
   status: AssignmentStatus;
   distanceKm: number;
   category: 'Food' | 'Groceries' | 'Fashion' | 'Electronics' | 'Books' | 'Health' | 'Beauty' | 'Household' | 'Used Items' | 'Others';
