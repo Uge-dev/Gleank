@@ -59,6 +59,87 @@ export function payOrder(id: string, reference = "") {
   );
 }
 
+export function sellerConfirmOrder(id: string, note = "") {
+  return apiRequest<{ order: GleencOrder }>(
+    `/orders/${encodeURIComponent(id)}/seller-confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+}
+
+export function sellerRejectOrder(id: string, note = "") {
+  return apiRequest<{ order: GleencOrder }>(
+    `/orders/${encodeURIComponent(id)}/seller-reject`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+}
+
+export type OrderReturnRequest = {
+  id: string;
+  orderId: string | null;
+  usedOrderId: string | null;
+  requesterId: string;
+  sellerId: string;
+  sourceType: "store_order" | "used_order";
+  reason: string;
+  description: string;
+  evidenceUrls: string[];
+  status: string;
+  sellerResponse: string;
+  adminNote: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OrderDispute = {
+  id: string;
+  orderId: string | null;
+  usedOrderId: string | null;
+  returnRequestId: string | null;
+  openedBy: string;
+  sellerId: string;
+  sourceType: "store_order" | "used_order";
+  reason: string;
+  status: string;
+  adminDecision: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function listOrderReturns(id: string) {
+  return apiRequest<{ returns: OrderReturnRequest[] }>(
+    `/orders/${encodeURIComponent(id)}/returns`,
+  );
+}
+
+export function openOrderReturn(
+  id: string,
+  input: { reason: string; description?: string; evidenceUrls?: string[] },
+) {
+  return apiRequest<{ returnRequest: OrderReturnRequest }>(
+    `/orders/${encodeURIComponent(id)}/returns`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function openOrderDispute(id: string, input: { reason: string }) {
+  return apiRequest<{ dispute: OrderDispute }>(
+    `/orders/${encodeURIComponent(id)}/disputes`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export function verifyOrderDelivery(
   id: string,
   verificationCode: string,

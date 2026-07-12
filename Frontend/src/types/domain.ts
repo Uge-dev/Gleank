@@ -1,5 +1,21 @@
 export type UserRole = "buyer" | "seller" | "admin";
 
+export type ModerationStatus =
+  | "draft"
+  | "auto_approved"
+  | "approved"
+  | "pending_review"
+  | "flagged"
+  | "rejected"
+  | "hidden";
+
+export type AvailabilityStatus =
+  | "available_now"
+  | "confirm_before_payment"
+  | "out_of_stock"
+  | "price_updated"
+  | "substitute_available";
+
 export type AuthUser = {
   id: string;
   name: string;
@@ -73,6 +89,16 @@ export type SellerProduct = {
   price: number;
   stock: number;
   status: "draft" | "active" | "out_of_stock";
+  moderationStatus?: ModerationStatus;
+  moderationNote?: string;
+  moderationReasons?: Array<{ code?: string; message?: string; score?: number; action?: string }>;
+  riskScore?: number;
+  riskLevel?: "low" | "medium" | "high" | "critical" | string;
+  availabilityStatus?: AvailabilityStatus;
+  sellerConfirmationRequired?: boolean;
+  returnPolicy?: "standard" | "limited" | "final_sale";
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
   isFeatured: boolean;
   imageUrls: string[];
   interaction?: ProductInteraction;
@@ -103,6 +129,16 @@ export type SellerService = {
   maxPrice?: number;
   durationMinutes: number;
   status: "draft" | "active" | "paused";
+  moderationStatus?: ModerationStatus;
+  moderationNote?: string;
+  moderationReasons?: Array<{ code?: string; message?: string; score?: number; action?: string }>;
+  riskScore?: number;
+  riskLevel?: "low" | "medium" | "high" | "critical" | string;
+  availabilityStatus?: AvailabilityStatus;
+  sellerConfirmationRequired?: boolean;
+  returnPolicy?: "standard" | "limited" | "final_sale";
+  reviewedAt?: string | null;
+  reviewedBy?: string | null;
   isFeatured: boolean;
   imageUrls: string[];
   createdAt: string;
@@ -346,6 +382,7 @@ export type OrderStatus =
   | "disputed";
 
 export type PaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
+export type PaymentMethod = "pay_now" | "pay_on_delivery";
 
 export type OrderEvent = {
   id: string;
@@ -383,6 +420,19 @@ export type GleencOrder = {
   status: OrderStatus;
   statusLabel: string;
   paymentStatus: PaymentStatus;
+  paymentMethod?: PaymentMethod;
+  stage4Status?: string;
+  stage4PaymentStatus?: string;
+  fulfillmentStatus?: string;
+  sellerConfirmationRequired?: boolean;
+  sellerConfirmedAt?: string | null;
+  sellerRejectedAt?: string | null;
+  sellerRejectionNote?: string;
+  returnWindowEndsAt?: string | null;
+  buyerConfirmedAt?: string | null;
+  payoutStatus?: string;
+  assignedRiderId?: string | null;
+  riderAssignmentId?: string | null;
   subtotalKobo: number;
   subtotal: number;
   deliveryFeeKobo: number;
@@ -444,6 +494,14 @@ export type UsedMarketOrder = {
   status: UsedMarketOrderStatus;
   statusLabel: string;
   paymentStatus: UsedMarketPaymentStatus;
+  paymentMethod?: PaymentMethod;
+  stage4Status?: string;
+  stage4PaymentStatus?: string;
+  fulfillmentStatus?: string;
+  sellerConfirmationRequired?: boolean;
+  returnWindowEndsAt?: string | null;
+  buyerConfirmedAt?: string | null;
+  payoutStatus?: string;
   itemPriceKobo: number;
   itemPrice: number;
   protectionFeeKobo: number;

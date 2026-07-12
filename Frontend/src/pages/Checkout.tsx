@@ -426,7 +426,10 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <FiCreditCard />
               <div>
                 <h2>Payment option</h2>
-                <p>Pay now for protected payment, or pay on delivery after the rider reaches you.</p>
+                <p>
+                  Pay now for protected payment, or use Pay at Delivery through
+                  Gleenc/Paystack when the rider reaches you. No cash handoff.
+                </p>
               </div>
             </div>
 
@@ -447,8 +450,11 @@ window.location.href = paymentResponse.payment.authorizationUrl;
                 onClick={() => setPaymentMethod("pay_on_delivery")}
               >
                 <FiTruck />
-                <strong>Pay on delivery</strong>
-                <span>Seller confirms, rider delivers, payment is verified, then your delivery code unlocks.</span>
+                <strong>Pay at Delivery</strong>
+                <span>
+                  Seller confirms, rider comes, you pay securely through
+                  Gleenc/Paystack, then your delivery code unlocks.
+                </span>
               </button>
             </div>
           </section>
@@ -500,7 +506,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
             <p>
               {paymentMethod === "pay_now"
                 ? "Your order is created first, then payment is verified before sellers process it."
-                : "Your order goes to the seller first. The delivery code unlocks after payment is verified."}
+                : "Your order goes to the seller first. The delivery code unlocks only after Gleenc/Paystack verifies payment."}
             </p>
           </div>
 

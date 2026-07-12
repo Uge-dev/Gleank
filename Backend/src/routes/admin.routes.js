@@ -30,6 +30,18 @@ import {
   adminListRiders,
   adminUpdateRiderVerification,
 } from "../services/rider.service.js";
+import {
+  adminReviewProduct,
+  listProductModeration,
+} from "../services/moderation.service.js";
+import {
+  adminListPayouts,
+  adminUpdatePayout,
+} from "../services/payout.service.js";
+import {
+  adminDecideDispute,
+  adminListDisputes,
+} from "../services/return-dispute.service.js";
 
 const router = Router();
 
@@ -364,6 +376,87 @@ router.patch("/riders/:riderId/verification", requireAdmin, (req, res) => {
     });
   } catch (error) {
     res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update rider verification" });
+  }
+});
+
+router.get("/products/moderation", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      products: listProductModeration({
+        status: String(req.query.status || ""),
+        query: String(req.query.q || ""),
+      }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load product moderation" });
+  }
+});
+
+router.patch("/products/:productId/moderation", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      product: adminReviewProduct(
+        { role: "admin", user_id: req.auth?.user_id || req.auth?.id || null },
+        req.params.productId,
+        req.body || {},
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update product moderation" });
+  }
+});
+
+router.get("/payouts", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      payouts: adminListPayouts({ status: String(req.query.status || "") }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load payouts" });
+  }
+});
+
+router.patch("/payouts/:payoutId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      payout: adminUpdatePayout(
+        { role: "admin", user_id: req.auth?.user_id || req.auth?.id || null },
+        req.params.payoutId,
+        req.body || {},
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update payout" });
+  }
+});
+
+router.get("/stage4/disputes", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      disputes: adminListDisputes({ status: String(req.query.status || "") }),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load disputes" });
+  }
+});
+
+router.patch("/stage4/disputes/:disputeId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      dispute: adminDecideDispute(
+        { role: "admin", user_id: req.auth?.user_id || req.auth?.id || null },
+        req.params.disputeId,
+        req.body || {},
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update dispute" });
   }
 });
 

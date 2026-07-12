@@ -3,6 +3,13 @@ import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
+import { markPayoutDeliveryVerified } from "./payout.service.js";
+import {
+  createDispute,
+  createReturnRequest,
+  listOrderReturns,
+  respondToReturnRequest,
+} from "./return-dispute.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -105,6 +112,19 @@ function serializeOrder(row, items = [], events = []) {
     status: row.status,
     statusLabel: statusLabel(row.status),
     paymentStatus: row.payment_status,
+    paymentMethod: row.payment_method || "pay_now",
+    stage4Status: row.stage4_status || "",
+    stage4PaymentStatus: row.stage4_payment_status || "",
+    fulfillmentStatus: row.fulfillment_status || "",
+    sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
+    sellerConfirmedAt: row.seller_confirmed_at || null,
+    sellerRejectedAt: row.seller_rejected_at || null,
+    sellerRejectionNote: row.seller_rejection_note || "",
+    returnWindowEndsAt: row.return_window_ends_at || null,
+    buyerConfirmedAt: row.buyer_confirmed_at || null,
+    payoutStatus: row.payout_status || "pending_payment",
+    assignedRiderId: row.assigned_rider_id || null,
+    riderAssignmentId: row.rider_assignment_id || null,
     subtotalKobo: row.subtotal_kobo,
     subtotal: toNaira(row.subtotal_kobo),
     deliveryFeeKobo: row.delivery_fee_kobo,
@@ -216,6 +236,31 @@ function insertOrderEvent(orderId, status, note = "") {
     INSERT INTO order_events (id, order_id, status, label, note, created_at)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(createId("evt"), orderId, status, eventLabel(status), note, now);
+}
+
+function insertStatusHistory({
+  orderId,
+  statusLayer = "order",
+  oldStatus = "",
+  newStatus,
+  changedBy = null,
+  note = "",
+}) {
+  db.prepare(`
+    INSERT INTO order_status_history (
+      id, order_id, used_order_id, source_type, status_layer,
+      old_status, new_status, changed_by, note, created_at
+    ) VALUES (?, ?, NULL, 'store_order', ?, ?, ?, ?, ?, ?)
+  `).run(
+    createId("osh"),
+    orderId,
+    statusLayer,
+    oldStatus || "",
+    newStatus,
+    changedBy,
+    String(note || "").slice(0, 700),
+    new Date().toISOString(),
+  );
 }
 
 export function listOrders(userId) {
@@ -349,21 +394,41 @@ export function createOrders(userId, input) {
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
       const orderCode = generateOrderCode();
+      const sellerConfirmationRequired = group.products.some(
+        (item) =>
+          item.product.seller_confirmation_required ||
+          item.product.availability_status === "confirm_before_payment",
+      );
       const initialStatus =
-        paymentMethod === "pay_on_delivery" ? "seller_confirmed" : "pending_payment";
+        paymentMethod === "pay_on_delivery" || sellerConfirmationRequired
+          ? "seller_confirmed"
+          : "pending_payment";
+      const stage4Status = sellerConfirmationRequired
+        ? "pending_seller_confirmation"
+        : paymentMethod === "pay_on_delivery"
+          ? "seller_confirmation_pending"
+          : "awaiting_payment";
+      const stage4PaymentStatus =
+        paymentMethod === "pay_on_delivery"
+          ? "pay_at_delivery_pending"
+          : "awaiting_payment";
       const initialNote =
         paymentMethod === "pay_on_delivery"
-          ? "Buyer selected pay on delivery. Seller can process the order and collect payment at delivery/pickup."
-          : "Your order has been created and is waiting for payment.";
+          ? "Buyer selected Pay at Delivery. Payment must still be completed through Gleenc/Paystack before the delivery code unlocks."
+          : sellerConfirmationRequired
+            ? "This order needs seller availability confirmation before payment can continue."
+            : "Your order has been created and is waiting for payment.";
 
       db.prepare(`
         INSERT INTO orders (
           id, order_code, buyer_id, seller_id, store_id, status, payment_status,
+          payment_method, stage4_status, stage4_payment_status, fulfillment_status,
+          seller_confirmation_required, payout_status,
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
           campus, delivery_option, delivery_address, pickup_location, note,
           verification_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -372,6 +437,12 @@ export function createOrders(userId, input) {
         group.storeId,
         initialStatus,
         "unpaid",
+        paymentMethod,
+        stage4Status,
+        stage4PaymentStatus,
+        "pending",
+        sellerConfirmationRequired ? 1 : 0,
+        "pending_payment",
         subtotalKobo,
         deliveryFeeKobo,
         totalKobo,
@@ -412,6 +483,13 @@ export function createOrders(userId, input) {
         initialStatus,
         initialNote,
       );
+      insertStatusHistory({
+        orderId,
+        statusLayer: "stage4",
+        newStatus: stage4Status,
+        changedBy: userId,
+        note: initialNote,
+      });
 
       const firstProductName = group.products[0]?.product?.name || "a product";
       createNotification({
@@ -419,11 +497,13 @@ export function createOrders(userId, input) {
         type: "order",
         title:
           paymentMethod === "pay_on_delivery"
-            ? "New pay-on-delivery order"
+            ? "New Pay at Delivery order"
             : "New order received",
         body:
           paymentMethod === "pay_on_delivery"
-            ? `${buyerName} placed a pay-on-delivery order for ${firstProductName}.`
+            ? `${buyerName} placed a Pay at Delivery order for ${firstProductName}. Confirm availability before rider pickup.`
+            : sellerConfirmationRequired
+              ? `${buyerName} placed an order for ${firstProductName}. Confirm availability before payment.`
             : `${buyerName} placed an order for ${firstProductName}.`,
         actionLabel: "View order",
         actionPath: `/orders/${orderId}`,
@@ -435,11 +515,13 @@ export function createOrders(userId, input) {
         type: "order",
         title:
           paymentMethod === "pay_on_delivery"
-            ? "Pay-on-delivery order created"
+            ? "Pay at Delivery order created"
             : "Order created",
         body:
           paymentMethod === "pay_on_delivery"
-            ? `Your order ${orderCode} was sent to the seller for pay on delivery.`
+            ? `Your order ${orderCode} was sent to the seller. You will still pay securely through Gleenc/Paystack before the delivery code unlocks.`
+            : sellerConfirmationRequired
+              ? `Your order ${orderCode} is waiting for seller availability confirmation.`
             : `Your order ${orderCode} is waiting for payment.`,
         actionLabel: "Continue order",
         actionPath: `/orders/${orderId}`,
@@ -453,6 +535,144 @@ export function createOrders(userId, input) {
   });
 
   return createdOrders;
+}
+
+export function sellerConfirmOrder(user, orderId, note = "") {
+  const row = getOrderRowByIdForUser(user.user_id, orderId);
+  if (!row) throw new HttpError(404, "Order was not found.");
+  if (user.role !== "admin" && row.seller_id !== user.user_id) {
+    throw new HttpError(403, "Only the seller or admin can confirm this order.");
+  }
+  if (row.payment_status === "paid") {
+    throw new HttpError(422, "This order payment is already confirmed.");
+  }
+
+  const now = new Date().toISOString();
+  const nextStage4Status =
+    row.payment_method === "pay_on_delivery"
+      ? "seller_confirmed_waiting_rider"
+      : "seller_confirmed_waiting_payment";
+  const nextOrderStatus =
+    row.payment_method === "pay_on_delivery" ? "seller_confirmed" : "pending_payment";
+
+  db.prepare(`
+    UPDATE orders
+    SET status = ?,
+        stage4_status = ?,
+        fulfillment_status = 'seller_confirmed',
+        seller_confirmed_at = ?,
+        seller_rejected_at = NULL,
+        seller_rejection_note = '',
+        seller_confirmation_required = 0,
+        updated_at = ?
+    WHERE id = ?
+  `).run(nextOrderStatus, nextStage4Status, now, now, row.id);
+
+  insertOrderEvent(row.id, nextOrderStatus, note || "Seller confirmed the item is available.");
+  insertStatusHistory({
+    orderId: row.id,
+    statusLayer: "stage4",
+    oldStatus: row.stage4_status || "",
+    newStatus: nextStage4Status,
+    changedBy: user.user_id,
+    note,
+  });
+
+  createNotification({
+    userId: row.buyer_id,
+    type: "order",
+    title: "Seller confirmed availability",
+    body:
+      row.payment_method === "pay_on_delivery"
+        ? "The seller confirmed your order. You will pay securely through Gleenc/Paystack when the rider arrives, before delivery code verification."
+        : "The seller confirmed your order. You can now continue payment.",
+    actionLabel: "View order",
+    actionPath: `/orders/${row.id}`,
+  });
+
+  return getOrder(user.user_id, row.id);
+}
+
+export function sellerRejectOrder(user, orderId, note = "") {
+  const row = getOrderRowByIdForUser(user.user_id, orderId);
+  if (!row) throw new HttpError(404, "Order was not found.");
+  if (user.role !== "admin" && row.seller_id !== user.user_id) {
+    throw new HttpError(403, "Only the seller or admin can reject this order.");
+  }
+  if (row.payment_status === "paid") {
+    throw new HttpError(422, "Paid orders cannot be rejected here. Use cancellation/refund workflow.");
+  }
+
+  const now = new Date().toISOString();
+  const reason = String(note || "Seller could not confirm availability.").slice(0, 700);
+
+  db.prepare(`
+    UPDATE orders
+    SET status = 'cancelled',
+        stage4_status = 'seller_rejected',
+        fulfillment_status = 'cancelled',
+        seller_rejected_at = ?,
+        seller_rejection_note = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, reason, now, row.id);
+
+  insertOrderEvent(row.id, "cancelled", reason);
+  insertStatusHistory({
+    orderId: row.id,
+    statusLayer: "stage4",
+    oldStatus: row.stage4_status || "",
+    newStatus: "seller_rejected",
+    changedBy: user.user_id,
+    note: reason,
+  });
+
+  createNotification({
+    userId: row.buyer_id,
+    type: "order",
+    title: "Order unavailable",
+    body: reason,
+    actionLabel: "View order",
+    actionPath: `/orders/${row.id}`,
+  });
+
+  return getOrder(user.user_id, row.id);
+}
+
+export function getOrderPaymentState(userId, orderId) {
+  const order = getOrder(userId, orderId);
+  const payment = db
+    .prepare(`
+      SELECT *
+      FROM payment_transactions
+      WHERE order_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `)
+    .get(order.id);
+
+  return {
+    orderId: order.id,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    stage4PaymentStatus: order.stage4PaymentStatus,
+    canPayNow:
+      order.paymentStatus === "unpaid" &&
+      order.paymentMethod === "pay_now" &&
+      !order.sellerConfirmationRequired,
+    canPayAtDelivery:
+      order.paymentStatus === "unpaid" &&
+      order.paymentMethod === "pay_on_delivery" &&
+      ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status),
+    latestPayment: payment
+      ? {
+          reference: payment.reference,
+          status: payment.status,
+          authorizationUrl: payment.authorization_url,
+          createdAt: payment.created_at,
+        }
+      : null,
+  };
 }
 
 export function updateOrderStatus(user, orderId, status, note = "") {
@@ -484,13 +704,33 @@ export function updateOrderStatus(user, orderId, status, note = "") {
 
   const now = new Date().toISOString();
 
-  db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(
+  db.prepare(`
+    UPDATE orders
+    SET status = ?,
+        stage4_status = ?,
+        fulfillment_status = ?,
+        buyer_confirmed_at = CASE WHEN ? = 'completed' THEN ? ELSE buyer_confirmed_at END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
     status,
+    status,
+    status,
+    status,
+    now,
     now,
     orderId,
   );
 
   insertOrderEvent(orderId, status, String(note || "").slice(0, 500));
+  insertStatusHistory({
+    orderId,
+    statusLayer: "order",
+    oldStatus: row.status,
+    newStatus: status,
+    changedBy: user.user_id,
+    note,
+  });
 
   createNotificationForUsers(
     [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
@@ -530,7 +770,14 @@ export function verifyOrderDelivery(user, orderId, verificationCode, note = "") 
   }
 
   const now = new Date().toISOString();
-  db.prepare("UPDATE orders SET status = 'delivered', updated_at = ? WHERE id = ?").run(
+  db.prepare(`
+    UPDATE orders
+    SET status = 'delivered',
+        stage4_status = 'delivered',
+        fulfillment_status = 'delivered',
+        updated_at = ?
+    WHERE id = ?
+  `).run(
     now,
     row.id,
   );
@@ -550,10 +797,21 @@ export function verifyOrderDelivery(user, orderId, verificationCode, note = "") 
     actionPath: `/orders/${row.id}`,
   });
 
+  markPayoutDeliveryVerified({
+    sourceType: "store_order",
+    orderId: row.id,
+    actorId: user.user_id,
+    note: "Seller/admin verified buyer delivery code.",
+  });
+
   return getOrder(user.user_id, row.id);
 }
 
 export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
+  if (process.env.NODE_ENV === "production") {
+    throw new HttpError(403, "Manual payment marking is disabled in production. Use Paystack verification.");
+  }
+
   return transaction(() => {
     const row = getOrderRowByIdForUser(userId, orderId);
     if (!row) throw new HttpError(404, "Order was not found.");
@@ -563,7 +821,12 @@ export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
     const now = new Date().toISOString();
     db.prepare(`
       UPDATE orders
-      SET status = 'paid', payment_status = 'paid', updated_at = ?
+      SET status = 'paid',
+          payment_status = 'paid',
+          stage4_status = 'paid',
+          stage4_payment_status = 'paid',
+          payout_status = 'on_hold',
+          updated_at = ?
       WHERE id = ?
     `).run(now, row.id);
 
@@ -585,4 +848,20 @@ export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
 
     return getOrder(userId, row.id);
   });
+}
+
+export function openOrderReturn(user, orderId, input = {}) {
+  return createReturnRequest(user, orderId, { ...input, sourceType: "store_order" });
+}
+
+export function replyToOrderReturn(user, returnId, input = {}) {
+  return respondToReturnRequest(user, returnId, input);
+}
+
+export function openOrderDispute(user, orderId, input = {}) {
+  return createDispute(user, orderId, { ...input, sourceType: "store_order" });
+}
+
+export function listReturnsForOrder(user, orderId) {
+  return listOrderReturns(user, orderId, "store_order");
 }

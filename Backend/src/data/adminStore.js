@@ -28,6 +28,15 @@ function parseImages(value) {
   }
 }
 
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "";
 }
@@ -238,7 +247,20 @@ function buildProducts() {
       stockStatus: stockStatus(row.stock, row.status),
       type: "product",
       status: productStatus(row),
-      flag: row.status === "draft" ? "needs_review" : "clean",
+      moderationStatus: row.moderation_status || "draft",
+      moderationNote: row.moderation_note || "",
+      moderationReasons: parseJsonArray(row.moderation_reasons),
+      riskScore: Number(row.risk_score || 0),
+      riskLevel: row.risk_level || "low",
+      availabilityStatus: row.availability_status || "available_now",
+      sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
+      returnPolicy: row.return_policy || "standard",
+      flag:
+        ["pending_review", "flagged", "rejected"].includes(row.moderation_status)
+          ? row.moderation_status
+          : row.status === "draft"
+            ? "needs_review"
+            : "clean",
       dateUploaded: dateOnly(row.created_at),
     }));
 
@@ -263,7 +285,20 @@ function buildProducts() {
       stockStatus: row.status === "paused" ? "out_of_stock" : "in_stock",
       type: "service",
       status: serviceStatus(row),
-      flag: row.status === "draft" ? "needs_review" : "clean",
+      moderationStatus: row.moderation_status || "draft",
+      moderationNote: row.moderation_note || "",
+      moderationReasons: parseJsonArray(row.moderation_reasons),
+      riskScore: Number(row.risk_score || 0),
+      riskLevel: row.risk_level || "low",
+      availabilityStatus: row.availability_status || "available_now",
+      sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
+      returnPolicy: row.return_policy || "standard",
+      flag:
+        ["pending_review", "flagged", "rejected"].includes(row.moderation_status)
+          ? row.moderation_status
+          : row.status === "draft"
+            ? "needs_review"
+            : "clean",
       dateUploaded: dateOnly(row.created_at),
     }));
 
@@ -331,6 +366,13 @@ function buildOrders() {
       campus: row.campus || "",
       amount: naira(row.total_kobo),
       paymentStatus: paymentStatus(row.payment_status),
+      paymentMethod: row.payment_method || "pay_now",
+      stage4Status: row.stage4_status || "",
+      stage4PaymentStatus: row.stage4_payment_status || "",
+      fulfillmentStatus: row.fulfillment_status || "",
+      payoutStatus: row.payout_status || "pending_payment",
+      returnWindowEndsAt: row.return_window_ends_at || null,
+      sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
       deliveryStatus: deliveryDisplayStatus(row.status),
       orderStatus: orderDisplayStatus(row.status),
       deliveryCode: row.verification_code || "",
@@ -358,6 +400,13 @@ function buildOrders() {
       campus: row.campus || "",
       amount: naira(row.total_kobo),
       paymentStatus: paymentStatus(row.payment_status),
+      paymentMethod: row.payment_method || "pay_now",
+      stage4Status: row.stage4_status || "",
+      stage4PaymentStatus: row.stage4_payment_status || "",
+      fulfillmentStatus: row.fulfillment_status || "",
+      payoutStatus: row.payout_status || "pending_payment",
+      returnWindowEndsAt: row.return_window_ends_at || null,
+      sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
       deliveryStatus: deliveryDisplayStatus(row.status),
       orderStatus: orderDisplayStatus(row.status),
       deliveryCode: row.verification_code || "",
@@ -441,7 +490,41 @@ function buildPayments() {
       };
     });
 
-  return [...transactionRows, ...orderFallbackRows];
+  const payoutRows = db
+    .prepare(`
+      SELECT payouts.*, seller.name AS seller_name,
+             orders.order_code AS order_code,
+             used_market_orders.order_code AS used_order_code,
+             buyer.name AS buyer_name,
+             used_buyer.name AS used_buyer_name
+      FROM payouts
+      JOIN users seller ON seller.id = payouts.seller_id
+      LEFT JOIN orders ON orders.id = payouts.order_id
+      LEFT JOIN users buyer ON buyer.id = orders.buyer_id
+      LEFT JOIN used_market_orders ON used_market_orders.id = payouts.used_order_id
+      LEFT JOIN users used_buyer ON used_buyer.id = used_market_orders.buyer_id
+      ORDER BY payouts.created_at DESC
+      LIMIT 500
+    `)
+    .all()
+    .map((row) => ({
+      id: row.id,
+      orderId: row.order_code || row.used_order_code || row.order_id || row.used_order_id || "",
+      buyer: row.buyer_name || row.used_buyer_name || "",
+      seller: row.seller_name,
+      amount: naira(row.gross_amount_kobo),
+      gleankFee: naira(row.platform_fee_kobo),
+      sellerAmount: naira(row.seller_amount_kobo),
+      gateway: "Payout",
+      status: row.status,
+      payoutStatus: row.status,
+      holdReason: row.hold_reason || "",
+      releaseAfter: row.release_after || null,
+      releasedAt: row.released_at || null,
+      createdAt: dateOnly(row.created_at),
+    }));
+
+  return [...transactionRows, ...orderFallbackRows, ...payoutRows];
 }
 
 function buildDeliveries() {
@@ -497,6 +580,33 @@ function buildDeliveries() {
 }
 
 function buildDisputes() {
+  const stage4Disputes = db
+    .prepare(`
+      SELECT disputes.*, opener.name AS opener_name, seller.name AS seller_name,
+             orders.order_code AS order_code,
+             used_market_orders.order_code AS used_order_code
+      FROM disputes
+      JOIN users opener ON opener.id = disputes.opened_by
+      JOIN users seller ON seller.id = disputes.seller_id
+      LEFT JOIN orders ON orders.id = disputes.order_id
+      LEFT JOIN used_market_orders ON used_market_orders.id = disputes.used_order_id
+      ORDER BY disputes.created_at DESC
+    `)
+    .all()
+    .map((row) => ({
+      id: row.id,
+      orderId: row.order_code || row.used_order_code || row.order_id || row.used_order_id || "",
+      title: "Stage 4 order dispute",
+      buyer: row.opener_name,
+      seller: row.seller_name,
+      type: row.source_type === "used_order" ? "used_market" : "delivery",
+      priority: ["open", "awaiting_evidence"].includes(row.status) ? "high" : "medium",
+      message: row.reason || row.admin_decision || "Dispute opened.",
+      status: row.status,
+      adminDecision: row.admin_decision || "",
+      createdAt: dateOnly(row.created_at),
+    }));
+
   const orderDisputes = db
     .prepare(`
       SELECT orders.*, buyer.name AS buyer_name, stores.name AS store_name
@@ -544,7 +654,7 @@ function buildDisputes() {
       createdAt: dateOnly(row.created_at),
     }));
 
-  return [...orderDisputes, ...usedReports];
+  return [...stage4Disputes, ...orderDisputes, ...usedReports];
 }
 
 function buildFeedback() {
@@ -925,7 +1035,7 @@ function updateSeller(id, fields) {
 function updateProductOrService(id, fields) {
   const now = new Date().toISOString();
   const product = db.prepare(`
-    SELECT products.id, products.name, products.store_id, stores.owner_id
+    SELECT products.id, products.name, products.store_id, products.moderation_status, stores.owner_id
     FROM products
     JOIN stores ON stores.id = products.store_id
     WHERE products.id = ?
@@ -933,11 +1043,19 @@ function updateProductOrService(id, fields) {
   if (product) {
     if ("status" in fields || "stockStatus" in fields || "stock" in fields) {
       const status = normalizeProductStatus(fields.status || fields.stockStatus || "approved");
+      const moderationStatus =
+        status === "active"
+          ? "approved"
+          : status === "draft"
+            ? fields.status === "hidden"
+              ? "hidden"
+              : "pending_review"
+            : product.moderation_status || "pending_review";
       const stock = "stock" in fields ? Number(fields.stock || 0) : status === "out_of_stock" ? 0 : null;
       if (stock === null) {
-        db.prepare("UPDATE products SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
+        db.prepare("UPDATE products SET status = ?, moderation_status = ?, updated_at = ? WHERE id = ?").run(status, moderationStatus, now, id);
       } else {
-        db.prepare("UPDATE products SET status = ?, stock = ?, updated_at = ? WHERE id = ?").run(status, stock, now, id);
+        db.prepare("UPDATE products SET status = ?, stock = ?, moderation_status = ?, updated_at = ? WHERE id = ?").run(status, stock, moderationStatus, now, id);
       }
       createNotification({
         userId: product.owner_id,
@@ -952,15 +1070,22 @@ function updateProductOrService(id, fields) {
   }
 
   const service = db.prepare(`
-    SELECT services.id, services.name, stores.owner_id
+    SELECT services.id, services.name, services.moderation_status, stores.owner_id
     FROM services
     JOIN stores ON stores.id = services.store_id
     WHERE services.id = ?
   `).get(id);
   if (service && ("status" in fields || "stockStatus" in fields)) {
     const status = normalizeServiceStatus(fields.status || fields.stockStatus || "approved");
-    db.prepare("UPDATE services SET status = ?, updated_at = ? WHERE id = ?").run(
+    const moderationStatus =
+      status === "active"
+        ? "approved"
+        : status === "paused"
+          ? "hidden"
+          : service.moderation_status || "pending_review";
+    db.prepare("UPDATE services SET status = ?, moderation_status = ?, updated_at = ? WHERE id = ?").run(
       status,
+      moderationStatus,
       now,
       id,
     );

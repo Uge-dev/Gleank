@@ -1,0 +1,492 @@
+import { db, transaction } from "../db/database.js";
+import { createId } from "../lib/ids.js";
+import { HttpError } from "../lib/http-error.js";
+import { serializeProduct, serializeService } from "../lib/serializers.js";
+import { createNotification } from "./notification.service.js";
+
+const PUBLIC_APPROVED = new Set(["auto_approved", "approved"]);
+const ACTIVE_REVIEW_STATUSES = new Set(["pending_review", "flagged"]);
+const VALID_AVAILABILITY = new Set([
+  "available_now",
+  "confirm_before_payment",
+  "out_of_stock",
+  "price_updated",
+  "substitute_available",
+]);
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function clean(value, max = 500) {
+  return String(value || "").trim().slice(0, max);
+}
+
+function safeJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeCategoryKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function textBlob(input) {
+  return [input?.name, input?.category, input?.description, input?.serviceType, input?.location]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function riskLevel(score) {
+  if (score >= 80) return "critical";
+  if (score >= 50) return "high";
+  if (score >= 25) return "medium";
+  return "low";
+}
+
+function priceKoboFromInput(input) {
+  return Math.round(Number(input?.price || 0) * 100);
+}
+
+function availabilityFromInput(input, stock = 1) {
+  const candidate = clean(input?.availabilityStatus, 60);
+  if (candidate && VALID_AVAILABILITY.has(candidate)) return candidate;
+  if (Number(stock || 0) <= 0) return "out_of_stock";
+  return "available_now";
+}
+
+function returnPolicyFromInput(input) {
+  const candidate = clean(input?.returnPolicy, 40);
+  if (["standard", "limited", "final_sale"].includes(candidate)) return candidate;
+  return "standard";
+}
+
+function matchingCategoryRules(store, categoryKey) {
+  return db
+    .prepare(`
+      SELECT *
+      FROM product_category_rules
+      WHERE is_active = 1
+        AND category_key = ?
+        AND seller_type IN ('all', ?)
+      ORDER BY CASE seller_type WHEN ? THEN 0 ELSE 1 END
+    `)
+    .all(categoryKey, store.seller_type || "campus", store.seller_type || "campus");
+}
+
+function matchingKeywords(blob) {
+  const keywords = db
+    .prepare("SELECT * FROM restricted_keywords WHERE is_active = 1 ORDER BY keyword ASC")
+    .all();
+
+  return keywords.filter((row) => {
+    const keyword = String(row.keyword || "").trim().toLowerCase();
+    return keyword && blob.includes(keyword);
+  });
+}
+
+function addReason(reasons, code, message, score = 0, action = "review") {
+  reasons.push({ code, message, score, action });
+}
+
+export function evaluateListingModeration({ store, input, images = [], itemType = "product" }) {
+  const requestedStatus = clean(input?.status || "draft", 40);
+  const stock = Number(input?.stock ?? 1);
+  const availabilityStatus = availabilityFromInput(input, stock);
+  const categoryKey = normalizeCategoryKey(input?.category);
+  const blob = textBlob(input);
+  const reasons = [];
+  let rejected = false;
+  let reviewRequired = false;
+  let score = 0;
+
+  if (requestedStatus === "draft") {
+    return {
+      moderationStatus: "draft",
+      moderationNote: "Saved as draft. Publish it when it is ready for review.",
+      moderationReasons: [],
+      riskScore: 0,
+      riskLevel: "low",
+      availabilityStatus,
+      sellerConfirmationRequired: availabilityStatus === "confirm_before_payment",
+      returnPolicy: returnPolicyFromInput(input),
+      publicStatus: "draft",
+    };
+  }
+
+  for (const rule of matchingCategoryRules(store, categoryKey)) {
+    const action = rule.rule_action || "review";
+    const message = rule.reason || `${rule.category_name || input?.category} requires review.`;
+    const ruleScore = action === "reject" ? 90 : 35;
+    addReason(reasons, `category_${action}`, message, ruleScore, action);
+    score += ruleScore;
+    if (action === "reject") rejected = true;
+    if (action === "review") reviewRequired = true;
+  }
+
+  for (const keyword of matchingKeywords(blob)) {
+    const action = keyword.action || "review";
+    const keywordScore = action === "reject" ? 85 : 30;
+    addReason(
+      reasons,
+      `keyword_${action}`,
+      keyword.reason || `Restricted keyword detected: ${keyword.keyword}`,
+      keywordScore,
+      action,
+    );
+    score += keywordScore;
+    if (action === "reject") rejected = true;
+    if (action === "review") reviewRequired = true;
+  }
+
+  if (images.length === 0) {
+    addReason(reasons, "missing_images", "Add clear product images to increase buyer trust.", 10, "info");
+    score += 10;
+  }
+
+  const priceKobo = priceKoboFromInput(input);
+  if (priceKobo > 500_000_00) {
+    addReason(reasons, "high_value", "High-value listings need admin review before going public.", 35, "review");
+    score += 35;
+    reviewRequired = true;
+  }
+
+  if (priceKobo > 150_000_00 && images.length < 2) {
+    addReason(reasons, "high_value_low_images", "High-value listings need multiple clear images.", 20, "review");
+    score += 20;
+    reviewRequired = true;
+  }
+
+  if (priceKobo > 0 && priceKobo < 50_00 && requestedStatus === "active") {
+    addReason(reasons, "suspicious_price", "Very low pricing was flagged for review.", 15, "review");
+    score += 15;
+    reviewRequired = true;
+  }
+
+  if ((store.seller_type || "campus") === "local_market") {
+    const localReviewKeys = new Set([
+      "fresh_food",
+      "fresh_foods",
+      "meat",
+      "fish",
+      "meat_fish",
+      "fuel",
+      "gas",
+      "fuel_gas",
+      "chemicals",
+      "electronics_high_value",
+      "jewelry",
+    ]);
+    if (localReviewKeys.has(categoryKey)) {
+      addReason(
+        reasons,
+        "local_market_early_review",
+        "This local-market category needs admin readiness review before it goes public.",
+        30,
+        "review",
+      );
+      score += 30;
+      reviewRequired = true;
+    }
+  }
+
+  const level = riskLevel(score);
+  const moderationStatus = rejected
+    ? "rejected"
+    : reviewRequired || level === "high" || level === "critical"
+      ? "pending_review"
+      : "auto_approved";
+  const publicStatus =
+    PUBLIC_APPROVED.has(moderationStatus) && requestedStatus === "active"
+      ? Number(stock || 0) <= 0 || availabilityStatus === "out_of_stock"
+        ? "out_of_stock"
+        : "active"
+      : "draft";
+
+  return {
+    moderationStatus,
+    moderationNote:
+      reasons[0]?.message ||
+      (moderationStatus === "auto_approved"
+        ? "Auto-approved by Gleenc safety checks."
+        : "Saved for admin review."),
+    moderationReasons: reasons,
+    riskScore: Math.min(score, 100),
+    riskLevel: level,
+    availabilityStatus,
+    sellerConfirmationRequired: availabilityStatus === "confirm_before_payment",
+    returnPolicy: returnPolicyFromInput(input),
+    publicStatus,
+  };
+}
+
+export function upsertModerationRecord({ itemId, itemType = "product", moderation, reviewerId = null }) {
+  const now = nowIso();
+  db.prepare(`
+    INSERT INTO product_moderation (
+      id, product_id, item_type, status, risk_score, risk_level, reasons, note,
+      reviewed_by, reviewed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(product_id, item_type) DO UPDATE SET
+      status = excluded.status,
+      risk_score = excluded.risk_score,
+      risk_level = excluded.risk_level,
+      reasons = excluded.reasons,
+      note = excluded.note,
+      reviewed_by = COALESCE(excluded.reviewed_by, product_moderation.reviewed_by),
+      reviewed_at = COALESCE(excluded.reviewed_at, product_moderation.reviewed_at),
+      updated_at = excluded.updated_at
+  `).run(
+    createId("mod"),
+    itemId,
+    itemType,
+    moderation.moderationStatus,
+    moderation.riskScore,
+    moderation.riskLevel,
+    JSON.stringify(moderation.moderationReasons || []),
+    moderation.moderationNote || "",
+    reviewerId,
+    reviewerId ? now : null,
+    now,
+    now,
+  );
+}
+
+export function moderationSqlPatch(moderation) {
+  return {
+    moderationStatus: moderation.moderationStatus,
+    moderationNote: moderation.moderationNote || "",
+    moderationReasonsJson: JSON.stringify(moderation.moderationReasons || []),
+    riskScore: moderation.riskScore || 0,
+    riskLevel: moderation.riskLevel || "low",
+    availabilityStatus: moderation.availabilityStatus || "available_now",
+    sellerConfirmationRequired: moderation.sellerConfirmationRequired ? 1 : 0,
+    returnPolicy: moderation.returnPolicy || "standard",
+    publicStatus: moderation.publicStatus || "draft",
+  };
+}
+
+export function listProductModeration({ status = "", query = "" } = {}) {
+  const params = [];
+  let where = "WHERE 1 = 1";
+
+  if (status) {
+    where += " AND products.moderation_status = ?";
+    params.push(status);
+  }
+
+  if (query) {
+    where += " AND (products.name LIKE ? OR products.category LIKE ? OR stores.name LIKE ?)";
+    const like = `%${query}%`;
+    params.push(like, like, like);
+  }
+
+  return db
+    .prepare(`
+      SELECT products.*, stores.name AS store_name, stores.slug AS store_slug,
+             stores.owner_id AS seller_id, users.name AS seller_name
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      JOIN users ON users.id = stores.owner_id
+      ${where}
+      ORDER BY
+        CASE products.moderation_status
+          WHEN 'pending_review' THEN 1
+          WHEN 'flagged' THEN 2
+          WHEN 'rejected' THEN 3
+          ELSE 9
+        END,
+        products.updated_at DESC
+      LIMIT 250
+    `)
+    .all(...params)
+    .map((row) => ({
+      ...serializeProduct(row),
+      storeName: row.store_name,
+      storeSlug: row.store_slug,
+      sellerId: row.seller_id,
+      sellerName: row.seller_name,
+    }));
+}
+
+function ownerNotificationForProduct(productId, title, body) {
+  const row = db
+    .prepare(`
+      SELECT products.id, products.name, stores.owner_id
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+    `)
+    .get(productId);
+
+  if (!row) return;
+
+  createNotification({
+    userId: row.owner_id,
+    type: "product",
+    title,
+    body: body || `${row.name} moderation status has changed.`,
+    actionLabel: "Open dashboard",
+    actionPath: "/dashboard",
+  });
+}
+
+export function adminReviewProduct(auth, productId, input = {}) {
+  if (!auth || auth.role !== "admin") throw new HttpError(403, "Only admins can review products.");
+
+  const action = clean(input.action || input.status, 40);
+  const note = clean(input.note || input.moderationNote || "", 1000);
+  const product = db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
+
+  if (!product) throw new HttpError(404, "Product was not found.");
+
+  const now = nowIso();
+  let moderationStatus = product.moderation_status || "pending_review";
+  let status = product.status || "draft";
+  let title = "Product moderation updated";
+
+  if (action === "approve" || action === "approved" || action === "active") {
+    moderationStatus = "approved";
+    status = Number(product.stock || 0) <= 0 ? "out_of_stock" : "active";
+    title = "Product approved";
+  } else if (action === "reject" || action === "rejected") {
+    moderationStatus = "rejected";
+    status = "draft";
+    title = "Product rejected";
+  } else if (action === "hide" || action === "hidden") {
+    moderationStatus = "hidden";
+    status = "draft";
+    title = "Product hidden";
+  } else if (action === "flag" || action === "flagged" || action === "review") {
+    moderationStatus = "flagged";
+    status = "draft";
+    title = "Product flagged for review";
+  } else {
+    throw new HttpError(422, "Choose approve, reject, hide, or flag.");
+  }
+
+  transaction(() => {
+    db.prepare(`
+      UPDATE products
+      SET status = ?,
+          moderation_status = ?,
+          moderation_note = ?,
+          reviewed_by = ?,
+          reviewed_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(status, moderationStatus, note, auth.user_id || auth.id || null, now, now, productId);
+
+    upsertModerationRecord({
+      itemId: productId,
+      itemType: "product",
+      reviewerId: auth.user_id || auth.id || null,
+      moderation: {
+        moderationStatus,
+        moderationNote: note || title,
+        moderationReasons: safeJsonArray(product.moderation_reasons),
+        riskScore: Number(product.risk_score || 0),
+        riskLevel: product.risk_level || "low",
+      },
+    });
+
+    ownerNotificationForProduct(productId, title, note);
+  });
+
+  return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+}
+
+export function updateProductAvailability(auth, productId, input = {}) {
+  if (!auth) throw new HttpError(401, "Please log in to continue.");
+  const product = db
+    .prepare(`
+      SELECT products.*, stores.owner_id
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+    `)
+    .get(productId);
+
+  if (!product) throw new HttpError(404, "Product was not found.");
+  if (auth.role !== "admin" && product.owner_id !== (auth.user_id || auth.id)) {
+    throw new HttpError(403, "Only the seller or admin can update availability.");
+  }
+
+  const availabilityStatus = availabilityFromInput(input, product.stock);
+  const note = clean(input.note || "", 500);
+  const now = nowIso();
+  const nextStatus =
+    availabilityStatus === "out_of_stock"
+      ? "out_of_stock"
+      : PUBLIC_APPROVED.has(product.moderation_status)
+        ? "active"
+        : product.status;
+
+  transaction(() => {
+    db.prepare(`
+      UPDATE products
+      SET availability_status = ?,
+          seller_confirmation_required = ?,
+          status = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      availabilityStatus,
+      availabilityStatus === "confirm_before_payment" ? 1 : 0,
+      nextStatus,
+      now,
+      productId,
+    );
+
+    db.prepare(`
+      INSERT INTO product_availability_events (
+        id, product_id, store_id, old_status, new_status, note, changed_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      createId("pav"),
+      productId,
+      product.store_id,
+      product.availability_status || "",
+      availabilityStatus,
+      note,
+      auth.user_id || auth.id || null,
+      now,
+    );
+  });
+
+  return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+}
+
+export function getProductModerationStatus(productId) {
+  const product = db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
+  if (!product) throw new HttpError(404, "Product was not found.");
+  return {
+    productId,
+    moderationStatus: product.moderation_status || "draft",
+    moderationNote: product.moderation_note || "",
+    moderationReasons: safeJsonArray(product.moderation_reasons),
+    riskScore: Number(product.risk_score || 0),
+    riskLevel: product.risk_level || "low",
+    availabilityStatus: product.availability_status || "available_now",
+    sellerConfirmationRequired: Boolean(product.seller_confirmation_required),
+    publicStatus: product.status,
+  };
+}
+
+export function shouldTreatAsPublic(row) {
+  return PUBLIC_APPROVED.has(row?.moderation_status || "auto_approved");
+}
+
+export function isInReview(row) {
+  return ACTIVE_REVIEW_STATUSES.has(row?.moderation_status || "");
+}

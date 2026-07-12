@@ -45,6 +45,7 @@ import {
   upsertSellerVerification,
 } from "../services/seller-verification.service.js";
 import { ensureSellerSubscription, getSellerSubscription } from "../services/subscription.service.js";
+import { listSellerPayouts } from "../services/payout.service.js";
 
 export const sellerRouter = Router();
 
@@ -187,6 +188,10 @@ sellerRouter.get("/workspace", (req, res) => {
     services: workspace.services,
     highlights,
   });
+});
+
+sellerRouter.get("/payouts", (req, res) => {
+  res.json({ payouts: listSellerPayouts(req.auth.user_id) });
 });
 
 sellerRouter.patch(

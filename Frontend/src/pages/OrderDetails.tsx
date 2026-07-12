@@ -13,7 +13,10 @@ import {
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { getOrder } from "../services/order.service";
-import { initializeOrdersPayment } from "../services/payment.service";
+import {
+  initializeOrdersPayment,
+  initializePayAtDeliveryPayment,
+} from "../services/payment.service";
 import type { GleencOrder, OrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { formatNaira } from "../utils/price";
@@ -93,7 +96,10 @@ function OrderDetails() {
     setIsOpeningPayment(true);
 
     try {
-      const response = await initializeOrdersPayment([order.id]);
+      const response =
+        order.paymentMethod === "pay_on_delivery"
+          ? await initializePayAtDeliveryPayment(order.id)
+          : await initializeOrdersPayment([order.id]);
       sessionStorage.setItem("gleank_pending_payment_reference", response.payment.reference);
       window.location.href = response.payment.authorizationUrl;
     } catch (requestError) {
@@ -262,6 +268,15 @@ function OrderDetails() {
               <strong>{formatNaira(order.total)}</strong>
             </div>
             <p className="payment-status-note">Payment status: {order.paymentStatus}</p>
+            <p className="payment-status-note">
+              Method:{" "}
+              {order.paymentMethod === "pay_on_delivery"
+                ? "Pay at Delivery through Gleenc/Paystack"
+                : "Pay Now through Gleenc/Paystack"}
+            </p>
+            {order.payoutStatus && (
+              <p className="payment-status-note">Seller payout: {order.payoutStatus}</p>
+            )}
 
             {showContinuePayment && (
               <button

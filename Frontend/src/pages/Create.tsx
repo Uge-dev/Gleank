@@ -465,6 +465,35 @@ function Create() {
               </select>
             </label>
 
+            <label>
+              <span>Availability</span>
+              <select
+                name="availabilityStatus"
+                defaultValue={
+                  existingListing?.availabilityStatus ||
+                  (existingProduct?.stock === 0 ? "out_of_stock" : "available_now")
+                }
+              >
+                <option value="available_now">Available now</option>
+                <option value="confirm_before_payment">Confirm before payment</option>
+                <option value="out_of_stock">Out of stock</option>
+                <option value="price_updated">Price recently updated</option>
+                <option value="substitute_available">Substitute available</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Return policy</span>
+              <select
+                name="returnPolicy"
+                defaultValue={existingListing?.returnPolicy || "standard"}
+              >
+                <option value="standard">Standard Gleenc return window</option>
+                <option value="limited">Limited return review</option>
+                <option value="final_sale">Final sale after delivery check</option>
+              </select>
+            </label>
+
             <label className="create-feature-toggle">
               <input
                 name="isFeatured"
@@ -475,6 +504,16 @@ function Create() {
               <span>Show this {createType} in the store’s Favorites tab</span>
             </label>
           </div>
+
+          {existingListing?.moderationStatus && (
+            <div className="seller-workspace-message">
+              <FiAlertCircle />
+              <span>
+                Moderation: {existingListing.moderationStatus.replaceAll("_", " ")}
+                {existingListing.moderationNote ? ` — ${existingListing.moderationNote}` : ""}
+              </span>
+            </div>
+          )}
 
           <label className="create-full-label">
             <span>Description</span>

@@ -14,7 +14,10 @@ import {
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import { getOrders } from "../services/order.service";
-import { initializeOrdersPayment } from "../services/payment.service";
+import {
+  initializeOrdersPayment,
+  initializePayAtDeliveryPayment,
+} from "../services/payment.service";
 import type { GleencOrder, OrderStatus } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 import { formatNaira } from "../utils/price";
@@ -120,7 +123,10 @@ function Orders() {
     setPayingOrderId(order.id);
 
     try {
-      const response = await initializeOrdersPayment([order.id]);
+      const response =
+        order.paymentMethod === "pay_on_delivery"
+          ? await initializePayAtDeliveryPayment(order.id)
+          : await initializeOrdersPayment([order.id]);
       sessionStorage.setItem("gleank_pending_payment_reference", response.payment.reference);
       window.location.href = response.payment.authorizationUrl;
     } catch (requestError) {

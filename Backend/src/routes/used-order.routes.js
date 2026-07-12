@@ -5,7 +5,11 @@ import {
   createUsedOrder,
   getUsedOrder,
   listUsedOrders,
+  listReturnsForUsedOrder,
   markUsedOrderPaid,
+  openUsedOrderDispute,
+  openUsedOrderReturn,
+  replyToUsedOrderReturn,
   submitUsedDeliveryProof,
   updateUsedOrderStatus,
   verifyUsedOrderDelivery,
@@ -42,7 +46,7 @@ usedOrderRouter.post("/:id/verify-delivery", (req, res) => {
     order: verifyUsedOrderDelivery(
       req.auth,
       req.params.id,
-      String(req.body?.code || ""),
+      String(req.body?.verificationCode || req.body?.code || ""),
       String(req.body?.note || ""),
     ),
   });
@@ -54,17 +58,6 @@ usedOrderRouter.patch("/:id/status", (req, res) => {
       req.auth,
       req.params.id,
       String(req.body?.status || ""),
-      String(req.body?.note || ""),
-    ),
-  });
-});
-
-usedOrderRouter.post("/:id/verify-delivery", (req, res) => {
-  res.json({
-    order: verifyUsedOrderDelivery(
-      req.auth,
-      req.params.id,
-      String(req.body?.verificationCode || ""),
       String(req.body?.note || ""),
     ),
   });
@@ -84,3 +77,25 @@ usedOrderRouter.post(
     );
   },
 );
+
+usedOrderRouter.get("/:id/returns", (req, res) => {
+  res.json({ returns: listReturnsForUsedOrder(req.auth, req.params.id) });
+});
+
+usedOrderRouter.post("/:id/returns", (req, res) => {
+  res.status(201).json({
+    returnRequest: openUsedOrderReturn(req.auth, req.params.id, req.body || {}),
+  });
+});
+
+usedOrderRouter.post("/returns/:returnId/respond", (req, res) => {
+  res.json({
+    returnRequest: replyToUsedOrderReturn(req.auth, req.params.returnId, req.body || {}),
+  });
+});
+
+usedOrderRouter.post("/:id/disputes", (req, res) => {
+  res.status(201).json({
+    dispute: openUsedOrderDispute(req.auth, req.params.id, req.body || {}),
+  });
+});

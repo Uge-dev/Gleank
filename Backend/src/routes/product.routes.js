@@ -11,8 +11,22 @@ import {
   unlikeProductComment,
   unlikeProduct,
 } from "../services/interaction.service.js";
+import {
+  getProductModerationStatus,
+  updateProductAvailability,
+} from "../services/moderation.service.js";
 
 export const productRouter = Router();
+
+productRouter.get("/:id/moderation-status", requireAuth, (req, res) => {
+  res.json({ moderation: getProductModerationStatus(req.params.id) });
+});
+
+productRouter.patch("/:id/availability", requireAuth, (req, res) => {
+  res.json({
+    product: updateProductAvailability(req.auth, req.params.id, req.body || {}),
+  });
+});
 
 productRouter.get("/:id", (req, res) => {
   res.json(getPublicProduct(req.params.id, req.auth));

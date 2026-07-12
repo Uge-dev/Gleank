@@ -65,6 +65,16 @@ export async function initializeOrdersPayment(orderIds: string[]) {
   });
 }
 
+export function initializePayAtDeliveryPayment(orderId: string) {
+  return apiRequest<{ payment: GleencPayment }>(
+    "/payments/pay-at-delivery/initialize",
+    {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    },
+  );
+}
+
 export function initializeUsedOrderPayment(orderId: string) {
   return initializePayment({
     purpose: "used_order",

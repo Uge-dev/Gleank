@@ -1,8 +1,13 @@
+import crypto from "node:crypto";
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { ensureSellerSubscription } from "./subscription.service.js";
+import {
+  ensurePayoutForStoreOrder,
+  ensurePayoutForUsedOrder,
+} from "./payout.service.js";
 
 function clean(value, max = 240) {
   return String(value || "").trim().slice(0, max);
@@ -293,6 +298,10 @@ function getStoreOrderForPayment(userId, orderId) {
     throw new HttpError(422, "This order has already been paid.");
   }
 
+  if (order.seller_confirmation_required && !order.seller_confirmed_at) {
+    throw new HttpError(422, "The seller must confirm item availability before payment can continue.");
+  }
+
   const payableStatuses = new Set([
     "pending_payment",
     "seller_confirmed",
@@ -367,14 +376,29 @@ function markStoreOrderPaid(row) {
 
   const now = nowIso();
   const nextStatus = order.status === "pending_payment" ? "paid" : order.status;
+  const nextStage4Status =
+    order.payment_method === "pay_on_delivery"
+      ? "pay_at_delivery_paid"
+      : "paid";
 
   db.prepare(`
     UPDATE orders
     SET status = ?,
         payment_status = 'paid',
+        stage4_payment_status = 'paid',
+        stage4_status = ?,
+        payout_status = 'on_hold',
         updated_at = ?
     WHERE id = ?
-  `).run(nextStatus, now, order.id);
+  `).run(nextStatus, nextStage4Status, now, order.id);
+
+  db.prepare(`
+    UPDATE rider_assignments
+    SET payment_status = 'paid',
+        payment_confirmed_at = COALESCE(payment_confirmed_at, ?),
+        updated_at = ?
+    WHERE order_type = 'store_order' AND order_id = ?
+  `).run(now, now, order.id);
 
   insertOrderEvent(
     order.id,
@@ -382,6 +406,7 @@ function markStoreOrderPaid(row) {
     "Payment confirmed",
     `Paystack payment verified. Reference: ${row.reference}`,
   );
+  ensurePayoutForStoreOrder(order.id);
 }
 
 function markUsedOrderPaid(row) {
@@ -405,9 +430,20 @@ function markUsedOrderPaid(row) {
     UPDATE used_market_orders
     SET status = 'paid',
         payment_status = 'paid',
+        stage4_payment_status = 'paid',
+        stage4_status = 'paid',
+        payout_status = 'on_hold',
         updated_at = ?
     WHERE id = ?
   `).run(now, order.id);
+
+  db.prepare(`
+    UPDATE rider_assignments
+    SET payment_status = 'paid',
+        payment_confirmed_at = COALESCE(payment_confirmed_at, ?),
+        updated_at = ?
+    WHERE order_type = 'used_order' AND order_id = ?
+  `).run(now, now, order.id);
 
   db.prepare(`
     UPDATE used_listings
@@ -422,6 +458,7 @@ function markUsedOrderPaid(row) {
     "Payment recorded",
     `Paystack protected payment verified. Reference: ${row.reference}`,
   );
+  ensurePayoutForUsedOrder(order.id);
 }
 
 function renewSellerSubscription(row) {
@@ -540,6 +577,39 @@ function updatePaymentFromProvider(row, providerResponse, internalStatus) {
   );
 }
 
+function recordPaymentEvent({ row = null, reference = "", eventType, providerStatus = "", payload = {} }) {
+  db.prepare(`
+    INSERT INTO payment_events (
+      id, payment_id, reference, event_type, provider, provider_status, raw_payload, created_at
+    ) VALUES (?, ?, ?, ?, 'paystack', ?, ?, ?)
+  `).run(
+    createId("pev"),
+    row?.id || null,
+    reference || row?.reference || "",
+    eventType,
+    providerStatus,
+    JSON.stringify(payload || {}),
+    nowIso(),
+  );
+}
+
+function verifyPaystackWebhookSignature(rawBody, signature) {
+  if (!env.paystackSecretKey) return false;
+  const body = Buffer.isBuffer(rawBody)
+    ? rawBody
+    : Buffer.from(String(rawBody || ""), "utf8");
+  const expected = crypto
+    .createHmac("sha512", env.paystackSecretKey)
+    .update(body)
+    .digest("hex");
+
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(signature || "")));
+  } catch {
+    return false;
+  }
+}
+
 export async function initializePayment(userId, input) {
   const user = findUser(userId);
   const purpose = clean(input?.purpose, 80);
@@ -625,6 +695,29 @@ export async function initializePayment(userId, input) {
   return serializePayment(findPaymentByReference(paymentReference));
 }
 
+export async function initializePayAtDeliveryPayment(userId, orderId) {
+  const order = db
+    .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
+    .get(clean(orderId, 160), userId);
+
+  if (!order) throw new HttpError(404, "Order was not found.");
+  if (order.payment_method !== "pay_on_delivery") {
+    throw new HttpError(422, "This order was not created as Pay at Delivery.");
+  }
+  if (order.payment_status === "paid") {
+    throw new HttpError(422, "This order has already been paid.");
+  }
+  if (!["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status)) {
+    throw new HttpError(422, "Pay at Delivery can only open after seller confirmation/rider pickup.");
+  }
+
+  return initializePayment(userId, {
+    purpose: "store_order",
+    targetId: order.id,
+    payAtDelivery: true,
+  });
+}
+
 export async function verifyPayment(userId, paymentReference) {
   const row = findPaymentByReference(clean(paymentReference, 200));
 
@@ -705,4 +798,65 @@ export async function verifyPayment(userId, paymentReference) {
 
   updatePaymentFromProvider(row, providerResponse, internalStatus);
   return serializePayment(findPaymentByReference(row.reference));
+}
+
+export async function handlePaystackWebhook({ rawBody, body, signature }) {
+  const payload = body && typeof body === "object" && !Buffer.isBuffer(body)
+    ? body
+    : JSON.parse(Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : String(rawBody || "{}"));
+
+  if (env.paymentProvider === "paystack") {
+    const raw = rawBody || JSON.stringify(payload);
+    if (!verifyPaystackWebhookSignature(raw, signature)) {
+      throw new HttpError(401, "Invalid Paystack webhook signature.");
+    }
+  }
+
+  const eventType = String(payload?.event || "");
+  const data = payload?.data || {};
+  const paymentReference = clean(data.reference || payload?.reference || "", 200);
+  const row = paymentReference ? findPaymentByReference(paymentReference) : null;
+  const providerStatus = String(data.status || "");
+
+  recordPaymentEvent({
+    row,
+    reference: paymentReference,
+    eventType: eventType || "unknown",
+    providerStatus,
+    payload,
+  });
+
+  if (!row) {
+    return { received: true, ignored: true, reason: "payment_not_found" };
+  }
+
+  if (row.status === "paid") {
+    return { received: true, payment: serializePayment(row), idempotent: true };
+  }
+
+  if (eventType !== "charge.success" || providerStatus !== "success") {
+    const internalStatus = internalStatusFromPaystackStatus(providerStatus);
+    updatePaymentFromProvider(row, { data }, internalStatus);
+    return { received: true, payment: serializePayment(findPaymentByReference(row.reference)) };
+  }
+
+  const paidAmountKobo = Number(data.amount || 0);
+  const currency = String(data.currency || "NGN").toUpperCase();
+
+  if (paidAmountKobo !== Number(row.amount_kobo)) {
+    updatePaymentFromProvider(row, { data }, "failed");
+    throw new HttpError(422, "Webhook payment amount mismatch.");
+  }
+
+  if (currency !== String(row.currency || "NGN").toUpperCase()) {
+    updatePaymentFromProvider(row, { data }, "failed");
+    throw new HttpError(422, "Webhook payment currency mismatch.");
+  }
+
+  transaction(() => {
+    applySuccessfulPayment(row);
+    updatePaymentFromProvider(row, { data }, "paid");
+  });
+
+  return { received: true, payment: serializePayment(findPaymentByReference(row.reference)) };
 }

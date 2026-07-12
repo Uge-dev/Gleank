@@ -9,6 +9,11 @@ import {
 } from "../lib/serializers.js";
 import { findStoreByOwnerId } from "../repositories/store.repository.js";
 import { assertCategoryAllowedForStore } from "./market.service.js";
+import {
+  evaluateListingModeration,
+  moderationSqlPatch,
+  upsertModerationRecord,
+} from "./moderation.service.js";
 const MAX_LISTING_IMAGES = 10;
 
 function computePlatformPrice(price) {
@@ -104,15 +109,23 @@ export function createProduct(userId, input, uploadedUrls) {
   const now = new Date().toISOString();
   const id = createId("prd");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
-  const stock = input.stock;
-  const status = stock === 0 && input.status === "active" ? "out_of_stock" : input.status;
+  const stock = Number(input.stock || 0);
+  const moderation = evaluateListingModeration({
+    store,
+    input: { ...input, stock },
+    images,
+    itemType: "product",
+  });
+  const moderationPatch = moderationSqlPatch(moderation);
+  const status = moderationPatch.publicStatus;
   const price = computePlatformPrice(input.price);
 
   db.prepare(`
     INSERT INTO products (
       id, store_id, name, slug, category, description, price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo,
-      stock, status, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      stock, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
+      availability_status, seller_confirmation_required, return_policy, is_featured, image_urls, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -126,11 +139,20 @@ export function createProduct(userId, input, uploadedUrls) {
     price.buyerPriceKobo,
     stock,
     status,
+    moderationPatch.moderationStatus,
+    moderationPatch.moderationNote,
+    moderationPatch.moderationReasonsJson,
+    moderationPatch.riskScore,
+    moderationPatch.riskLevel,
+    moderationPatch.availabilityStatus,
+    moderationPatch.sellerConfirmationRequired,
+    moderationPatch.returnPolicy,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     now,
     now,
   );
+  upsertModerationRecord({ itemId: id, itemType: "product", moderation });
 
   return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(id));
 }
@@ -145,15 +167,25 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
   if (!existing) throw new HttpError(404, "Product was not found.");
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
-  const status =
-    input.stock === 0 && input.status === "active" ? "out_of_stock" : input.status;
+  const moderation = evaluateListingModeration({
+    store,
+    input: { ...input, stock: Number(input.stock || 0) },
+    images,
+    itemType: "product",
+  });
+  const moderationPatch = moderationSqlPatch(moderation);
+  const status = moderationPatch.publicStatus;
   const price = computePlatformPrice(input.price);
 
   db.prepare(`
     UPDATE products
     SET name = ?, slug = ?, category = ?, description = ?, price_kobo = ?,
         seller_price_kobo = ?, platform_fee_kobo = ?, buyer_price_kobo = ?,
-        stock = ?, status = ?, is_featured = ?, image_urls = ?, updated_at = ?
+        stock = ?, status = ?, moderation_status = ?, moderation_note = ?,
+        moderation_reasons = ?, risk_score = ?, risk_level = ?,
+        availability_status = ?, seller_confirmation_required = ?, return_policy = ?,
+        reviewed_by = NULL, reviewed_at = NULL,
+        is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
   `).run(
     input.name,
@@ -166,12 +198,21 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
     price.buyerPriceKobo,
     input.stock,
     status,
+    moderationPatch.moderationStatus,
+    moderationPatch.moderationNote,
+    moderationPatch.moderationReasonsJson,
+    moderationPatch.riskScore,
+    moderationPatch.riskLevel,
+    moderationPatch.availabilityStatus,
+    moderationPatch.sellerConfirmationRequired,
+    moderationPatch.returnPolicy,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     new Date().toISOString(),
     productId,
     store.id,
   );
+  upsertModerationRecord({ itemId: productId, itemType: "product", moderation });
 
   const oldImages = storedImages(existing.image_urls);
   deleteUploadedFiles(oldImages.filter((url) => !images.includes(url)));
@@ -200,13 +241,27 @@ export function createService(userId, input, uploadedUrls) {
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   const price = computePlatformPrice(input.price);
   const range = serviceAmountRange(input);
+  const moderation = evaluateListingModeration({
+    store,
+    input,
+    images,
+    itemType: "service",
+  });
+  const moderationPatch = moderationSqlPatch(moderation);
+  const status =
+    input.status === "active" && moderationPatch.publicStatus === "active"
+      ? "active"
+      : input.status === "paused"
+        ? "paused"
+        : "draft";
 
   db.prepare(`
     INSERT INTO services (
       id, store_id, name, slug, category, service_type, location, description,
       price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo, min_price_kobo, max_price_kobo,
-      duration_minutes, status, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      duration_minutes, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
+      availability_status, seller_confirmation_required, return_policy, is_featured, image_urls, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -223,12 +278,21 @@ export function createService(userId, input, uploadedUrls) {
     range.minPriceKobo,
     range.maxPriceKobo,
     input.durationMinutes,
-    input.status,
+    status,
+    moderationPatch.moderationStatus,
+    moderationPatch.moderationNote,
+    moderationPatch.moderationReasonsJson,
+    moderationPatch.riskScore,
+    moderationPatch.riskLevel,
+    moderationPatch.availabilityStatus,
+    moderationPatch.sellerConfirmationRequired,
+    moderationPatch.returnPolicy,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     now,
     now,
   );
+  upsertModerationRecord({ itemId: id, itemType: "service", moderation });
 
   return serializeService(db.prepare("SELECT * FROM services WHERE id = ?").get(id));
 }
@@ -245,12 +309,29 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   const price = computePlatformPrice(input.price);
   const range = serviceAmountRange(input);
+  const moderation = evaluateListingModeration({
+    store,
+    input,
+    images,
+    itemType: "service",
+  });
+  const moderationPatch = moderationSqlPatch(moderation);
+  const status =
+    input.status === "active" && moderationPatch.publicStatus === "active"
+      ? "active"
+      : input.status === "paused"
+        ? "paused"
+        : "draft";
 
   db.prepare(`
     UPDATE services
     SET name = ?, slug = ?, category = ?, service_type = ?, location = ?, description = ?, price_kobo = ?,
         seller_price_kobo = ?, platform_fee_kobo = ?, buyer_price_kobo = ?,
         min_price_kobo = ?, max_price_kobo = ?, duration_minutes = ?, status = ?,
+        moderation_status = ?, moderation_note = ?, moderation_reasons = ?,
+        risk_score = ?, risk_level = ?, availability_status = ?,
+        seller_confirmation_required = ?, return_policy = ?,
+        reviewed_by = NULL, reviewed_at = NULL,
         is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
   `).run(
@@ -267,13 +348,22 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
     range.minPriceKobo,
     range.maxPriceKobo,
     input.durationMinutes,
-    input.status,
+    status,
+    moderationPatch.moderationStatus,
+    moderationPatch.moderationNote,
+    moderationPatch.moderationReasonsJson,
+    moderationPatch.riskScore,
+    moderationPatch.riskLevel,
+    moderationPatch.availabilityStatus,
+    moderationPatch.sellerConfirmationRequired,
+    moderationPatch.returnPolicy,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     new Date().toISOString(),
     serviceId,
     store.id,
   );
+  upsertModerationRecord({ itemId: serviceId, itemType: "service", moderation });
 
   const oldImages = storedImages(existing.image_urls);
   deleteUploadedFiles(oldImages.filter((url) => !images.includes(url)));

@@ -30,6 +30,20 @@ const sellerTypeSchema = z
   .enum(["used_market", "campus", "local_market", "nearby"])
   .default("campus");
 
+const availabilitySchema = z
+  .enum([
+    "available_now",
+    "confirm_before_payment",
+    "out_of_stock",
+    "price_updated",
+    "substitute_available",
+  ])
+  .default("available_now");
+
+const returnPolicySchema = z
+  .enum(["standard", "limited", "final_sale"])
+  .default("standard");
+
 export const storeUpdateSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().trim().max(1_500).default(""),
@@ -58,6 +72,8 @@ export const productSchema = z.object({
   price: numberValue(0),
   stock: numberValue(0).pipe(z.number().int()),
   status: z.enum(["draft", "active", "out_of_stock"]).default("draft"),
+  availabilityStatus: availabilitySchema,
+  returnPolicy: returnPolicySchema,
   isFeatured: booleanValue.optional().default(false),
   retainedImageUrls: z.string().optional().default("[]"),
 });
@@ -73,6 +89,8 @@ export const serviceSchema = z.object({
   maxPrice: optionalNumberValue(0).default(0),
   durationMinutes: numberValue(1).pipe(z.number().int()),
   status: z.enum(["draft", "active", "paused"]).default("draft"),
+  availabilityStatus: availabilitySchema,
+  returnPolicy: returnPolicySchema,
   isFeatured: booleanValue.optional().default(false),
   retainedImageUrls: z.string().optional().default("[]"),
 });

@@ -8,6 +8,7 @@ import { createSession, deleteSession, sessionCookieOptions, sessionCookieName }
 import { serializeUser } from "../lib/serializers.js";
 import { loginUser, registerUser } from "./auth.service.js";
 import { createNotification, listNotifications, markNotificationRead } from "./notification.service.js";
+import { markPayoutDeliveryVerified } from "./payout.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -563,7 +564,11 @@ function loadOrderForAssignment(auth, orderType, orderId) {
   if (auth.role === "seller" && order.seller_id !== (auth.user_id || auth.id)) {
     throw new HttpError(403, "You can only assign your own seller orders.");
   }
-  if (order.payment_status !== "paid") {
+  const payAtDeliveryAllowed =
+    order.payment_method === "pay_on_delivery" &&
+    order.payment_status === "unpaid" &&
+    ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status);
+  if (order.payment_status !== "paid" && !payAtDeliveryAllowed) {
     throw new HttpError(422, "This order cannot be assigned until platform payment is confirmed.");
   }
   return order;
@@ -600,6 +605,8 @@ export function createRiderAssignment(auth, input) {
   const deliveryCode = generateOtp();
   const now = nowIso();
   const id = createId("ras");
+  const assignmentPaymentStatus = order.payment_status === "paid" ? "paid" : "unpaid";
+  const assignmentPaymentConfirmedAt = assignmentPaymentStatus === "paid" ? now : null;
   transaction(() => {
     db.prepare(`
       INSERT INTO rider_assignments (
@@ -610,7 +617,7 @@ export function createRiderAssignment(auth, input) {
         pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
         package_value_kobo, delivery_fee_kobo, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -627,7 +634,8 @@ export function createRiderAssignment(auth, input) {
       source.campusName,
       source.pickupLandmark,
       source.sellerAllowsWhatsApp ? 1 : 0,
-      now,
+      assignmentPaymentStatus,
+      assignmentPaymentConfirmedAt,
       hashOtp(pickupCode),
       hashOtp(deliveryCode),
       pickupPoint.address,
@@ -652,7 +660,10 @@ export function createRiderAssignment(auth, input) {
       userId: input.riderId,
       type: "order",
       title: "New delivery assigned",
-      body: `A paid Gleank delivery has been assigned to you for pickup at ${pickupPoint.address}.`,
+      body:
+        assignmentPaymentStatus === "paid"
+          ? `A paid Gleenc delivery has been assigned to you for pickup at ${pickupPoint.address}.`
+          : `A Pay at Delivery Gleenc order has been assigned for pickup at ${pickupPoint.address}. Delivery code stays locked until Paystack confirms payment.`,
       actionLabel: "View delivery",
       actionPath: `/rider/assignments/${id}`,
     });
@@ -672,7 +683,11 @@ export function acceptRiderAssignment(auth, assignmentId) {
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
   if (row.status !== "assigned") throw new HttpError(422, "This delivery cannot be accepted now.");
-  if (row.payment_status !== "paid") throw new HttpError(422, "Delivery is blocked until platform payment is confirmed.");
+  const order = connectedOrder(row);
+  const payAtDeliveryAllowed = order?.payment_method === "pay_on_delivery" && row.payment_status === "unpaid";
+  if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
+    throw new HttpError(422, "Delivery is blocked until platform payment is confirmed.");
+  }
   if (profile.availability === "offline") throw new HttpError(422, "Go online before accepting a delivery.");
   if (Number(row.package_value_kobo || 0) > Number(profile.max_package_value_kobo || 0)) {
     throw new HttpError(422, "This package value is above your current rider verification limit.");
@@ -775,7 +790,11 @@ export function verifyPickup(auth, assignmentId, input) {
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
   if (!PICKUP_ALLOWED_STATUSES.has(row.status)) throw new HttpError(422, "Pickup cannot be verified at this stage.");
-  if (row.payment_status !== "paid") throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
+  const order = connectedOrder(row);
+  const payAtDeliveryAllowed = order?.payment_method === "pay_on_delivery" && row.payment_status === "unpaid";
+  if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
+    throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
+  }
   if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) throw new HttpError(422, "Seller pickup OTP is incorrect.");
   requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
 
@@ -848,6 +867,12 @@ export function completeDelivery(auth, orderId, input) {
       actionLabel: "View order",
       actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
     });
+  });
+  markPayoutDeliveryVerified({
+    sourceType: row.order_type === "used_order" ? "used_order" : "store_order",
+    orderId: row.order_id,
+    actorId: riderId,
+    note: "Rider verified delivery code and GPS proof.",
   });
   return serializeAssignment(assignmentByOrderForRider(riderId, orderId), { revealPrivate: true });
 }

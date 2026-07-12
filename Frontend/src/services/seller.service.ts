@@ -1,5 +1,6 @@
 import { apiRequest } from "../lib/api";
 import type {
+  AvailabilityStatus,
   SellerProduct,
   PublicStoreWorkspace,
   SellerService,
@@ -70,6 +71,45 @@ export function deleteSellerProduct(id: string) {
   return apiRequest<void>(`/seller/products/${id}`, {
     method: "DELETE",
   });
+}
+
+export function updateProductAvailability(
+  id: string,
+  input: { availabilityStatus: AvailabilityStatus; note?: string },
+) {
+  return apiRequest<{ product: SellerProduct }>(
+    `/products/${encodeURIComponent(id)}/availability`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export type SellerPayout = {
+  id: string;
+  orderId: string | null;
+  usedOrderId: string | null;
+  sellerId: string;
+  sourceType: "store_order" | "used_order";
+  grossAmountKobo: number;
+  grossAmount: number;
+  platformFeeKobo: number;
+  platformFee: number;
+  deliveryFeeKobo: number;
+  deliveryFee: number;
+  sellerAmountKobo: number;
+  sellerAmount: number;
+  status: string;
+  holdReason: string;
+  releaseAfter: string | null;
+  releasedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function getSellerPayouts() {
+  return apiRequest<{ payouts: SellerPayout[] }>("/seller/payouts");
 }
 
 export function createSellerService(formData: FormData) {

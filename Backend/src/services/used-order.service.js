@@ -4,6 +4,13 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createUsedOrderConversation } from "./message.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
+import { markPayoutDeliveryVerified } from "./payout.service.js";
+import {
+  createDispute,
+  createReturnRequest,
+  listOrderReturns,
+  respondToReturnRequest,
+} from "./return-dispute.service.js";
 
 const USED_ORDER_STATUSES = new Set([
   "pending_payment",
@@ -105,6 +112,14 @@ function serializeOrder(row, events = []) {
     status: row.status,
     statusLabel: statusLabel(row.status),
     paymentStatus: row.payment_status,
+    paymentMethod: row.payment_method || "pay_now",
+    stage4Status: row.stage4_status || "",
+    stage4PaymentStatus: row.stage4_payment_status || "",
+    fulfillmentStatus: row.fulfillment_status || "",
+    sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
+    returnWindowEndsAt: row.return_window_ends_at || null,
+    buyerConfirmedAt: row.buyer_confirmed_at || null,
+    payoutStatus: row.payout_status || "pending_payment",
     itemPriceKobo: row.item_price_kobo,
     itemPrice: toNaira(row.item_price_kobo),
     protectionFeeKobo: row.protection_fee_kobo,
@@ -253,10 +268,12 @@ export function createUsedOrder(userId, input) {
     db.prepare(`
       INSERT INTO used_market_orders (
         id, order_code, listing_id, buyer_id, seller_id, status, payment_status,
+        payment_method, stage4_status, stage4_payment_status, fulfillment_status,
+        seller_confirmation_required, payout_status,
         item_price_kobo, protection_fee_kobo, delivery_fee_kobo, total_kobo,
         buyer_name, buyer_phone, campus, delivery_option, delivery_address,
         pickup_location, note, verification_code, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       generateOrderCode(),
@@ -311,6 +328,10 @@ export function createUsedOrder(userId, input) {
 }
 
 export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
+  if (process.env.NODE_ENV === "production") {
+    throw new HttpError(403, "Manual payment marking is disabled in production. Use Paystack verification.");
+  }
+
   return transaction(() => {
     const row = getOrderRowForUser(userId, orderId);
     if (!row) throw new HttpError(404, "Used Market order was not found.");
@@ -320,7 +341,12 @@ export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
     const now = new Date().toISOString();
     db.prepare(`
       UPDATE used_market_orders
-      SET status = 'paid', payment_status = 'paid', updated_at = ?
+      SET status = 'paid',
+          payment_status = 'paid',
+          stage4_status = 'paid',
+          stage4_payment_status = 'paid',
+          payout_status = 'on_hold',
+          updated_at = ?
       WHERE id = ?
     `).run(now, row.id);
 
@@ -414,7 +440,7 @@ export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
     throw new HttpError(422, "Enter the buyer delivery code.");
   }
 
-  return transaction(() => {
+  const deliveredOrder = transaction(() => {
     const row = getOrderRowForUser(user.user_id, orderId);
 
     if (!row) {
@@ -435,6 +461,10 @@ export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
       );
     }
 
+    if (row.payment_status !== "paid") {
+      throw new HttpError(422, "Protected payment must be verified before the delivery code can be used.");
+    }
+
     if (String(row.verification_code || "") !== deliveryCode) {
       throw new HttpError(422, "The delivery code is incorrect.");
     }
@@ -444,6 +474,8 @@ export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
     db.prepare(`
       UPDATE used_market_orders
       SET status = 'delivered',
+          stage4_status = 'delivered',
+          fulfillment_status = 'delivered',
           updated_at = ?
       WHERE id = ?
     `).run(now, row.id);
@@ -466,6 +498,31 @@ export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
 
     return getUsedOrder(user.user_id, row.id);
   });
+
+  markPayoutDeliveryVerified({
+    sourceType: "used_order",
+    orderId: deliveredOrder.id,
+    actorId: user.user_id,
+    note: "Used Market delivery code verified.",
+  });
+
+  return deliveredOrder;
+}
+
+export function openUsedOrderReturn(user, orderId, input = {}) {
+  return createReturnRequest(user, orderId, { ...input, sourceType: "used_order" });
+}
+
+export function replyToUsedOrderReturn(user, returnId, input = {}) {
+  return respondToReturnRequest(user, returnId, input);
+}
+
+export function openUsedOrderDispute(user, orderId, input = {}) {
+  return createDispute(user, orderId, { ...input, sourceType: "used_order" });
+}
+
+export function listReturnsForUsedOrder(user, orderId) {
+  return listOrderReturns(user, orderId, "used_order");
 }
 
 export function submitUsedDeliveryProof(user, orderId, fileUrl, note = "") {

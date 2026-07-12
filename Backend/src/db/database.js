@@ -1019,12 +1019,58 @@ ensureColumn("user_trust_profiles", "verification_level", "INTEGER NOT NULL DEFA
 ensureColumn("products", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("products", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("products", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("products", "moderation_status", "TEXT NOT NULL DEFAULT 'draft'");
+ensureColumn("products", "moderation_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("products", "moderation_reasons", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("products", "risk_score", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("products", "risk_level", "TEXT NOT NULL DEFAULT 'low'");
+ensureColumn("products", "availability_status", "TEXT NOT NULL DEFAULT 'available_now'");
+ensureColumn("products", "seller_confirmation_required", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("products", "return_policy", "TEXT NOT NULL DEFAULT 'standard'");
+ensureColumn("products", "reviewed_at", "TEXT");
+ensureColumn("products", "reviewed_by", "TEXT");
 ensureColumn("services", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "moderation_status", "TEXT NOT NULL DEFAULT 'draft'");
+ensureColumn("services", "moderation_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("services", "moderation_reasons", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("services", "risk_score", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "risk_level", "TEXT NOT NULL DEFAULT 'low'");
+ensureColumn("services", "availability_status", "TEXT NOT NULL DEFAULT 'available_now'");
+ensureColumn("services", "seller_confirmation_required", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("services", "return_policy", "TEXT NOT NULL DEFAULT 'standard'");
+ensureColumn("services", "reviewed_at", "TEXT");
+ensureColumn("services", "reviewed_by", "TEXT");
 ensureColumn("used_listings", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+
+ensureColumn("orders", "payment_method", "TEXT NOT NULL DEFAULT 'pay_now'");
+ensureColumn("orders", "stage4_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "stage4_payment_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "fulfillment_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "seller_confirmation_required", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("orders", "seller_confirmed_at", "TEXT");
+ensureColumn("orders", "seller_rejected_at", "TEXT");
+ensureColumn("orders", "seller_rejection_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "return_window_ends_at", "TEXT");
+ensureColumn("orders", "buyer_confirmed_at", "TEXT");
+ensureColumn("orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");
+ensureColumn("orders", "assigned_rider_id", "TEXT");
+ensureColumn("orders", "rider_assignment_id", "TEXT");
+
+ensureColumn("used_market_orders", "payment_method", "TEXT NOT NULL DEFAULT 'pay_now'");
+ensureColumn("used_market_orders", "stage4_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("used_market_orders", "stage4_payment_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("used_market_orders", "fulfillment_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("used_market_orders", "seller_confirmation_required", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_market_orders", "seller_confirmed_at", "TEXT");
+ensureColumn("used_market_orders", "seller_rejected_at", "TEXT");
+ensureColumn("used_market_orders", "seller_rejection_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("used_market_orders", "return_window_ends_at", "TEXT");
+ensureColumn("used_market_orders", "buyer_confirmed_at", "TEXT");
+ensureColumn("used_market_orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");
 
 ensureColumn("seller_verification_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("seller_verification_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");
@@ -1037,6 +1083,293 @@ ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
 
 ensureColumn("product_comments", "parent_comment_id", "TEXT");
 ensureColumn("product_comments", "is_deleted", "INTEGER NOT NULL DEFAULT 0");
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS product_moderation (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    item_type TEXT NOT NULL DEFAULT 'product'
+      CHECK (item_type IN ('product', 'service')),
+    status TEXT NOT NULL DEFAULT 'pending_review'
+      CHECK (status IN ('draft', 'auto_approved', 'approved', 'pending_review', 'flagged', 'rejected', 'hidden')),
+    risk_score INTEGER NOT NULL DEFAULT 0,
+    risk_level TEXT NOT NULL DEFAULT 'low',
+    reasons TEXT NOT NULL DEFAULT '[]',
+    note TEXT NOT NULL DEFAULT '',
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE UNIQUE INDEX IF NOT EXISTS product_moderation_product_idx
+    ON product_moderation(product_id, item_type);
+  CREATE INDEX IF NOT EXISTS product_moderation_status_idx
+    ON product_moderation(status, created_at);
+
+  CREATE TABLE IF NOT EXISTS product_category_rules (
+    id TEXT PRIMARY KEY,
+    seller_type TEXT NOT NULL DEFAULT 'all',
+    category_key TEXT NOT NULL,
+    category_name TEXT NOT NULL DEFAULT '',
+    rule_action TEXT NOT NULL DEFAULT 'review'
+      CHECK (rule_action IN ('allow', 'review', 'reject')),
+    reason TEXT NOT NULL DEFAULT '',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(seller_type, category_key)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS product_category_rules_active_idx
+    ON product_category_rules(is_active, seller_type, category_key);
+
+  CREATE TABLE IF NOT EXISTS restricted_keywords (
+    id TEXT PRIMARY KEY,
+    keyword TEXT NOT NULL UNIQUE,
+    action TEXT NOT NULL DEFAULT 'review'
+      CHECK (action IN ('review', 'reject')),
+    reason TEXT NOT NULL DEFAULT '',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS product_risk_scores (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    item_type TEXT NOT NULL DEFAULT 'product'
+      CHECK (item_type IN ('product', 'service')),
+    signal TEXT NOT NULL,
+    score INTEGER NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS product_risk_scores_product_idx
+    ON product_risk_scores(product_id, item_type);
+
+  CREATE TABLE IF NOT EXISTS payment_events (
+    id TEXT PRIMARY KEY,
+    payment_id TEXT,
+    reference TEXT NOT NULL DEFAULT '',
+    event_type TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'paystack',
+    provider_status TEXT NOT NULL DEFAULT '',
+    raw_payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (payment_id) REFERENCES payment_transactions(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_events_reference_idx
+    ON payment_events(reference, created_at);
+
+  CREATE TABLE IF NOT EXISTS payouts (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    used_order_id TEXT,
+    seller_id TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'store_order'
+      CHECK (source_type IN ('store_order', 'used_order')),
+    gross_amount_kobo INTEGER NOT NULL DEFAULT 0,
+    platform_fee_kobo INTEGER NOT NULL DEFAULT 0,
+    delivery_fee_kobo INTEGER NOT NULL DEFAULT 0,
+    seller_amount_kobo INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending_payment'
+      CHECK (status IN ('pending_payment', 'on_hold', 'return_window', 'eligible', 'released', 'blocked', 'refunded')),
+    hold_reason TEXT NOT NULL DEFAULT '',
+    release_after TEXT,
+    released_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(source_type, order_id),
+    UNIQUE(source_type, used_order_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payouts_seller_idx
+    ON payouts(seller_id, status, created_at);
+  CREATE INDEX IF NOT EXISTS payouts_status_idx
+    ON payouts(status, release_after);
+
+  CREATE TABLE IF NOT EXISTS payout_events (
+    id TEXT PRIMARY KEY,
+    payout_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (payout_id) REFERENCES payouts(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payout_events_payout_idx
+    ON payout_events(payout_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS return_requests (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    used_order_id TEXT,
+    requester_id TEXT NOT NULL,
+    seller_id TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'store_order'
+      CHECK (source_type IN ('store_order', 'used_order')),
+    reason TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    evidence_urls TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'open'
+      CHECK (status IN ('open', 'seller_review', 'admin_review', 'approved', 'rejected', 'cancelled', 'refunded')),
+    seller_response TEXT NOT NULL DEFAULT '',
+    admin_note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS return_requests_order_idx
+    ON return_requests(source_type, order_id, used_order_id);
+  CREATE INDEX IF NOT EXISTS return_requests_status_idx
+    ON return_requests(status, created_at);
+
+  CREATE TABLE IF NOT EXISTS disputes (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    used_order_id TEXT,
+    return_request_id TEXT,
+    opened_by TEXT NOT NULL,
+    seller_id TEXT NOT NULL,
+    source_type TEXT NOT NULL DEFAULT 'store_order'
+      CHECK (source_type IN ('store_order', 'used_order')),
+    reason TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open'
+      CHECK (status IN ('open', 'reviewing', 'awaiting_evidence', 'resolved_buyer', 'resolved_seller', 'refunded', 'dismissed')),
+    admin_decision TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (used_order_id) REFERENCES used_market_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (return_request_id) REFERENCES return_requests(id) ON DELETE SET NULL,
+    FOREIGN KEY (opened_by) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS disputes_status_idx
+    ON disputes(status, created_at);
+  CREATE INDEX IF NOT EXISTS disputes_order_idx
+    ON disputes(source_type, order_id, used_order_id);
+
+  CREATE TABLE IF NOT EXISTS dispute_evidence (
+    id TEXT PRIMARY KEY,
+    dispute_id TEXT NOT NULL,
+    submitted_by TEXT NOT NULL,
+    evidence_type TEXT NOT NULL DEFAULT 'text',
+    body TEXT NOT NULL DEFAULT '',
+    file_urls TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (dispute_id) REFERENCES disputes(id) ON DELETE CASCADE,
+    FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS dispute_evidence_dispute_idx
+    ON dispute_evidence(dispute_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS order_status_history (
+    id TEXT PRIMARY KEY,
+    order_id TEXT,
+    used_order_id TEXT,
+    source_type TEXT NOT NULL DEFAULT 'store_order'
+      CHECK (source_type IN ('store_order', 'used_order')),
+    status_layer TEXT NOT NULL DEFAULT 'order',
+    old_status TEXT NOT NULL DEFAULT '',
+    new_status TEXT NOT NULL,
+    changed_by TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS order_status_history_order_idx
+    ON order_status_history(source_type, order_id, used_order_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS product_availability_events (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL,
+    store_id TEXT NOT NULL,
+    old_status TEXT NOT NULL DEFAULT '',
+    new_status TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    changed_by TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS product_availability_events_product_idx
+    ON product_availability_events(product_id, created_at);
+`);
+
+const stage4SeededAt = new Date().toISOString();
+const restrictedKeywordSeeds = [
+  ["tramadol", "reject", "Medication and controlled drugs are not allowed."],
+  ["codeine", "reject", "Medication and controlled drugs are not allowed."],
+  ["cocaine", "reject", "Illegal substances are not allowed."],
+  ["weed", "review", "Potential restricted substance."],
+  ["gun", "reject", "Weapons are not allowed."],
+  ["pistol", "reject", "Weapons are not allowed."],
+  ["rifle", "reject", "Weapons are not allowed."],
+  ["knife", "review", "Potential weapon or restricted item."],
+  ["medicine", "reject", "Medication requires manual compliance review and is blocked for campus selling."],
+  ["pharmacy", "reject", "Medication requires manual compliance review and is blocked for campus selling."],
+  ["fake", "review", "Potential counterfeit or misleading listing."],
+];
+
+for (const [keyword, action, reason] of restrictedKeywordSeeds) {
+  db.prepare(`
+    INSERT INTO restricted_keywords (id, keyword, action, reason, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(keyword) DO NOTHING
+  `).run(
+    `rkw_${keyword.replace(/[^a-z0-9]/gi, "_")}`,
+    keyword,
+    action,
+    reason,
+    stage4SeededAt,
+    stage4SeededAt,
+  );
+}
+
+const categoryRuleSeeds = [
+  ["all", "medicine", "Medicine", "reject", "Medicine and medication are not allowed on Gleenc."],
+  ["all", "medication", "Medication", "reject", "Medicine and medication are not allowed on Gleenc."],
+  ["all", "drugs", "Drugs", "reject", "Controlled drugs are not allowed on Gleenc."],
+  ["all", "weapons", "Weapons", "reject", "Weapons are not allowed on Gleenc."],
+  ["all", "guns", "Guns", "reject", "Guns and firearms are not allowed on Gleenc."],
+  ["local_market", "fresh_food", "Fresh Food", "review", "Fresh food requires admin market readiness review in early launch."],
+  ["local_market", "meat_fish", "Meat/Fish", "review", "Perishable products require admin readiness review in early launch."],
+  ["local_market", "fuel_gas", "Fuel/Gas", "review", "Fuel and gas require admin compliance review."],
+  ["local_market", "electronics_high_value", "High-value Electronics", "review", "High-value electronics need extra verification."],
+  ["local_market", "jewelry", "Jewelry", "review", "High-value jewelry needs extra verification."],
+];
+
+for (const [sellerType, categoryKey, categoryName, ruleAction, reason] of categoryRuleSeeds) {
+  db.prepare(`
+    INSERT INTO product_category_rules (
+      id, seller_type, category_key, category_name, rule_action, reason, is_active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(seller_type, category_key) DO NOTHING
+  `).run(
+    `pcr_${sellerType}_${categoryKey}`.replace(/[^a-z0-9_]/gi, "_"),
+    sellerType,
+    categoryKey,
+    categoryName,
+    ruleAction,
+    reason,
+    stage4SeededAt,
+    stage4SeededAt,
+  );
+}
 
 db.prepare(`
   UPDATE seller_subscriptions

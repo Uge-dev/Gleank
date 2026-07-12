@@ -3,8 +3,15 @@ import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import {
   createOrders,
   getOrder,
+  getOrderPaymentState,
   listOrders,
+  listReturnsForOrder,
   markOrderPaidLocally,
+  openOrderDispute,
+  openOrderReturn,
+  replyToOrderReturn,
+  sellerConfirmOrder,
+  sellerRejectOrder,
   updateOrderStatus,
   verifyOrderDelivery,
 } from "../services/order.service.js";
@@ -26,12 +33,38 @@ orderRouter.get("/:id", (req, res) => {
   res.json({ order: getOrder(req.auth.user_id, req.params.id) });
 });
 
+orderRouter.get("/:id/payment-status", (req, res) => {
+  res.json({
+    payment: getOrderPaymentState(req.auth.user_id, req.params.id),
+  });
+});
+
 orderRouter.post("/:id/pay", (req, res) => {
   res.json({
     order: markOrderPaidLocally(
       req.auth.user_id,
       req.params.id,
       String(req.body?.reference || ""),
+    ),
+  });
+});
+
+orderRouter.post("/:id/seller-confirm", (req, res) => {
+  res.json({
+    order: sellerConfirmOrder(
+      req.auth,
+      req.params.id,
+      String(req.body?.note || ""),
+    ),
+  });
+});
+
+orderRouter.post("/:id/seller-reject", (req, res) => {
+  res.json({
+    order: sellerRejectOrder(
+      req.auth,
+      req.params.id,
+      String(req.body?.note || ""),
     ),
   });
 });
@@ -44,6 +77,28 @@ orderRouter.patch("/:id/status", (req, res) => {
       req.body?.status,
       req.body?.note,
     ),
+  });
+});
+
+orderRouter.get("/:id/returns", (req, res) => {
+  res.json({ returns: listReturnsForOrder(req.auth, req.params.id) });
+});
+
+orderRouter.post("/:id/returns", (req, res) => {
+  res.status(201).json({
+    returnRequest: openOrderReturn(req.auth, req.params.id, req.body || {}),
+  });
+});
+
+orderRouter.post("/returns/:returnId/respond", (req, res) => {
+  res.json({
+    returnRequest: replyToOrderReturn(req.auth, req.params.returnId, req.body || {}),
+  });
+});
+
+orderRouter.post("/:id/disputes", (req, res) => {
+  res.status(201).json({
+    dispute: openOrderDispute(req.auth, req.params.id, req.body || {}),
   });
 });
 
