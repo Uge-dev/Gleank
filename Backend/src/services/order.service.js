@@ -48,6 +48,65 @@ function firstImage(value) {
   return safeJsonArray(value)[0] || null;
 }
 
+function inventoryUnavailableMessage(product, quantity) {
+  const name = product?.name || "This product";
+  const stock = Math.max(0, Number(product?.stock || 0));
+
+  if (stock <= 0 || product?.status === "out_of_stock") {
+    return `${name} is out of stock right now. Please remove it from your cart or choose another product.`;
+  }
+
+  return `${name} has only ${stock} item(s) left in stock. Please reduce the quantity in your cart before checkout.`;
+}
+
+function reserveProductStock(product, quantity, now) {
+  const result = db.prepare(`
+    UPDATE products
+    SET stock = stock - ?,
+        status = CASE WHEN stock - ? <= 0 THEN 'out_of_stock' ELSE status END,
+        stock_status = CASE WHEN stock - ? <= 0 THEN 'out_of_stock' ELSE stock_status END,
+        availability_status = CASE WHEN stock - ? <= 0 THEN 'out_of_stock' ELSE availability_status END,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'active'
+      AND stock >= ?
+  `).run(quantity, quantity, quantity, quantity, now, product.id, quantity);
+
+  if (result.changes !== 1) {
+    const latest = db.prepare("SELECT * FROM products WHERE id = ?").get(product.id);
+    throw new HttpError(409, inventoryUnavailableMessage(latest || product, quantity));
+  }
+
+  product.stock = Math.max(0, Number(product.stock || 0) - quantity);
+  if (product.stock <= 0) {
+    product.status = "out_of_stock";
+    product.stock_status = "out_of_stock";
+    product.availability_status = "out_of_stock";
+  }
+}
+
+function restoreReservedStockForOrder(order, now = new Date().toISOString()) {
+  if (!order?.stock_reserved) return;
+
+  const items = db
+    .prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?")
+    .all(order.id);
+
+  for (const item of items) {
+    db.prepare(`
+      UPDATE products
+      SET stock = stock + ?,
+          status = CASE WHEN status = 'out_of_stock' THEN 'active' ELSE status END,
+          stock_status = CASE WHEN stock_status = 'out_of_stock' THEN 'in_stock' ELSE stock_status END,
+          availability_status = CASE WHEN availability_status = 'out_of_stock' THEN 'available_now' ELSE availability_status END,
+          updated_at = ?
+      WHERE id = ?
+    `).run(Number(item.quantity || 0), now, item.product_id);
+  }
+
+  db.prepare("UPDATE orders SET stock_reserved = 0, updated_at = ? WHERE id = ?").run(now, order.id);
+}
+
 function toNaira(kobo) {
   return kobo / 100;
 }
@@ -311,21 +370,25 @@ export function createOrders(userId, input) {
     throw new HttpError(422, "Please provide the pickup location.");
   }
 
-  const requestedItems = items.map((item) => ({
-    productId: String(item.productId || item.id || "").trim(),
-    quantity: Number(item.quantity || 1),
-  }));
+  const requestedItemMap = new Map();
 
-  if (
-    requestedItems.some(
-      (item) =>
-        !item.productId ||
-        !Number.isInteger(item.quantity) ||
-        item.quantity < 1 ||
-        item.quantity > 99,
-    )
-  ) {
-    throw new HttpError(422, "Please check the cart items and quantities.");
+  for (const item of items) {
+    const productId = String(item.productId || item.id || "").trim();
+    const quantity = Number(item.quantity || 1);
+
+    if (!productId || !Number.isInteger(quantity) || quantity < 1) {
+      throw new HttpError(422, "Please check the cart items and quantities.");
+    }
+
+    const current = requestedItemMap.get(productId) || { productId, quantity: 0 };
+    current.quantity += quantity;
+    requestedItemMap.set(productId, current);
+  }
+
+  const requestedItems = Array.from(requestedItemMap.values());
+
+  if (requestedItems.some((item) => item.quantity > 99)) {
+    throw new HttpError(422, "Please reduce product quantities before checkout.");
   }
 
   const createdOrders = transaction(() => {
@@ -340,7 +403,7 @@ export function createOrders(userId, input) {
           FROM products
           JOIN stores ON stores.id = products.store_id
           WHERE products.id = ?
-            AND products.status = 'active'
+            AND products.status IN ('active', 'out_of_stock')
             AND stores.status = 'active'
         `)
         .get(requested.productId);
@@ -353,11 +416,8 @@ export function createOrders(userId, input) {
         throw new HttpError(403, "Sellers cannot order their own products.");
       }
 
-      if (product.stock < requested.quantity) {
-        throw new HttpError(
-          422,
-          `${product.name} has only ${product.stock} item(s) left in stock.`,
-        );
+      if (product.status !== "active" || product.stock < requested.quantity) {
+        throw new HttpError(409, inventoryUnavailableMessage(product, requested.quantity));
       }
 
       const group = grouped.get(product.store_id) || {
@@ -420,16 +480,20 @@ export function createOrders(userId, input) {
             ? "This order needs seller availability confirmation before payment can continue."
             : "Your order has been created and is waiting for payment.";
 
+      for (const item of group.products) {
+        reserveProductStock(item.product, item.quantity, now);
+      }
+
       db.prepare(`
         INSERT INTO orders (
           id, order_code, buyer_id, seller_id, store_id, status, payment_status,
           payment_method, stage4_status, stage4_payment_status, fulfillment_status,
-          seller_confirmation_required, payout_status,
+          seller_confirmation_required, payout_status, stock_reserved,
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
           campus, delivery_option, delivery_address, pickup_location, note,
           verification_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -444,6 +508,7 @@ export function createOrders(userId, input) {
         "pending",
         sellerConfirmationRequired ? 1 : 0,
         "pending_payment",
+        1,
         subtotalKobo,
         deliveryFeeKobo,
         totalKobo,
@@ -612,37 +677,41 @@ export function sellerRejectOrder(user, orderId, note = "") {
   const now = new Date().toISOString();
   const reason = String(note || "Seller could not confirm availability.").slice(0, 700);
 
-  db.prepare(`
-    UPDATE orders
-    SET status = 'cancelled',
-        stage4_status = 'seller_rejected',
-        fulfillment_status = 'cancelled',
-        seller_rejected_at = ?,
-        seller_rejection_note = ?,
-        updated_at = ?
-    WHERE id = ?
-  `).run(now, reason, now, row.id);
+  return transaction(() => {
+    db.prepare(`
+      UPDATE orders
+      SET status = 'cancelled',
+          stage4_status = 'seller_rejected',
+          fulfillment_status = 'cancelled',
+          seller_rejected_at = ?,
+          seller_rejection_note = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, reason, now, row.id);
 
-  insertOrderEvent(row.id, "cancelled", reason);
-  insertStatusHistory({
-    orderId: row.id,
-    statusLayer: "stage4",
-    oldStatus: row.stage4_status || "",
-    newStatus: "seller_rejected",
-    changedBy: user.user_id,
-    note: reason,
+    restoreReservedStockForOrder(row, now);
+
+    insertOrderEvent(row.id, "cancelled", reason);
+    insertStatusHistory({
+      orderId: row.id,
+      statusLayer: "stage4",
+      oldStatus: row.stage4_status || "",
+      newStatus: "seller_rejected",
+      changedBy: user.user_id,
+      note: reason,
+    });
+
+    createNotification({
+      userId: row.buyer_id,
+      type: "order",
+      title: "Order unavailable",
+      body: reason,
+      actionLabel: "View order",
+      actionPath: `/orders/${row.id}`,
+    });
+
+    return getOrder(user.user_id, row.id);
   });
-
-  createNotification({
-    userId: row.buyer_id,
-    type: "order",
-    title: "Order unavailable",
-    body: reason,
-    actionLabel: "View order",
-    actionPath: `/orders/${row.id}`,
-  });
-
-  return getOrder(user.user_id, row.id);
 }
 
 export function getOrderPaymentState(userId, orderId) {
@@ -710,46 +779,52 @@ export function updateOrderStatus(user, orderId, status, note = "") {
 
   const now = new Date().toISOString();
 
-  db.prepare(`
-    UPDATE orders
-    SET status = ?,
-        stage4_status = ?,
-        fulfillment_status = ?,
-        buyer_confirmed_at = CASE WHEN ? = 'completed' THEN ? ELSE buyer_confirmed_at END,
-        updated_at = ?
-    WHERE id = ?
-  `).run(
-    status,
-    status,
-    status,
-    status,
-    now,
-    now,
-    orderId,
-  );
+  return transaction(() => {
+    db.prepare(`
+      UPDATE orders
+      SET status = ?,
+          stage4_status = ?,
+          fulfillment_status = ?,
+          buyer_confirmed_at = CASE WHEN ? = 'completed' THEN ? ELSE buyer_confirmed_at END,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      status,
+      status,
+      status,
+      status,
+      now,
+      now,
+      orderId,
+    );
 
-  insertOrderEvent(orderId, status, String(note || "").slice(0, 500));
-  insertStatusHistory({
-    orderId,
-    statusLayer: "order",
-    oldStatus: row.status,
-    newStatus: status,
-    changedBy: user.user_id,
-    note,
+    if (status === "cancelled" && row.status !== "cancelled") {
+      restoreReservedStockForOrder(row, now);
+    }
+
+    insertOrderEvent(orderId, status, String(note || "").slice(0, 500));
+    insertStatusHistory({
+      orderId,
+      statusLayer: "order",
+      oldStatus: row.status,
+      newStatus: status,
+      changedBy: user.user_id,
+      note,
+    });
+
+    createNotificationForUsers(
+      [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
+      {
+        type: "order",
+        title: eventLabel(status),
+        body: note || `Order ${row.order_code} is now ${statusLabel(status)}.`,
+        actionLabel: "View order",
+        actionPath: `/orders/${row.id}`,
+      },
+    );
+
+    return getOrder(user.user_id, orderId);
   });
-
-  createNotificationForUsers(
-    [row.buyer_id, row.seller_id].filter((id) => id !== user.user_id),
-    {
-      type: "order",
-      title: eventLabel(status),
-      body: note || `Order ${row.order_code} is now ${statusLabel(status)}.`,
-      actionLabel: "View order",
-      actionPath: `/orders/${row.id}`,
-    },
-  );
-
-  return getOrder(user.user_id, orderId);
 }
 
 export function verifyOrderDelivery(user, orderId, verificationCode, note = "") {

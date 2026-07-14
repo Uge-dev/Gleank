@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type React from "react";
 import {
   FiAlertCircle,
@@ -7,6 +7,7 @@ import {
   FiGrid,
   FiRefreshCw,
   FiSearch,
+  FiMessageCircle,
   FiShoppingBag,
   FiStar,
   FiUser,
@@ -22,7 +23,7 @@ import { searchMarketplace } from "../services/search.service";
 import type { SavedItemType, SearchResults } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
-type SearchTab = "all" | "products" | "sellers" | "used";
+type SearchTab = "all" | "products" | "services" | "sellers" | "used";
 
 const searchTabs: {
   label: string;
@@ -31,6 +32,7 @@ const searchTabs: {
 }[] = [
   { label: "All", value: "all", icon: <FiGrid /> },
   { label: "Products", value: "products", icon: <FiShoppingBag /> },
+  { label: "Services", value: "services", icon: <FiMessageCircle /> },
   { label: "Sellers", value: "sellers", icon: <FiUser /> },
   { label: "Used Market", value: "used", icon: <FiRefreshCw /> },
 ];
@@ -57,8 +59,20 @@ function formatPrice(price: number) {
   }).format(price);
 }
 
+function formatServiceRange(service: SearchResults["services"][number]) {
+  const min = Number(service.minPrice || 0);
+  const max = Number(service.maxPrice || 0);
+
+  if (min > 0 && max > 0 && max !== min) {
+    return `${formatPrice(min)} - ${formatPrice(max)}`;
+  }
+
+  return `From ${formatPrice(Number(service.price || min || max || 0))}`;
+}
+
 function Search() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { isSaved, toggleSaved } = useSaved();
   const [query, setQuery] = useState(searchParams.get("q") || "");
@@ -74,6 +88,15 @@ function Search() {
       return;
     }
     await toggleSaved(itemType, itemId);
+  }
+
+  function handleBookService(storeSlug: string) {
+    if (!isAuthenticated) {
+      setAuthModalOpen(true);
+      return;
+    }
+
+    navigate(`/messages?seller=${encodeURIComponent(storeSlug)}`);
   }
 
   useEffect(() => {
@@ -106,6 +129,7 @@ function Search() {
 
   const totalResults =
     results.products.length +
+    results.services.length +
     results.stores.length +
     results.usedListings.length;
 
@@ -114,7 +138,7 @@ function Search() {
       <section className="search-page">
         <LoadingState
           title="Searching Gleenc"
-          message="Loading current products, sellers, and used market listings from Gleenc."
+          message="Loading current products, services, sellers, and used market listings from Gleenc."
         />
       </section>
     );
@@ -140,7 +164,7 @@ function Search() {
           <FiSearch />
           <input
             type="search"
-            placeholder="Search products, sellers, and used market listings..."
+            placeholder="Search products, services, sellers, and used market listings..."
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -170,7 +194,7 @@ function Search() {
         <span>Live marketplace search</span>
         <h1>{query ? `Results for “${query}”` : "Find anything around campus"}</h1>
         <p>
-          These results come directly from active Gleenc stores, products, and
+          These results come directly from active Gleenc stores, products, services, and
           used market listings in the shared database.
         </p>
         <div className="search-result-count">
@@ -256,6 +280,76 @@ function Search() {
                             <FiBookmark
                               fill={
                                 isSaved("product", product.id)
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {(activeTab === "all" || activeTab === "services") && (
+            <section className="search-section">
+              <div className="search-section-heading">
+                <div>
+                  <span>Services</span>
+                  <h2>Services you can book</h2>
+                </div>
+                <small>{results.services.length}</small>
+              </div>
+
+              {results.services.length === 0 ? (
+                <EmptyState
+                  icon={<FiMessageCircle />}
+                  eyebrow="No services"
+                  title="No service result"
+                  message="Seller services matching your search will appear here."
+                  variant="card"
+                />
+              ) : (
+                <div className="search-grid">
+                  {results.services.map((service) => (
+                    <article className="search-service-card" key={service.id}>
+                      <img
+                        src={resolveMediaUrl(service.imageUrls[0], storeFallback)}
+                        alt={service.name}
+                      />
+                      <div className="search-service-content">
+                        <span>
+                          {service.serviceType || service.category} • {service.location || "Campus service"}
+                        </span>
+                        <h3>{service.name}</h3>
+                        <p>{service.storeName}</p>
+                        <p>{service.description || "Message the seller to confirm timing, scope, and availability."}</p>
+                        <strong>{formatServiceRange(service)}</strong>
+                        <div className="search-service-actions">
+                          <button
+                            type="button"
+                            onClick={() => handleBookService(service.storeSlug)}
+                          >
+                            <FiMessageCircle />
+                            Message / Book
+                          </button>
+                          <Link to={`/stores/${service.storeSlug}`}>
+                            View seller
+                          </Link>
+                          <button
+                            type="button"
+                            className="market-save-button"
+                            onClick={() =>
+                              void handleToggleSave("service", service.id)
+                            }
+                            aria-label="Save service"
+                          >
+                            <FiBookmark
+                              fill={
+                                isSaved("service", service.id)
                                   ? "currentColor"
                                   : "none"
                               }

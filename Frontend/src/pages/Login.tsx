@@ -27,6 +27,11 @@ function Login() {
         navigate("/verify-email");
         return;
       }
+      if (user.role === "rider") {
+        navigate("/rider");
+        return;
+      }
+
       navigate(user.role === "seller" ? "/dashboard" : "/profile");
     } catch (requestError) {
       setError(

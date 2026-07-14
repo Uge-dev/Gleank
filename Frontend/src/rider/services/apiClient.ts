@@ -21,10 +21,6 @@ function buildUrl(path: string) {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  if (!config.apiBaseUrl) {
-    throw new ApiClientError('API base URL is not configured. Set VITE_GLEANK_API_URL to connect to the full Gleank backend.');
-  }
-
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), options.timeoutMs ?? config.apiTimeoutMs);
   const headers = new Headers(options.headers || {});

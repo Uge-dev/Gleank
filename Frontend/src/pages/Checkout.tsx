@@ -54,6 +54,7 @@ function Checkout() {
   const [isGrouping, setIsGrouping] = useState(false);
   const [quoteError, setQuoteError] = useState("");
   const [error, setError] = useState("");
+  const [stockNotice, setStockNotice] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
@@ -153,6 +154,10 @@ function Checkout() {
     };
   }, [cartItems, isAuthenticated]);
 
+  function isInventoryError(message: string) {
+    return /out of stock|stock|cart is no longer available|no longer available|only \d+ item/i.test(message);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -186,6 +191,7 @@ function Checkout() {
     }
 
     setError("");
+    setStockNotice("");
     setIsSubmitting(true);
 
     try {
@@ -235,11 +241,15 @@ sessionStorage.setItem(
 
 window.location.href = paymentResponse.payment.authorizationUrl;
     } catch (requestError) {
-      setError(
+      const message =
         requestError instanceof Error
           ? requestError.message
-          : "Checkout could not be completed.",
-      );
+          : "Checkout could not be completed.";
+
+      setError(message);
+      if (isInventoryError(message)) {
+        setStockNotice(message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -275,6 +285,32 @@ window.location.href = paymentResponse.payment.authorizationUrl;
         <div className="checkout-alert" role="alert">
           <FiAlertCircle />
           <span>{error}</span>
+        </div>
+      )}
+
+      {stockNotice && (
+        <div className="checkout-stock-modal-backdrop" role="presentation">
+          <div
+            className="checkout-stock-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-stock-title"
+          >
+            <div className="checkout-stock-icon">
+              <FiAlertCircle />
+            </div>
+            <span>Stock changed</span>
+            <h2 id="checkout-stock-title">Product not available</h2>
+            <p>{stockNotice}</p>
+            <div className="checkout-stock-actions">
+              <button type="button" onClick={() => navigate("/cart")}>
+                Review cart
+              </button>
+              <button type="button" onClick={() => setStockNotice("")}>
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

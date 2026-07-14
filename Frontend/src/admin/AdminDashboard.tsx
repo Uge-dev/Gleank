@@ -527,23 +527,42 @@ function AdminDashboard() {
     setLoadError("");
 
     try {
-      const [nextData, profileResult, riderRows, dispatchResult, queueResult, zonesResult, rulesResult] = await Promise.all([
-        fetchAdminDataset(),
-        fetchAdminProfile(),
-        fetchAdminRiders(),
-        fetchAdminDispatchOperations(),
-        fetchAdminInterventionQueue(),
-        fetchDeliveryZones(),
-        fetchPackageRules(),
-      ]);
-
+      const nextData = await fetchAdminDataset();
       setData(nextData);
-      setAdminProfile(profileResult.admin);
-      setRiders(riderRows);
-      setDispatchOps(dispatchResult);
-      setInterventionQueue(queueResult.queue);
-      setDeliveryZones(zonesResult.zones || []);
-      setPackageRules(rulesResult.rules || []);
+
+      const [profileResult, riderRowsResult, dispatchResult, queueResult, zonesResult, rulesResult] =
+        await Promise.allSettled([
+          fetchAdminProfile(),
+          fetchAdminRiders(),
+          fetchAdminDispatchOperations(),
+          fetchAdminInterventionQueue(),
+          fetchDeliveryZones(),
+          fetchPackageRules(),
+        ]);
+
+      if (profileResult.status === "fulfilled") {
+        setAdminProfile(profileResult.value.admin);
+      }
+
+      if (riderRowsResult.status === "fulfilled") {
+        setRiders(riderRowsResult.value);
+      }
+
+      if (dispatchResult.status === "fulfilled") {
+        setDispatchOps(dispatchResult.value);
+      }
+
+      if (queueResult.status === "fulfilled") {
+        setInterventionQueue(queueResult.value.queue);
+      }
+
+      if (zonesResult.status === "fulfilled") {
+        setDeliveryZones(zonesResult.value.zones || []);
+      }
+
+      if (rulesResult.status === "fulfilled") {
+        setPackageRules(rulesResult.value.rules || []);
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Admin data could not be loaded.";

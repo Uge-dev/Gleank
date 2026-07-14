@@ -411,6 +411,7 @@ db.exec(`
     pickup_location TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
+    stock_reserved INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1057,6 +1058,7 @@ ensureColumn("orders", "seller_rejection_note", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "return_window_ends_at", "TEXT");
 ensureColumn("orders", "buyer_confirmed_at", "TEXT");
 ensureColumn("orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");
+ensureColumn("orders", "stock_reserved", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("orders", "assigned_rider_id", "TEXT");
 ensureColumn("orders", "rider_assignment_id", "TEXT");
 

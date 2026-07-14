@@ -1,4 +1,4 @@
-export type UserRole = "buyer" | "seller" | "admin";
+export type UserRole = "buyer" | "seller" | "rider" | "admin";
 
 export type ModerationStatus =
   | "draft"

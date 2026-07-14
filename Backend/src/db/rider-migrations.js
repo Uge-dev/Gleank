@@ -1,17 +1,22 @@
+import { env } from "../config/env.js";
 import { db } from "./database.js";
 
+function tableColumns(table) {
+  return db.prepare(`PRAGMA table_info(${table})`).all();
+}
+
 function tableSql(table) {
+  if (env.databaseProvider === "postgres") return "";
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table);
   return row?.sql || "";
 }
 
 function tableExists(table) {
-  return Boolean(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+  return tableColumns(table).length > 0;
 }
 
 function columnExists(table, column) {
-  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
-  return columns.some((item) => item.name === column);
+  return tableColumns(table).some((item) => item.name === column);
 }
 
 function ensureColumn(table, column, definition) {
@@ -27,6 +32,15 @@ function ensureColumn(table, column, definition) {
  * the old CHECK constraint is still present.
  */
 function ensureUserRoleSupportsRider() {
+  if (env.databaseProvider === "postgres") {
+    db.exec(`
+      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+      ALTER TABLE users ADD CONSTRAINT users_role_check
+        CHECK (role IN ('buyer', 'seller', 'admin', 'rider'));
+    `);
+    return;
+  }
+
   const sql = tableSql("users");
   if (!sql || sql.includes("'rider'")) return;
 

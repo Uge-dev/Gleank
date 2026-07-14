@@ -1,6 +1,28 @@
 import type { AdminDataset, AdminRider, AdminStatus } from "./adminData";
 
-const API_BASE = (import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api");
+function resolveAdminApiBase() {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, "") || "/api";
+
+  if (typeof window === "undefined" || !/^https?:\/\//i.test(configuredUrl)) {
+    return configuredUrl;
+  }
+
+  try {
+    const configured = new URL(configuredUrl);
+    const isVercelApp = window.location.hostname.endsWith(".vercel.app");
+    const isRenderBackend = configured.hostname.endsWith(".onrender.com");
+
+    if (isVercelApp && isRenderBackend && configured.origin !== window.location.origin) {
+      return "/api";
+    }
+  } catch {
+    // Keep the configured value so any malformed env is visible in the failed request.
+  }
+
+  return configuredUrl;
+}
+
+const API_BASE = resolveAdminApiBase();
 const ADMIN_TOKEN_KEY = "gleank_admin_token";
 
 type AdminCollection = keyof Omit<AdminDataset, "overview">;

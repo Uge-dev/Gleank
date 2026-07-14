@@ -1,5 +1,5 @@
 import { apiRequest } from "../lib/api";
-import type { AuthUser, SellerStore, UserRole } from "../types/domain";
+import type { AuthUser, SellerStore } from "../types/domain";
 
 export type AuthResponse = {
   user: AuthUser;
@@ -11,7 +11,7 @@ export type RegisterInput = {
   name: string;
   email: string;
   password: string;
-  role: Exclude<UserRole, "admin">;
+  role: "buyer" | "seller";
   campus: string;
   phone?: string;
   storeName?: string;

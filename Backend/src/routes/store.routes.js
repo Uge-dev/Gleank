@@ -201,9 +201,33 @@ storeRouter.get("/", (req, res) => {
       interaction: productInteraction(row.id, req.auth?.user_id),
     }));
 
-  // Services are intentionally not exposed in the global product/search feed.
-  // They remain visible inside the seller profile Services tab via GET /stores/:slug.
-  const services = [];
+  const services = db
+    .prepare(`
+      SELECT services.*, stores.name AS store_name, stores.slug AS store_slug
+      FROM services
+      JOIN stores ON stores.id = services.store_id
+      WHERE stores.status = 'active'
+        AND services.status = 'active'
+        AND (
+          ? = ''
+          OR services.name LIKE ? ESCAPE '\\'
+          OR services.description LIKE ? ESCAPE '\\'
+          OR services.category LIKE ? ESCAPE '\\'
+          OR services.service_type LIKE ? ESCAPE '\\'
+          OR services.location LIKE ? ESCAPE '\\'
+          OR stores.name LIKE ? ESCAPE '\\'
+        )
+      ORDER BY
+        CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
+        services.updated_at DESC
+      LIMIT 50
+    `)
+    .all(query, pattern, pattern, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
+    .map((row) => ({
+      ...serializeService(row),
+      storeName: row.store_name,
+      storeSlug: row.store_slug,
+    }));
 
   const usedListings = db
     .prepare(`

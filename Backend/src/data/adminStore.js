@@ -41,6 +41,15 @@ function dateOnly(value) {
   return value ? String(value).slice(0, 10) : "";
 }
 
+function safeBuildAdminSection(label, builder, fallback = []) {
+  try {
+    return builder();
+  } catch (error) {
+    console.error(`[admin] Could not build ${label}:`, error);
+    return fallback;
+  }
+}
+
 function firstImage(value) {
   return parseImages(value)[0] || "";
 }
@@ -842,20 +851,20 @@ export function buildAdminOverview(data) {
 
 export function getAdminDataset() {
   const data = {
-    users: buildUsers(),
-    sellers: buildSellers(),
-    products: buildProducts(),
-    usedItems: buildUsedItems(),
-    markets: adminListMarkets({}),
-    marketRequests: adminListMarketRequests({}),
-    categoryApprovals: adminListSellerCategoryApprovals({}),
-    orders: buildOrders(),
-    payments: buildPayments(),
-    deliveries: buildDeliveries(),
-    disputes: buildDisputes(),
-    supportConversations: buildSupportConversations(),
-    feedback: buildFeedback(),
-    activityLogs: buildActivityLogs(),
+    users: safeBuildAdminSection("users", buildUsers),
+    sellers: safeBuildAdminSection("sellers", buildSellers),
+    products: safeBuildAdminSection("products and services", buildProducts),
+    usedItems: safeBuildAdminSection("used market", buildUsedItems),
+    markets: safeBuildAdminSection("markets", () => adminListMarkets({})),
+    marketRequests: safeBuildAdminSection("market requests", () => adminListMarketRequests({})),
+    categoryApprovals: safeBuildAdminSection("category approvals", () => adminListSellerCategoryApprovals({})),
+    orders: safeBuildAdminSection("orders", buildOrders),
+    payments: safeBuildAdminSection("payments", buildPayments),
+    deliveries: safeBuildAdminSection("deliveries", buildDeliveries),
+    disputes: safeBuildAdminSection("disputes", buildDisputes),
+    supportConversations: safeBuildAdminSection("support conversations", buildSupportConversations),
+    feedback: safeBuildAdminSection("feedback", buildFeedback),
+    activityLogs: safeBuildAdminSection("activity logs", buildActivityLogs),
   };
 
   return { overview: buildAdminOverview(data), ...data };
