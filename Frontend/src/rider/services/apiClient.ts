@@ -42,7 +42,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const payload = contentType.includes('application/json') ? await response.json() : await response.text();
 
     if (!response.ok) {
-      const message = typeof payload === 'object' && payload && 'message' in payload ? String((payload as { message?: unknown }).message) : `Request failed with status ${response.status}`;
+      const backendMessage =
+        typeof payload === 'object' && payload && 'message' in payload
+          ? String((payload as { message?: unknown }).message)
+          : '';
+      const message = backendMessage || 'The request could not be completed.';
       throw new ApiClientError(message, response.status, payload);
     }
 
@@ -50,9 +54,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   } catch (error) {
     if (error instanceof ApiClientError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiClientError('The API request timed out.');
+      throw new ApiClientError('We could not connect right now. Please check your internet connection and try again.', 408);
     }
-    throw new ApiClientError(error instanceof Error ? error.message : 'Unable to complete API request.');
+    throw new ApiClientError('We could not connect right now. Please check your internet connection and try again.', 0);
   } finally {
     window.clearTimeout(timeout);
   }

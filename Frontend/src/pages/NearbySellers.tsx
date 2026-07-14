@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiArrowLeft, FiMapPin, FiSearch } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import {
   MarketProductCard,
   MarketStoreCard,
@@ -14,6 +15,7 @@ import {
 function NearbySellers() {
   const [data, setData] = useState<NearbySellersResponse | null>(null);
   const [query, setQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,14 +46,10 @@ function NearbySellers() {
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, [query, reloadKey]);
 
   return (
     <section className="market-shell-page">
-      <Link to="/market" className="market-back-link">
-        <FiArrowLeft /> Back to Market
-      </Link>
-
       <form
         className="market-hub-search compact"
         onSubmit={(event) => {
@@ -69,18 +67,21 @@ function NearbySellers() {
         <button type="submit">Search</button>
       </form>
 
+      <Link to="/market" className="market-back-link">
+        <FiArrowLeft /> Back to Market
+      </Link>
+
       {isLoading ? (
         <LoadingState
           title="Loading nearby sellers"
           message="Loading nearby products and stores."
         />
       ) : error ? (
-        <div className="market-empty-state">
-          <FiMapPin />
-          <h2>Nearby discovery could not load</h2>
-          <p>{error}</p>
-          <Link to="/market/search">Search the Market</Link>
-        </div>
+        <NetworkFailureState
+          variant="card"
+          message="Nearby sellers could not refresh. Please check your connection and try again."
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
       ) : data && (data.sellers.length || data.products.length) ? (
         <>
           <section className="market-live-section product-feed-only">

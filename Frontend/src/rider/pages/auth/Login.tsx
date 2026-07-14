@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { FiLock, FiMail, FiTruck } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
+import { ApiClientError } from '../../services/apiClient';
 import Button from '../../components/ui/Button';
 
 export default function Login() {
@@ -17,10 +18,21 @@ export default function Login() {
     event.preventDefault();
     setError('');
     try {
-      await login(email, password);
+      const rider = await login(email, password);
+      if (rider.emailVerified === false) {
+        navigate('/verify-email');
+        return;
+      }
       navigate('/rider');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed.');
+      if (
+        err instanceof ApiClientError &&
+        (err.status === 401 || err.status === 403)
+      ) {
+        setError('Email or password is incorrect.');
+        return;
+      }
+      setError(err instanceof Error ? err.message : 'Email or password is incorrect.');
     }
   }
 

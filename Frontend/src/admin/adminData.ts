@@ -45,7 +45,7 @@ export type AdminUser = {
   email: string;
   phone: string;
   campus: string;
-  role: "user" | "seller" | "admin";
+  role: "user" | "seller" | "rider" | "admin";
   status: AdminStatus;
   orders: number;
   savedItems: number;

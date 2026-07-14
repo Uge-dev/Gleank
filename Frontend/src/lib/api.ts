@@ -44,6 +44,7 @@ type ApiErrorBody = {
     message?: string;
     details?: unknown;
   };
+  message?: string;
 };
 
 export class ApiError extends Error {
@@ -56,6 +57,22 @@ export class ApiError extends Error {
     this.status = status;
     this.details = details;
   }
+}
+
+export function friendlyApiErrorMessage(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 0 || error.status === 408) {
+      return "We could not connect right now. Please check your internet connection and try again.";
+    }
+
+    return error.message || "The request could not be completed.";
+  }
+
+  if (error instanceof TypeError || (error instanceof Error && /failed to fetch|network|load failed/i.test(error.message))) {
+    return "We could not connect right now. Please check your internet connection and try again.";
+  }
+
+  return "The request could not be completed.";
 }
 
 export async function apiRequest<T>(
@@ -88,7 +105,10 @@ export async function apiRequest<T>(
       );
     }
 
-    throw error;
+    throw new ApiError(
+      0,
+      "We could not connect right now. Please check your internet connection and try again.",
+    );
   } finally {
     window.clearTimeout(timeout);
   }
@@ -104,7 +124,7 @@ export async function apiRequest<T>(
 
     throw new ApiError(
       response.status,
-      body.error?.message || "The request could not be completed.",
+      body.error?.message || body.message || "The request could not be completed.",
       body.error?.details,
     );
   }

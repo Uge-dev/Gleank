@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiArrowLeft, FiMapPin, FiSearch } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import { LocalMarketCard } from "../components/MarketCards";
 import {
   getLocalMarkets,
@@ -11,6 +12,7 @@ import {
 function LocalMarkets() {
   const [markets, setMarkets] = useState<LocalMarket[]>([]);
   const [query, setQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -41,14 +43,10 @@ function LocalMarkets() {
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, [query, reloadKey]);
 
   return (
     <section className="market-shell-page">
-      <Link to="/market" className="market-back-link">
-        <FiArrowLeft /> Back to Market
-      </Link>
-
       <form
         className="market-hub-search compact"
         onSubmit={(event) => {
@@ -66,17 +64,21 @@ function LocalMarkets() {
         <button type="submit">Search</button>
       </form>
 
+      <Link to="/market" className="market-back-link">
+        <FiArrowLeft /> Back to Market
+      </Link>
+
       {isLoading ? (
         <LoadingState
           title="Loading Local Markets"
           message="Loading active local markets."
         />
       ) : error ? (
-        <div className="market-empty-state">
-          <FiMapPin />
-          <h2>Local Markets could not load</h2>
-          <p>{error}</p>
-        </div>
+        <NetworkFailureState
+          variant="card"
+          message="Local Markets could not refresh. Please check your connection and try again."
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
       ) : markets.length ? (
         <div className="market-live-grid">
           {markets.map((market) => (

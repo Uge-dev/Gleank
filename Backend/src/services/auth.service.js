@@ -134,7 +134,7 @@ export async function registerUser(input, meta = {}) {
   const email = String(input.email || "").trim().toLowerCase();
 
   if (findUserByEmail(email)) {
-    throw new HttpError(409, "An account already exists with this email.");
+    throw new HttpError(409, "This email already has a Gleenc account. Please log in with that account.");
   }
 
   assertPasswordPolicy(input.password);

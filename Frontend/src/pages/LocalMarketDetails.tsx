@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FiArrowLeft, FiMapPin, FiPackage, FiUsers } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import {
   MarketProductCard,
   MarketStoreCard,
@@ -14,6 +15,7 @@ import {
 function LocalMarketDetails() {
   const { marketId = "" } = useParams();
   const [data, setData] = useState<LocalMarketDetailsResponse | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,7 +46,7 @@ function LocalMarketDetails() {
     return () => {
       alive = false;
     };
-  }, [marketId]);
+  }, [marketId, reloadKey]);
 
   if (isLoading) {
     return (
@@ -63,12 +65,19 @@ function LocalMarketDetails() {
         <Link to="/market/local" className="market-back-link">
           <FiArrowLeft /> Back to Local Markets
         </Link>
-        <div className="market-empty-state">
-          <FiMapPin />
-          <h2>Local market not found</h2>
-          <p>{error || "This market is not active or does not exist."}</p>
-          <Link to="/market/local">View approved markets</Link>
-        </div>
+        {error ? (
+          <NetworkFailureState
+            variant="card"
+            message="This local market could not refresh. Please check your connection and try again."
+            onRetry={() => setReloadKey((current) => current + 1)}
+          />
+        ) : (
+          <div className="market-empty-state">
+            <FiMapPin />
+            <h2>Local market not found</h2>
+            <Link to="/market/local">View markets</Link>
+          </div>
+        )}
       </section>
     );
   }

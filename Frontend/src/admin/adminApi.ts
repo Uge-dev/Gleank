@@ -16,7 +16,7 @@ function resolveAdminApiBase() {
       return "/api";
     }
   } catch {
-    // Keep the configured value so any malformed env is visible in the failed request.
+    // Keep the configured value; the UI will show a safe connection message if it fails.
   }
 
   return configuredUrl;
@@ -64,18 +64,25 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new Error("We could not connect to admin services. Please check your connection and try again.");
+  }
 
   if (!response.ok) {
     if (response.status === 401 || response.status === 403) {
       clearAdminToken();
     }
 
-    const error = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(error.message || "Request failed");
+    const error = await response.json().catch(() => ({ message: "" }));
+    throw new Error(error.message || "Admin request could not be completed.");
   }
 
   return response.json() as Promise<T>;

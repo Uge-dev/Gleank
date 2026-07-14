@@ -15546,6 +15546,11 @@ html[data-theme="dark"] .dashboard-animated-object {
   color: #f97316;
 }
 
+.app-state-icon.network {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
 .app-state-orb {
   animation: appStatePulse 1.7s ease-in-out infinite;
 }
@@ -30354,7 +30359,7 @@ html[data-theme="dark"] select {
 .market-shell-page {
   width: min(1180px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 32px 0 116px;
+  padding: 6px 0 116px;
   color: var(--text-main, #111827);
 }
 
@@ -30754,18 +30759,18 @@ html[data-theme="dark"] select {
 }
 
 .market-hub-search.compact {
-  margin: 20px 0;
+  margin: 0 0 12px;
 }
 
 .market-sticky-tools {
   position: sticky;
-  top: 82px;
+  top: 0;
   z-index: 35;
-  margin-bottom: 18px;
-  padding: 8px 0 14px;
-  background: rgba(248, 250, 252, 0.92);
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  margin-bottom: 14px;
+  padding: 0 0 12px;
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .market-sticky-tools .market-hub-search {
@@ -30807,7 +30812,7 @@ html[data-theme="dark"] select {
 }
 
 .market-live-section.product-feed-only {
-  margin-top: 18px;
+  margin-top: 12px;
   padding: 0;
   border: 0;
   border-radius: 0;
@@ -31172,7 +31177,7 @@ html[data-theme="dark"] select {
   .market-hub-page,
   .market-shell-page {
     width: min(100% - 20px, 1180px);
-    padding-top: 18px;
+    padding-top: 4px;
     padding-bottom: calc(var(--gleank-bottom-nav-height, 64px) + 34px);
   }
 
@@ -31206,7 +31211,8 @@ html[data-theme="dark"] select {
     top: 0;
     margin-left: -10px;
     margin-right: -10px;
-    padding: 8px 10px 12px;
+    padding: 0 10px 10px;
+    background: transparent;
   }
 
   .market-sticky-tools .market-hub-search {
@@ -32015,7 +32021,7 @@ button:disabled,
   }
 }
 
-/* Production light-only guard: Gleenc no longer exposes a dark-mode UI. */
+/* Production light-only guard. */
 :root,
 html,
 body,

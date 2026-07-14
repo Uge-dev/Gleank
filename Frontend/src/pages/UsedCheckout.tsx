@@ -209,7 +209,7 @@ function UsedCheckout() {
           <div className="used-protection-note">
             <FiLock />
             <p>
-              Payment gateway is the next connection point. In local development, the order is created as pending payment and can be advanced from the order page.
+              Your used-market order is protected by Gleenc review, buyer/seller records, and delivery verification.
             </p>
           </div>
 

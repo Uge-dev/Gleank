@@ -8,6 +8,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import {
   MarketProductCard,
   UsedListingMarketCard,
@@ -43,6 +44,7 @@ const marketplaceCards = [
 
 function Market() {
   const navigate = useNavigate();
+  const [reloadKey, setReloadKey] = useState(0);
   const [hub, setHub] = useState<MarketHub | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -73,7 +75,7 @@ function Market() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   const liveCards = useMemo(
     () =>
@@ -137,13 +139,6 @@ function Market() {
 
   return (
     <section className="market-hub-page">
-      {error && (
-        <div className="market-inline-alert">
-          <strong>Market unavailable</strong>
-          <span>{error}</span>
-        </div>
-      )}
-
       <div className="market-sticky-tools">
         <form
           className="market-hub-search"
@@ -184,7 +179,13 @@ function Market() {
         </div>
       </div>
 
-      {hub && (
+      {error && !hub ? (
+        <NetworkFailureState
+          variant="card"
+          message="The Market feed could not refresh. Please check your connection and try again."
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
+      ) : hub ? (
         <section className="market-live-section product-feed-only">
           {mixedFeed.length ? (
             <div className="market-live-grid">
@@ -203,7 +204,7 @@ function Market() {
             </div>
           )}
         </section>
-      )}
+      ) : null}
     </section>
   );
 }

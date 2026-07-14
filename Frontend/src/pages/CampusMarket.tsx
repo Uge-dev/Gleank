@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiArrowLeft, FiSearch } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import {
   MarketProductCard,
   MarketStoreCard,
@@ -14,6 +15,7 @@ import {
 function CampusMarket() {
   const [data, setData] = useState<CampusMarketResponse | null>(null);
   const [query, setQuery] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,14 +46,10 @@ function CampusMarket() {
     return () => {
       alive = false;
     };
-  }, [query]);
+  }, [query, reloadKey]);
 
   return (
     <section className="market-shell-page">
-      <Link to="/market" className="market-back-link">
-        <FiArrowLeft /> Back to Market
-      </Link>
-
       <form
         className="market-hub-search compact"
         onSubmit={(event) => {
@@ -69,18 +67,21 @@ function CampusMarket() {
         <button type="submit">Search</button>
       </form>
 
+      <Link to="/market" className="market-back-link">
+        <FiArrowLeft /> Back to Market
+      </Link>
+
       {isLoading ? (
         <LoadingState
           title="Loading Campus Market"
           message="Loading campus products and stores."
         />
       ) : error ? (
-        <div className="market-empty-state">
-          <FiSearch />
-          <h2>Campus Market could not load</h2>
-          <p>{error}</p>
-          <Link to="/market/search">Try Market search</Link>
-        </div>
+        <NetworkFailureState
+          variant="card"
+          message="Campus Market could not refresh. Please check your connection and try again."
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
       ) : data && (data.products.length || data.stores.length) ? (
         <>
           <section className="market-live-section product-feed-only">

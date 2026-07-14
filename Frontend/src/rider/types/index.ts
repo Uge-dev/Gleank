@@ -51,6 +51,7 @@ export interface Rider {
   fullName: string;
   phone: string;
   email: string;
+  emailVerified?: boolean;
   vehicleType: string;
   vehiclePlate?: string;
   profilePhoto: string;

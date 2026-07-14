@@ -335,6 +335,7 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
       fullName: profile.fullName || user.name || 'Gleenc Rider',
       phone: profile.phone || user.phone || '',
       email: user.email || '',
+      emailVerified: Boolean((user as { emailVerified?: boolean }).emailVerified),
       vehicleType: profile.vehicleType || 'Motorcycle',
       vehiclePlate: profile.vehiclePlate || '',
       profilePhoto: user.avatarUrl || '',

@@ -56,81 +56,6 @@ type LastOrder = {
   createdAt: string;
 };
 
-const mockOrders: OrderDetailsItem[] = [
-  {
-    id: "ORD-1048",
-    productName: "Jollof Rice Combo",
-    seller: "Tasty Bowl",
-    sellerUsername: "tasty-bowl",
-    sellerPhone: "08000000001",
-    image:
-      "https://images.unsplash.com/photo-1604909052743-94e838986d24?auto=format&fit=crop&w=900&q=80",
-    amount: 5000,
-    quantity: 2,
-    status: "Pending",
-    date: "Today, 10:42 AM",
-    deliveryType: "Delivery",
-    location: "FUPRE Hostel B",
-    buyerName: "Campus Buyer",
-    buyerPhone: "08000000000",
-    note: "Please confirm availability before delivery.",
-  },
-  {
-    id: "ORD-1047",
-    productName: "Campus Hoodie",
-    seller: "Style Plug",
-    sellerUsername: "style-plug",
-    sellerPhone: "08000000002",
-    image:
-      "https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=900&q=80",
-    amount: 12000,
-    quantity: 1,
-    status: "Confirmed",
-    date: "Yesterday, 4:18 PM",
-    deliveryType: "Pickup",
-    location: "Main Gate",
-    buyerName: "Campus Buyer",
-    buyerPhone: "08000000000",
-    note: "Buyer will pick up at the agreed campus point.",
-  },
-  {
-    id: "ORD-1046",
-    productName: "Phone Screen Repair",
-    seller: "FixHub Campus",
-    sellerUsername: "fixhub-campus",
-    sellerPhone: "08000000003",
-    image:
-      "https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?auto=format&fit=crop&w=900&q=80",
-    amount: 18000,
-    quantity: 1,
-    status: "Preparing",
-    date: "June 19, 2:00 PM",
-    deliveryType: "Pickup",
-    location: "Engineering Block",
-    buyerName: "Campus Buyer",
-    buyerPhone: "08000000000",
-    note: "Repair service is being prepared.",
-  },
-  {
-    id: "ORD-1045",
-    productName: "Mini Perfume Oil",
-    seller: "Glow Store",
-    sellerUsername: "glow-store",
-    sellerPhone: "08000000004",
-    image:
-      "https://images.unsplash.com/photo-1592945403244-b3fbafd7f539?auto=format&fit=crop&w=900&q=80",
-    amount: 3500,
-    quantity: 1,
-    status: "Delivered",
-    date: "June 18, 11:30 AM",
-    deliveryType: "Delivery",
-    location: "FUPRE Hostel C",
-    buyerName: "Campus Buyer",
-    buyerPhone: "08000000000",
-    note: "Order completed successfully.",
-  },
-];
-
 function formatPrice(price: number) {
   return new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -216,12 +141,7 @@ function Order() {
 
   const lastCheckoutOrder = getLastCheckoutOrder();
 
-  const orders = lastCheckoutOrder
-    ? [
-        lastCheckoutOrder,
-        ...mockOrders.filter((order) => order.id !== lastCheckoutOrder.id),
-      ]
-    : mockOrders;
+  const orders = lastCheckoutOrder ? [lastCheckoutOrder] : [];
 
   const order = orders.find((item) => item.id === id);
 

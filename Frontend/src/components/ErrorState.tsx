@@ -21,7 +21,7 @@ function ErrorState({
         <FiAlertTriangle />
       </div>
 
-      <span>Request failed</span>
+      <span>Needs attention</span>
 
       <h2>{title}</h2>
 

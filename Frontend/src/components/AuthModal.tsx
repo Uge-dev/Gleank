@@ -77,7 +77,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
 
         <div className="auth-secure-badge">
           <FiShield />
-          Real account authentication
+          Secure login
         </div>
 
         <h2 id="gleank-login-title">Log in to Gleenc</h2>
@@ -152,11 +152,6 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
             )}
           </button>
         </form>
-
-        <p className="auth-policy-text">
-          Authentication is handled by the local Gleenc API using a secure
-          HTTP-only session cookie. Passwords are never stored in the browser.
-        </p>
 
         <div className="auth-bottom">
           <span>Don&apos;t have an account?</span>

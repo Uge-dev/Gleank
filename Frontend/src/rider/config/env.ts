@@ -15,7 +15,7 @@ function normalizeApiBaseUrl(value: string) {
         return '';
       }
     } catch {
-      // Keep the raw value so the failed request exposes the env issue.
+      return '';
     }
   }
 

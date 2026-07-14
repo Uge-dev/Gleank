@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { FiArrowLeft, FiMapPin, FiPackage, FiSearch, FiShoppingBag, FiUsers } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import NetworkFailureState from "../components/NetworkFailureState";
 import {
   LocalMarketCard,
   MarketProductCard,
@@ -30,6 +31,7 @@ function MarketSearchResults() {
   const [data, setData] = useState<MarketSearchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -58,7 +60,7 @@ function MarketSearchResults() {
     return () => {
       alive = false;
     };
-  }, [query, type]);
+  }, [query, type, reloadKey]);
 
   const totalCount = useMemo(() => {
     if (!data) return 0;
@@ -125,11 +127,11 @@ function MarketSearchResults() {
           message="Loading matching results."
         />
       ) : error ? (
-        <div className="market-empty-state">
-          <FiSearch />
-          <h2>Search could not load</h2>
-          <p>{error}</p>
-        </div>
+        <NetworkFailureState
+          variant="card"
+          message="Search results could not refresh. Please check your connection and try again."
+          onRetry={() => setReloadKey((current) => current + 1)}
+        />
       ) : data && totalCount > 0 ? (
         <>
           {(type === "all" || type === "products") && data.products.length > 0 && (

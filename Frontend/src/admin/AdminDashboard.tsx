@@ -62,6 +62,7 @@ import {
   uploadAdminAvatar,
 } from "./adminApi";
 import LogoutConfirmModal from "../components/LogoutConfirmModal";
+import NetworkFailureState from "../components/NetworkFailureState";
 import { apiUrl } from "../lib/api";
 import "./AdminDashboard.css";
 
@@ -491,13 +492,22 @@ function AdminDashboard() {
   const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
 
+  const showAdminConnectionNotice = useCallback(() => {
+    setLoadError("Admin data could not refresh. Please check your connection and try again.");
+  }, []);
+
+  const refreshRiderRows = useCallback(async () => {
+    const riderRows = await fetchAdminRiders();
+    setRiders(riderRows);
+  }, []);
+
   const loadAdminData = useCallback(async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
     setLoadError("");
 
     try {
       const nextData = await fetchAdminDataset();
-      setData(nextData);
+      setData({ ...emptyAdminDataset, ...nextData });
 
       const [profileResult, riderRowsResult] =
         await Promise.allSettled([
@@ -513,9 +523,8 @@ function AdminDashboard() {
         setRiders(riderRowsResult.value);
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Admin data could not be loaded.";
-      setLoadError(message);
+      const message = error instanceof Error ? error.message : "";
+      showAdminConnectionNotice();
 
       if (/invalid|unauthorized|forbidden|token|login/i.test(message)) {
         clearAdminToken();
@@ -524,7 +533,7 @@ function AdminDashboard() {
     } finally {
       if (showSpinner) setLoading(false);
     }
-  }, []);
+  }, [showAdminConnectionNotice]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -579,14 +588,26 @@ function AdminDashboard() {
   }
 
   async function changeStatus(collection: AdminCollection, id: string, status: AdminStatus, field = "status") {
-    const response = await updateAdminRecordStatus(collection, id, status, field);
-    setData(response.data);
+    setLoadError("");
+    try {
+      const response = await updateAdminRecordStatus(collection, id, status, field);
+      setData({ ...emptyAdminDataset, ...response.data });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
   }
 
 
   async function changeFields(collection: AdminCollection, id: string, fields: Record<string, unknown>) {
-    const response = await updateAdminRecordFields(collection, id, fields);
-    setData(response.data);
+    setLoadError("");
+    try {
+      const response = await updateAdminRecordFields(collection, id, fields);
+      setData({ ...emptyAdminDataset, ...response.data });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
   }
 
   async function changeRiderVerification(
@@ -595,14 +616,20 @@ function AdminDashboard() {
     verificationNote: string,
     safetyStatus: "normal" | "flagged" | "suspended" = "normal",
   ) {
-    await updateAdminRiderVerification(rider.userId, {
-      verificationStatus,
-      verificationNote,
-      safetyStatus,
-      verificationLevel: rider.verificationLevel || 1,
-      maxPackageValueKobo: Math.max(0, Math.round((rider.maxPackageValue || 0) * 100)),
-    });
-    setRiders(await fetchAdminRiders());
+    setLoadError("");
+    try {
+      await updateAdminRiderVerification(rider.userId, {
+        verificationStatus,
+        verificationNote,
+        safetyStatus,
+        verificationLevel: rider.verificationLevel || 1,
+        maxPackageValueKobo: Math.max(0, Math.round((rider.maxPackageValue || 0) * 100)),
+      });
+      await refreshRiderRows();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
   }
 
   function updateSupportDraft(conversationId: string, value: string) {
@@ -628,7 +655,7 @@ function AdminDashboard() {
         return next;
       });
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Support reply could not be sent.");
+      showAdminConnectionNotice();
     } finally {
       setReplyingConversationId("");
     }
@@ -641,7 +668,7 @@ function AdminDashboard() {
       const response = await markAdminSupportConversationRead(conversation.id);
       setData(response.data);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : "Support conversation could not be marked as read.");
+      showAdminConnectionNotice();
     }
   }
 
@@ -649,8 +676,14 @@ function AdminDashboard() {
     const confirmed = window.confirm(`Apply the admin remove/disable action for ${label}? This updates the live platform record.`);
     if (!confirmed) return;
 
-    const response = await deleteAdminRecord(collection, id);
-    setData(response.data);
+    setLoadError("");
+    try {
+      const response = await deleteAdminRecord(collection, id);
+      setData({ ...emptyAdminDataset, ...response.data });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
   }
 
   async function rejectUsedItem(item: AdminUsedItem) {
@@ -698,11 +731,7 @@ function AdminDashboard() {
       const response = await uploadAdminAvatar(file);
       setAdminProfile(response.admin);
     } catch (error) {
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Admin profile image could not be uploaded.",
-      );
+      showAdminConnectionNotice();
     } finally {
       setIsUploadingAdminAvatar(false);
     }
@@ -795,9 +824,12 @@ function AdminDashboard() {
         <section className="admin-content">
           {loading ? <div className="admin-loading-card">Loading admin data...</div> : null}
           {loadError ? (
-            <div className="admin-loading-card admin-error-text">
-              {loadError}. Log in again or use “Refresh live admin data”.
-            </div>
+            <NetworkFailureState
+              variant="inline"
+              title="Connection interrupted"
+              message={loadError}
+              onRetry={() => void refreshLiveData()}
+            />
           ) : null}
 
           {activeTab === "overview" ? (
@@ -818,7 +850,7 @@ function AdminDashboard() {
               </section>
 
               <section className="admin-stats-grid">
-                <StatCard label="Total Users" value={data.overview.totalUsers} helper="registered buyer accounts" icon={<FaUsers />} />
+                <StatCard label="Total Users" value={data.overview.totalUsers} helper="registered accounts" icon={<FaUsers />} />
                 <StatCard label="Total Sellers" value={data.overview.totalSellers} helper="campus stores onboarded" icon={<FaStore />} />
                 <StatCard label="Pending Sellers" value={data.overview.pendingSellerVerifications} helper="verification reviews" icon={<FaShieldAlt />} />
                 <StatCard label="Market Requests" value={data.overview.pendingMarketRequests || 0} helper="seller requested markets" icon={<FaStore />} />
@@ -1345,12 +1377,12 @@ function AdminDashboard() {
               <div className="admin-panel-card">
                 <div className="admin-panel-head">
                   <div>
-                    <h2>Live Admin Data</h2>
-                    <p>The dashboard now reads from the backend database. Use refresh to pull the latest seller, user and order changes.</p>
+                    <h2>Admin Data</h2>
+                    <p>Refresh users, sellers, riders, orders, products, payouts, disputes and support records.</p>
                   </div>
                 </div>
                 <div className="admin-settings-actions">
-                  <button type="button" onClick={() => void refreshLiveData()}><FaUndo /> Refresh live admin data</button>
+                  <button type="button" onClick={() => void refreshLiveData()}><FaUndo /> Refresh admin data</button>
                   <button type="button" onClick={() => setLogoutModalOpen(true)}><FaBan /> Logout admin session</button>
                 </div>
               </div>

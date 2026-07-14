@@ -9,8 +9,8 @@ interface AuthContextValue {
   rider: Rider | null;
   loading: boolean;
   apiConnected: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (payload: Partial<Rider> & { password: string }) => Promise<void>;
+  login: (email: string, password: string) => Promise<Rider>;
+  signup: (payload: Partial<Rider> & { password: string }) => Promise<Rider>;
   logout: () => Promise<void>;
   updateAvailability: (availability: Availability) => Promise<void>;
   updateRiderLocally: (patch: Partial<Rider>) => void;
@@ -56,12 +56,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.login(email, password);
           setRider(response.rider);
           setApiConnected(true);
-          return;
+          return response.rider;
         }
         if (shouldUseMock()) {
           const nextRider = riderLocalStore.login(email);
           setRider(nextRider);
-          return;
+          return nextRider;
         }
         throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before rider login.');
       } catch (error) {
@@ -78,12 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.signup(payload);
           setRider(response.rider);
           setApiConnected(true);
-          return;
+          return response.rider;
         }
         if (shouldUseMock()) {
           const nextRider = riderLocalStore.signup(payload);
           setRider(nextRider);
-          return;
+          return nextRider;
         }
         throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before rider signup.');
       } catch (error) {
