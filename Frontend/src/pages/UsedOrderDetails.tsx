@@ -152,7 +152,7 @@ function UsedOrderDetails() {
       <section className="used-order-page">
         <LoadingState
           title="Loading protected used order"
-          message="Fetching escrow status, timeline, and message link."
+          message="Loading escrow status, timeline and message link."
         />
       </section>
     );

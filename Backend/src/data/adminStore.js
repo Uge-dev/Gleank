@@ -505,13 +505,18 @@ function buildPayments() {
              orders.order_code AS order_code,
              used_market_orders.order_code AS used_order_code,
              buyer.name AS buyer_name,
-             used_buyer.name AS used_buyer_name
+             used_buyer.name AS used_buyer_name,
+             payout_accounts.bank_name,
+             payout_accounts.account_name,
+             payout_accounts.account_number_masked,
+             payout_accounts.payout_verified
       FROM payouts
       JOIN users seller ON seller.id = payouts.seller_id
       LEFT JOIN orders ON orders.id = payouts.order_id
       LEFT JOIN users buyer ON buyer.id = orders.buyer_id
       LEFT JOIN used_market_orders ON used_market_orders.id = payouts.used_order_id
       LEFT JOIN users used_buyer ON used_buyer.id = used_market_orders.buyer_id
+      LEFT JOIN user_payout_accounts payout_accounts ON payout_accounts.user_id = payouts.seller_id
       ORDER BY payouts.created_at DESC
       LIMIT 500
     `)
@@ -528,6 +533,14 @@ function buildPayments() {
       status: row.status,
       payoutStatus: row.status,
       holdReason: row.hold_reason || "",
+      payoutAccount: row.bank_name
+        ? {
+            bankName: row.bank_name,
+            accountName: row.account_name || "",
+            accountNumberMasked: row.account_number_masked || "",
+            payoutVerified: Boolean(row.payout_verified),
+          }
+        : null,
       releaseAfter: row.release_after || null,
       releasedAt: row.released_at || null,
       createdAt: dateOnly(row.created_at),
@@ -814,7 +827,24 @@ function buildActivityLogs() {
       time: row.created_at,
     }));
 
-  return [...security, ...orders]
+  const protection = db
+    .prepare(`
+      SELECT payment_protection_events.*, users.name AS actor_name
+      FROM payment_protection_events
+      LEFT JOIN users ON users.id = payment_protection_events.actor_id
+      ORDER BY payment_protection_events.created_at DESC
+      LIMIT 80
+    `)
+    .all()
+    .map((row) => ({
+      id: row.id,
+      admin: row.actor_name || "Payment protection",
+      action: `${row.source || "protection"} ${row.action || "logged"}`.replaceAll("_", " "),
+      target: row.context_id || row.target_user_id || row.actor_id || "platform",
+      time: row.created_at,
+    }));
+
+  return [...security, ...orders, ...protection]
     .sort((a, b) => String(b.time).localeCompare(String(a.time)))
     .slice(0, 100);
 }

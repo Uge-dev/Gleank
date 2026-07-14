@@ -208,6 +208,12 @@ export type AdminPayment = {
   gateway: "Paystack" | "Flutterwave" | "Bank Transfer";
   status: AdminStatus;
   payoutStatus: AdminStatus;
+  payoutAccount?: {
+    bankName: string;
+    accountName: string;
+    accountNumberMasked: string;
+    payoutVerified?: boolean;
+  } | null;
   createdAt: string;
 };
 

@@ -3,6 +3,10 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { serializeProduct, serializeService } from "../lib/serializers.js";
 import { createNotification } from "./notification.service.js";
+import {
+  logPaymentProtectionEvent,
+  scanListingContent,
+} from "./payment-protection.service.js";
 
 const PUBLIC_APPROVED = new Set(["auto_approved", "approved"]);
 const ACTIVE_REVIEW_STATUSES = new Set(["pending_review", "flagged"]);
@@ -147,6 +151,39 @@ export function evaluateListingModeration({ store, input, images = [], itemType 
     score += keywordScore;
     if (action === "reject") rejected = true;
     if (action === "review") reviewRequired = true;
+  }
+
+  const contactScan = scanListingContent(input);
+  if (contactScan.flagged) {
+    addReason(
+      reasons,
+      "off_platform_contact",
+      "Direct contact or off-platform payment instructions were detected. Remove them before the listing can go public.",
+      Math.max(45, contactScan.severity),
+      "review",
+    );
+    score += Math.max(45, contactScan.severity);
+    reviewRequired = true;
+
+    logPaymentProtectionEvent({
+      actorId: store.owner_id,
+      contextType: itemType,
+      contextId: "",
+      source: "listing_moderation",
+      action: contactScan.action,
+      severity: contactScan.severity,
+      reasons: contactScan.reasons,
+      originalText: [
+        input?.name,
+        input?.category,
+        input?.serviceType,
+        input?.location,
+        input?.description,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      sanitizedText: contactScan.sanitizedText,
+    });
   }
 
   if (images.length === 0) {

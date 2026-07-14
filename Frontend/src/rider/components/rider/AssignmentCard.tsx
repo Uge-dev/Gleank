@@ -108,7 +108,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
         </div>
       </Card>
 
-      <Modal open={contactOpen} title="Seller Contact" message="Use these options only for locating the seller and collecting the package. Keep order discussions inside Gleank support where possible." onClose={() => setContactOpen(false)}>
+      <Modal open={contactOpen} title="Seller Contact" message="Use these options only for locating the seller and collecting the package. Keep order discussions inside Gleenc support where possible." onClose={() => setContactOpen(false)}>
         <div className="space-y-3">
           <div className="rounded-2xl bg-slate-50 p-4">
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Seller</p>

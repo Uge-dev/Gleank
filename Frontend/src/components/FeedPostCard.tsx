@@ -117,6 +117,18 @@ const { addToCart } = useCart();
   const safeImages = images.filter(Boolean);
   const storePath = getStorePath(username);
   const sellerInitials = getSellerInitials(storeName);
+  const stockLimit =
+    maxQuantity !== undefined && Number.isFinite(Number(maxQuantity))
+      ? Math.max(0, Number(maxQuantity))
+      : undefined;
+  const quantityAtMaxStock =
+    stockLimit !== undefined && quantity >= Math.max(1, stockLimit);
+  const stockLabel =
+    stockLimit === undefined
+      ? "Stock confirmed"
+      : stockLimit <= 0
+        ? "Out of stock"
+        : `${stockLimit} In stock`;
 
   function scrollToImage(index: number) {
     if (!sliderRef.current) return;
@@ -155,7 +167,7 @@ const { addToCart } = useCart();
   }
 
   function handleAddToCart() {
-    if (maxQuantity === 0 || isOwnProduct) return;
+    if (stockLimit === 0 || isOwnProduct) return;
 
     addToCart({
       id,
@@ -167,14 +179,15 @@ const { addToCart } = useCart();
       sellerId: username,
       campus,
       category,
+      stock: stockLimit,
       quantity,
     });
   }
 
   function increaseQuantity() {
     setQuantity((currentQuantity) =>
-      maxQuantity !== undefined
-        ? Math.min(maxQuantity, currentQuantity + 1)
+      stockLimit !== undefined
+        ? Math.min(stockLimit, currentQuantity + 1)
         : currentQuantity + 1,
     );
   }
@@ -232,6 +245,14 @@ const { addToCart } = useCart();
     }
   };
 }, [onViewed]);
+
+  useEffect(() => {
+    if (stockLimit === undefined) return;
+
+    setQuantity((currentQuantity) =>
+      stockLimit <= 0 ? 1 : Math.min(currentQuantity, stockLimit),
+    );
+  }, [stockLimit]);
 
   return (
     <article className="feed-card" ref={cardRef}>
@@ -367,7 +388,7 @@ const { addToCart } = useCart();
           <h4>{productName}</h4>
 
           <p>
-            {category} • {campus}
+            {category} • {campus} • {stockLabel}
           </p>
         </div>
 
@@ -389,6 +410,8 @@ const { addToCart } = useCart();
               type="button"
               onClick={increaseQuantity}
               aria-label="Increase quantity"
+              disabled={quantityAtMaxStock || stockLimit === 0}
+              title={quantityAtMaxStock ? "Maximum stock selected" : "Increase quantity"}
             >
               <FiPlus />
             </button>
@@ -401,7 +424,7 @@ const { addToCart } = useCart();
           type="button"
           className="add-cart-btn"
           onClick={handleAddToCart}
-          disabled={maxQuantity === 0 || isOwnProduct}
+          disabled={stockLimit === 0 || isOwnProduct}
           aria-label={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
           title={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
         >

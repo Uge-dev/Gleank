@@ -692,8 +692,12 @@ export function getSellerReadiness(userId) {
     payoutAccount,
     hasStore: Boolean(store),
     emailReady: Boolean(user?.email_verified),
+    phoneReady: Boolean(user?.phone_verified || verification.phone || user?.phone),
+    faceReady: Boolean(verification.faceVerified),
     verificationReady: verification.status === "verified",
+    subscriptionActive: hasActiveSellerSubscription(userId),
     payoutReady: Boolean(payoutAccount?.isComplete),
+    platformFeeReady: Boolean(store && Number(env.platformFeePercent || 0) > 0),
   };
 }
 

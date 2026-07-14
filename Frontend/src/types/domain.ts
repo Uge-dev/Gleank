@@ -185,12 +185,14 @@ export type SellerWorkspace = {
 export type SearchProduct = SellerProduct & {
   storeName: string;
   storeSlug: string;
+  storeCampus?: string;
   interaction: ProductInteraction;
 };
 
 export type SearchService = SellerService & {
   storeName: string;
   storeSlug: string;
+  storeCampus?: string;
 };
 
 export type StoreInteraction = {

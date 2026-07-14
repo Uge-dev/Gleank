@@ -44,7 +44,7 @@ function UsedMarketTrustGate({ trust }: UsedMarketTrustGateProps) {
           <small>
             {payoutDone
               ? `${trust?.payoutAccount?.bankName} • ${trust?.payoutAccount?.accountNumberMasked}`
-              : "Add account for future seller payout"}
+              : "Add account for seller payout"}
           </small>
         </div>
 

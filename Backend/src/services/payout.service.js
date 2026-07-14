@@ -51,6 +51,15 @@ function serializePayout(row) {
     holdReason: row.hold_reason || "",
     releaseAfter: row.release_after || null,
     releasedAt: row.released_at || null,
+    payoutAccount: row.bank_name
+      ? {
+          bankName: row.bank_name,
+          accountName: row.account_name || "",
+          accountNumberMasked: row.account_number_masked || "",
+          accountLast4: row.account_last4 || "",
+          payoutVerified: Boolean(row.payout_verified),
+        }
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -184,9 +193,14 @@ export function adminListPayouts({ status = "" } = {}) {
 
   return db
     .prepare(`
-      SELECT payouts.*, users.name AS seller_name, users.email AS seller_email
+      SELECT payouts.*, users.name AS seller_name, users.email AS seller_email,
+             payout_accounts.bank_name, payout_accounts.account_name,
+             payout_accounts.account_number_masked, payout_accounts.account_last4,
+             payout_accounts.payout_verified
       FROM payouts
       JOIN users ON users.id = payouts.seller_id
+      LEFT JOIN user_payout_accounts payout_accounts
+        ON payout_accounts.user_id = payouts.seller_id
       ${where}
       ORDER BY payouts.created_at DESC
       LIMIT 250

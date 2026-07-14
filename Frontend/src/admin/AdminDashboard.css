@@ -23,27 +23,6 @@
   box-sizing: border-box;
 }
 
-html[data-theme="dark"] .admin-shell,
-html.dark .admin-shell,
-html[data-theme="dark"] .admin-login-page,
-html.dark .admin-login-page {
-  --admin-bg: var(--color-bg-app, #070a12);
-  --admin-card: var(--color-bg-surface, #111827);
-  --admin-border: var(--color-border-soft, rgba(148, 163, 184, 0.16));
-  --admin-text: var(--color-text-primary, #f8fafc);
-  --admin-muted: var(--color-text-muted, #94a3b8);
-  --admin-green: var(--color-brand-primary, #22c55e);
-  --admin-green-dark: var(--color-brand-primary-hover, #34d399);
-  --admin-green-soft: var(--color-brand-soft, rgba(34, 197, 94, 0.12));
-  --admin-orange: var(--color-warning, #f59e0b);
-  --admin-orange-soft: rgba(245, 158, 11, 0.12);
-  --admin-red: var(--color-danger, #ef4444);
-  --admin-red-soft: rgba(239, 68, 68, 0.12);
-  --admin-blue: var(--color-info, #3b82f6);
-  --admin-blue-soft: rgba(59, 130, 246, 0.12);
-  --admin-shadow: var(--color-shadow-card, 0 18px 45px rgba(0, 0, 0, 0.32));
-}
-
 .admin-shell *,
 .admin-login-page * {
   box-sizing: border-box;
@@ -189,8 +168,7 @@ html.dark .admin-login-page {
   cursor: not-allowed;
 }
 
-.admin-error-text,
-.admin-demo-note {
+.admin-error-text {
   border-radius: 15px;
   padding: 12px 14px;
 }
@@ -198,13 +176,6 @@ html.dark .admin-login-page {
 .admin-error-text {
   color: #ffe2e2;
   background: rgba(255, 93, 93, 0.16);
-}
-
-.admin-demo-note {
-  margin-top: 18px;
-  color: rgba(248, 255, 249, 0.78);
-  background: rgba(255, 255, 255, 0.08);
-  font-size: 0.9rem;
 }
 
 .admin-shell {
@@ -786,37 +757,72 @@ html.dark .admin-login-page {
   background: var(--admin-green-soft);
 }
 
-.admin-table-wrap {
-  width: 100%;
-  overflow-x: auto;
+.admin-record-card-grid {
+  padding: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 14px;
 }
 
-.admin-table {
-  width: 100%;
-  min-width: 980px;
-  border-collapse: collapse;
+.admin-record-card {
+  border: 1px solid var(--admin-border);
+  border-radius: 20px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
 }
 
-.admin-table th,
-.admin-table td {
-  padding: 15px 16px;
-  border-bottom: 1px solid #edf0f4;
+.admin-record-card-main {
+  width: 100%;
+  border: 0;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  color: var(--admin-text);
+  background: transparent;
   text-align: left;
-  vertical-align: middle;
-  white-space: nowrap;
+  font-family: inherit;
 }
 
-.admin-table th {
+.admin-record-card-main:not(:disabled) {
+  cursor: pointer;
+}
+
+.admin-record-card-main:disabled {
+  cursor: default;
+}
+
+.admin-record-card-main:not(:disabled):hover {
   background: #f8fafc;
-  color: #64748b;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
-.admin-table td {
+.admin-record-field {
+  display: grid;
+  gap: 4px;
+}
+
+.admin-record-field span {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.admin-record-field div {
   color: #223027;
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-record-field.primary {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.admin-record-field.primary div {
+  font-size: 1.02rem;
+  font-weight: 900;
 }
 
 .admin-message-cell {
@@ -830,8 +836,9 @@ html.dark .admin-login-page {
 .admin-row-actions {
   flex-wrap: wrap;
   gap: 8px;
-  min-width: 240px;
-  max-width: 520px;
+  min-width: 0;
+  max-width: none;
+  padding: 0 16px 16px;
 }
 
 .admin-row-actions button,
@@ -1403,10 +1410,6 @@ html.dark .admin-login-page {
   .admin-panel-card,
   .admin-stat-card {
     border-radius: 20px;
-  }
-
-  .admin-table {
-    min-width: 860px;
   }
 
   .admin-notification {

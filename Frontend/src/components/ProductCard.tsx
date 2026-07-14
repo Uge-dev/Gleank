@@ -18,6 +18,7 @@ type ProductCardProps = {
   imageUrl?: string;
   videoUrl?: string;
   tag?: string;
+  stock?: number;
   onRequireAuth: () => void;
 };
 
@@ -32,6 +33,7 @@ function ProductCard({
   imageUrl,
   videoUrl,
   tag,
+  stock,
   onRequireAuth,
 }: ProductCardProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -84,6 +86,9 @@ function ProductCard({
 
         <p>
           {category} • {campus}
+          {stock !== undefined
+            ? ` • ${Number(stock) <= 0 ? "Out of stock" : `${Number(stock)} In stock`}`
+            : ""}
         </p>
 
         <small>{seller}</small>

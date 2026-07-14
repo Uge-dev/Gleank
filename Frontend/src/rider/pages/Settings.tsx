@@ -22,7 +22,7 @@ export default function Settings() {
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-700"><FiLock /></div>
             <div>
               <h2 className="text-lg font-extrabold text-slate-950">Account Security</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Password update, two-factor authentication, and device management can be connected to the backend later.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">Manage password updates, account protection and trusted device access.</p>
               <button className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">Manage Security</button>
             </div>
           </div>

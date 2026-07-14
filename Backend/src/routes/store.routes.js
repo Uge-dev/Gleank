@@ -176,7 +176,8 @@ storeRouter.get("/", (req, res) => {
 
   const products = db
     .prepare(`
-      SELECT products.*, stores.name AS store_name, stores.slug AS store_slug
+      SELECT products.*, stores.name AS store_name, stores.slug AS store_slug,
+             stores.campus AS store_campus
       FROM products
       JOIN stores ON stores.id = products.store_id
       WHERE stores.status = 'active'
@@ -198,12 +199,14 @@ storeRouter.get("/", (req, res) => {
       ...serializeProduct(row),
       storeName: row.store_name,
       storeSlug: row.store_slug,
+      storeCampus: row.store_campus || "",
       interaction: productInteraction(row.id, req.auth?.user_id),
     }));
 
   const services = db
     .prepare(`
-      SELECT services.*, stores.name AS store_name, stores.slug AS store_slug
+      SELECT services.*, stores.name AS store_name, stores.slug AS store_slug,
+             stores.campus AS store_campus
       FROM services
       JOIN stores ON stores.id = services.store_id
       WHERE stores.status = 'active'
@@ -227,6 +230,7 @@ storeRouter.get("/", (req, res) => {
       ...serializeService(row),
       storeName: row.store_name,
       storeSlug: row.store_slug,
+      storeCampus: row.store_campus || "",
     }));
 
   const usedListings = db

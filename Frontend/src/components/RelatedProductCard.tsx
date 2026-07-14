@@ -37,7 +37,10 @@ function RelatedProductCard({
       <div className="related-product-body">
         <h3>{product.name}</h3>
         <p>
-          {product.category} • {product.store.campus}
+          {product.category} • {product.store.campus} •{" "}
+          {product.status === "out_of_stock" || Number(product.stock || 0) <= 0
+            ? "Out of stock"
+            : `${product.stock} In stock`}
         </p>
         <strong>{formatPrice(product.price)}</strong>
 

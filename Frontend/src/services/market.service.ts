@@ -55,6 +55,8 @@ export type MarketProduct = SellerProduct & {
     logoUrl: string | null;
     coverUrl: string | null;
     verified: boolean;
+    sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+    marketId?: string | null;
   };
   interaction?: {
     likeCount: number;

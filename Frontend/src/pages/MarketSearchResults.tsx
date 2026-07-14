@@ -95,15 +95,6 @@ function MarketSearchResults() {
         <FiArrowLeft /> Back to Market
       </Link>
 
-      <header className="market-shell-hero">
-        <span>Market Search</span>
-        <h1>{query ? `Search results for “${query}”` : "Search the whole Market"}</h1>
-        <p>
-          Search products, active stores, Used Market listings, and admin-approved Local Markets.
-          Seller services remain inside seller profile service tabs.
-        </p>
-      </header>
-
       <form className="market-hub-search compact" onSubmit={submitSearch}>
         <FiSearch />
         <input
@@ -131,7 +122,7 @@ function MarketSearchResults() {
       {isLoading ? (
         <LoadingState
           title="Searching Market"
-          message="Checking products, stores, used items, and local markets."
+          message="Loading matching results."
         />
       ) : error ? (
         <div className="market-empty-state">

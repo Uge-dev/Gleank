@@ -905,25 +905,25 @@ export function getMarketHub({ viewerId = "", campus = "" } = {}) {
     popularNearYou: listPublicProducts({
       campus: cleanCampus,
       viewerId,
-      limit: 8,
+      limit: 32,
       order: "engagement",
     }),
     trendingCampusProducts: listPublicProducts({
       campus: cleanCampus,
       viewerId,
-      limit: 8,
+      limit: 32,
       order: "engagement",
     }),
-    freshUsedListings: listUsedListings({ query: "", category: "" }).slice(0, 8),
+    freshUsedListings: listUsedListings({ query: "", category: "" }).slice(0, 32),
     nearbySellers: listActiveStores({
       campus: cleanCampus,
       viewerId,
-      limit: 8,
+      limit: 12,
     }),
     fastDeliveryProducts: listPublicProducts({
       campus: cleanCampus,
       viewerId,
-      limit: 8,
+      limit: 32,
       order: "fresh",
     }),
   };

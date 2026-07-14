@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   FiBell,
@@ -11,19 +11,15 @@ import {
   FiLogIn,
   FiLogOut,
   FiMessageCircle,
-  FiMonitor,
-  FiMoon,
   FiRefreshCcw,
   FiShield,
   FiShoppingBag,
   FiShoppingCart,
-  FiSun,
   FiUser,
   FiX,
 } from "react-icons/fi";
 import { FaWhatsapp } from "react-icons/fa";
 
-import { applyTheme, getSavedTheme, type ThemeMode } from "../utils/theme";
 import { useAuth } from "../context/AuthContext";
 import LogoutConfirmModal from "./LogoutConfirmModal";
 import { getSupportWhatsAppUrl } from "../utils/support";
@@ -44,14 +40,9 @@ function MoreDrawer({
   notificationUnreadCount = 0,
 }: MoreDrawerProps) {
   const { user, isAuthenticated, logout } = useAuth();
-  const [theme, setTheme] = useState<ThemeMode>("system");
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggedIn = isAuthenticated;
-
-  useEffect(() => {
-    setTheme(getSavedTheme());
-  }, []);
 
   function handleProtectedAction() {
     if (!isLoggedIn) {
@@ -70,11 +61,6 @@ function MoreDrawer({
     } finally {
       setIsLoggingOut(false);
     }
-  }
-
-  function handleThemeChange(nextTheme: ThemeMode) {
-    setTheme(nextTheme);
-    applyTheme(nextTheme);
   }
 
   if (!isOpen) return null;
@@ -249,39 +235,6 @@ function MoreDrawer({
 
             <FiChevronRight />
           </Link>
-        </div>
-
-        <div className="more-section">
-          <h4>Appearance</h4>
-
-          <div className="appearance-options">
-            <button
-              type="button"
-              className={theme === "system" ? "active" : ""}
-              onClick={() => handleThemeChange("system")}
-            >
-              <FiMonitor />
-              <span>System</span>
-            </button>
-
-            <button
-              type="button"
-              className={theme === "light" ? "active" : ""}
-              onClick={() => handleThemeChange("light")}
-            >
-              <FiSun />
-              <span>Light</span>
-            </button>
-
-            <button
-              type="button"
-              className={theme === "dark" ? "active" : ""}
-              onClick={() => handleThemeChange("dark")}
-            >
-              <FiMoon />
-              <span>Dark</span>
-            </button>
-          </div>
         </div>
 
         <div className="more-section">

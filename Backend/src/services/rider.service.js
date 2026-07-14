@@ -938,7 +938,7 @@ export function completeDelivery(auth, orderId, input) {
       userId: row.buyer_id,
       type: "order",
       title: "Order delivered",
-      body: "Your Gleank order has been delivered and confirmed with OTP.",
+      body: "Your Gleenc order has been delivered and confirmed with OTP.",
       actionLabel: "View order",
       actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
     });
@@ -997,7 +997,7 @@ export function createRiderSafetyReport(auth, input) {
     userId: riderId,
     type: "admin",
     title: "Safety report received",
-    body: "Gleank support has received your rider safety report.",
+    body: "Gleenc support has received your rider safety report.",
     actionLabel: "Open safety center",
     actionPath: "/rider/safety",
   });

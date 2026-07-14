@@ -16,6 +16,7 @@ import {
   updateSellerVerification,
   type SellerVerificationResponse,
 } from "../services/seller-verification.service";
+import { savePayoutAccount } from "../services/trust.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 import { getLocalMarkets, type LocalMarket } from "../services/market.service";
 
@@ -59,6 +60,7 @@ function SellerOnboarding() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingPayout, setIsSavingPayout] = useState(false);
 
   async function load() {
     setIsLoading(true);
@@ -137,6 +139,55 @@ function SellerOnboarding() {
     }
   }
 
+  function focusSection(sectionId: string) {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+
+    section.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    window.setTimeout(() => {
+      const focusable = section.querySelector<HTMLElement>(
+        "input, select, textarea, button",
+      );
+      focusable?.focus({ preventScroll: true });
+    }, 350);
+  }
+
+  function handleReadinessClick(sectionId: string, redirectPath?: string) {
+    if (redirectPath) {
+      window.location.href = redirectPath;
+      return;
+    }
+
+    focusSection(sectionId);
+  }
+
+  async function handlePayoutSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setIsSavingPayout(true);
+
+    try {
+      const formData = new FormData(event.currentTarget);
+      await savePayoutAccount({
+        bankName: String(formData.get("bankName") || ""),
+        accountName: String(formData.get("accountName") || ""),
+        accountNumber: String(formData.get("accountNumber") || ""),
+      });
+      await load();
+      setMessage("Payout account saved. Admin can now review and use this account for seller payouts.");
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Payout account could not be saved.",
+      );
+    } finally {
+      setIsSavingPayout(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="seller-onboarding-page">
@@ -151,8 +202,13 @@ function SellerOnboarding() {
   const verificationReady = verification?.status === "verified";
   const verificationSubmitted =
     verificationReady || verification?.status === "pending_verification";
-  const platformFeeReady = subscriptionActive && verificationSubmitted;
-  const sellerSetupComplete = verificationReady && subscriptionActive && platformFeeReady;
+  const phoneReady = Boolean(user?.phoneVerified || verification?.phone || user?.phone);
+  const faceReady = Boolean(faceVerified || verification?.faceVerified);
+  const payoutReady = Boolean(state?.readiness?.payoutReady);
+  const platformFeeReady = Boolean(state?.readiness?.hasStore || store || verificationSubmitted);
+  const sellerSetupComplete =
+    verificationReady && subscriptionActive && platformFeeReady && payoutReady;
+  const payoutAccount = state?.readiness?.payoutAccount;
 
   return (
     <section className="seller-onboarding-page">
@@ -182,7 +238,7 @@ function SellerOnboarding() {
 
       <div className="seller-onboarding-grid">
         <form className="seller-onboarding-form" onSubmit={handleSubmit}>
-          <div className="seller-onboarding-title">
+          <div className="seller-onboarding-title" id="seller-identity-section">
             <span>Verification</span>
             <h2>Seller identity</h2>
             <p>Use your real seller details, choose the correct seller type, and complete live face verification. Existing buyer details are prefilled where possible.</p>
@@ -241,13 +297,13 @@ function SellerOnboarding() {
               <span>Full name</span>
               <input name="fullName" defaultValue={verification?.fullName || user?.name || ""} required />
             </label>
-            <label>
+            <label id="seller-phone-section">
               <span>Phone number</span>
               <input name="phone" defaultValue={verification?.phone || user?.phone || ""} required />
               <small className="seller-phone-verify-note">
                 {user?.phoneVerified
                   ? "Phone verified. Contact changes should still be confirmed with OTP."
-                  : "Phone OTP verification is required before changing this number once SMS is connected."}
+                  : "Phone OTP verification is required before changing this number."}
               </small>
             </label>
             <label>
@@ -416,19 +472,17 @@ function SellerOnboarding() {
             </div>
           )}
 
-          <div className="seller-face-check-card">
+          <div className="seller-face-check-card" id="seller-face-section">
             <FiShield />
             <div>
               <span>Real-time face verification</span>
               <strong>{faceVerified ? "Face check completed" : "Face check required"}</strong>
               <p>
-                Local mode stores only the verification result, provider, reference,
-                and timestamp. Production should connect Smile ID, Dojah, Prembly,
-                or another liveness provider.
+                Gleenc stores the verification result, provider reference and timestamp for admin review.
               </p>
             </div>
             <button type="button" onClick={handleLocalFaceCheck}>
-              {faceVerified ? "Run again" : "Run local face check"}
+              {faceVerified ? "Run again" : "Start face check"}
             </button>
           </div>
 
@@ -447,7 +501,7 @@ function SellerOnboarding() {
             />
           </label>
 
-          <label className="seller-agreement-row">
+          <label className="seller-agreement-row" id="seller-fee-section">
             <input name="agreementAccepted" type="checkbox" value="true" defaultChecked={verification?.agreementAccepted || false} required />
             <span>
               I confirm that my seller information is correct and I understand that Gleenc charges a ₦1,999 monthly seller fee and adds a 5% platform fee to buyer-facing prices.
@@ -460,14 +514,14 @@ function SellerOnboarding() {
         </form>
 
         <aside className="seller-onboarding-side">
-          <div className="seller-status-card">
+          <div className="seller-status-card" id="seller-review-section">
             <FiShield />
             <span>Verification status</span>
             <h3>{verification?.status?.replaceAll("_", " ") || "draft"}</h3>
             <p>{verification?.note || "Submit your seller verification to unlock product publishing."}</p>
           </div>
 
-          <div className="seller-status-card subscription">
+          <div className="seller-status-card subscription" id="seller-subscription-section">
             <FiCreditCard />
             <span>Monthly seller fee</span>
             <h3>₦{(subscription?.amount || 1999).toLocaleString()} / month</h3>
@@ -482,13 +536,107 @@ function SellerOnboarding() {
             )}
           </div>
 
+          <form
+            className="seller-status-card seller-payout-card"
+            id="seller-payout-section"
+            onSubmit={handlePayoutSubmit}
+          >
+            <FiCreditCard />
+            <span>Seller payout account</span>
+            <h3>{payoutReady ? "Payout account ready" : "Add payout account"}</h3>
+            <p>
+              {payoutAccount?.isComplete
+                ? `${payoutAccount.bankName} • ${payoutAccount.accountName} • ${payoutAccount.accountNumberMasked}`
+                : "Add the account admin should use when seller funds are ready for payout."}
+            </p>
+            <label>
+              <span>Bank name</span>
+              <input
+                name="bankName"
+                defaultValue={payoutAccount?.bankName || ""}
+                placeholder="Access Bank, GTBank, Opay..."
+                required
+              />
+            </label>
+            <label>
+              <span>Account name</span>
+              <input
+                name="accountName"
+                defaultValue={payoutAccount?.accountName || ""}
+                placeholder="Account holder name"
+                required
+              />
+            </label>
+            <label>
+              <span>Account number</span>
+              <input
+                name="accountNumber"
+                inputMode="numeric"
+                placeholder={payoutAccount?.accountNumberMasked || "10-digit account number"}
+                required
+                minLength={10}
+              />
+            </label>
+            <button type="submit" disabled={isSavingPayout}>
+              {isSavingPayout ? "Saving..." : payoutReady ? "Update payout" : "Save payout"}
+            </button>
+          </form>
+
           <div className="seller-status-list">
-            <span className={user?.emailVerified ? "done" : ""}>Email verified</span>
-            <span className={user?.phoneVerified ? "done" : ""}>Phone verification ready</span>
-            <span className={faceVerified ? "done" : ""}>Face verification complete</span>
-            <span className={verificationReady ? "done" : ""}>Seller verified</span>
-            <span className={subscriptionActive ? "done" : ""}>Subscription active</span>
-            <span className={platformFeeReady ? "done" : ""}>5% buyer-facing platform fee ready</span>
+            <button
+              type="button"
+              className={user?.emailVerified ? "done" : ""}
+              onClick={() =>
+                handleReadinessClick(
+                  "seller-identity-section",
+                  user?.emailVerified ? undefined : "/verify-email",
+                )
+              }
+            >
+              Email verified
+            </button>
+            <button
+              type="button"
+              className={phoneReady ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-phone-section")}
+            >
+              Phone verification ready
+            </button>
+            <button
+              type="button"
+              className={faceReady ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-face-section")}
+            >
+              Face verification complete
+            </button>
+            <button
+              type="button"
+              className={verificationReady ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-review-section")}
+            >
+              Seller verified
+            </button>
+            <button
+              type="button"
+              className={subscriptionActive ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-subscription-section")}
+            >
+              Subscription active
+            </button>
+            <button
+              type="button"
+              className={payoutReady ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-payout-section")}
+            >
+              Payout account ready
+            </button>
+            <button
+              type="button"
+              className={platformFeeReady ? "done" : ""}
+              onClick={() => handleReadinessClick("seller-fee-section")}
+            >
+              5% buyer-facing platform fee ready
+            </button>
           </div>
         </aside>
       </div>

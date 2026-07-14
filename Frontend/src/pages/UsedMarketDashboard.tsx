@@ -62,7 +62,7 @@ function UsedMarketDashboard() {
       <section className="used-dashboard-page">
         <LoadingState
           title="Loading your Used Market workspace"
-          message="Fetching listings, orders, and messages."
+          message="Loading listings, orders and messages."
         />
       </section>
     );

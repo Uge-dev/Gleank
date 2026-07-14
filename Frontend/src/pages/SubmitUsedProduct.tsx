@@ -445,11 +445,11 @@ function SubmitUsedProduct() {
                 <span>Real-time face verification</span>
                 <strong>{faceVerified ? "Face check completed" : "Face check required"}</strong>
                 <p>
-                  Local mode stores only the result and reference. Buyers never see face data.
+                  Gleenc stores only the verification result and reference. Buyers never see face data.
                 </p>
               </div>
               <button type="button" onClick={handleLocalFaceCheck}>
-                {faceVerified ? "Run again" : "Run local face check"}
+                {faceVerified ? "Run again" : "Start face check"}
               </button>
             </div>
           </section>
@@ -481,7 +481,7 @@ function SubmitUsedProduct() {
 
             <div className="secure-used-note">
               <FiInfo />
-              <p>Only the masked account and account name are stored for this development flow. Buyers will not see your full account number.</p>
+              <p>Only the masked account and account name are stored. Buyers will not see your full account number.</p>
             </div>
           </section>
 

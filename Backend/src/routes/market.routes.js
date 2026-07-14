@@ -20,11 +20,15 @@ function viewerCampus(req) {
   return String(req.query.campus || req.auth?.campus || "").trim();
 }
 
+function requestedCampus(req) {
+  return String(req.query.campus || "").trim();
+}
+
 marketRouter.get("/hub", (req, res) => {
   res.json({
     hub: getMarketHub({
       viewerId: viewerId(req),
-      campus: viewerCampus(req),
+      campus: requestedCampus(req),
     }),
   });
 });
@@ -42,7 +46,7 @@ marketRouter.get("/campus", (req, res) => {
   res.json(
     getCampusMarket({
       query: String(req.query.q || ""),
-      campus: viewerCampus(req),
+      campus: requestedCampus(req),
       viewerId: viewerId(req),
     }),
   );
@@ -86,7 +90,7 @@ marketRouter.get("/search", (req, res) => {
     searchMarket({
       query: String(req.query.q || ""),
       type: String(req.query.type || "all"),
-      campus: viewerCampus(req),
+      campus: requestedCampus(req),
       viewerId: viewerId(req),
     }),
   );

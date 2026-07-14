@@ -2,6 +2,7 @@ import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createNotification } from "./notification.service.js";
+import { protectMessageContent } from "./payment-protection.service.js";
 
 function clean(value, max = 1200) {
   return String(value || "").trim().slice(0, max);
@@ -490,12 +491,21 @@ export function sendMessage(userId, conversationId, input) {
   const id = createId("msg");
   const recipientId =
     conversation.buyerId === userId ? conversation.sellerId : conversation.buyerId;
-  const previewBody = body || "Sent an image";
+  const protectedMessage = body
+    ? protectMessageContent({
+        senderId: userId,
+        recipientId,
+        conversationId,
+        body,
+      })
+    : { body, flagged: false, warning: "" };
+  const finalBody = clean(protectedMessage.body, 1600);
+  const previewBody = finalBody || "Sent an image";
 
   db.prepare(`
     INSERT INTO messages (id, conversation_id, sender_id, body, attachment_url, is_read, created_at)
     VALUES (?, ?, ?, ?, ?, 0, ?)
-  `).run(id, conversationId, userId, body, attachmentUrl || null, now);
+  `).run(id, conversationId, userId, finalBody, attachmentUrl || null, now);
 
   db.prepare(`
     UPDATE conversations

@@ -19,6 +19,7 @@ export type CartItem = {
   sellerId: string;
   campus: string;
   category?: string;
+  stock?: number;
   quantity: number;
 };
 
@@ -83,7 +84,18 @@ function parseCart(value: string | null): CartItem[] {
         sellerId: String(item.sellerId || ""),
         campus: String(item.campus || ""),
         category: item.category ? String(item.category) : undefined,
+        stock:
+          Number.isFinite(Number(item.stock)) && Number(item.stock) >= 0
+            ? Number(item.stock)
+            : undefined,
         quantity: Math.max(1, Number(item.quantity || 1)),
+      }))
+      .map((item) => ({
+        ...item,
+        quantity:
+          item.stock !== undefined
+            ? Math.min(item.quantity, Math.max(1, item.stock))
+            : item.quantity,
       }))
       .filter((item) => item.id && item.name && item.sellerId);
   } catch {
@@ -182,6 +194,16 @@ export function CartProvider({ children }: CartProviderProps) {
     }
 
     setCartItems((currentItems) => {
+      const incomingStock =
+        item.stock !== undefined && Number.isFinite(Number(item.stock))
+          ? Math.max(0, Number(item.stock))
+          : undefined;
+      const incomingQuantity = Math.max(1, Number(item.quantity || 1));
+
+      if (incomingStock !== undefined && incomingStock <= 0) {
+        return currentItems;
+      }
+
       const existingItem = currentItems.find(
         (cartItem) => cartItem.id === item.id,
       );
@@ -192,7 +214,11 @@ export function CartProvider({ children }: CartProviderProps) {
 
           return {
             ...cartItem,
-            quantity: cartItem.quantity + (item.quantity || 1),
+            stock: incomingStock ?? cartItem.stock,
+            quantity:
+              incomingStock !== undefined
+                ? Math.min(incomingStock, cartItem.quantity + incomingQuantity)
+                : cartItem.quantity + incomingQuantity,
           };
         });
       }
@@ -201,7 +227,11 @@ export function CartProvider({ children }: CartProviderProps) {
         ...currentItems,
         {
           ...item,
-          quantity: item.quantity || 1,
+          stock: incomingStock,
+          quantity:
+            incomingStock !== undefined
+              ? Math.min(incomingStock, incomingQuantity)
+              : incomingQuantity,
         },
       ];
     });
@@ -218,7 +248,10 @@ export function CartProvider({ children }: CartProviderProps) {
 
         return {
           ...item,
-          quantity: item.quantity + 1,
+          quantity:
+            item.stock !== undefined
+              ? Math.min(item.stock, item.quantity + 1)
+              : item.quantity + 1,
         };
       }),
     );

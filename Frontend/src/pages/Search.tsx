@@ -257,14 +257,19 @@ function Search() {
                       <div className="search-product-content">
                         <span>{product.category}</span>
                         <h3>{product.name}</h3>
-                        <p>{product.storeName}</p>
+                        <p>
+                          {product.category} • {product.storeCampus || "Gleenc"} •{" "}
+                          {product.status === "out_of_stock"
+                            ? "Out of stock"
+                            : `${product.stock} In stock`}
+                        </p>
                         <div className="search-product-meta">
                           <strong>{formatPrice(product.price)}</strong>
                           <small>
                             <FiStar />
                             {product.status === "out_of_stock"
                               ? "Out of stock"
-                              : `${product.stock} available`}
+                              : `${product.stock} In stock`}
                           </small>
                         </div>
                         <div className="search-product-actions">

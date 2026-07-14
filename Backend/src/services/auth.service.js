@@ -1,11 +1,12 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
+import "../db/rider-migrations.js";
 import { env } from "../config/env.js";
 import { createId, slugify } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createSession, deleteSessionsForUser } from "../lib/session.js";
 import { serializeStore, serializeUser } from "../lib/serializers.js";
-import { transaction } from "../db/database.js";
+import { db, transaction } from "../db/database.js";
 import { validatePasswordStrength } from "../lib/password-policy.js";
 import { sendEmailVerificationEmail, sendPasswordResetEmail } from "./email.service.js";
 import {
@@ -47,6 +48,38 @@ function uniqueStoreSlug(storeName) {
   }
 
   return candidate;
+}
+
+function createRiderProfileFromAuth(userId, input, now) {
+  db.prepare(`
+    INSERT INTO rider_profiles (
+      id, user_id, full_name, phone, whatsapp_phone, vehicle_type, vehicle_plate,
+      coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
+      guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
+      verification_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', NULL, NULL, '', 'pending_review', ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      full_name = excluded.full_name,
+      phone = excluded.phone,
+      whatsapp_phone = excluded.whatsapp_phone,
+      vehicle_type = excluded.vehicle_type,
+      vehicle_plate = excluded.vehicle_plate,
+      coverage_area = excluded.coverage_area,
+      home_address = excluded.home_address,
+      updated_at = excluded.updated_at
+  `).run(
+    createId("rpr"),
+    userId,
+    input.name,
+    input.phone || "",
+    input.whatsappPhone || input.phone || "",
+    input.vehicleType || "",
+    input.vehiclePlate || "",
+    input.coverageArea || input.campus || "",
+    input.homeAddress || "",
+    now,
+    now,
+  );
 }
 
 function hashResetToken(token) {
@@ -146,6 +179,10 @@ export async function registerUser(input, meta = {}) {
       });
 
       ensureSellerSubscription(userId);
+    }
+
+    if (input.role === "rider") {
+      createRiderProfileFromAuth(userId, input, now);
     }
 
     createSecurityEvent(userId, "account_registered", { role: input.role }, cleanMeta);

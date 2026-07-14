@@ -27,10 +27,14 @@ export const registerSchema = z
     name: z.string().trim().min(2).max(80),
     email,
     password,
-    role: z.enum(["buyer", "seller"]).default("buyer"),
+    role: z.enum(["buyer", "seller", "rider"]).default("buyer"),
     campus: z.string().trim().min(2).max(80),
     phone: z.string().trim().max(30).optional().default(""),
     storeName: z.string().trim().max(100).optional().default(""),
+    vehicleType: z.string().trim().max(80).optional().default(""),
+    vehiclePlate: z.string().trim().max(40).optional().default(""),
+    coverageArea: z.string().trim().max(160).optional().default(""),
+    homeAddress: z.string().trim().max(240).optional().default(""),
   })
   .superRefine((value, context) => {
     if (value.role === "seller" && value.storeName.length < 2) {
@@ -38,6 +42,22 @@ export const registerSchema = z
         code: "custom",
         path: ["storeName"],
         message: "Store name is required for seller accounts.",
+      });
+    }
+
+    if (value.role === "rider" && value.phone.length < 6) {
+      context.addIssue({
+        code: "custom",
+        path: ["phone"],
+        message: "Phone number is required for rider accounts.",
+      });
+    }
+
+    if (value.role === "rider" && value.coverageArea.length < 2) {
+      context.addIssue({
+        code: "custom",
+        path: ["coverageArea"],
+        message: "Coverage area is required for rider accounts.",
       });
     }
   });

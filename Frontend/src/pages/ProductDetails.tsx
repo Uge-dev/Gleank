@@ -202,6 +202,7 @@ function ProductDetails() {
       sellerId: product.store.slug,
       campus: product.store.campus,
       category: product.category,
+      stock: product.stock,
       quantity,
     });
   }
@@ -305,7 +306,8 @@ function ProductDetails() {
 
             <h1>{product.name}</h1>
             <p className="product-category-line">
-              {product.category} • {product.store.campus}
+              {product.category} • {product.store.campus} •{" "}
+              {inStock ? `${product.stock} In stock` : "Out of stock"}
             </p>
 
             <div className="product-social-row">
@@ -342,6 +344,13 @@ function ProductDetails() {
                 <button
                   type="button"
                   disabled={!inStock || quantity >= product.stock}
+                  title={
+                    !inStock
+                      ? "Out of stock"
+                      : quantity >= product.stock
+                        ? "Maximum stock selected"
+                        : "Increase quantity"
+                  }
                   onClick={() =>
                     setQuantity((current) => Math.min(product.stock, current + 1))
                   }
@@ -470,7 +479,7 @@ function ProductDetails() {
                 <span>Selected option</span>
                 <strong>{deliveryMode}</strong>
                 <span>Seller contact</span>
-                <strong>{product.store.phone || "Message seller"}</strong>
+                <strong>Use in-app messaging</strong>
               </div>
             </section>
 

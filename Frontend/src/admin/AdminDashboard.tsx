@@ -32,9 +32,7 @@ import {
   type AdminActivityLog,
   type AdminDataset,
   type AdminCategoryApproval,
-  type AdminDelivery,
   type AdminDispute,
-  type AdminFeedback,
   type AdminMarket,
   type AdminMarketRequest,
   type AdminOrder,
@@ -52,19 +50,11 @@ import {
   clearAdminToken,
   deleteAdminRecord,
   fetchAdminDataset,
-  fetchAdminDispatchOperations,
-  fetchAdminInterventionQueue,
   fetchAdminProfile,
   fetchAdminRiders,
-  fetchDeliveryZones,
-  fetchPackageRules,
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
-  type AdminDeliveryZone,
-  type AdminDispatchBatch,
-  type AdminInterventionItem,
-  type AdminPackageRule,
   type AdminProfile,
   updateAdminRecordFields,
   updateAdminRecordStatus,
@@ -78,20 +68,13 @@ import "./AdminDashboard.css";
 type AdminTab =
   | "overview"
   | "users"
-  | "buyers"
   | "sellers"
-  | "markets"
-  | "products"
-  | "usedMarket"
+  | "marketplace"
   | "orders"
-  | "payments"
-  | "payouts"
-  | "deliveries"
-  | "dispatchOps"
+  | "finance"
   | "riders"
   | "disputes"
   | "support"
-  | "feedback"
   | "activityLogs"
   | "settings";
 
@@ -105,20 +88,13 @@ type TableColumn<T> = {
 const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: string }[] = [
   { id: "overview", label: "Overview", icon: <FaChartLine />, description: "Platform summary" },
   { id: "users", label: "Users", icon: <FaUsers />, description: "Buyer accounts" },
-  { id: "buyers", label: "Buyers", icon: <FaUserShield />, description: "Buyer locations" },
   { id: "sellers", label: "Sellers", icon: <FaStore />, description: "Store approvals" },
-  { id: "markets", label: "Markets", icon: <FaStore />, description: "Local market control" },
-  { id: "products", label: "Products", icon: <FaBoxOpen />, description: "Seller listings" },
-  { id: "usedMarket", label: "Used Market", icon: <FaShoppingBag />, description: "Used-item approvals" },
+  { id: "marketplace", label: "Marketplace", icon: <FaShoppingBag />, description: "Markets and listings" },
   { id: "orders", label: "Orders", icon: <FaClipboardList />, description: "Order control" },
-  { id: "payments", label: "Payments", icon: <FaCreditCard />, description: "Gateway records" },
-  { id: "payouts", label: "Payouts", icon: <FaMoneyBillWave />, description: "Seller funds" },
-  { id: "deliveries", label: "Deliveries", icon: <FaTruck />, description: "Rider and codes" },
-  { id: "dispatchOps", label: "Dispatch Ops", icon: <FaTruck />, description: "Automation queues" },
+  { id: "finance", label: "Finance", icon: <FaMoneyBillWave />, description: "Payments and payouts" },
   { id: "riders", label: "Riders", icon: <FaTruck />, description: "Rider approvals" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
   { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
-  { id: "feedback", label: "Feedback", icon: <FaCommentDots />, description: "Platform feedback" },
   { id: "activityLogs", label: "Activity Logs", icon: <FaHistory />, description: "Admin actions" },
   { id: "settings", label: "Settings", icon: <FaCog />, description: "Rules and setup" },
 ];
@@ -165,8 +141,8 @@ function RecordThumb({ src, name }: { src?: string; name: string }) {
 }
 
 function AdminLogin({ onLogin }: { onLogin: () => void }) {
-  const [email, setEmail] = useState("admin@gleank.com");
-  const [password, setPassword] = useState("admin12345");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -196,13 +172,13 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
         <p className="admin-login-copy">
-          Manage approvals, users, sellers, products, orders, payments, payouts, deliveries, disputes and feedback from one secure dashboard.
+          Manage users, sellers, markets, products, orders, payments, payouts, rider approvals, disputes, support and platform activity.
         </p>
 
         <form onSubmit={handleSubmit} className="admin-login-form">
           <label>
             Admin email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="admin@gleank.com" />
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="admin@gleenc.com" />
           </label>
           <label>
             Password
@@ -212,9 +188,6 @@ function AdminLogin({ onLogin }: { onLogin: () => void }) {
           <button type="submit" disabled={loading}>{loading ? "Checking access..." : "Login to Admin"}</button>
         </form>
 
-        <div className="admin-demo-note">
-          Local default access: <strong>admin@gleank.com</strong> / <strong>admin12345</strong>. Change this with <strong>ADMIN_EMAIL</strong> and <strong>ADMIN_PASSWORD</strong> in Backend/.env.
-        </div>
       </div>
     </section>
   );
@@ -278,34 +251,38 @@ function DataTable<T extends { id: string }>({ title, subtitle, rows, columns, s
         <span>{filteredRows.length} records</span>
       </div>
 
-      <div className="admin-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              {columns.map((column) => <th key={column.label}>{column.label}</th>)}
-              {onView || actions ? <th>Actions</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredRows.map((row) => (
-              <tr key={row.id}>
-                {columns.map((column) => <td key={column.label}>{column.render(row)}</td>)}
-                {onView || actions ? (
-                  <td>
-                    <div className="admin-row-actions">
-                      {onView ? (
-                        <button type="button" className="soft" onClick={() => onView(row)}>
-                          <FaEye /> View
-                        </button>
-                      ) : null}
-                      {actions ? actions(row) : null}
-                    </div>
-                  </td>
+      <div className="admin-record-card-grid">
+        {filteredRows.map((row) => (
+          <article className="admin-record-card" key={row.id}>
+            <button
+              type="button"
+              className="admin-record-card-main"
+              onClick={() => onView?.(row)}
+              disabled={!onView}
+            >
+              {columns.slice(0, 6).map((column, index) => (
+                <div
+                  className={index === 0 ? "admin-record-field primary" : "admin-record-field"}
+                  key={column.label}
+                >
+                  <span>{column.label}</span>
+                  <div>{column.render(row)}</div>
+                </div>
+              ))}
+            </button>
+
+            {onView || actions ? (
+              <div className="admin-row-actions">
+                {onView ? (
+                  <button type="button" className="soft" onClick={() => onView(row)}>
+                    <FaEye /> View details
+                  </button>
                 ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                {actions ? actions(row) : null}
+              </div>
+            ) : null}
+          </article>
+        ))}
       </div>
 
       {filteredRows.length === 0 ? <div className="admin-empty-state">No records match your current search.</div> : null}
@@ -495,17 +472,9 @@ function AdminDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
-  const [buyerFilter, setBuyerFilter] = useState("all");
   const [riderFilter, setRiderFilter] = useState("all");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [riders, setRiders] = useState<AdminRider[]>([]);
-  const [dispatchOps, setDispatchOps] = useState<{
-    dispatches: AdminDispatchBatch[];
-    stats: { pending: number; offered: number; accepted: number; noRider: number; highRisk: number };
-  }>({ dispatches: [], stats: { pending: 0, offered: 0, accepted: 0, noRider: 0, highRisk: 0 } });
-  const [interventionQueue, setInterventionQueue] = useState<AdminInterventionItem[]>([]);
-  const [deliveryZones, setDeliveryZones] = useState<AdminDeliveryZone[]>([]);
-  const [packageRules, setPackageRules] = useState<AdminPackageRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -530,14 +499,10 @@ function AdminDashboard() {
       const nextData = await fetchAdminDataset();
       setData(nextData);
 
-      const [profileResult, riderRowsResult, dispatchResult, queueResult, zonesResult, rulesResult] =
+      const [profileResult, riderRowsResult] =
         await Promise.allSettled([
           fetchAdminProfile(),
           fetchAdminRiders(),
-          fetchAdminDispatchOperations(),
-          fetchAdminInterventionQueue(),
-          fetchDeliveryZones(),
-          fetchPackageRules(),
         ]);
 
       if (profileResult.status === "fulfilled") {
@@ -546,22 +511,6 @@ function AdminDashboard() {
 
       if (riderRowsResult.status === "fulfilled") {
         setRiders(riderRowsResult.value);
-      }
-
-      if (dispatchResult.status === "fulfilled") {
-        setDispatchOps(dispatchResult.value);
-      }
-
-      if (queueResult.status === "fulfilled") {
-        setInterventionQueue(queueResult.value.queue);
-      }
-
-      if (zonesResult.status === "fulfilled") {
-        setDeliveryZones(zonesResult.value.zones || []);
-      }
-
-      if (rulesResult.status === "fulfilled") {
-        setPackageRules(rulesResult.value.rules || []);
       }
     } catch (error) {
       const message =
@@ -592,19 +541,6 @@ function AdminDashboard() {
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
-  const buyerRows = useMemo(() => {
-    const buyers = data.users.filter((user) => user.role === "user");
-
-    if (buyerFilter === "active_orders") return buyers.filter((buyer) => buyer.orders > 0);
-    if (buyerFilter === "used_market") return buyers.filter((buyer) => buyer.usedUploads > 0);
-    if (buyerFilter === "payout_ready") return buyers.filter((buyer) => buyer.payoutReady);
-    if (buyerFilter === "flagged") return buyers.filter((buyer) => buyer.status !== "active");
-    if (buyerFilter !== "all") {
-      return buyers.filter((buyer) => buyer.campus.toLowerCase() === buyerFilter.toLowerCase());
-    }
-
-    return buyers;
-  }, [buyerFilter, data.users]);
   const riderRows = useMemo(() => {
     if (riderFilter === "online") return riders.filter((rider) => rider.availability === "online");
     if (riderFilter === "offline") return riders.filter((rider) => rider.availability === "offline");
@@ -619,10 +555,6 @@ function AdminDashboard() {
 
     return riders;
   }, [riderFilter, riders]);
-  const buyerLocations = useMemo(
-    () => Array.from(new Set(data.users.filter((user) => user.role === "user" && user.campus).map((user) => user.campus))).slice(0, 12),
-    [data.users],
-  );
   const riderLocations = useMemo(
     () => Array.from(new Set(riders.filter((rider) => rider.coverageArea).map((rider) => rider.coverageArea))).slice(0, 12),
     [riders],
@@ -714,7 +646,7 @@ function AdminDashboard() {
   }
 
   async function removeRecord(collection: AdminCollection, id: string, label: string) {
-    const confirmed = window.confirm(`Apply the admin remove/disable action for ${label}? This updates the real backend record.`);
+    const confirmed = window.confirm(`Apply the admin remove/disable action for ${label}? This updates the live platform record.`);
     if (!confirmed) return;
 
     const response = await deleteAdminRecord(collection, id);
@@ -824,7 +756,7 @@ function AdminDashboard() {
       <main className="admin-main">
         <header className="admin-topbar">
           <div>
-            <p>Phase 7 Admin</p>
+            <p>Gleenc Admin</p>
             <h1>{currentTab.label}</h1>
           </div>
           <div className="admin-topbar-actions">
@@ -834,7 +766,7 @@ function AdminDashboard() {
             </div>
             <button className="admin-notification" type="button" title="Notifications">
               <FaBell />
-              <span>{data.overview.openDisputes + data.overview.unreadFeedback}</span>
+              <span>{data.overview.openDisputes + data.overview.unreadSupport}</span>
             </button>
             <input
               ref={adminAvatarInputRef}
@@ -873,9 +805,9 @@ function AdminDashboard() {
               <section className="admin-hero-card">
                 <div>
                   <span className="admin-pill"><FaShieldAlt /> Platform safety center</span>
-                  <h2>Control the full Gleenc marketplace from one full-page admin dashboard.</h2>
+                  <h2>Manage the Gleenc marketplace from a focused production console.</h2>
                   <p>
-                    This area is connected to live users, sellers, products, used-market listings, orders, payments, payouts, deliveries, disputes and activity logs.
+                    Review accounts, seller approvals, listings, orders, payments, payouts, rider access, disputes and support activity from live platform data.
                   </p>
                 </div>
                 <div className="admin-hero-metric">
@@ -900,7 +832,6 @@ function AdminDashboard() {
                 <StatCard label="Payouts" value={data.overview.pendingPayouts} helper="seller funds needing action" icon={<FaMoneyBillWave />} />
                 <StatCard label="Disputes" value={data.overview.openDisputes} helper="open or reviewing" icon={<FaExclamationTriangle />} />
                 <StatCard label="Support" value={data.overview.unreadSupport} helper="unread admin chats" icon={<FaCommentDots />} />
-                <StatCard label="Feedback" value={data.overview.unreadFeedback} helper="platform feedback" icon={<FaCommentDots />} />
               </section>
 
               <section className="admin-overview-grid">
@@ -961,7 +892,7 @@ function AdminDashboard() {
               ]}
               actions={(user) => (
                 <>
-                  <ActionButton tone="soft" onClick={() => openRecord(`${user.name} orders`, { user: user.name, orderCount: user.orders, note: "This links to user order history when the real backend is connected." })}>Orders</ActionButton>
+                  <ActionButton tone="soft" onClick={() => openRecord(`${user.name} orders`, { user: user.name, orderCount: user.orders, note: "Order history for this user." })}>Orders</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${user.name} complaints`, { user: user.name, note: "This links to all disputes/complaints submitted by this user." })}>Complaints</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${user.name} used uploads`, { user: user.name, usedUploads: user.usedUploads, note: "This links to used-market submissions from the user dashboard." })}>Used Items</ActionButton>
                   <ActionButton tone="success" onClick={() => changeStatus("users", user.id, "active")}>Activate</ActionButton>
@@ -971,68 +902,6 @@ function AdminDashboard() {
                 </>
               )}
             />
-          ) : null}
-
-          {activeTab === "buyers" ? (
-            <section className="admin-filtered-table">
-              <div className="admin-filter-row" aria-label="Buyer filters">
-                {[
-                  ["all", "All buyers"],
-                  ["active_orders", "With orders"],
-                  ["used_market", "Used Market sellers"],
-                  ["payout_ready", "Payout ready"],
-                  ["flagged", "Flagged"],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    className={buyerFilter === value ? "active" : ""}
-                    onClick={() => setBuyerFilter(value)}
-                  >
-                    {label}
-                  </button>
-                ))}
-                {buyerLocations.map((location) => (
-                  <button
-                    key={location}
-                    type="button"
-                    className={buyerFilter === location ? "active" : ""}
-                    onClick={() => setBuyerFilter(location)}
-                  >
-                    {location}
-                  </button>
-                ))}
-              </div>
-
-              <DataTable<AdminUser>
-                title="Buyer Management"
-                subtitle="Monitor buyers by general campus/area, order count, used-market activity, dispute risk and account status. Exact addresses stay inside relevant orders, delivery, dispute or support context only."
-                rows={buyerRows}
-                search={search}
-                onView={(buyer) => openRecord(buyer.name, buyer)}
-                columns={[
-                  { label: "Buyer", render: (buyer) => buyer.name },
-                  { label: "Email", render: (buyer) => buyer.email },
-                  { label: "Phone", render: (buyer) => buyer.phone },
-                  { label: "General location", render: (buyer) => buyer.campus || "Not set" },
-                  { label: "Order count", render: (buyer) => buyer.orders },
-                  { label: "Saved", render: (buyer) => buyer.savedItems },
-                  { label: "Used uploads", render: (buyer) => buyer.usedUploads },
-                  { label: "Profile", render: (buyer) => <StatusBadge status={buyer.profileComplete ? "completed" : "pending"} /> },
-                  { label: "Status", render: (buyer) => <StatusBadge status={buyer.status} /> },
-                  { label: "Joined", render: (buyer) => buyer.joined },
-                ]}
-                actions={(buyer) => (
-                  <>
-                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} buyer profile`, { ...buyer, addressPrivacy: "Exact buyer addresses are only visible in order, delivery, dispute, or support context." })}>Details</ActionButton>
-                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} orders`, { buyer: buyer.name, orderCount: buyer.orders })}>Orders</ActionButton>
-                    <ActionButton tone="soft" onClick={() => openRecord(`${buyer.name} risk`, { buyer: buyer.name, status: buyer.status, profileComplete: buyer.profileComplete, usedUploads: buyer.usedUploads })}>Risk</ActionButton>
-                    <ActionButton tone="success" onClick={() => changeStatus("users", buyer.id, "active")}>Activate</ActionButton>
-                    <ActionButton tone="danger" onClick={() => changeStatus("users", buyer.id, "suspended")}>Suspend</ActionButton>
-                  </>
-                )}
-              />
-            </section>
           ) : null}
 
           {activeTab === "sellers" ? (
@@ -1057,7 +926,7 @@ function AdminDashboard() {
               ]}
               actions={(seller) => (
                 <>
-                  <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} store`, { storeName: seller.storeName, owner: seller.ownerName, category: seller.category, rating: seller.rating, note: "This links to the public seller store when seller pages are connected." })}>Store</ActionButton>
+                  <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} store`, { storeName: seller.storeName, owner: seller.ownerName, category: seller.category, rating: seller.rating, note: "Public seller profile and store details." })}>Store</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} products`, { storeName: seller.storeName, products: seller.products, note: "This links to all products/services uploaded by this seller." })}>Products</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} orders`, { storeName: seller.storeName, orders: seller.orders, note: "This links to seller order history." })}>Orders</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} payout`, { storeName: seller.storeName, payoutStatus: seller.payoutStatus, bankStatus: seller.bankStatus, earnings: seller.earnings })}>Payout</ActionButton>
@@ -1071,7 +940,7 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "markets" ? (
+          {activeTab === "marketplace" ? (
             <div className="admin-stage3-grid">
               <DataTable<AdminMarket>
                 title="Local Market Management"
@@ -1148,7 +1017,7 @@ function AdminDashboard() {
             </div>
           ) : null}
 
-          {activeTab === "products" ? (
+          {activeTab === "marketplace" ? (
             <DataTable<AdminProduct>
               title="Product and Service Management"
               subtitle="Control seller products/services, approval status, stock state and listing safety before buyers see them."
@@ -1181,7 +1050,7 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "usedMarket" ? (
+          {activeTab === "marketplace" ? (
             <DataTable<AdminUsedItem>
               title="Used Market Approvals"
               subtitle="Approve, reject, remove and mark used-item listings as safe or unsafe from the user dashboard."
@@ -1244,7 +1113,7 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "payments" ? (
+          {activeTab === "finance" ? (
             <DataTable<AdminPayment>
               title="Payment Monitoring"
               subtitle="Track payment reference, buyer, seller, order amount, Gleenc fee, seller amount and payout status."
@@ -1274,7 +1143,7 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "payouts" ? (
+          {activeTab === "finance" ? (
             <DataTable<AdminPayment>
               title="Seller Payouts"
               subtitle="Release seller funds only after payment and delivery verification rules are satisfied."
@@ -1286,6 +1155,13 @@ function AdminDashboard() {
                 { label: "Seller", render: (payment) => payment.seller },
                 { label: "Seller amount", render: (payment) => payment.sellerAmount },
                 { label: "Gleenc fee", render: (payment) => payment.gleankFee },
+                {
+                  label: "Payout account",
+                  render: (payment) =>
+                    payment.payoutAccount
+                      ? `${payment.payoutAccount.bankName} • ${payment.payoutAccount.accountName} • ${payment.payoutAccount.accountNumberMasked}`
+                      : "Missing",
+                },
                 { label: "Payment", render: (payment) => <StatusBadge status={payment.status} /> },
                 { label: "Payout", render: (payment) => <StatusBadge status={payment.payoutStatus} /> },
                 { label: "Date", render: (payment) => payment.createdAt },
@@ -1298,88 +1174,6 @@ function AdminDashboard() {
                 </>
               )}
             />
-          ) : null}
-
-          {activeTab === "deliveries" ? (
-            <DataTable<AdminDelivery>
-              title="Delivery Tracking"
-              subtitle="Monitor buyer location, seller, rider assignment, pickup points and delivery code verification."
-              rows={data.deliveries}
-              search={search}
-              onView={(delivery) => openRecord(delivery.id, delivery)}
-              columns={[
-                { label: "Order ID", render: (delivery) => delivery.orderId },
-                { label: "Buyer location", render: (delivery) => delivery.buyerLocation },
-                { label: "Seller", render: (delivery) => delivery.seller },
-                { label: "Pickup point", render: (delivery) => delivery.pickupPoint },
-                { label: "Rider", render: (delivery) => delivery.rider },
-                { label: "Delivery", render: (delivery) => <StatusBadge status={delivery.status} /> },
-                { label: "Code", render: (delivery) => <StatusBadge status={delivery.codeVerified ? "verified" : "pending"} /> },
-                { label: "Updated", render: (delivery) => delivery.updatedAt },
-              ]}
-              actions={(delivery) => (
-                <>
-                  <ActionButton tone="soft" onClick={() => changeFields("deliveries", delivery.id, { status: "assigned", rider: delivery.rider === "Not assigned" ? "Assigned rider" : delivery.rider })}>Assign</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("deliveries", delivery.id, "picked_up")}>Picked Up</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("deliveries", delivery.id, "out_for_delivery")}>Out Delivery</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeStatus("deliveries", delivery.id, "verified")}>Verify Code</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeStatus("deliveries", delivery.id, "failed")}>Problem</ActionButton>
-                </>
-              )}
-            />
-          ) : null}
-
-          {activeTab === "dispatchOps" ? (
-            <section className="admin-dispatch-ops">
-              <section className="admin-stats-grid">
-                <StatCard label="Pending batches" value={dispatchOps.stats.pending} helper="waiting for dispatch" icon={<FaClipboardList />} />
-                <StatCard label="Offered" value={dispatchOps.stats.offered} helper="rider offer active" icon={<FaTruck />} />
-                <StatCard label="Accepted" value={dispatchOps.stats.accepted} helper="rider accepted" icon={<FaCheckCircle />} />
-                <StatCard label="No rider" value={dispatchOps.stats.noRider} helper="needs admin action" icon={<FaExclamationTriangle />} />
-                <StatCard label="High risk" value={dispatchOps.stats.highRisk} helper="extra proof needed" icon={<FaShieldAlt />} />
-              </section>
-
-              <DataTable<AdminDispatchBatch>
-                title="Dispatch Operations"
-                subtitle="Automated delivery batches, pickup counts, rider offers, no-rider cases, risk levels and dispatch state."
-                rows={dispatchOps.dispatches}
-                search={search}
-                onView={(batch) => openRecord(String(batch.id || "Delivery batch"), batch)}
-                columns={[
-                  { label: "Batch", render: (batch) => String(batch.id || "") },
-                  { label: "Type", render: (batch) => String(batch.batchType || "").replace(/_/g, " ") },
-                  { label: "Pickups", render: (batch) => Number(batch.pickupCount || 0) },
-                  { label: "Package", render: (batch) => `${String(batch.packageSizeSummary || "")} / ${String(batch.weightClassSummary || "")}` },
-                  { label: "Risk", render: (batch) => <StatusBadge status={String(batch.riskLevel || "low")} /> },
-                  { label: "Status", render: (batch) => <StatusBadge status={String(batch.status || "")} /> },
-                  { label: "Dispatch", render: (batch) => <StatusBadge status={String(batch.dispatchStatus || "")} /> },
-                  { label: "Fee", render: (batch) => `₦${Number(batch.deliveryFee || 0).toLocaleString()}` },
-                ]}
-                actions={(batch) => (
-                  <>
-                    <ActionButton tone="soft" onClick={() => openRecord("Pickup tasks", { pickupTasks: batch.pickupTasks })}>Pickups</ActionButton>
-                    <ActionButton tone="soft" onClick={() => openRecord("Dispatch attempts", { attempts: batch.attempts })}>Attempts</ActionButton>
-                    <ActionButton tone="danger" onClick={() => openRecord("Admin action required", { batch, note: "Use backend admin dispatch endpoints to reassign, hold, split, or cancel this batch." })}>Review</ActionButton>
-                  </>
-                )}
-              />
-
-              <DataTable<AdminInterventionItem>
-                title="Admin Intervention Queue"
-                subtitle="Automation-created queue for no rider available, seller delays, failed OTPs, package mismatches, payout holds and other exceptions."
-                rows={interventionQueue}
-                search={search}
-                onView={(item) => openRecord(String(item.type || item.id || "Queue item"), item)}
-                columns={[
-                  { label: "Type", render: (item) => String(item.type || "").replace(/_/g, " ") },
-                  { label: "Priority", render: (item) => <StatusBadge status={String(item.priority || "medium")} /> },
-                  { label: "Reason", render: (item) => String(item.reason || "") },
-                  { label: "Batch", render: (item) => String(item.relatedBatchId || "—") },
-                  { label: "Status", render: (item) => <StatusBadge status={String(item.status || "open")} /> },
-                  { label: "Created", render: (item) => formatAdminTime(String(item.createdAt || "")) },
-                ]}
-              />
-            </section>
           ) : null}
 
           {activeTab === "riders" ? (
@@ -1514,32 +1308,6 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "feedback" ? (
-            <DataTable<AdminFeedback>
-              title="Feedback Management"
-              subtitle="Read user and seller feedback and mark product, payment, delivery or app issues as resolved."
-              rows={data.feedback}
-              search={search}
-              onView={(feedback) => openRecord(feedback.from, feedback)}
-              columns={[
-                { label: "Sender", render: (feedback) => feedback.from },
-                { label: "Role", render: (feedback) => feedback.role },
-                { label: "Category", render: (feedback) => feedback.category },
-                { label: "Rating", render: (feedback) => `${feedback.rating}/5` },
-                { label: "Message", render: (feedback) => <span className="admin-message-cell">{feedback.message}</span> },
-                { label: "Status", render: (feedback) => <StatusBadge status={feedback.status} /> },
-                { label: "Date", render: (feedback) => feedback.createdAt },
-              ]}
-              actions={(feedback) => (
-                <>
-                  <ActionButton tone="soft" onClick={() => changeStatus("feedback", feedback.id, "read")}>Read</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("feedback", feedback.id, "reviewing")}>Review</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeStatus("feedback", feedback.id, "resolved")}>Resolve</ActionButton>
-                </>
-              )}
-            />
-          ) : null}
-
           {activeTab === "activityLogs" ? (
             <DataTable<AdminActivityLog>
               title="Admin Activity Logs"
@@ -1587,37 +1355,6 @@ function AdminDashboard() {
                 </div>
               </div>
 
-              <DataTable<AdminDeliveryZone>
-                title="Delivery Zones"
-                subtitle="Zones and sub-zones used by checkout grouping, rider service coverage, zone-only fallback and delivery fee calculation."
-                rows={deliveryZones}
-                search={search}
-                onView={(zone) => openRecord(zone.name, zone)}
-                columns={[
-                  { label: "Zone", render: (zone) => zone.name },
-                  { label: "Type", render: (zone) => String(zone.zoneType || "").replace(/_/g, " ") },
-                  { label: "Base fee", render: (zone) => `₦${Number(zone.baseDeliveryFee || 0).toLocaleString()}` },
-                  { label: "Extra pickup", render: (zone) => `₦${Number(zone.extraPickupFee || 0).toLocaleString()}` },
-                  { label: "Availability", render: (zone) => <StatusBadge status={zone.availabilityStatus || "normal"} /> },
-                  { label: "Active", render: (zone) => <StatusBadge status={Boolean(zone.isActive)} /> },
-                ]}
-              />
-
-              <DataTable<AdminPackageRule>
-                title="Package Rules"
-                subtitle="Category-to-package rules used to auto-suggest size, weight, fragility, batching eligibility, vehicle type and risk."
-                rows={packageRules}
-                search={search}
-                onView={(rule) => openRecord(rule.categoryName, rule)}
-                columns={[
-                  { label: "Category", render: (rule) => rule.categoryName },
-                  { label: "Size", render: (rule) => String(rule.packageSize).replace(/_/g, " ") },
-                  { label: "Weight", render: (rule) => String(rule.packageWeightClass).replace(/_/g, " ") },
-                  { label: "Fragility", render: (rule) => String(rule.fragilityLevel).replace(/_/g, " ") },
-                  { label: "Vehicle", render: (rule) => String(rule.requiredVehicleType).replace(/_/g, " ") },
-                  { label: "Risk", render: (rule) => <StatusBadge status={rule.riskLevel || "low"} /> },
-                ]}
-              />
             </section>
           ) : null}
         </section>

@@ -38,7 +38,7 @@ export default function Signup() {
           <h1 className="mt-2 text-3xl font-black text-slate-950">Create Rider Account</h1>
           <p className="mt-2 text-sm text-slate-500">
             Create your rider account, verify your email, then wait for admin approval before handling deliveries.
-            Phone OTP verification is required before changing your rider contact number once SMS is connected.
+            Phone OTP verification is required before changing your rider contact number.
           </p>
         </div>
 
@@ -90,7 +90,7 @@ export default function Signup() {
 
         <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
           <strong className="block text-amber-900">Verification flow</strong>
-          1. Verify email after signup. 2. Admin reviews your rider details. 3. Complete phone OTP verification when SMS is connected.
+          1. Verify email after signup. 2. Admin reviews your rider details. 3. Complete phone OTP verification.
           Riders cannot go online or receive delivery assignments until admin marks the profile verified.
         </div>
 

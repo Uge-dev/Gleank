@@ -1,37 +1,17 @@
-export type ThemeMode = "light" | "dark" | "system";
+export type ThemeMode = "light";
 
 const THEME_STORAGE_KEY = "gleenc-theme";
 const LEGACY_THEME_STORAGE_KEY = "gleank-theme";
 
-function isThemeMode(value: string | null): value is ThemeMode {
-  return value === "light" || value === "dark" || value === "system";
-}
-
-function systemPrefersDark() {
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
-}
-
-export function resolveTheme(theme: ThemeMode): "light" | "dark" {
-  if (theme === "system") return systemPrefersDark() ? "dark" : "light";
-  return theme;
+export function resolveTheme(theme: ThemeMode): "light" {
+  void theme;
+  return "light";
 }
 
 export function getSavedTheme(): ThemeMode {
-  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-
-  if (isThemeMode(savedTheme)) {
-    return savedTheme;
-  }
-
-  const legacyTheme = localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
-
-  if (isThemeMode(legacyTheme)) {
-    localStorage.setItem(THEME_STORAGE_KEY, legacyTheme);
-    localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
-    return legacyTheme;
-  }
-
-  return "system";
+  localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+  localStorage.setItem(THEME_STORAGE_KEY, "light");
+  return "light";
 }
 
 export function applyTheme(theme: ThemeMode) {
@@ -39,22 +19,13 @@ export function applyTheme(theme: ThemeMode) {
   const resolvedTheme = resolveTheme(theme);
 
   root.setAttribute("data-theme", resolvedTheme);
-  root.setAttribute("data-theme-preference", theme);
-  root.classList.toggle("dark", resolvedTheme === "dark");
-  root.style.colorScheme = resolvedTheme;
-  localStorage.setItem(THEME_STORAGE_KEY, theme);
+  root.setAttribute("data-theme-preference", "light");
+  root.classList.remove("dark");
+  root.style.colorScheme = "light";
+  localStorage.setItem(THEME_STORAGE_KEY, "light");
 }
 
 export function watchSystemTheme() {
-  const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
-  if (!mediaQuery) return () => undefined;
-
-  const handleChange = () => {
-    if (getSavedTheme() === "system") {
-      applyTheme("system");
-    }
-  };
-
-  mediaQuery.addEventListener?.("change", handleChange);
-  return () => mediaQuery.removeEventListener?.("change", handleChange);
+  applyTheme("light");
+  return () => undefined;
 }

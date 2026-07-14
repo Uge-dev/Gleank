@@ -9,9 +9,21 @@ import {
 import { useState } from "react";
 
 import AuthModal from "./AuthModal";
-import { useCart } from "../context/CartContext";
+import { useCart, type CartItem } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { formatNaira } from "../utils/price";
+
+function cartStockState(item: CartItem) {
+  const stockLimit =
+    item.stock !== undefined && Number.isFinite(Number(item.stock))
+      ? Math.max(0, Number(item.stock))
+      : undefined;
+
+  return {
+    stockLimit,
+    atMaxStock: stockLimit !== undefined && item.quantity >= stockLimit,
+  };
+}
 
 function CartDrawer() {
   const navigate = useNavigate();
@@ -85,8 +97,11 @@ function CartDrawer() {
           ) : (
             <>
               <div className="cart-drawer-list">
-                {cartItems.map((item) => (
-                  <article className="cart-drawer-item" key={item.id}>
+                {cartItems.map((item) => {
+                  const { stockLimit, atMaxStock } = cartStockState(item);
+
+                  return (
+                    <article className="cart-drawer-item" key={item.id}>
                     <img src={item.image} alt={item.name} />
 
                     <div className="cart-item-info">
@@ -100,6 +115,13 @@ function CartDrawer() {
                       <p>
                         {item.sellerName} • {item.campus}
                       </p>
+                      {stockLimit !== undefined && (
+                        <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
+                          {stockLimit <= 0
+                            ? "Out of stock"
+                            : `${stockLimit} In stock${atMaxStock ? " • max selected" : ""}`}
+                        </small>
+                      )}
 
                       <strong>{item.price}</strong>
 
@@ -119,6 +141,8 @@ function CartDrawer() {
                             type="button"
                             onClick={() => increaseQuantity(item.id)}
                             aria-label="Increase quantity"
+                            disabled={atMaxStock}
+                            title={atMaxStock ? "Maximum stock selected" : "Increase quantity"}
                           >
                             <FiPlus />
                           </button>
@@ -135,7 +159,8 @@ function CartDrawer() {
                       </div>
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="cart-drawer-footer">

@@ -71,6 +71,9 @@ export default function Login() {
 
           {error && <p className="mb-4 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
           <Button fullWidth size="lg">Login</Button>
+          <p className="mt-4 text-center text-sm">
+            <Link to="/forgot-password" className="font-extrabold text-gleenc-cyan">Forgot password?</Link>
+          </p>
           <p className="mt-5 text-center text-sm text-slate-500">New rider? <Link to="/rider/signup" className="font-extrabold text-gleenc-cyan">Create account</Link></p>
         </motion.form>
       </section>

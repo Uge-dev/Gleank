@@ -41,7 +41,7 @@ export default function SafetyCenter() {
             items={[
               'Never collect a package without seller pickup OTP.',
               'Never hand over a package without customer delivery OTP.',
-              'Do not accept address changes outside Gleank support approval.',
+              'Do not accept address changes outside Gleenc support approval.',
               'Do not carry high-value packages above your rider level limit.',
               'Report threats, accidents, package tampering, payment pressure, or suspicious buyer/seller behavior immediately.'
             ]}

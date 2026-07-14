@@ -17,7 +17,7 @@ import AuthLayout from "../components/AuthLayout";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
 import { useAuth } from "../context/AuthContext";
 
-type AccountType = "buyer" | "seller";
+type AccountType = "buyer" | "seller" | "rider";
 
 function Signup() {
   const navigate = useNavigate();
@@ -41,11 +41,19 @@ function Signup() {
         campus: String(formData.get("campus") || "").trim(),
         phone: String(formData.get("phone") || "").trim(),
         storeName: String(formData.get("storeName") || "").trim(),
+        vehicleType: String(formData.get("vehicleType") || "").trim(),
+        vehiclePlate: String(formData.get("vehiclePlate") || "").trim(),
+        coverageArea: String(formData.get("coverageArea") || "").trim(),
+        homeAddress: String(formData.get("homeAddress") || "").trim(),
         password: String(formData.get("password") || ""),
         role: accountType,
       });
       if (!responseUser.emailVerified) {
         navigate("/verify-email");
+        return;
+      }
+      if (responseUser.role === "rider") {
+        navigate("/rider");
         return;
       }
       navigate(responseUser.role === "seller" ? "/seller/onboarding" : "/profile");
@@ -63,8 +71,8 @@ function Signup() {
   return (
     <AuthLayout
       eyebrow="Join Gleenc"
-      title="Create a real campus marketplace account."
-      description="Choose a buyer account for shopping or a seller account with an automatically created store workspace."
+      title="Create your Gleenc account."
+      description="Choose buyer, seller, or rider so Gleenc opens the correct workspace after verification."
     >
       <div className="auth-form-card">
         <div className="auth-form-header">
@@ -90,12 +98,15 @@ function Signup() {
             <FiShoppingBag />
             Seller
           </button>
+          <button
+            type="button"
+            className={accountType === "rider" ? "active" : ""}
+            onClick={() => setAccountType("rider")}
+          >
+            <FiTruck />
+            Rider
+          </button>
         </div>
-
-        <Link className="rider-account-link" to="/rider/signup">
-          <FiTruck />
-          Create a rider account instead
-        </Link>
 
         {error && (
           <div className="auth-inline-message error" role="alert">
@@ -142,6 +153,7 @@ function Signup() {
                 type="tel"
                 placeholder="080..."
                 autoComplete="tel"
+                required={accountType === "rider"}
               />
             </div>
           </label>
@@ -174,6 +186,49 @@ function Signup() {
                 />
               </div>
             </label>
+          )}
+
+          {accountType === "rider" && (
+            <>
+              <label>
+                <span>Vehicle type</span>
+                <div className="auth-input-box">
+                  <FiTruck />
+                  <select name="vehicleType" required defaultValue="Motorcycle">
+                    <option value="Walking">Walking</option>
+                    <option value="Bicycle">Bicycle</option>
+                    <option value="Motorcycle">Motorcycle</option>
+                    <option value="Car">Car</option>
+                  </select>
+                </div>
+              </label>
+
+              <label>
+                <span>Vehicle / bike number</span>
+                <div className="auth-input-box">
+                  <FiTruck />
+                  <input
+                    name="vehiclePlate"
+                    type="text"
+                    placeholder="Plate or bike number"
+                    required
+                  />
+                </div>
+              </label>
+
+              <label>
+                <span>Coverage area</span>
+                <div className="auth-input-box">
+                  <FiMapPin />
+                  <input
+                    name="coverageArea"
+                    type="text"
+                    placeholder="FUPRE, Ugbomro, Effurun..."
+                    required
+                  />
+                </div>
+              </label>
+            </>
           )}
 
           <label>

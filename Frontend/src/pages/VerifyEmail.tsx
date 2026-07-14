@@ -4,6 +4,13 @@ import { FiAlertCircle, FiCheckCircle, FiMail, FiRefreshCw } from "react-icons/f
 import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../context/AuthContext";
 import { resendVerification, verifyEmail } from "../services/auth.service";
+import type { AuthUser } from "../types/domain";
+
+function verifiedRedirectPath(user: AuthUser | null | undefined) {
+  if (user?.role === "rider") return "/rider";
+  if (user?.role === "seller") return "/seller/onboarding";
+  return "/";
+}
 
 function VerifyEmail() {
   const [searchParams] = useSearchParams();
@@ -25,7 +32,7 @@ function VerifyEmail() {
         setMessage(result.message || "Email verified successfully.");
         await refreshSession();
         window.setTimeout(() => {
-          if (active) navigate("/", { replace: true });
+          if (active) navigate(verifiedRedirectPath(result.user), { replace: true });
         }, 900);
       })
       .catch((requestError) => {
@@ -111,7 +118,7 @@ function VerifyEmail() {
         )}
 
         <p className="auth-switch-text">
-          Continue to <Link to="/profile">Profile</Link> or <Link to="/login">Login</Link>
+          Continue to <Link to={verifiedRedirectPath(user)}>{user?.role === "rider" ? "Rider dashboard" : user?.role === "seller" ? "Seller setup" : "Home"}</Link> or <Link to="/login">Login</Link>
         </p>
       </div>
     </AuthLayout>

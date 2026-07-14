@@ -12,8 +12,12 @@ export type SellerReadiness = {
   payoutAccount: UsedMarketPayoutAccount | null;
   hasStore: boolean;
   emailReady: boolean;
+  phoneReady?: boolean;
+  faceReady?: boolean;
   verificationReady: boolean;
+  subscriptionActive?: boolean;
   payoutReady: boolean;
+  platformFeeReady?: boolean;
 };
 
 export type SellerVerificationResponse = {

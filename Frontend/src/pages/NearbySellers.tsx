@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FiArrowLeft, FiCompass, FiMapPin, FiNavigation, FiSearch, FiTruck } from "react-icons/fi";
+import { FiArrowLeft, FiMapPin, FiSearch } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import {
   MarketProductCard,
@@ -52,33 +52,6 @@ function NearbySellers() {
         <FiArrowLeft /> Back to Market
       </Link>
 
-      <header className="market-shell-hero nearby">
-        <span>Nearby Sellers</span>
-        <h1>Products close to the buyer’s selected location.</h1>
-        <p>
-          Nearby Sellers is prepared for location-based discovery, faster delivery,
-          and ranking sellers by distance, availability, and fulfilment quality.
-        </p>
-      </header>
-
-      <div className="market-shell-grid">
-        <article className="market-shell-card">
-          <FiNavigation />
-          <h2>Selected location</h2>
-          <p>{data?.selectedCampus ? `${data.selectedCampus} is prioritized now.` : "Campus/location selection is ready for map APIs."}</p>
-        </article>
-        <article className="market-shell-card">
-          <FiTruck />
-          <h2>Fast delivery logic</h2>
-          <p>Products can be ranked by active rider coverage and estimated delivery time.</p>
-        </article>
-        <article className="market-shell-card">
-          <FiCompass />
-          <h2>Campus + market balance</h2>
-          <p>Nearby results can include campus stores, local-market sellers, and independent sellers.</p>
-        </article>
-      </div>
-
       <form
         className="market-hub-search compact"
         onSubmit={(event) => {
@@ -99,7 +72,7 @@ function NearbySellers() {
       {isLoading ? (
         <LoadingState
           title="Loading nearby sellers"
-          message="Prioritizing campus and active store data."
+          message="Loading nearby products and stores."
         />
       ) : error ? (
         <div className="market-empty-state">
@@ -110,18 +83,7 @@ function NearbySellers() {
         </div>
       ) : data && (data.sellers.length || data.products.length) ? (
         <>
-          <div className="market-inline-alert soft">
-            <strong>{data.locationMode === "campus" ? "Campus-prioritized" : "Platform-wide"}</strong>
-            <span>{data.note}</span>
-          </div>
-
-          <section className="market-live-section">
-            <div className="market-section-head compact">
-              <div>
-                <span>Nearby products</span>
-                <h2>Products close to your market context</h2>
-              </div>
-            </div>
+          <section className="market-live-section product-feed-only">
             <div className="market-live-grid">
               {data.products.map((product) => (
                 <MarketProductCard key={product.id} product={product} />
@@ -129,13 +91,7 @@ function NearbySellers() {
             </div>
           </section>
 
-          <section className="market-live-section">
-            <div className="market-section-head compact">
-              <div>
-                <span>Nearby sellers</span>
-                <h2>Active stores</h2>
-              </div>
-            </div>
+          <section className="market-live-section product-feed-only">
             <div className="market-live-grid">
               {data.sellers.map((store) => (
                 <MarketStoreCard key={store.id} store={store} />
@@ -147,7 +103,6 @@ function NearbySellers() {
         <div className="market-empty-state">
           <FiMapPin />
           <h2>No nearby sellers yet</h2>
-          <p>Nearby sellers will appear here based on your selected delivery location.</p>
           <Link to="/market/search">Search the full Market</Link>
         </div>
       )}

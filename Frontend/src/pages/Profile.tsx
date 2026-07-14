@@ -117,7 +117,7 @@ function Profile() {
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const displayName = user?.name || "Gleenc User";
-  const displayEmail = user?.email || "user@gleank.com";
+  const displayEmail = user?.email || "user@gleenc.com";
   const displayCampus = user?.campus || "Campus not set";
   const accountType = user?.role === "seller" ? "Campus Seller" : "Campus Buyer";
   const profileAvatarUrl =

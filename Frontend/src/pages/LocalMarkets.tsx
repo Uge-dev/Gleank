@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { FiArrowLeft, FiMap, FiMapPin, FiSearch, FiShoppingBag, FiTruck } from "react-icons/fi";
+import { FiArrowLeft, FiMapPin, FiSearch } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { LocalMarketCard } from "../components/MarketCards";
 import {
@@ -49,15 +49,6 @@ function LocalMarkets() {
         <FiArrowLeft /> Back to Market
       </Link>
 
-      <header className="market-shell-hero local">
-        <span>Local Markets</span>
-        <h1>Physical markets, seller pickups, and rider delivery.</h1>
-        <p>
-          Local Markets will support approved physical markets, verified market sellers,
-          rider pickup instructions, and logistics pricing with platform margin included.
-        </p>
-      </header>
-
       <form
         className="market-hub-search compact"
         onSubmit={(event) => {
@@ -78,7 +69,7 @@ function LocalMarkets() {
       {isLoading ? (
         <LoadingState
           title="Loading Local Markets"
-          message="Checking admin-approved markets and connected sellers."
+          message="Loading active local markets."
         />
       ) : error ? (
         <div className="market-empty-state">
@@ -96,27 +87,8 @@ function LocalMarkets() {
         <div className="market-empty-state">
           <FiMapPin />
           <h2>No approved local markets yet</h2>
-          <p>Local markets will appear here after admin creates and activates them.</p>
         </div>
       )}
-
-      <div className="market-shell-grid">
-        <article className="market-shell-card">
-          <FiShoppingBag />
-          <h2>Approved sellers</h2>
-          <p>Sellers can later attach to approved markets by address, stall/shop number, and admin review.</p>
-        </article>
-        <article className="market-shell-card">
-          <FiTruck />
-          <h2>Rider pickup ready</h2>
-          <p>Orders can later flow into rider pickup queues after seller availability confirmation.</p>
-        </article>
-        <article className="market-shell-card">
-          <FiMap />
-          <h2>Map-based expansion</h2>
-          <p>New market clusters can be created from location data and approved by admin later.</p>
-        </article>
-      </div>
     </section>
   );
 }

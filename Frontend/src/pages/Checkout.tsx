@@ -60,6 +60,10 @@ function Checkout() {
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
   const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
+  const payAtDeliveryDisabledReason =
+    user && !user.emailVerified
+      ? "Verify your email before using Pay at Delivery, or choose Pay Now."
+      : "";
 
   const sellerCount = useMemo(() => {
     return new Set(cartItems.map((item) => item.sellerId)).size;
@@ -499,13 +503,17 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <button
                 type="button"
                 className={paymentMethod === "pay_on_delivery" ? "selected" : ""}
-                onClick={() => setPaymentMethod("pay_on_delivery")}
+                disabled={Boolean(payAtDeliveryDisabledReason)}
+                onClick={() => {
+                  if (!payAtDeliveryDisabledReason) setPaymentMethod("pay_on_delivery");
+                }}
+                title={payAtDeliveryDisabledReason || "Pay securely at delivery through Gleenc"}
               >
                 <FiTruck />
                 <strong>Pay at Delivery</strong>
                 <span>
-                  Seller confirms, rider comes, you pay securely through
-                  Gleenc/Paystack, then your delivery code unlocks.
+                  {payAtDeliveryDisabledReason ||
+                    "Seller confirms, rider comes, you pay securely through Gleenc/Paystack when your rider arrives. No cash or direct transfer is allowed."}
                 </span>
               </button>
             </div>

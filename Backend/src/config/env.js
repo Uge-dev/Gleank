@@ -136,6 +136,32 @@ export const env = {
     process.env.ENABLE_AUTOMATED_DELIVERY_FEES,
     true,
   ),
+  enableChatSafetyFilter: booleanFromEnv(process.env.ENABLE_CHAT_SAFETY_FILTER, true),
+  enablePhoneNumberMasking: booleanFromEnv(process.env.ENABLE_PHONE_NUMBER_MASKING, true),
+  enablePaymentKeywordBlocking: booleanFromEnv(process.env.ENABLE_PAYMENT_KEYWORD_BLOCKING, true),
+  enableOffPlatformReports: booleanFromEnv(process.env.ENABLE_OFF_PLATFORM_REPORTS, true),
+  enablePayAtDelivery: booleanFromEnv(process.env.ENABLE_PAY_AT_DELIVERY, true),
+  enableDeliveryOtpLock: booleanFromEnv(process.env.ENABLE_DELIVERY_OTP_LOCK, true),
+  enableProductContactModeration: booleanFromEnv(process.env.ENABLE_PRODUCT_CONTACT_MODERATION, true),
+  enableStoreContactModeration: booleanFromEnv(process.env.ENABLE_STORE_CONTACT_MODERATION, true),
+  enableAntiCircumventionScoring: booleanFromEnv(process.env.ENABLE_ANTI_CIRCUMVENTION_SCORING, true),
+  payAtDeliveryPaymentWindowMinutes: numberFromEnv(
+    process.env.PAY_AT_DELIVERY_PAYMENT_WINDOW_MINUTES,
+    10,
+  ),
+  payAtDeliveryRequireVerifiedBuyer: booleanFromEnv(
+    process.env.PAY_AT_DELIVERY_REQUIRE_VERIFIED_BUYER,
+    true,
+  ),
+  payAtDeliveryMinBuyerScore: numberFromEnv(process.env.PAY_AT_DELIVERY_MIN_BUYER_SCORE, 70),
+  payAtDeliveryMaxOrderValueKobo: numberFromEnv(
+    process.env.PAY_AT_DELIVERY_MAX_ORDER_VALUE_KOBO,
+    numberFromEnv(process.env.PAY_AT_DELIVERY_MAX_ORDER_VALUE, 50000) * 100,
+  ),
+  payAtDeliveryDisableAfterFailures: numberFromEnv(
+    process.env.PAY_AT_DELIVERY_DISABLE_AFTER_FAILURES,
+    2,
+  ),
   enableAutomatedReliabilityScoring: booleanFromEnv(
     process.env.ENABLE_AUTOMATED_RELIABILITY_SCORING,
     true,

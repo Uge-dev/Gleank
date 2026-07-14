@@ -4,6 +4,7 @@ import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { markPayoutDeliveryVerified } from "./payout.service.js";
+import { evaluatePayAtDeliveryEligibility } from "./payment-protection.service.js";
 import {
   createDispute,
   createReturnRequest,
@@ -434,6 +435,26 @@ export function createOrders(userId, input) {
       });
 
       grouped.set(product.store_id, group);
+    }
+
+    if (paymentMethod === "pay_on_delivery") {
+      const allProducts = Array.from(grouped.values()).flatMap((group) => group.products);
+      const totalKoboForEligibility = allProducts.reduce(
+        (total, item) => total + item.lineTotalKobo,
+        0,
+      );
+      const eligibility = evaluatePayAtDeliveryEligibility(userId, {
+        products: allProducts,
+        totalKobo: totalKoboForEligibility,
+      });
+
+      if (!eligibility.eligible) {
+        throw new HttpError(
+          422,
+          eligibility.reason ||
+            "Pay at Delivery is not available for this order. Please use Pay Now.",
+        );
+      }
     }
 
     const now = new Date().toISOString();

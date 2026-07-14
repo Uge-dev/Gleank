@@ -13,7 +13,7 @@ export default function VerificationCenter() {
 
   return (
     <div>
-      <PageHeader title="Rider Verification" subtitle="Manage identity, guarantor, vehicle, and future NIN verification requirements for safer delivery operations." />
+      <PageHeader title="Rider Verification" subtitle="Manage identity, guarantor, vehicle and document requirements for safer delivery operations." />
 
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="p-6">
@@ -51,14 +51,14 @@ export default function VerificationCenter() {
               <div key={doc.id} className="flex flex-col justify-between gap-3 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-center">
                 <div>
                   <p className="font-extrabold text-slate-950">{doc.label}</p>
-                  <p className="mt-1 text-sm text-slate-500">{doc.required ? 'Required for launch' : 'Optional / future upgrade'} {doc.note ? `· ${doc.note}` : ''}</p>
+                  <p className="mt-1 text-sm text-slate-500">{doc.required ? 'Required' : 'Optional'} {doc.note ? `· ${doc.note}` : ''}</p>
                 </div>
                 <StatusBadge value={doc.status} />
               </div>
             ))}
           </div>
           <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-            <FiShield className="mr-2 inline" /> NIN should not be forced for every rider until the backend, legal/privacy policy, NDPR/NDPA controls, and verification vendor are ready. It can later unlock high-value delivery levels.
+            <FiShield className="mr-2 inline" /> Higher-risk deliveries may require stronger identity checks, admin approval and additional safety review.
           </div>
         </Card>
       </div>

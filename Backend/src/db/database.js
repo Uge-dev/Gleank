@@ -29,7 +29,7 @@ db.exec(`
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('buyer', 'seller', 'admin')),
+    role TEXT NOT NULL CHECK (role IN ('buyer', 'seller', 'admin', 'rider')),
     campus TEXT NOT NULL DEFAULT '',
     phone TEXT NOT NULL DEFAULT '',
     avatar_url TEXT,
@@ -70,6 +70,50 @@ db.exec(`
     ON notifications(user_id);
   CREATE INDEX IF NOT EXISTS notifications_unread_idx
     ON notifications(user_id, is_read, created_at);
+
+  CREATE TABLE IF NOT EXISTS payment_protection_events (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT,
+    target_user_id TEXT,
+    context_type TEXT NOT NULL DEFAULT '',
+    context_id TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL DEFAULT 'logged',
+    severity INTEGER NOT NULL DEFAULT 0,
+    reasons TEXT NOT NULL DEFAULT '[]',
+    original_preview TEXT NOT NULL DEFAULT '',
+    sanitized_preview TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS payment_protection_events_actor_idx
+    ON payment_protection_events(actor_id, created_at);
+  CREATE INDEX IF NOT EXISTS payment_protection_events_context_idx
+    ON payment_protection_events(context_type, context_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS buyer_pay_at_delivery_scores (
+    user_id TEXT PRIMARY KEY,
+    score INTEGER NOT NULL DEFAULT 100,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    disabled_until TEXT,
+    last_failure_reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS pay_at_delivery_failures (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    order_id TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS pay_at_delivery_failures_user_idx
+    ON pay_at_delivery_failures(user_id, created_at);
 
   CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id TEXT PRIMARY KEY,
@@ -1316,15 +1360,32 @@ const stage4SeededAt = new Date().toISOString();
 const restrictedKeywordSeeds = [
   ["tramadol", "reject", "Medication and controlled drugs are not allowed."],
   ["codeine", "reject", "Medication and controlled drugs are not allowed."],
+  ["prescription", "reject", "Medication and prescription drugs are not allowed."],
+  ["antibiotic", "reject", "Medication and prescription drugs are not allowed."],
+  ["injection", "reject", "Medical injections are not allowed."],
+  ["syringe", "reject", "Medical injections and unsafe medical items are not allowed."],
   ["cocaine", "reject", "Illegal substances are not allowed."],
-  ["weed", "review", "Potential restricted substance."],
+  ["heroin", "reject", "Illegal substances are not allowed."],
+  ["meth", "reject", "Illegal substances are not allowed."],
+  ["skunk", "reject", "Illegal substances are not allowed."],
+  ["cannabis", "reject", "Illegal substances are not allowed."],
+  ["marijuana", "reject", "Illegal substances are not allowed."],
+  ["weed", "reject", "Illegal substances are not allowed."],
   ["gun", "reject", "Weapons are not allowed."],
+  ["firearm", "reject", "Weapons are not allowed."],
+  ["ammunition", "reject", "Weapons and ammunition are not allowed."],
+  ["bullet", "reject", "Weapons and ammunition are not allowed."],
   ["pistol", "reject", "Weapons are not allowed."],
   ["rifle", "reject", "Weapons are not allowed."],
+  ["explosive", "reject", "Explosives are not allowed."],
+  ["bomb", "reject", "Explosives are not allowed."],
   ["knife", "review", "Potential weapon or restricted item."],
   ["medicine", "reject", "Medication requires manual compliance review and is blocked for campus selling."],
   ["pharmacy", "reject", "Medication requires manual compliance review and is blocked for campus selling."],
   ["fake", "review", "Potential counterfeit or misleading listing."],
+  ["counterfeit", "review", "Potential counterfeit or misleading listing."],
+  ["stolen", "reject", "Stolen goods are not allowed."],
+  ["no receipt", "review", "High-risk listing without proof of ownership."],
 ];
 
 for (const [keyword, action, reason] of restrictedKeywordSeeds) {
@@ -1348,6 +1409,9 @@ const categoryRuleSeeds = [
   ["all", "drugs", "Drugs", "reject", "Controlled drugs are not allowed on Gleenc."],
   ["all", "weapons", "Weapons", "reject", "Weapons are not allowed on Gleenc."],
   ["all", "guns", "Guns", "reject", "Guns and firearms are not allowed on Gleenc."],
+  ["all", "firearms", "Firearms", "reject", "Firearms are not allowed on Gleenc."],
+  ["all", "ammunition", "Ammunition", "reject", "Ammunition is not allowed on Gleenc."],
+  ["all", "explosives", "Explosives", "reject", "Explosives are not allowed on Gleenc."],
   ["local_market", "fresh_food", "Fresh Food", "review", "Fresh food requires admin market readiness review in early launch."],
   ["local_market", "meat_fish", "Meat/Fish", "review", "Perishable products require admin readiness review in early launch."],
   ["local_market", "fuel_gas", "Fuel/Gas", "review", "Fuel and gas require admin compliance review."],

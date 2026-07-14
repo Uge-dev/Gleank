@@ -15,20 +15,13 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("gleenc-theme") || localStorage.getItem("gleank-theme") || "system";
-          var preference = /^(light|dark|system)$/.test(stored) ? stored : "system";
-          var resolved = preference === "system"
-            ? (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
-            : preference;
           var root = document.documentElement;
-          root.setAttribute("data-theme", resolved);
-          root.setAttribute("data-theme-preference", preference);
-          root.classList.toggle("dark", resolved === "dark");
-          root.style.colorScheme = resolved;
-          if (localStorage.getItem("gleank-theme") && !localStorage.getItem("gleenc-theme")) {
-            localStorage.setItem("gleenc-theme", preference);
-            localStorage.removeItem("gleank-theme");
-          }
+          root.setAttribute("data-theme", "light");
+          root.setAttribute("data-theme-preference", "light");
+          root.classList.remove("dark");
+          root.style.colorScheme = "light";
+          localStorage.setItem("gleenc-theme", "light");
+          localStorage.removeItem("gleank-theme");
         } catch (error) {
           document.documentElement.setAttribute("data-theme", "light");
         }

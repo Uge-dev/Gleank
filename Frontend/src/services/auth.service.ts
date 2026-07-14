@@ -11,10 +11,14 @@ export type RegisterInput = {
   name: string;
   email: string;
   password: string;
-  role: "buyer" | "seller";
+  role: "buyer" | "seller" | "rider";
   campus: string;
   phone?: string;
   storeName?: string;
+  vehicleType?: string;
+  vehiclePlate?: string;
+  coverageArea?: string;
+  homeAddress?: string;
 };
 
 export function getCurrentSession() {

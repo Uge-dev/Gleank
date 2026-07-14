@@ -9,7 +9,7 @@ import {
 } from "react-icons/fi";
 import EmptyState from "../components/EmptyState";
 import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
+import { useCart, type CartItem } from "../context/CartContext";
 
 function formatPrice(price: number) {
   return new Intl.NumberFormat("en-NG", {
@@ -17,6 +17,18 @@ function formatPrice(price: number) {
     currency: "NGN",
     maximumFractionDigits: 0,
   }).format(price);
+}
+
+function cartStockState(item: CartItem) {
+  const stockLimit =
+    item.stock !== undefined && Number.isFinite(Number(item.stock))
+      ? Math.max(0, Number(item.stock))
+      : undefined;
+
+  return {
+    stockLimit,
+    atMaxStock: stockLimit !== undefined && item.quantity >= stockLimit,
+  };
 }
 
 function Cart() {
@@ -86,14 +98,24 @@ function Cart() {
 
       <section className="cart-layout">
         <div className="cart-items-panel">
-          {cartItems.map((item) => (
-            <article className="cart-item-card" key={item.id}>
+          {cartItems.map((item) => {
+            const { stockLimit, atMaxStock } = cartStockState(item);
+
+            return (
+              <article className="cart-item-card" key={item.id}>
               <img src={item.image} alt={item.name} />
 
               <div className="cart-item-info">
                 <span>{item.campus || "Campus product"}</span>
                 <h2>{item.name}</h2>
                 <p>Sold by {item.sellerName}</p>
+                {stockLimit !== undefined && (
+                  <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
+                    {stockLimit <= 0
+                      ? "Out of stock"
+                      : `${stockLimit} In stock${atMaxStock ? " • max selected" : ""}`}
+                  </small>
+                )}
                 <strong>{formatPrice(item.numericPrice)}</strong>
               </div>
 
@@ -113,6 +135,8 @@ function Cart() {
                     type="button"
                     onClick={() => increaseQuantity(item.id)}
                     aria-label="Increase quantity"
+                    disabled={atMaxStock}
+                    title={atMaxStock ? "Maximum stock selected" : "Increase quantity"}
                   >
                     <FiPlus />
                   </button>
@@ -130,7 +154,8 @@ function Cart() {
                 </button>
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
 
         <aside className="cart-summary-card">
