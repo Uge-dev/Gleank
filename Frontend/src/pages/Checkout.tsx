@@ -6,10 +6,8 @@ import {
   FiArrowLeft,
   FiCheckCircle,
   FiCreditCard,
-  FiLock,
   FiMapPin,
   FiNavigation,
-  FiShield,
   FiShoppingCart,
   FiTruck,
   FiUser,
@@ -273,22 +271,6 @@ window.location.href = paymentResponse.payment.authorizationUrl;
         <FiArrowLeft /> Back to cart
       </Link>
 
-      <div className="checkout-pro-hero">
-        <div>
-          <span className="eyebrow">Secure campus checkout</span>
-          <h1>Complete your Gleenc order</h1>
-          <p>
-            Confirm your details, choose pickup or campus delivery, then pay securely.
-            Your cart will only clear after payment is verified.
-          </p>
-        </div>
-        <div className="checkout-trust-strip">
-          <span><FiShield /> Buyer protection</span>
-          <span><FiLock /> Secure payment</span>
-          <span><FiTruck /> Campus delivery</span>
-        </div>
-      </div>
-
       {error && (
         <div className="checkout-alert" role="alert">
           <FiAlertCircle />
@@ -298,8 +280,6 @@ window.location.href = paymentResponse.payment.authorizationUrl;
 
       <form className="checkout-pro-grid" onSubmit={handleSubmit}>
         <div className="checkout-flow-card">
-        
-
           <section className="checkout-block">
             <div className="checkout-section-title">
               <FiUser />

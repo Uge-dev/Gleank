@@ -90,6 +90,12 @@ function storedImages(value) {
   }
 }
 
+function assertListingImages(images, itemType) {
+  if (!Array.isArray(images) || images.length < 1) {
+    throw new HttpError(422, `Add at least one ${itemType} image before publishing.`);
+  }
+}
+
 export function sellerWorkspace(userId) {
   const store = storeForUser(userId);
   const products = db
@@ -110,6 +116,7 @@ export function createProduct(userId, input, uploadedUrls) {
   const now = new Date().toISOString();
   const id = createId("prd");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
+  assertListingImages(images, "product");
   const stock = Number(input.stock || 0);
   const moderation = evaluateListingModeration({
     store,
@@ -169,6 +176,7 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
   if (!existing) throw new HttpError(404, "Product was not found.");
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
+  assertListingImages(images, "product");
   const moderation = evaluateListingModeration({
     store,
     input: { ...input, stock: Number(input.stock || 0) },
@@ -242,6 +250,7 @@ export function createService(userId, input, uploadedUrls) {
   const now = new Date().toISOString();
   const id = createId("svc");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
+  assertListingImages(images, "service");
   const price = computePlatformPrice(input.price);
   const range = serviceAmountRange(input);
   const moderation = evaluateListingModeration({
@@ -310,6 +319,7 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
   if (!existing) throw new HttpError(404, "Service was not found.");
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
+  assertListingImages(images, "service");
   const price = computePlatformPrice(input.price);
   const range = serviceAmountRange(input);
   const moderation = evaluateListingModeration({

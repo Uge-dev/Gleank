@@ -10,6 +10,7 @@ import {
   FiMapPin,
   FiPhone,
   FiShoppingBag,
+  FiTruck,
   FiUser,
 } from "react-icons/fi";
 import AuthLayout from "../components/AuthLayout";
@@ -90,6 +91,11 @@ function Signup() {
             Seller
           </button>
         </div>
+
+        <Link className="rider-account-link" to="/rider/signup">
+          <FiTruck />
+          Create a rider account instead
+        </Link>
 
         {error && (
           <div className="auth-inline-message error" role="alert">

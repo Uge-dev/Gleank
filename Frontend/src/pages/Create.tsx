@@ -192,13 +192,65 @@ function Create() {
     });
   }
 
+  function validateListingForm(formData: FormData) {
+    const requiredFields: Array<[string, string]> = [
+      ["name", createType === "product" ? "Product name is required." : "Service title is required."],
+      ["category", "Category is required."],
+      ["price", createType === "service" ? "Starting price is required." : "Price is required."],
+      ["description", "Description is required."],
+    ];
+
+    if (createType === "product") {
+      requiredFields.push(["stock", "Stock quantity is required."]);
+      requiredFields.push(["packageSize", "Package size is required."]);
+      requiredFields.push(["packageWeightClass", "Weight class is required."]);
+      requiredFields.push(["fragilityLevel", "Fragility level is required."]);
+      requiredFields.push(["packageShape", "Package shape is required."]);
+      requiredFields.push(["stackability", "Stackability is required."]);
+      requiredFields.push(["batchingEligibility", "Batching eligibility is required."]);
+      requiredFields.push(["requiredVehicleType", "Required vehicle is required."]);
+      requiredFields.push(["estimatedPackageUnits", "Package units are required."]);
+    } else {
+      requiredFields.push(["serviceType", "Service type is required."]);
+      requiredFields.push(["location", "Service location is required."]);
+      requiredFields.push(["durationMinutes", "Duration is required."]);
+    }
+
+    for (const [field, message] of requiredFields) {
+      if (!String(formData.get(field) || "").trim()) {
+        return message;
+      }
+    }
+
+    if (Number(formData.get("price") || 0) <= 0) {
+      return createType === "service" ? "Starting price must be greater than zero." : "Price must be greater than zero.";
+    }
+
+    if (createType === "product" && Number(formData.get("stock") || 0) <= 0) {
+      return "Stock quantity must be at least 1 before publishing.";
+    }
+
+    if (previews.length < 1) {
+      return "Add at least one listing image before publishing.";
+    }
+
+    return "";
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     setError("");
-    setIsSubmitting(true);
 
     const formData = new FormData(event.currentTarget);
+    const validationMessage = validateListingForm(formData);
+
+    if (validationMessage) {
+      setError(validationMessage);
+      return;
+    }
+
+    setIsSubmitting(true);
 
     formData.delete("images");
     formData.set("retainedImageUrls", JSON.stringify(retainedImageUrls));
@@ -367,6 +419,7 @@ function Create() {
                     name="serviceType"
                     defaultValue={existingService?.serviceType || existingService?.category || ""}
                     placeholder="Repair, Makeup, Laundry, Design..."
+                    required
                   />
                 </label>
 
@@ -376,6 +429,7 @@ function Create() {
                     name="location"
                     defaultValue={existingService?.location || ""}
                     placeholder="On campus, online, hostel pickup..."
+                    required
                   />
                 </label>
               </>
@@ -386,7 +440,7 @@ function Create() {
               <input
                 name="price"
                 type="number"
-                min="0"
+                min="1"
                 step="1"
                 defaultValue={existingListing?.price || ""}
                 placeholder="2500"
@@ -428,7 +482,7 @@ function Create() {
                 <input
                   name="stock"
                   type="number"
-                  min="0"
+                  min="1"
                   step="1"
                   defaultValue={existingProduct?.stock ?? 1}
                   required
@@ -519,7 +573,7 @@ function Create() {
               <div className="create-form-grid">
                 <label>
                   <span>Package size</span>
-                  <select name="packageSize" defaultValue={existingProduct?.packageProfile?.packageSize || "small"}>
+                  <select name="packageSize" required defaultValue={existingProduct?.packageProfile?.packageSize || "small"}>
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
                     <option value="large">Large</option>
@@ -529,7 +583,7 @@ function Create() {
 
                 <label>
                   <span>Weight class</span>
-                  <select name="packageWeightClass" defaultValue={existingProduct?.packageProfile?.packageWeightClass || "light"}>
+                  <select name="packageWeightClass" required defaultValue={existingProduct?.packageProfile?.packageWeightClass || "light"}>
                     <option value="very_light">Very light</option>
                     <option value="light">Light</option>
                     <option value="medium">Medium</option>
@@ -540,7 +594,7 @@ function Create() {
 
                 <label>
                   <span>Fragility</span>
-                  <select name="fragilityLevel" defaultValue={existingProduct?.packageProfile?.fragilityLevel || "not_fragile"}>
+                  <select name="fragilityLevel" required defaultValue={existingProduct?.packageProfile?.fragilityLevel || "not_fragile"}>
                     <option value="not_fragile">Not fragile</option>
                     <option value="fragile">Fragile</option>
                     <option value="very_fragile">Very fragile</option>
@@ -549,7 +603,7 @@ function Create() {
 
                 <label>
                   <span>Package shape</span>
-                  <select name="packageShape" defaultValue={existingProduct?.packageProfile?.packageShape || "box"}>
+                  <select name="packageShape" required defaultValue={existingProduct?.packageProfile?.packageShape || "box"}>
                     <option value="envelope_or_small_pack">Envelope / small pack</option>
                     <option value="box">Box</option>
                     <option value="bag">Bag</option>
@@ -561,7 +615,7 @@ function Create() {
 
                 <label>
                   <span>Stackability</span>
-                  <select name="stackability" defaultValue={existingProduct?.packageProfile?.stackability || "stackable"}>
+                  <select name="stackability" required defaultValue={existingProduct?.packageProfile?.stackability || "stackable"}>
                     <option value="stackable">Stackable</option>
                     <option value="not_stackable">Not stackable</option>
                     <option value="stack_only_with_light_items">Stack only with light items</option>
@@ -570,7 +624,7 @@ function Create() {
 
                 <label>
                   <span>Batching eligibility</span>
-                  <select name="batchingEligibility" defaultValue={existingProduct?.packageProfile?.batchingEligibility || "can_batch"}>
+                  <select name="batchingEligibility" required defaultValue={existingProduct?.packageProfile?.batchingEligibility || "can_batch"}>
                     <option value="can_batch">Can batch</option>
                     <option value="cannot_batch">Cannot batch</option>
                     <option value="batch_only_with_light_items">Only with light items</option>
@@ -581,7 +635,7 @@ function Create() {
 
                 <label>
                   <span>Required vehicle</span>
-                  <select name="requiredVehicleType" defaultValue={existingProduct?.packageProfile?.requiredVehicleType || "motorcycle_or_above"}>
+                  <select name="requiredVehicleType" required defaultValue={existingProduct?.packageProfile?.requiredVehicleType || "motorcycle_or_above"}>
                     <option value="any">Any</option>
                     <option value="walking_ok">Walking okay</option>
                     <option value="bicycle_or_above">Bicycle or above</option>
@@ -599,6 +653,7 @@ function Create() {
                     min="1"
                     step="1"
                     defaultValue={existingProduct?.packageProfile?.estimatedPackageUnits || 1}
+                    required
                   />
                 </label>
               </div>
@@ -667,6 +722,7 @@ function Create() {
               defaultValue={existingListing?.description || ""}
               placeholder="Describe what the buyer receives, important details, delivery or booking expectations, and anything they should know."
               rows={7}
+              required
             />
           </label>
 
@@ -724,6 +780,7 @@ function Create() {
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   multiple
+                  required={previews.length === 0}
                   onChange={handleImages}
                 />
               </label>

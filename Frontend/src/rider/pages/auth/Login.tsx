@@ -9,8 +9,8 @@ import Button from '../../components/ui/Button';
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState('rider@gleenc.local');
-  const [password, setPassword] = useState('Gleenc123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
   async function handleSubmit(event: FormEvent) {
@@ -57,7 +57,7 @@ export default function Login() {
             <span className="text-sm font-bold text-slate-700">Email</span>
             <span className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-gleenc-cyan">
               <FiMail className="text-slate-400" />
-              <input value={email} onChange={(event) => setEmail(event.target.value)} className="w-full bg-transparent text-sm outline-none" />
+              <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required autoComplete="email" placeholder="rider@example.com" className="w-full bg-transparent text-sm outline-none" />
             </span>
           </label>
 
@@ -65,7 +65,7 @@ export default function Login() {
             <span className="text-sm font-bold text-slate-700">Password</span>
             <span className="mt-2 flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 focus-within:border-gleenc-cyan">
               <FiLock className="text-slate-400" />
-              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" className="w-full bg-transparent text-sm outline-none" />
+              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required autoComplete="current-password" placeholder="Enter your password" className="w-full bg-transparent text-sm outline-none" />
             </span>
           </label>
 

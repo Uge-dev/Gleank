@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
+import { fileUrl, upload } from "../middleware/upload.js";
 import { sessionCookieName, sessionCookieOptions } from "../lib/session.js";
 import {
   acceptRiderAssignment,
@@ -54,6 +55,14 @@ function requestMeta(req) {
     userAgent: req.get("user-agent") || "",
     currentSessionId: req.auth?.session_id || "",
   };
+}
+
+function attachProofUpload(req, _res, next) {
+  if (req.file) {
+    req.body.proofUrl = fileUrl(req, req.file);
+    req.body.proofFileName = req.file.originalname || req.file.filename;
+  }
+  next();
 }
 
 const authLimiter = rateLimit({
@@ -144,6 +153,8 @@ riderRouter.post("/assignments/:assignmentId/accept", (req, res) => {
 
 riderRouter.post(
   "/assignments/:assignmentId/pickup",
+  upload.single("proofPhoto"),
+  attachProofUpload,
   validate(riderPickupSchema),
   (req, res) => {
     res.json({ assignment: verifyPickup(req.auth, req.params.assignmentId, req.body) });
@@ -152,6 +163,8 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/complete",
+  upload.single("proofPhoto"),
+  attachProofUpload,
   validate(riderCompleteDeliverySchema),
   (req, res) => {
     res.json({ assignment: completeDelivery(req.auth, req.params.orderId, req.body) });

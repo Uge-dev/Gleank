@@ -12,11 +12,20 @@ const password = z.string().min(8).max(72).superRefine((value, context) => {
   }
 });
 
-const coordinate = z.object({
+const coordinate = z.preprocess((value) => {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}, z.object({
   lat: z.coerce.number().min(-90).max(90),
   lng: z.coerce.number().min(-180).max(180),
   accuracyMeters: z.coerce.number().min(0).max(10000).optional().default(0),
-});
+}));
 
 export const riderRegisterSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -90,16 +99,18 @@ export const createRiderAssignmentSchema = z.object({
 export const riderPickupSchema = z.object({
   sellerPickupCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the seller pickup OTP."),
   proofUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
-  proofFileName: z.string().trim().max(240).optional().default(""),
+  proofFileName: z.string().trim().min(1, "Upload pickup proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),
+  locationLabel: z.string().trim().max(240).optional().default(""),
   proofLocation: coordinate,
 });
 
 export const riderCompleteDeliverySchema = z.object({
   customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP."),
   proofUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
-  proofFileName: z.string().trim().max(240).optional().default(""),
+  proofFileName: z.string().trim().min(1, "Upload delivery proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),
+  locationLabel: z.string().trim().max(240).optional().default(""),
   proofLocation: coordinate,
 });
 

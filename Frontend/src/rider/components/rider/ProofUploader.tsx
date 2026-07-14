@@ -6,22 +6,25 @@ interface ProofUploaderProps {
   note: string;
   locationLabel: string;
   onFileNameChange: (value: string) => void;
+  onFileChange?: (file: File | null) => void;
+  required?: boolean;
   onNoteChange: (value: string) => void;
   onLocationChange: (value: string) => void;
   compact?: boolean;
 }
 
-export default function ProofUploader({ fileName, note, locationLabel, onFileNameChange, onNoteChange, onLocationChange, compact }: ProofUploaderProps) {
+export default function ProofUploader({ fileName, note, locationLabel, onFileNameChange, onFileChange, onNoteChange, onLocationChange, compact, required }: ProofUploaderProps) {
   function handleFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const file = event.target.files?.[0] || null;
     onFileNameChange(file?.name || '');
+    onFileChange?.(file);
   }
 
   return (
     <div className="space-y-3 text-left">
       <label className="block">
-        <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><FiCamera /> Proof photo</span>
-        <input type="file" accept="image/*" capture="environment" onChange={handleFile} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+        <span className="flex items-center gap-2 text-sm font-bold text-slate-700"><FiCamera /> Proof photo {required ? <strong className="text-rose-600">*</strong> : null}</span>
+        <input type="file" accept="image/*" capture="environment" required={required && !fileName} onChange={handleFile} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
         {fileName && <span className="mt-2 block text-xs font-bold text-emerald-700">Selected: {fileName}</span>}
       </label>
       <label className="block">

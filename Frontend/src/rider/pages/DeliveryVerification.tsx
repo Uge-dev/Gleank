@@ -19,6 +19,7 @@ export default function DeliveryVerification() {
   const [error, setError] = useState('');
   const [searching, setSearching] = useState(false);
   const [fileName, setFileName] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofNote, setProofNote] = useState('');
   const [locationLabel, setLocationLabel] = useState('');
 
@@ -27,8 +28,12 @@ export default function DeliveryVerification() {
   async function handleSearch(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (!proofFile) {
+      setError('Upload pickup proof photo before verifying seller pickup.');
+      return;
+    }
     setSearching(true);
-    const result = await verifyPickupCode(pickupCode, assignmentId, fileName, proofNote, locationLabel || assignment?.pickupLocation);
+    const result = await verifyPickupCode(pickupCode, assignmentId, proofFile, proofNote, locationLabel || assignment?.pickupLocation);
     setSearching(false);
     if (!result.ok) {
       setError(result.message || 'No order found.');
@@ -68,10 +73,10 @@ export default function DeliveryVerification() {
                   placeholder="Enter 6-digit Seller Pickup OTP"
                   className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-5 py-4 text-center text-2xl font-black tracking-[0.35em] text-slate-950 outline-none transition focus:border-gleenc-cyan focus:bg-white"
                 />
-                <ProofUploader fileName={fileName} note={proofNote} locationLabel={locationLabel} onFileNameChange={setFileName} onNoteChange={setProofNote} onLocationChange={setLocationLabel} compact />
+                <ProofUploader fileName={fileName} note={proofNote} locationLabel={locationLabel} onFileNameChange={setFileName} onFileChange={setProofFile} onNoteChange={setProofNote} onLocationChange={setLocationLabel} compact required />
                 {error && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{error}</motion.p>}
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Button icon={FiSearch} size="lg" disabled={pickupCode.length < 6 || searching} fullWidth>
+                  <Button icon={FiSearch} size="lg" disabled={pickupCode.length < 6 || !proofFile || searching} fullWidth>
                     {searching ? 'Verifying...' : 'Verify & Unlock'}
                   </Button>
                   <Button type="button" variant="secondary" icon={FiCamera} size="lg" fullWidth>
@@ -81,7 +86,7 @@ export default function DeliveryVerification() {
               </form>
 
               <p className="mt-6 text-xs font-semibold leading-6 text-slate-400">
-                Demo pickup OTPs: Mary 241890, Campus Mart 455812, Tech Plug 322901, Grace 692711, Used Gadgets 779102.
+                Pickup OTP must come from the seller in person. Gleenc does not display private buyer delivery codes to riders.
               </p>
               <Link to="/rider/assigned" className="mt-4 inline-block text-sm font-bold text-slate-500 hover:text-slate-950">Back to assigned orders</Link>
             </Card>

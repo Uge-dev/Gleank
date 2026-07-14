@@ -25,6 +25,7 @@ export default function DeliveryDetails() {
   const [success, setSuccess] = useState(false);
   const [deliveryCode, setDeliveryCode] = useState('');
   const [fileName, setFileName] = useState('');
+  const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofNote, setProofNote] = useState('');
   const [locationLabel, setLocationLabel] = useState('');
   const [completeError, setCompleteError] = useState('');
@@ -38,7 +39,15 @@ export default function DeliveryDetails() {
   async function handleComplete(event: FormEvent) {
     event.preventDefault();
     setCompleteError('');
-    const result = await completeDelivery(order!.id, deliveryCode, fileName, proofNote, locationLabel || order!.deliveryAddress);
+    if (deliveryCode.length < 6) {
+      setCompleteError('Enter the 6-digit buyer delivery OTP.');
+      return;
+    }
+    if (!proofFile) {
+      setCompleteError('Upload delivery proof photo before confirming delivery.');
+      return;
+    }
+    const result = await completeDelivery(order!.id, deliveryCode, proofFile, proofNote, locationLabel || order!.deliveryAddress);
     if (!result.ok) {
       setCompleteError(result.message || 'Unable to complete delivery.');
       return;
@@ -76,8 +85,9 @@ export default function DeliveryDetails() {
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[0.25em] text-gleenc-cyan">Order Information</p>
-                <h2 className="mt-2 text-2xl font-black text-slate-950">{order.orderNumber}</h2>
+                <h2 className="mt-2 text-2xl font-black text-slate-950">Private delivery</h2>
                 <p className="mt-1 text-sm text-slate-500">Order Date: {formatDateTime(order.orderDate)}</p>
+                <p className="mt-1 text-xs font-bold text-amber-600">Buyer delivery code is hidden from riders and must be entered only when the buyer provides it.</p>
                 <p className="mt-1 text-sm text-slate-500 capitalize">Channel: {order.orderChannel.replace(/_/g, ' ')} {order.marketName ? `· ${order.marketName}` : ''}</p>
               </div>
               <StatusBadge value={order.status} />
@@ -158,15 +168,16 @@ export default function DeliveryDetails() {
             value={deliveryCode}
             onChange={(event) => setDeliveryCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
             placeholder="Enter buyer delivery OTP"
+            required
             className="w-full rounded-[1.4rem] border border-slate-200 bg-slate-50 px-5 py-4 text-center text-2xl font-black tracking-[0.35em] text-slate-950 outline-none transition focus:border-gleenc-cyan focus:bg-white"
           />
-          <ProofUploader fileName={fileName} note={proofNote} locationLabel={locationLabel} onFileNameChange={setFileName} onNoteChange={setProofNote} onLocationChange={setLocationLabel} compact />
+          <ProofUploader fileName={fileName} note={proofNote} locationLabel={locationLabel} onFileNameChange={setFileName} onFileChange={setProofFile} onNoteChange={setProofNote} onLocationChange={setLocationLabel} compact required />
           {completeError && <p className="rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{completeError}</p>}
           <p className="text-xs font-semibold leading-6 text-slate-400">
             For security, Gleenc never displays the buyer&apos;s delivery code to riders.
             Ask the buyer to provide the OTP in person after payment is confirmed.
           </p>
-          <Button size="lg" disabled={deliveryCode.length < 6} fullWidth>Confirm Delivery</Button>
+          <Button size="lg" disabled={deliveryCode.length < 6 || !proofFile} fullWidth>Confirm Delivery</Button>
         </form>
       </Modal>
 

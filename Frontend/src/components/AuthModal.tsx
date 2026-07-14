@@ -9,6 +9,7 @@ import {
   FiLock,
   FiMail,
   FiShield,
+  FiTruck,
   FiX,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
@@ -163,6 +164,9 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
             Create one
           </Link>
         </div>
+        <Link className="auth-rider-link" to="/rider/signup" onClick={onClose}>
+          <FiTruck /> Become a rider
+        </Link>
       </div>
     </div>
   );

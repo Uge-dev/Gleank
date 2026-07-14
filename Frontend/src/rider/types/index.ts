@@ -69,6 +69,7 @@ export interface Rider {
 
 export interface PrivateAssignment {
   id: string;
+  orderId?: string;
   sellerName: string;
   sellerPhone: string;
   sellerWhatsApp: string;
@@ -76,7 +77,11 @@ export interface PrivateAssignment {
   marketName?: string;
   pickupLocation: string;
   pickupLandmark?: string;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
   deliveryLocation: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
   assignedTime: string;
   expectedDeliveryTime: string;
   dispatchTimeoutSeconds?: number;
@@ -147,6 +152,10 @@ export interface FullDeliveryOrder {
   cashReconciliationStatus: CashReconciliationStatus;
   pickupProof?: ProofRecord;
   deliveryProof?: ProofRecord;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
   securityChecks: string[];
 }
 

@@ -1,4 +1,26 @@
-const API_URL = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "/api";
+function resolveApiUrl() {
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, "") || "/api";
+
+  if (typeof window === "undefined" || !/^https?:\/\//i.test(configuredUrl)) {
+    return configuredUrl;
+  }
+
+  try {
+    const configured = new URL(configuredUrl);
+    const isVercelApp = window.location.hostname.endsWith(".vercel.app");
+    const isRenderBackend = configured.hostname.endsWith(".onrender.com");
+
+    if (isVercelApp && isRenderBackend && configured.origin !== window.location.origin) {
+      return "/api";
+    }
+  } catch {
+    // If the configured value is malformed, keep it so the request surfaces the real issue.
+  }
+
+  return configuredUrl;
+}
+
+const API_URL = resolveApiUrl();
 const API_TIMEOUT_MS = Number(import.meta.env.VITE_API_TIMEOUT_MS || 45000);
 
 function getApiOrigin() {

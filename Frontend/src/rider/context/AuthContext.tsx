@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { shouldUseApi } from '../config/env';
+import { shouldUseApi, shouldUseMock } from '../config/env';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
 import type { Availability, Rider } from '../types';
@@ -19,8 +19,8 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [rider, setRider] = useState<Rider | null>(() => riderLocalStore.load().rider);
-  const [loading, setLoading] = useState(false);
+  const [rider, setRider] = useState<Rider | null>(() => (shouldUseMock() ? riderLocalStore.load().rider : null));
+  const [loading, setLoading] = useState(() => shouldUseApi());
   const [apiConnected, setApiConnected] = useState(false);
 
   useEffect(() => {
@@ -36,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         if (!mounted) return;
         setApiConnected(false);
-        setRider(riderLocalStore.load().rider);
+        setRider(null);
       })
       .finally(() => mounted && setLoading(false));
     return () => {
@@ -58,15 +58,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setApiConnected(true);
           return;
         }
-        const nextRider = riderLocalStore.login(email);
-        setRider(nextRider);
+        if (shouldUseMock()) {
+          const nextRider = riderLocalStore.login(email);
+          setRider(nextRider);
+          return;
+        }
+        throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before rider login.');
       } catch (error) {
         setApiConnected(false);
-        if (shouldUseApi()) {
-          throw error instanceof Error ? error : new Error('Rider login failed.');
-        }
-        const nextRider = riderLocalStore.login(email);
-        setRider(nextRider);
+        throw error instanceof Error ? error : new Error('Rider login failed.');
       } finally {
         setLoading(false);
       }
@@ -80,15 +80,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setApiConnected(true);
           return;
         }
-        const nextRider = riderLocalStore.signup(payload);
-        setRider(nextRider);
+        if (shouldUseMock()) {
+          const nextRider = riderLocalStore.signup(payload);
+          setRider(nextRider);
+          return;
+        }
+        throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before rider signup.');
       } catch (error) {
         setApiConnected(false);
-        if (shouldUseApi()) {
-          throw error instanceof Error ? error : new Error('Rider signup failed.');
-        }
-        const nextRider = riderLocalStore.signup(payload);
-        setRider(nextRider);
+        throw error instanceof Error ? error : new Error('Rider signup failed.');
       } finally {
         setLoading(false);
       }
@@ -114,12 +114,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setApiConnected(true);
           return;
         }
-        const nextRider = riderLocalStore.updateAvailability(availability);
-        setRider(nextRider);
-      } catch {
+        if (shouldUseMock()) {
+          const nextRider = riderLocalStore.updateAvailability(availability);
+          setRider(nextRider);
+          return;
+        }
+        throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before changing availability.');
+      } catch (error) {
         setApiConnected(false);
-        const nextRider = riderLocalStore.updateAvailability(availability);
-        setRider(nextRider);
+        throw error instanceof Error ? error : new Error('Availability update failed.');
       } finally {
         setLoading(false);
       }

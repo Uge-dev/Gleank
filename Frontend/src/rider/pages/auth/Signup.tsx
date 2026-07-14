@@ -8,6 +8,7 @@ import Button from '../../components/ui/Button';
 export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
+  const [error, setError] = useState('');
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -20,8 +21,13 @@ export default function Signup() {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    await signup(form);
-    navigate('/rider/profile');
+    setError('');
+    try {
+      await signup(form);
+      navigate('/verify-email');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Rider account could not be created.');
+    }
   }
 
   return (
@@ -39,23 +45,23 @@ export default function Signup() {
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Full Name</span>
-            <input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Phone Number</span>
-            <input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Email</span>
-            <input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Password</span>
-            <input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Vehicle Type</span>
-            <select value={form.vehicleType} onChange={(event) => setForm({ ...form, vehicleType: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan">
+            <select required value={form.vehicleType} onChange={(event) => setForm({ ...form, vehicleType: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan">
               <option>Walking</option>
               <option>Bicycle</option>
               <option>Motorcycle</option>
@@ -64,21 +70,23 @@ export default function Signup() {
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Coverage Area</span>
-            <input value={form.activeZone} onChange={(event) => setForm({ ...form, activeZone: event.target.value })} placeholder="FUPRE, Ugbomro, Effurun..." className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required value={form.activeZone} onChange={(event) => setForm({ ...form, activeZone: event.target.value })} placeholder="FUPRE, Ugbomro, Effurun..." className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Government ID</span>
-            <input type="file" className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input type="file" accept="image/*,application/pdf" required className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Bike Number</span>
-            <input value={form.vehiclePlate} onChange={(event) => setForm({ ...form, vehiclePlate: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input required value={form.vehiclePlate} onChange={(event) => setForm({ ...form, vehiclePlate: event.target.value })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Profile Picture</span>
-            <input type="file" className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input type="file" accept="image/*" required className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
         </div>
+
+        {error && <p className="mb-5 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
 
         <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
           <strong className="block text-amber-900">Verification flow</strong>

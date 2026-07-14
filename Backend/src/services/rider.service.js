@@ -358,7 +358,14 @@ function proofUrlFromInput(input) {
   return clean(input.proofUrl || input.proofFileName || "", 500);
 }
 
+function requireProofEvidence(input, label) {
+  if (!proofUrlFromInput(input)) {
+    throw new HttpError(422, `${label} proof photo is required.`);
+  }
+}
+
 function requireProofLocationNear(point, expectedPoint, label) {
+  if (!expectedPoint || expectedPoint.lat == null || expectedPoint.lng == null) return;
   const meters = distanceMeters(point, expectedPoint);
   if (meters > MAX_PROOF_DISTANCE_METERS) {
     throw new HttpError(422, `${label} GPS is too far from the expected location. Move closer and try again.`);
@@ -862,6 +869,7 @@ export function verifyPickup(auth, assignmentId, input) {
     throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
   }
   if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) throw new HttpError(422, "Seller pickup OTP is incorrect.");
+  requireProofEvidence(input, "Pickup");
   requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
 
   const now = nowIso();
@@ -900,6 +908,7 @@ export function completeDelivery(auth, orderId, input) {
   const order = connectedOrder(row);
   if (!order || order.payment_status !== "paid") throw new HttpError(422, "Connected order is not fully paid on the platform.");
   if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) throw new HttpError(422, "Buyer delivery OTP is incorrect.");
+  requireProofEvidence(input, "Delivery");
   requireProofLocationNear(input.proofLocation, { lat: row.delivery_lat, lng: row.delivery_lng }, "Delivery proof");
 
   const now = nowIso();

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { shouldUseApi } from '../config/env';
+import { shouldUseApi, shouldUseMock } from '../config/env';
 import { deliveryActivities, earningsSummary, completedOrders as seedCompletedOrders } from '../data/mockData';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
@@ -35,11 +35,11 @@ interface RiderDataContextValue {
   apiConnected: boolean;
   refresh: () => Promise<void>;
   startDelivery: (assignmentId: string) => Promise<void>;
-  verifyPickupCode: (sellerPickupCode: string, assignmentId?: string, proofFileName?: string, proofNote?: string, locationLabel?: string) => Promise<VerifyResult>;
+  verifyPickupCode: (sellerPickupCode: string, assignmentId?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) => Promise<VerifyResult>;
   generatePayment: (orderId: string) => PaymentLinkResult;
   confirmOnlinePayment: (orderId: string) => void;
   markCashReceived: (orderId: string) => void;
-  completeDelivery: (orderId: string, customerDeliveryCode?: string, proofFileName?: string, proofNote?: string, locationLabel?: string) => Promise<DeliveryCompletionResult>;
+  completeDelivery: (orderId: string, customerDeliveryCode?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) => Promise<DeliveryCompletionResult>;
   failDelivery: (assignmentId: string, note?: string) => Promise<void>;
   markNotificationRead: (notificationId: string) => void;
   reportSafetyIssue: (payload: SafetyReportPayload) => Promise<{ ok: boolean; reference?: string }>;
@@ -48,7 +48,22 @@ interface RiderDataContextValue {
 
 const RiderDataContext = createContext<RiderDataContextValue | undefined>(undefined);
 
-function calculateEarnings(completed: FullDeliveryOrder[], orders: FullDeliveryOrder[]): EarningsSummary {
+function emptyEarnings(): EarningsSummary {
+  return {
+    today: 0,
+    weekly: 0,
+    monthly: 0,
+    cashCollected: 0,
+    onlinePaymentsDelivered: 0,
+    platformFeesHandled: 0,
+    riderPayoutPending: 0,
+    completedDeliveriesCount: 0,
+    chart: [],
+  };
+}
+
+function calculateEarnings(completed: FullDeliveryOrder[], orders: FullDeliveryOrder[], includeMockBase = false): EarningsSummary {
+  const base = includeMockBase ? earningsSummary : emptyEarnings();
   const deliveredToday = completed.filter((order) => order.completedAt && new Date(order.completedAt).toDateString() === new Date().toDateString());
   const cashOrders = [...completed, ...orders].filter((order) => order.paymentStatus === 'paid_cash');
   const onlineDelivered = completed.filter((order) => order.paymentStatus === 'paid');
@@ -57,9 +72,9 @@ function calculateEarnings(completed: FullDeliveryOrder[], orders: FullDeliveryO
     .reduce((sum, order) => sum + order.riderEarning, 0);
 
   return {
-    ...earningsSummary,
-    today: Math.max(earningsSummary.today, deliveredToday.reduce((sum, order) => sum + order.riderEarning, 0)),
-    completedDeliveriesCount: earningsSummary.completedDeliveriesCount + completed.length - seedCompletedOrders.length,
+    ...base,
+    today: Math.max(base.today, deliveredToday.reduce((sum, order) => sum + order.riderEarning, 0)),
+    completedDeliveriesCount: (includeMockBase ? earningsSummary.completedDeliveriesCount - seedCompletedOrders.length : 0) + completed.length,
     cashCollected: cashOrders.reduce((sum, order) => sum + (order.paymentStatus === 'paid_cash' ? order.totalAmount : 0), 0),
     onlinePaymentsDelivered: onlineDelivered.reduce((sum, order) => sum + order.totalAmount, 0),
     platformFeesHandled: completed.reduce((sum, order) => sum + order.platformFee, 0),
@@ -67,8 +82,26 @@ function calculateEarnings(completed: FullDeliveryOrder[], orders: FullDeliveryO
   };
 }
 
+function emptyLocalState() {
+  return {
+    assignments: [] as PrivateAssignment[],
+    orders: [] as FullDeliveryOrder[],
+    completed: [] as FullDeliveryOrder[],
+    notifications: [] as NotificationItem[],
+    unlockedOrderIds: [] as string[],
+  };
+}
+
+function proofLocationFromPoint(lat?: number | null, lng?: number | null) {
+  return {
+    lat: typeof lat === 'number' ? lat : 0,
+    lng: typeof lng === 'number' ? lng : 0,
+    accuracyMeters: 0,
+  };
+}
+
 export function RiderDataProvider({ children }: { children: ReactNode }) {
-  const initial = riderLocalStore.load();
+  const initial = shouldUseMock() ? riderLocalStore.load() : emptyLocalState();
   const [assignments, setAssignments] = useState<PrivateAssignment[]>(initial.assignments);
   const [orders, setOrders] = useState<FullDeliveryOrder[]>(initial.orders);
   const [completed, setCompleted] = useState<FullDeliveryOrder[]>(initial.completed);
@@ -88,7 +121,16 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
 
   async function refresh() {
     if (!shouldUseApi()) {
-      applyStateFromLocal();
+      if (shouldUseMock()) {
+        applyStateFromLocal();
+      } else {
+        const empty = emptyLocalState();
+        setAssignments(empty.assignments);
+        setOrders(empty.orders);
+        setCompleted(empty.completed);
+        setNotifications(empty.notifications);
+        setUnlockedOrderIds(empty.unlockedOrderIds);
+      }
       return;
     }
     setLoading(true);
@@ -98,10 +140,13 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       setOrders(payload.orders);
       setCompleted(payload.completed);
       setNotifications(payload.notifications);
+      setUnlockedOrderIds(payload.orders.map((order) => order.id));
       setApiConnected(true);
     } catch {
       setApiConnected(false);
-      applyStateFromLocal();
+      if (shouldUseMock()) {
+        applyStateFromLocal();
+      }
     } finally {
       setLoading(false);
     }
@@ -120,9 +165,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     assignments,
     orders,
     completed,
-    activities: deliveryActivities,
+    activities: shouldUseMock() ? deliveryActivities : [],
     notifications,
-    earnings: calculateEarnings(completed, orders),
+    earnings: calculateEarnings(completed, orders, shouldUseMock()),
     unlockedOrderIds,
     loading,
     apiConnected,
@@ -134,50 +179,80 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
           setApiConnected(true);
           return;
-        } catch {
+        } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) throw error instanceof Error ? error : new Error('Could not accept rider assignment.');
         }
       }
+      if (!shouldUseMock()) throw new Error('Rider API is not connected.');
       riderLocalStore.acceptAssignment(assignmentId);
       applyStateFromLocal();
     },
-    async verifyPickupCode(sellerPickupCode: string, assignmentId?: string, proofFileName?: string, proofNote?: string, locationLabel?: string) {
+    async verifyPickupCode(sellerPickupCode: string, assignmentId?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) {
       if (!assignmentId) return { ok: false, message: 'Assignment ID is required for pickup verification.' };
+      if (!proofFile) return { ok: false, message: 'Upload a pickup proof photo before verifying seller pickup.' };
+      const assignment = assignments.find((item) => item.id === assignmentId);
       if (shouldUseApi()) {
         try {
-          const response = await riderApi.verifyPickup(assignmentId, { sellerPickupCode, proofFileName, proofNote, locationLabel });
+          const response = await riderApi.verifyPickup(assignmentId, {
+            sellerPickupCode,
+            proofFile,
+            proofFileName: proofFile.name,
+            proofNote,
+            locationLabel,
+            proofLocation: proofLocationFromPoint(assignment?.pickupLat, assignment?.pickupLng),
+          });
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
           if (response.order) {
-            setOrders((current) => current.map((item) => (item.id === response.order?.id ? response.order : item)));
+            setOrders((current) => [response.order!, ...current.filter((item) => item.id !== response.order!.id)]);
             setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order!.id])));
           }
           setApiConnected(true);
           return { ok: true, order: response.order };
         } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) {
+            return { ok: false, message: error instanceof Error ? error.message : 'Pickup verification failed.' };
+          }
         }
       }
-      const result = riderLocalStore.verifyPickup(assignmentId, sellerPickupCode, proofFileName, proofNote, locationLabel);
+      if (!shouldUseMock()) return { ok: false, message: 'Rider API is not connected.' };
+      const result = riderLocalStore.verifyPickup(assignmentId, sellerPickupCode, proofFile.name, proofNote, locationLabel);
       applyStateFromLocal();
       return result.ok ? { ok: true, order: result.order } : { ok: false, message: result.message };
     },
     generatePayment(orderId: string) {
+      if (!shouldUseMock()) {
+        return { paymentLink: '', reference: '' };
+      }
       const result = riderLocalStore.generatePayment(orderId);
       applyStateFromLocal();
       return result;
     },
     confirmOnlinePayment(orderId: string) {
+      if (!shouldUseMock()) return;
       riderLocalStore.confirmOnlinePayment(orderId);
       applyStateFromLocal();
     },
     markCashReceived(orderId: string) {
+      if (!shouldUseMock()) return;
       riderLocalStore.markCashReceived(orderId);
       applyStateFromLocal();
     },
-    async completeDelivery(orderId: string, customerDeliveryCode = '', proofFileName?: string, proofNote?: string, locationLabel?: string) {
+    async completeDelivery(orderId: string, customerDeliveryCode = '', proofFile?: File | null, proofNote?: string, locationLabel?: string) {
+      if (!proofFile) return { ok: false, message: 'Upload delivery proof photo before confirming delivery.' };
+      const order = orders.find((item) => item.id === orderId);
+      const assignment = assignments.find((item) => item.id === order?.assignmentId);
       if (shouldUseApi()) {
         try {
-          const response = await riderApi.completeDelivery(orderId, { customerDeliveryCode, proofFileName, proofNote, locationLabel });
+          const response = await riderApi.completeDelivery(orderId, {
+            customerDeliveryCode,
+            proofFile,
+            proofFileName: proofFile.name,
+            proofNote,
+            locationLabel,
+            proofLocation: proofLocationFromPoint(order?.deliveryLat ?? assignment?.deliveryLat, order?.deliveryLng ?? assignment?.deliveryLng),
+          });
           setOrders((current) => current.filter((item) => item.id !== orderId));
           if (response.order) {
             setCompleted((current) => [response.order!, ...current.filter((item) => item.id !== orderId)]);
@@ -188,9 +263,13 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           return { ok: true, order: response.order };
         } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) {
+            return { ok: false, message: error instanceof Error ? error.message : 'Delivery completion failed.' };
+          }
         }
       }
-      const result = riderLocalStore.completeDelivery(orderId, customerDeliveryCode, proofFileName, proofNote, locationLabel);
+      if (!shouldUseMock()) return { ok: false, message: 'Rider API is not connected.' };
+      const result = riderLocalStore.completeDelivery(orderId, customerDeliveryCode, proofFile.name, proofNote, locationLabel);
       applyStateFromLocal();
       return result.ok ? { ok: true, order: result.order } : { ok: false, message: result.message };
     },
@@ -201,10 +280,12 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
           setApiConnected(true);
           return;
-        } catch {
+        } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) throw error instanceof Error ? error : new Error('Could not mark delivery as failed.');
         }
       }
+      if (!shouldUseMock()) throw new Error('Rider API is not connected.');
       riderLocalStore.failDelivery(assignmentId, note);
       updateAssignmentStatus(assignmentId, 'failed');
       applyStateFromLocal();
@@ -224,6 +305,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setApiConnected(false);
         }
       }
+      if (!shouldUseMock()) return { ok: false };
       const response = riderLocalStore.reportSafetyIssue(payload);
       applyStateFromLocal();
       return { ok: true, reference: response.reference };
@@ -236,10 +318,12 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setCompleted((current) => current.map((order) => response.orders.find((item) => item.id === order.id) || order));
           setApiConnected(true);
           return;
-        } catch {
+        } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) throw error instanceof Error ? error : new Error('Cash reconciliation failed.');
         }
       }
+      if (!shouldUseMock()) throw new Error('Rider API is not connected.');
       riderLocalStore.submitCashReconciliation(orderIds, note);
       applyStateFromLocal();
     }

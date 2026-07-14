@@ -51,6 +51,7 @@ type BackendAssignment = {
   orderType?: string;
   status?: string;
   paymentStatus?: string;
+  paymentMethod?: string;
   pickupPoint?: BackendPoint;
   deliveryPoint?: BackendPoint;
   pickupLocation?: string;
@@ -58,6 +59,8 @@ type BackendAssignment = {
   sellerName?: string;
   sellerPhone?: string;
   sellerWhatsApp?: string;
+  buyerName?: string;
+  buyerPhone?: string;
   marketName?: string;
   packageSummary?: string;
   packageValue?: number;
@@ -67,8 +70,12 @@ type BackendAssignment = {
   dispatchExpiresAt?: string | null;
   dispatchTimeoutPolicy?: string;
   dispatchRemainingSeconds?: number | null;
+  pickupProof?: { url?: string | null; note?: string; createdAt?: string; lat?: number | null; lng?: number | null } | null;
+  deliveryProof?: { url?: string | null; note?: string; createdAt?: string; lat?: number | null; lng?: number | null } | null;
   createdAt?: string;
   acceptedAt?: string;
+  pickedUpAt?: string;
+  deliveredAt?: string;
   updatedAt?: string;
 };
 
@@ -191,6 +198,7 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
 
   return {
     id: row.id || '',
+    orderId: row.orderId || '',
     sellerName: row.sellerName || 'Seller',
     sellerPhone: row.sellerPhone || '',
     sellerWhatsApp: row.sellerWhatsApp || row.sellerPhone || '',
@@ -198,7 +206,11 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     marketName: row.marketName || undefined,
     pickupLocation,
     pickupLandmark: '',
+    pickupLat: row.pickupPoint?.lat ?? null,
+    pickupLng: row.pickupPoint?.lng ?? null,
     deliveryLocation,
+    deliveryLat: row.deliveryPoint?.lat ?? null,
+    deliveryLng: row.deliveryPoint?.lng ?? null,
     assignedTime: row.createdAt || row.acceptedAt || row.updatedAt || new Date().toISOString(),
     expectedDeliveryTime: row.updatedAt || row.createdAt || new Date().toISOString(),
     dispatchTimeoutSeconds: row.dispatchTimeoutSeconds,
@@ -222,14 +234,86 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
   };
 }
 
+function normalizeProofRecord(row: BackendAssignment, type: 'pickup' | 'delivery') {
+  const proof = type === 'pickup' ? row.pickupProof : row.deliveryProof;
+  if (!proof) return undefined;
+  return {
+    id: `${type}-${row.id || row.orderId || 'proof'}`,
+    type,
+    fileName: proof.url || undefined,
+    note: proof.note || undefined,
+    createdAt: proof.createdAt || row.updatedAt || new Date().toISOString(),
+    locationLabel: proof.lat != null && proof.lng != null ? `${proof.lat}, ${proof.lng}` : undefined,
+  };
+}
+
+function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
+  const packageValue = Number(row.packageValue || 0);
+  const deliveryFee = Number(row.deliveryFee || 0);
+  const status = mapAssignmentStatus(row.status);
+  const paymentStatus = (row.paymentStatus as FullDeliveryOrder['paymentStatus']) || 'unpaid';
+  const paymentMethod = row.paymentMethod === 'pay_on_delivery' || paymentStatus === 'unpaid' ? 'pay_on_delivery' : 'paid_online';
+
+  return {
+    id: row.orderId || row.id || '',
+    assignmentId: row.id || '',
+    orderNumber: '',
+    pickupCode: '',
+    sellerPickupCode: '',
+    customerDeliveryCode: '',
+    orderDate: row.createdAt || row.acceptedAt || row.updatedAt || new Date().toISOString(),
+    customerName: row.buyerName || 'Buyer',
+    customerPhone: row.buyerPhone || '',
+    sellerName: row.sellerName || 'Seller',
+    sellerPhone: row.sellerPhone || '',
+    sellerType: mapSellerType(row),
+    orderChannel: mapOrderChannel(row),
+    marketName: row.marketName || undefined,
+    products: [{
+      id: row.orderId || row.id || 'delivery-package',
+      name: row.packageSummary || 'Gleenc delivery package',
+      image: '',
+      quantity: 1,
+      price: packageValue,
+      category: mapCategory(row),
+    }],
+    paymentMethod,
+    paymentStatus,
+    escrowStatus: paymentStatus === 'paid' ? 'held' : 'not_required',
+    totalAmount: packageValue + deliveryFee,
+    deliveryFee,
+    platformFee: 0,
+    riderEarning: deliveryFee,
+    deliveryAddress: row.deliveryLocation || row.deliveryPoint?.address || 'Delivery address unavailable',
+    deliveryNotes: row.packageSummary || '',
+    status,
+    completedAt: row.deliveredAt || undefined,
+    cashReconciliationStatus: 'not_required',
+    pickupProof: normalizeProofRecord(row, 'pickup'),
+    deliveryProof: normalizeProofRecord(row, 'delivery'),
+    pickupLat: row.pickupPoint?.lat ?? null,
+    pickupLng: row.pickupPoint?.lng ?? null,
+    deliveryLat: row.deliveryPoint?.lat ?? null,
+    deliveryLng: row.deliveryPoint?.lng ?? null,
+    securityChecks: [
+      'Seller pickup OTP verified before private details unlock.',
+      'Buyer delivery OTP is never displayed to riders.',
+      'Proof photo is required before delivery can be completed.',
+    ],
+  };
+}
+
 function normalizeDashboard(response: BackendDashboardResponse): RiderDashboardPayload {
   const authShape = normalizeRider(response);
+  const rows = response.assignments || [];
 
   return {
     rider: authShape.rider,
-    assignments: (response.assignments || []).map(normalizeAssignment),
-    orders: [],
-    completed: [],
+    assignments: rows.map(normalizeAssignment),
+    orders: rows
+      .filter((row) => ['picked_up', 'out_for_delivery'].includes(String(row.status || '')))
+      .map(normalizeOrder),
+    completed: (response.completed || []).map(normalizeOrder),
     notifications: (response.notifications || []).map((item) => ({
       id: item.id || '',
       type: (item.type as NotificationItem['type']) || 'system',
@@ -302,18 +386,54 @@ export interface RiderDashboardPayload {
   notifications: NotificationItem[];
 }
 
+type ProofLocation = {
+  lat: number;
+  lng: number;
+  accuracyMeters?: number;
+};
+
 export interface PickupVerificationPayload {
   sellerPickupCode: string;
+  proofFile?: File | null;
   proofFileName?: string;
   proofNote?: string;
   locationLabel?: string;
+  proofLocation: ProofLocation;
 }
 
 export interface DeliveryCompletionPayload {
   customerDeliveryCode: string;
+  proofFile?: File | null;
   proofFileName?: string;
   proofNote?: string;
   locationLabel?: string;
+  proofLocation: ProofLocation;
+}
+
+function buildProofBody(payload: PickupVerificationPayload | DeliveryCompletionPayload, codeField: 'sellerPickupCode' | 'customerDeliveryCode') {
+  const codeValue = codeField === 'sellerPickupCode'
+    ? (payload as PickupVerificationPayload).sellerPickupCode
+    : (payload as DeliveryCompletionPayload).customerDeliveryCode;
+  const proofFileName = payload.proofFileName || payload.proofFile?.name || '';
+
+  if (payload.proofFile) {
+    const formData = new FormData();
+    formData.append(codeField, codeValue);
+    formData.append('proofPhoto', payload.proofFile);
+    formData.append('proofFileName', proofFileName);
+    formData.append('proofNote', payload.proofNote || '');
+    formData.append('locationLabel', payload.locationLabel || '');
+    formData.append('proofLocation', JSON.stringify(payload.proofLocation));
+    return formData;
+  }
+
+  return JSON.stringify({
+    [codeField]: codeValue,
+    proofFileName,
+    proofNote: payload.proofNote || '',
+    locationLabel: payload.locationLabel || '',
+    proofLocation: payload.proofLocation,
+  });
 }
 
 export const riderApi = {
@@ -367,11 +487,13 @@ export const riderApi = {
       .then((response) => ({ assignment: normalizeAssignment(response.assignment) }));
   },
   verifyPickup(assignmentId: string, payload: PickupVerificationPayload) {
-    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/assignments/' + assignmentId + '/pickup', { method: 'POST', body: JSON.stringify(payload) })
-      .then((response) => ({
-        assignment: normalizeAssignment(response.assignment),
-        order: response.order,
-      }));
+    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/assignments/' + assignmentId + '/pickup', {
+      method: 'POST',
+      body: buildProofBody(payload, 'sellerPickupCode'),
+    }).then((response) => ({
+      assignment: normalizeAssignment(response.assignment),
+      order: response.order || normalizeOrder(response.assignment),
+    }));
   },
   generatePayment(orderId: string) {
     return apiRequest<{ paymentLink: string; reference: string }>('/api/rider/orders/' + orderId + '/payment-link', { method: 'POST' });
@@ -380,11 +502,13 @@ export const riderApi = {
     return apiRequest<{ order: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/cash-collected', { method: 'POST' });
   },
   completeDelivery(orderId: string, payload: DeliveryCompletionPayload) {
-    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/complete', { method: 'POST', body: JSON.stringify(payload) })
-      .then((response) => ({
-        assignment: normalizeAssignment(response.assignment),
-        order: response.order,
-      }));
+    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/complete', {
+      method: 'POST',
+      body: buildProofBody(payload, 'customerDeliveryCode'),
+    }).then((response) => ({
+      assignment: normalizeAssignment(response.assignment),
+      order: response.order || normalizeOrder(response.assignment),
+    }));
   },
   failDelivery(assignmentId: string, note?: string) {
     return apiRequest<{ assignment: BackendAssignment }>('/api/rider/assignments/' + assignmentId + '/fail', { method: 'POST', body: JSON.stringify({ note }) })

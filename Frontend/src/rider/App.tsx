@@ -20,7 +20,17 @@ import SafetyCenter from './pages/SafetyCenter';
 import NotFound from './pages/NotFound';
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
-  const { rider } = useAuth();
+  const { rider, loading } = useAuth();
+  if (loading) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-gleenc-soft p-6">
+        <div className="rounded-[2rem] border border-slate-100 bg-white p-6 text-center shadow-soft">
+          <p className="text-sm font-black uppercase tracking-[0.25em] text-gleenc-cyan">Gleenc Rider</p>
+          <h1 className="mt-2 text-2xl font-black text-slate-950">Checking rider session...</h1>
+        </div>
+      </main>
+    );
+  }
   if (!rider) return <Navigate to="/rider/login" replace />;
   return children;
 }
