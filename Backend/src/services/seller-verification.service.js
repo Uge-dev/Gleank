@@ -466,6 +466,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     throw new HttpError(422, "Complete live face verification before submitting seller verification.");
   }
 
+  if (!next.identityProofUrl) {
+    throw new HttpError(422, "Upload a clear seller identity document before submitting verification.");
+  }
+
   if (next.businessDescription.length < 20) {
     throw new HttpError(422, "Describe what your store sells in at least 20 characters.");
   }

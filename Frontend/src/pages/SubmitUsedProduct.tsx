@@ -206,6 +206,7 @@ function SubmitUsedProduct() {
   const [faceReference, setFaceReference] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [ownershipProof, setOwnershipProof] = useState<File | null>(null);
+  const [identityProof, setIdentityProof] = useState<File | null>(null);
   const [receipt, setReceipt] = useState<File | null>(null);
   const [createdListing, setCreatedListing] = useState<UsedListing | null>(null);
   const [error, setError] = useState("");
@@ -278,6 +279,11 @@ function SubmitUsedProduct() {
       return;
     }
 
+    if (!identityProof && !trust?.trustProfile?.identityProofUrl) {
+      setError("Upload a used-market seller identity proof image before submitting.");
+      return;
+    }
+
     if (!trust?.trustProfile?.isComplete && !faceVerified) {
       setError("Complete face verification to submit a used item.");
       return;
@@ -289,6 +295,7 @@ function SubmitUsedProduct() {
       const form = new FormData(event.currentTarget);
       form.delete("images");
       form.delete("ownershipProof");
+      form.delete("identityProof");
       form.delete("receipt");
 
       const metadata: Record<string, string> = {};
@@ -303,6 +310,7 @@ function SubmitUsedProduct() {
 
       imageFiles.forEach((file) => form.append("images", file));
       if (ownershipProof) form.append("ownershipProof", ownershipProof);
+      if (identityProof) form.append("identityProof", identityProof);
       if (receipt) form.append("receipt", receipt);
       form.set("faceVerified", faceVerified ? "true" : "false");
       form.set("faceProvider", "local");
@@ -639,6 +647,24 @@ function SubmitUsedProduct() {
             )}
 
             <div className="secure-form-grid two">
+              <label className="secure-file-drop compact">
+                <FiShield />
+                <div>
+                  <strong>Seller identity proof</strong>
+                  <p>
+                    {trust?.trustProfile?.identityProofUrl
+                      ? "Already submitted. Upload again only if you need to replace it."
+                      : "Required. Upload a clear ID image for admin verification."}
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  required={!trust?.trustProfile?.identityProofUrl}
+                  onChange={(event) => setIdentityProof(event.target.files?.[0] || null)}
+                />
+              </label>
+
               <label className="secure-file-drop compact">
                 <FiShield />
                 <div>

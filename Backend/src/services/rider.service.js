@@ -9,6 +9,7 @@ import { serializeUser } from "../lib/serializers.js";
 import { loginUser, registerUser } from "./auth.service.js";
 import { createNotification, listNotifications, markNotificationRead } from "./notification.service.js";
 import { markPayoutDeliveryVerified } from "./payout.service.js";
+import { initializePayment } from "./payment.service.js";
 import {
   buildDispatchExpiresAt,
   dispatchRemainingSeconds,
@@ -407,6 +408,10 @@ function statsForRider(userId) {
 }
 
 export async function registerRider(input, meta = {}) {
+  if (!input.identityDocumentUrl || !input.selfieUrl) {
+    throw new HttpError(422, "Upload rider government ID and profile/selfie image before creating a rider account.");
+  }
+
   const result = await registerUser({
     name: input.name,
     email: input.email,
@@ -415,6 +420,8 @@ export async function registerRider(input, meta = {}) {
     campus: input.campus || "General",
     phone: input.phone,
     storeName: "",
+    identityDocumentUrl: input.identityDocumentUrl,
+    selfieUrl: input.selfieUrl,
   }, meta);
 
   const now = nowIso();
@@ -483,6 +490,45 @@ export async function loginRider(input, meta = {}) {
 
 export function logoutRider(cookieToken) {
   deleteSession(cookieToken);
+}
+
+export function updateRiderVerificationDocuments(auth, input) {
+  const riderId = requireRiderUser(auth);
+
+  if (!input.identityDocumentUrl || !input.selfieUrl) {
+    throw new HttpError(422, "Upload both rider government ID and profile/selfie image.");
+  }
+
+  const now = nowIso();
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET identity_document_url = ?,
+        selfie_url = ?,
+        verification_status = CASE
+          WHEN verification_status = 'suspended' THEN verification_status
+          ELSE 'pending_review'
+        END,
+        verification_note = 'Rider verification documents were submitted for admin review.',
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    clean(input.identityDocumentUrl, 500),
+    clean(input.selfieUrl, 500),
+    now,
+    riderId,
+  );
+
+  createNotification({
+    userId: riderId,
+    type: "verification",
+    title: "Rider documents submitted",
+    body: "Your rider ID and profile/selfie image have been sent to admin for review.",
+    actionLabel: "Open verification",
+    actionPath: "/rider/verification",
+  });
+
+  return serializeProfile(getRiderProfile(riderId));
 }
 
 export function getRiderSession(auth) {
@@ -950,6 +996,48 @@ export function completeDelivery(auth, orderId, input) {
     note: "Rider verified delivery code and GPS proof.",
   });
   return serializeAssignment(assignmentByOrderForRider(riderId, orderId), { revealPrivate: true });
+}
+
+export async function generateRiderPaymentLink(auth, orderId) {
+  const riderId = requireRiderUser(auth);
+  const row = assignmentByOrderForRider(riderId, orderId);
+
+  if (!row) {
+    throw new HttpError(404, "Delivery assignment was not found for this rider.");
+  }
+
+  if (!["picked_up", "out_for_delivery"].includes(row.status)) {
+    throw new HttpError(422, "Verify seller pickup before generating the buyer payment link.");
+  }
+
+  if (row.payment_status === "paid") {
+    throw new HttpError(422, "This order payment has already been confirmed.");
+  }
+
+  if (!row.buyer_id) {
+    throw new HttpError(422, "Buyer account is required before payment can be generated.");
+  }
+
+  const payment = await initializePayment(row.buyer_id, {
+    purpose: row.order_type === "used_order" ? "used_order" : "store_order",
+    targetId: row.order_id,
+  });
+
+  createNotification({
+    userId: row.buyer_id,
+    type: "payment",
+    title: "Delivery payment link is ready",
+    body: "Your rider has generated a secure Gleenc/Paystack payment link. Pay before sharing your delivery OTP.",
+    actionLabel: "Open order",
+    actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+  });
+
+  return {
+    paymentLink: payment.authorizationUrl,
+    reference: payment.reference,
+    payment,
+    assignment: serializeAssignment(assignmentByOrderForRider(riderId, orderId), { revealPrivate: true }),
+  };
 }
 
 export function failAssignment(auth, assignmentId, input) {

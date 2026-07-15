@@ -27,6 +27,13 @@ const coordinate = z.preprocess((value) => {
   accuracyMeters: z.coerce.number().min(0).max(10000).optional().default(0),
 }));
 
+const uploadedFileUrl = z.string().trim().min(1).max(500).refine(
+  (value) => /^https?:\/\//i.test(value) || value.startsWith("/uploads/"),
+  "Upload a valid image file.",
+);
+
+const optionalUploadedFileUrl = z.union([uploadedFileUrl, z.literal("")]).optional().default("");
+
 export const riderRegisterSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email,
@@ -42,9 +49,14 @@ export const riderRegisterSchema = z.object({
   emergencyContactPhone: z.string().trim().max(30).optional().default(""),
   guarantorName: z.string().trim().max(100).optional().default(""),
   guarantorPhone: z.string().trim().max(30).optional().default(""),
-  identityDocumentUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
-  selfieUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
+  identityDocumentUrl: uploadedFileUrl,
+  selfieUrl: uploadedFileUrl,
   ninLast4: z.string().trim().regex(/^\d{0,4}$/).optional().default(""),
+});
+
+export const riderDocumentUploadSchema = z.object({
+  identityDocumentUrl: uploadedFileUrl,
+  selfieUrl: uploadedFileUrl,
 });
 
 export const riderLoginSchema = z.object({
@@ -98,7 +110,7 @@ export const createRiderAssignmentSchema = z.object({
 
 export const riderPickupSchema = z.object({
   sellerPickupCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the seller pickup OTP."),
-  proofUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
+  proofUrl: optionalUploadedFileUrl,
   proofFileName: z.string().trim().min(1, "Upload pickup proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),
   locationLabel: z.string().trim().max(240).optional().default(""),
@@ -107,7 +119,7 @@ export const riderPickupSchema = z.object({
 
 export const riderCompleteDeliverySchema = z.object({
   customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP."),
-  proofUrl: z.string().trim().url().max(500).optional().or(z.literal("")).default(""),
+  proofUrl: optionalUploadedFileUrl,
   proofFileName: z.string().trim().min(1, "Upload delivery proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),
   locationLabel: z.string().trim().max(240).optional().default(""),
@@ -120,7 +132,17 @@ export const riderFailSchema = z.object({
 });
 
 export const riderSecurityReportSchema = z.object({
-  type: z.enum(["buyer_issue", "seller_issue", "package_issue", "safety_threat", "accident", "general"]).default("general"),
+  type: z.enum([
+    "buyer_issue",
+    "seller_issue",
+    "package_issue",
+    "safety_threat",
+    "threat",
+    "accident",
+    "payment_issue",
+    "general",
+    "other",
+  ]).default("general"),
   note: z.string().trim().min(2).max(1000),
   assignmentId: z.string().trim().max(140).optional().default(""),
   orderId: z.string().trim().max(140).optional().default(""),

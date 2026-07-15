@@ -10,7 +10,7 @@ interface AuthContextValue {
   loading: boolean;
   apiConnected: boolean;
   login: (email: string, password: string) => Promise<Rider>;
-  signup: (payload: Partial<Rider> & { password: string }) => Promise<Rider>;
+  signup: (payload: Partial<Rider> & { password: string; identityDocument?: File | null; selfie?: File | null }) => Promise<Rider>;
   logout: () => Promise<void>;
   updateAvailability: (availability: Availability) => Promise<void>;
   updateRiderLocally: (patch: Partial<Rider>) => void;

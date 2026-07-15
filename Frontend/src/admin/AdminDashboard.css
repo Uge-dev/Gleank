@@ -1058,6 +1058,29 @@
   background: #ecfdf5;
 }
 
+.admin-detail-file {
+  display: inline-flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-transform: none !important;
+  margin-bottom: 0 !important;
+}
+
+.admin-detail-file img {
+  width: min(180px, 100%);
+  height: 130px;
+  border-radius: 16px;
+  object-fit: cover;
+  border: 1px solid #bbf7d0;
+  background: #ffffff;
+}
+
+.admin-detail-link-list .admin-detail-file {
+  background: transparent;
+  padding: 0;
+}
+
 
 .admin-status-in-stock,
 .admin-status-safe,

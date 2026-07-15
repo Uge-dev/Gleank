@@ -144,7 +144,7 @@ function serializeUsedListing(row, includePrivate = false) {
     sellerVerificationLevel: Number(row.seller_verification_level || 1),
     sellerTrust: {
       profileCompleted: trustComplete,
-      identityProofSubmitted: Boolean(row.trust_face_verified),
+      identityProofSubmitted: Boolean(row.trust_identity_proof_url),
       faceVerified: Boolean(row.trust_face_verified),
       faceProvider: row.trust_face_provider || "",
       faceVerifiedAt: row.trust_face_verified_at || null,

@@ -28,6 +28,7 @@ export interface RiderDocument {
   label: string;
   status: VerificationStatus;
   required: boolean;
+  url?: string;
   note?: string;
   uploadedAt?: string;
 }

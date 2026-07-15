@@ -19,6 +19,8 @@ export type RegisterInput = {
   vehiclePlate?: string;
   coverageArea?: string;
   homeAddress?: string;
+  identityDocument?: File | null;
+  selfie?: File | null;
 };
 
 export function getCurrentSession() {
@@ -33,6 +35,36 @@ export function login(input: { email: string; password: string }) {
 }
 
 export function register(input: RegisterInput) {
+  if (input.role === "rider") {
+    const formData = new FormData();
+    formData.append("name", input.name);
+    formData.append("email", input.email);
+    formData.append("password", input.password);
+    formData.append("phone", input.phone || "");
+    formData.append("campus", input.campus || "General");
+    formData.append("vehicleType", input.vehicleType || "");
+    formData.append("vehiclePlate", input.vehiclePlate || "");
+    formData.append("coverageArea", input.coverageArea || input.campus || "");
+    formData.append("homeAddress", input.homeAddress || "");
+
+    if (input.identityDocument) {
+      formData.append("identityDocument", input.identityDocument);
+    }
+
+    if (input.selfie) {
+      formData.append("selfie", input.selfie);
+    }
+
+    return apiRequest<AuthResponse & { riderProfile?: unknown }>("/rider/register", {
+      method: "POST",
+      body: formData,
+    }).then((response) => ({
+      user: response.user,
+      store: null,
+      emailVerificationRequired: response.emailVerificationRequired,
+    }));
+  }
+
   return apiRequest<AuthResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(input),

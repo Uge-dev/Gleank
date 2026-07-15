@@ -249,6 +249,8 @@ function normalizeRider(row: {
     safetyStatus: String(profile.safetyStatus || "normal"),
     ratingAverage: Number(profile.ratingAverage || 0),
     completedDeliveries: Number(profile.completedDeliveries || 0),
+    identityDocumentUrl: profile.identityDocumentUrl ? String(profile.identityDocumentUrl) : null,
+    selfieUrl: profile.selfieUrl ? String(profile.selfieUrl) : null,
     createdAt: String(profile.createdAt || row.user.createdAt || ""),
     updatedAt: String(profile.updatedAt || row.user.updatedAt || ""),
   };

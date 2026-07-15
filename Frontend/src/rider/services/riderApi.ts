@@ -31,6 +31,8 @@ type BackendRiderProfile = {
   safetyStatus?: string;
   ratingAverage?: number;
   completedDeliveries?: number;
+  identityDocumentUrl?: string | null;
+  selfieUrl?: string | null;
 };
 
 type BackendRiderAuthResponse = {
@@ -328,6 +330,11 @@ function normalizeDashboard(response: BackendDashboardResponse): RiderDashboardP
 function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
   const user = response.user || {};
   const profile = response.riderProfile || response.profile || {};
+  const identityDocumentUrl = profile.identityDocumentUrl || null;
+  const selfieUrl = profile.selfieUrl || null;
+  const documentStatus = identityDocumentUrl && selfieUrl
+    ? mapVerificationStatus(profile.verificationStatus)
+    : 'not_submitted';
 
   return {
     rider: {
@@ -338,7 +345,7 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
       emailVerified: Boolean((user as { emailVerified?: boolean }).emailVerified),
       vehicleType: profile.vehicleType || 'Motorcycle',
       vehiclePlate: profile.vehiclePlate || '',
-      profilePhoto: user.avatarUrl || '',
+      profilePhoto: user.avatarUrl || selfieUrl || '',
       availability: (profile.availability as Rider['availability']) || 'offline',
       status: mapRiderStatus(profile.verificationStatus),
       deliveryRating: Number(profile.ratingAverage || 0),
@@ -350,9 +357,18 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
         {
           id: 'identity-document',
           label: 'Government ID',
-          status: mapVerificationStatus(profile.verificationStatus),
+          status: identityDocumentUrl ? documentStatus : 'not_submitted',
           required: true,
+          url: identityDocumentUrl || undefined,
           note: 'Admin reviews this before approving rider access.',
+        },
+        {
+          id: 'profile-selfie',
+          label: 'Profile/selfie image',
+          status: selfieUrl ? documentStatus : 'not_submitted',
+          required: true,
+          url: selfieUrl || undefined,
+          note: 'Used by admin to match the rider account to a real person.',
         },
         {
           id: 'phone-verification',
@@ -411,6 +427,12 @@ export interface DeliveryCompletionPayload {
   proofLocation: ProofLocation;
 }
 
+type RiderSignupPayload = Partial<Rider> & {
+  password: string;
+  identityDocument?: File | null;
+  selfie?: File | null;
+};
+
 function buildProofBody(payload: PickupVerificationPayload | DeliveryCompletionPayload, codeField: 'sellerPickupCode' | 'customerDeliveryCode') {
   const codeValue = codeField === 'sellerPickupCode'
     ? (payload as PickupVerificationPayload).sellerPickupCode
@@ -444,18 +466,37 @@ export const riderApi = {
   login(email: string, password: string) {
     return apiRequest<BackendRiderAuthResponse>('/api/rider/login', { method: 'POST', body: JSON.stringify({ email, password }) }).then(normalizeRider);
   },
-  signup(payload: Partial<Rider> & { password: string }) {
+  signup(payload: RiderSignupPayload) {
+    const formData = new FormData();
+    formData.append('name', payload.fullName || '');
+    formData.append('email', payload.email || '');
+    formData.append('password', payload.password);
+    formData.append('phone', payload.phone || '');
+    formData.append('vehicleType', payload.vehicleType || '');
+    formData.append('vehiclePlate', payload.vehiclePlate || '');
+    formData.append('coverageArea', payload.activeZone || '');
+
+    if (payload.identityDocument) {
+      formData.append('identityDocument', payload.identityDocument);
+    }
+
+    if (payload.selfie) {
+      formData.append('selfie', payload.selfie);
+    }
+
     return apiRequest<BackendRiderAuthResponse>('/api/rider/register', {
       method: 'POST',
-      body: JSON.stringify({
-        name: payload.fullName,
-        email: payload.email,
-        password: payload.password,
-        phone: payload.phone,
-        vehicleType: payload.vehicleType,
-        vehiclePlate: payload.vehiclePlate,
-        coverageArea: payload.activeZone,
-      }),
+      body: formData,
+    }).then(normalizeRider);
+  },
+  uploadVerificationDocuments(identityDocument: File, selfie: File) {
+    const formData = new FormData();
+    formData.append('identityDocument', identityDocument);
+    formData.append('selfie', selfie);
+
+    return apiRequest<BackendRiderAuthResponse>('/api/rider/verification-documents', {
+      method: 'POST',
+      body: formData,
     }).then(normalizeRider);
   },
   logout() {
@@ -497,7 +538,12 @@ export const riderApi = {
     }));
   },
   generatePayment(orderId: string) {
-    return apiRequest<{ paymentLink: string; reference: string }>('/api/rider/orders/' + orderId + '/payment-link', { method: 'POST' });
+    return apiRequest<{ paymentLink: string; reference: string; assignment?: BackendAssignment }>('/api/rider/orders/' + orderId + '/payment-link', { method: 'POST' })
+      .then((response) => ({
+        paymentLink: response.paymentLink,
+        reference: response.reference,
+        assignment: response.assignment ? normalizeAssignment(response.assignment) : undefined,
+      }));
   },
   confirmCash(orderId: string) {
     return apiRequest<{ order: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/cash-collected', { method: 'POST' });

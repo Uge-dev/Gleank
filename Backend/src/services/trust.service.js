@@ -43,6 +43,7 @@ export function serializeTrustProfile(row) {
       row.full_name &&
         row.phone &&
         (row.area_location || row.campus) &&
+        row.identity_proof_url &&
         row.face_verified,
     ),
     createdAt: row.created_at,

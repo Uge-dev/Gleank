@@ -36,12 +36,12 @@ interface RiderDataContextValue {
   refresh: () => Promise<void>;
   startDelivery: (assignmentId: string) => Promise<void>;
   verifyPickupCode: (sellerPickupCode: string, assignmentId?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) => Promise<VerifyResult>;
-  generatePayment: (orderId: string) => PaymentLinkResult;
-  confirmOnlinePayment: (orderId: string) => void;
+  generatePayment: (orderId: string) => Promise<PaymentLinkResult>;
+  confirmOnlinePayment: (orderId: string) => Promise<void>;
   markCashReceived: (orderId: string) => void;
   completeDelivery: (orderId: string, customerDeliveryCode?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) => Promise<DeliveryCompletionResult>;
   failDelivery: (assignmentId: string, note?: string) => Promise<void>;
-  markNotificationRead: (notificationId: string) => void;
+  markNotificationRead: (notificationId: string) => Promise<void>;
   reportSafetyIssue: (payload: SafetyReportPayload) => Promise<{ ok: boolean; reference?: string }>;
   submitCashReconciliation: (orderIds: string[], note?: string) => Promise<void>;
 }
@@ -221,15 +221,30 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       applyStateFromLocal();
       return result.ok ? { ok: true, order: result.order } : { ok: false, message: result.message };
     },
-    generatePayment(orderId: string) {
-      if (!shouldUseMock()) {
-        return { paymentLink: '', reference: '' };
+    async generatePayment(orderId: string) {
+      if (shouldUseApi()) {
+        try {
+          const response = await riderApi.generatePayment(orderId);
+          if (response.assignment) {
+            setAssignments((current) => current.map((item) => (item.id === response.assignment!.id ? response.assignment! : item)));
+          }
+          setApiConnected(true);
+          return { paymentLink: response.paymentLink, reference: response.reference };
+        } catch (error) {
+          setApiConnected(false);
+          if (!shouldUseMock()) throw error instanceof Error ? error : new Error('Payment link could not be generated.');
+        }
       }
+      if (!shouldUseMock()) throw new Error('Rider API is not connected.');
       const result = riderLocalStore.generatePayment(orderId);
       applyStateFromLocal();
       return result;
     },
-    confirmOnlinePayment(orderId: string) {
+    async confirmOnlinePayment(orderId: string) {
+      if (shouldUseApi()) {
+        await refresh();
+        return;
+      }
       if (!shouldUseMock()) return;
       riderLocalStore.confirmOnlinePayment(orderId);
       applyStateFromLocal();
@@ -290,7 +305,19 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       updateAssignmentStatus(assignmentId, 'failed');
       applyStateFromLocal();
     },
-    markNotificationRead(notificationId: string) {
+    async markNotificationRead(notificationId: string) {
+      if (shouldUseApi()) {
+        try {
+          await riderApi.markNotificationRead(notificationId);
+          setNotifications((current) => current.map((item) => (item.id === notificationId ? { ...item, read: true } : item)));
+          setApiConnected(true);
+          return;
+        } catch (error) {
+          setApiConnected(false);
+          if (!shouldUseMock()) throw error instanceof Error ? error : new Error('Notification could not be updated.');
+        }
+      }
+      if (!shouldUseMock()) return;
       riderLocalStore.markNotificationRead(notificationId);
       applyStateFromLocal();
     },
@@ -301,8 +328,11 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setApiConnected(true);
           await refresh();
           return { ok: true, reference: response.reference };
-        } catch {
+        } catch (error) {
           setApiConnected(false);
+          if (!shouldUseMock()) {
+            return { ok: false, reference: error instanceof Error ? error.message : undefined };
+          }
         }
       }
       if (!shouldUseMock()) return { ok: false };

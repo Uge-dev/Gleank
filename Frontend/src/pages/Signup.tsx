@@ -9,6 +9,7 @@ import {
   FiMail,
   FiMapPin,
   FiPhone,
+  FiShield,
   FiShoppingBag,
   FiTruck,
   FiUser,
@@ -33,6 +34,17 @@ function Signup() {
     setError("");
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
+    const identityDocument = formData.get("identityDocument");
+    const selfie = formData.get("selfie");
+
+    if (
+      accountType === "rider" &&
+      (!(identityDocument instanceof File) || !identityDocument.size || !(selfie instanceof File) || !selfie.size)
+    ) {
+      setError("Upload rider government ID and profile/selfie image before creating a rider account.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const responseUser = await register({
@@ -45,6 +57,8 @@ function Signup() {
         vehiclePlate: String(formData.get("vehiclePlate") || "").trim(),
         coverageArea: String(formData.get("coverageArea") || "").trim(),
         homeAddress: String(formData.get("homeAddress") || "").trim(),
+        identityDocument: identityDocument instanceof File ? identityDocument : null,
+        selfie: selfie instanceof File ? selfie : null,
         password: String(formData.get("password") || ""),
         role: accountType,
       });
@@ -224,6 +238,32 @@ function Signup() {
                     name="coverageArea"
                     type="text"
                     placeholder="FUPRE, Ugbomro, Effurun..."
+                    required
+                  />
+                </div>
+              </label>
+
+              <label>
+                <span>Government ID image</span>
+                <div className="auth-input-box">
+                  <FiShield />
+                  <input
+                    name="identityDocument"
+                    type="file"
+                    accept="image/*"
+                    required
+                  />
+                </div>
+              </label>
+
+              <label>
+                <span>Profile/selfie image</span>
+                <div className="auth-input-box">
+                  <FiUser />
+                  <input
+                    name="selfie"
+                    type="file"
+                    accept="image/*"
                     required
                   />
                 </div>

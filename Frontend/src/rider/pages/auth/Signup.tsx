@@ -9,6 +9,8 @@ export default function Signup() {
   const { signup } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState('');
+  const [identityDocument, setIdentityDocument] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -22,8 +24,13 @@ export default function Signup() {
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+    if (!identityDocument || !selfie) {
+      setError('Upload rider government ID and profile/selfie image before creating your rider account.');
+      return;
+    }
+
     try {
-      await signup(form);
+      await signup({ ...form, identityDocument, selfie });
       navigate('/verify-email');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Rider account could not be created.');
@@ -74,7 +81,7 @@ export default function Signup() {
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Government ID</span>
-            <input type="file" accept="image/*,application/pdf" required className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Bike Number</span>
@@ -82,7 +89,7 @@ export default function Signup() {
           </label>
           <label className="block">
             <span className="text-sm font-bold text-slate-700">Profile Picture</span>
-            <input type="file" accept="image/*" required className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            <input type="file" accept="image/*" required onChange={(event) => setSelfie(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
         </div>
 

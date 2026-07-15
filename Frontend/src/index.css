@@ -29002,6 +29002,26 @@ html[data-theme="dark"] .notification-card {
   margin-top: 14px;
 }
 
+.seller-onboarding-full small {
+  color: #64748b;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.seller-onboarding-full small a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #15803d;
+  font-weight: 950;
+  text-decoration: none;
+}
+
 .seller-onboarding-upload {
   margin-top: 14px;
   min-height: 150px;

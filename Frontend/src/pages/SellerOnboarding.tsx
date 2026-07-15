@@ -6,6 +6,7 @@ import {
   FiArrowLeft,
   FiCheckCircle,
   FiCreditCard,
+  FiExternalLink,
   FiShield,
   FiShoppingBag,
 } from "react-icons/fi";
@@ -19,6 +20,7 @@ import {
 import { savePayoutAccount } from "../services/trust.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 import { getLocalMarkets, type LocalMarket } from "../services/market.service";
+import { apiUrl } from "../lib/api";
 
 type SellerType = "used_market" | "campus" | "local_market" | "nearby";
 
@@ -489,6 +491,24 @@ function SellerOnboarding() {
           <input type="hidden" name="faceVerified" value={faceVerified ? "true" : "false"} />
           <input type="hidden" name="faceProvider" value="local" />
           <input type="hidden" name="faceReference" value={faceReference} />
+
+          <label className="seller-onboarding-full" id="seller-document-section">
+            <span>Seller identity document</span>
+            <input
+              name="identityProof"
+              type="file"
+              accept="image/*"
+              required={!verification?.identityProofUrl}
+            />
+            <small>
+              Upload a clear ID/student/business identity image for admin review.
+              {verification?.identityProofUrl ? (
+                <a href={apiUrl(verification.identityProofUrl)} target="_blank" rel="noreferrer">
+                  <FiExternalLink /> View current document
+                </a>
+              ) : null}
+            </small>
+          </label>
 
           <label className="seller-onboarding-full">
             <span>Business description</span>

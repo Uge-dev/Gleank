@@ -57,7 +57,7 @@ function createRiderProfileFromAuth(userId, input, now) {
       coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
       guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
       verification_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', NULL, NULL, '', 'pending_review', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', 'pending_review', ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       full_name = excluded.full_name,
       phone = excluded.phone,
@@ -77,6 +77,8 @@ function createRiderProfileFromAuth(userId, input, now) {
     input.vehiclePlate || "",
     input.coverageArea || input.campus || "",
     input.homeAddress || "",
+    input.identityDocumentUrl || null,
+    input.selfieUrl || null,
     now,
     now,
   );
@@ -135,6 +137,10 @@ export async function registerUser(input, meta = {}) {
 
   if (findUserByEmail(email)) {
     throw new HttpError(409, "This email already has a Gleenc account. Please log in with that account.");
+  }
+
+  if (input.role === "rider" && (!input.identityDocumentUrl || !input.selfieUrl)) {
+    throw new HttpError(422, "Upload rider government ID and profile/selfie image before creating a rider account.");
   }
 
   assertPasswordPolicy(input.password);

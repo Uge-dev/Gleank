@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FiCreditCard, FiLink, FiRefreshCw } from 'react-icons/fi';
+import { FiCreditCard, FiExternalLink, FiLink, FiRefreshCw } from 'react-icons/fi';
 import type { FullDeliveryOrder } from '../../types';
 import { formatCurrency } from '../../utils/format';
 import { paymentStatusLabel } from '../../utils/status';
@@ -11,6 +11,7 @@ import StatusBadge from '../ui/StatusBadge';
 export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
   const { generatePayment, confirmOnlinePayment } = useRiderData();
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
   const [paymentData, setPaymentData] = useState<{ paymentLink: string; reference: string } | null>(
     order.paymentLink && order.paymentReference ? { paymentLink: order.paymentLink, reference: order.paymentReference } : null
   );
@@ -19,14 +20,29 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
     setPaymentData(order.paymentLink && order.paymentReference ? { paymentLink: order.paymentLink, reference: order.paymentReference } : null);
   }, [order.paymentLink, order.paymentReference]);
 
-  function handleGeneratePayment() {
-    const result = generatePayment(order.id);
-    setPaymentData(result);
+  async function handleGeneratePayment() {
+    setPaymentError('');
     setLoadingPayment(true);
-    window.setTimeout(() => {
-      confirmOnlinePayment(order.id);
+    try {
+      const result = await generatePayment(order.id);
+      setPaymentData(result);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Payment link could not be generated.');
+    } finally {
       setLoadingPayment(false);
-    }, 2600);
+    }
+  }
+
+  async function handleRefreshPayment() {
+    setPaymentError('');
+    setLoadingPayment(true);
+    try {
+      await confirmOnlinePayment(order.id);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Payment status could not be refreshed.');
+    } finally {
+      setLoadingPayment(false);
+    }
   }
 
   const isPaid = order.paymentStatus === 'paid';
@@ -60,9 +76,13 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
         <div className="mt-5 rounded-[1.3rem] border border-rose-100 bg-rose-50 p-4">
           <p className="font-bold text-rose-700">Outstanding Amount: {formatCurrency(order.totalAmount)}</p>
           <p className="mt-1 text-sm leading-6 text-rose-600">Generate a Gleenc/Paystack payment link for the buyer. Riders must never collect cash or mark payment manually.</p>
+          {paymentError && <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-bold text-rose-700">{paymentError}</p>}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
             <Button icon={FiCreditCard} onClick={handleGeneratePayment} disabled={loadingPayment} fullWidth>
-              {loadingPayment ? 'Waiting for Payment...' : 'Generate Paystack Payment'}
+              {loadingPayment ? 'Preparing...' : 'Generate Paystack Payment'}
+            </Button>
+            <Button icon={FiRefreshCw} variant="secondary" onClick={handleRefreshPayment} disabled={loadingPayment} fullWidth>
+              Refresh Payment
             </Button>
           </div>
         </div>
@@ -81,7 +101,10 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
                 <FiLink className="shrink-0 text-cyan-600" />
                 <span className="truncate">{paymentData.paymentLink}</span>
               </div>
-              {loadingPayment && <p className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-cyan-700"><FiRefreshCw className="animate-spin" /> Waiting for backend confirmation...</p>}
+              <a href={paymentData.paymentLink} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-black text-white">
+                <FiExternalLink /> Open payment link
+              </a>
+              {loadingPayment && <p className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-cyan-700"><FiRefreshCw className="animate-spin" /> Refreshing payment status...</p>}
             </div>
           </div>
         </div>

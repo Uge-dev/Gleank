@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { fileUrl, upload } from "../middleware/upload.js";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
+import { HttpError } from "../lib/http-error.js";
 import {
   createUsedListing,
   getUsedListing,
@@ -10,6 +11,7 @@ import {
   updateOwnUsedListingStatus,
 } from "../services/used-market.service.js";
 import {
+  getTrustProfile,
   getTrustStatus,
   upsertPayoutAccount,
   upsertTrustProfile,
@@ -49,6 +51,11 @@ usedMarketRouter.post(
     const proofFile = req.files?.ownershipProof?.[0];
     const receiptFile = req.files?.receipt?.[0];
     const identityProofFile = req.files?.identityProof?.[0];
+    const trustProfile = getTrustProfile(req.auth.user_id);
+
+    if (!identityProofFile && !trustProfile?.identityProofUrl) {
+      throw new HttpError(422, "Upload a used-market seller identity proof image before submitting a listing.");
+    }
 
     if (identityProofFile || req.body.fullName || req.body.faceVerified) {
       upsertTrustProfile(

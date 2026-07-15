@@ -67,6 +67,14 @@ export type AdminSeller = {
   marketName?: string;
   marketApprovalStatus?: AdminStatus | string;
   verificationStatus: AdminStatus;
+  identityProofUrl?: string | null;
+  faceVerified?: boolean;
+  faceReference?: string;
+  studentId?: string;
+  businessDescription?: string;
+  pickupLocation?: string;
+  locationArea?: string;
+  whatsappPhone?: string;
   status: AdminStatus;
   products: number;
   orders: number;
@@ -259,6 +267,8 @@ export type AdminRider = {
   safetyStatus: string;
   ratingAverage: number;
   completedDeliveries: number;
+  identityDocumentUrl: string | null;
+  selfieUrl: string | null;
   createdAt: string;
   updatedAt: string;
 };

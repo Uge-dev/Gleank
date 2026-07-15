@@ -1,19 +1,54 @@
-import { FiAward, FiFileText, FiShield, FiUserCheck } from 'react-icons/fi';
+import { useState } from 'react';
+import type { FormEvent } from 'react';
+import { FiAward, FiExternalLink, FiFileText, FiShield, FiUpload, FiUserCheck } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import Button from '../components/ui/Button';
 import { formatCurrency } from '../utils/format';
+import { riderApi } from '../services/riderApi';
+import { apiUrl } from '../../lib/api';
 
 export default function VerificationCenter() {
-  const { rider } = useAuth();
+  const { rider, updateRiderLocally } = useAuth();
+  const [identityDocument, setIdentityDocument] = useState<File | null>(null);
+  const [selfie, setSelfie] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
 
   if (!rider) return null;
+
+  async function submitDocuments(event: FormEvent) {
+    event.preventDefault();
+    setNotice('');
+    setError('');
+
+    if (!identityDocument || !selfie) {
+      setError('Upload both government ID and profile/selfie image before submitting.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await riderApi.uploadVerificationDocuments(identityDocument, selfie);
+      updateRiderLocally(response.rider);
+      setIdentityDocument(null);
+      setSelfie(null);
+      setNotice('Rider verification documents submitted for admin review.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Documents could not be submitted.');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div>
       <PageHeader title="Rider Verification" subtitle="Manage identity, guarantor, vehicle and document requirements for safer delivery operations." />
+      {notice && <div className="mb-4 rounded-3xl bg-emerald-50 px-5 py-4 text-sm font-extrabold text-emerald-700">{notice}</div>}
+      {error && <div className="mb-4 rounded-3xl bg-rose-50 px-5 py-4 text-sm font-extrabold text-rose-700">{error}</div>}
 
       <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
         <Card className="p-6">
@@ -52,6 +87,11 @@ export default function VerificationCenter() {
                 <div>
                   <p className="font-extrabold text-slate-950">{doc.label}</p>
                   <p className="mt-1 text-sm text-slate-500">{doc.required ? 'Required' : 'Optional'} {doc.note ? `· ${doc.note}` : ''}</p>
+                  {doc.url && (
+                    <a href={apiUrl(doc.url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-xs font-black text-emerald-700">
+                      <FiExternalLink /> View submitted file
+                    </a>
+                  )}
                 </div>
                 <StatusBadge value={doc.status} />
               </div>
@@ -81,7 +121,23 @@ export default function VerificationCenter() {
             <p className="rounded-2xl bg-slate-50 p-4">Level 3: trusted history + low complaints. Faster assignment priority.</p>
             <p className="rounded-2xl bg-slate-50 p-4">Level 4: optional NIN/vendor KYC + admin approval. High-value used-market/electronics delivery.</p>
           </div>
-          <Button className="mt-5" fullWidth>Submit Missing Documents</Button>
+          <form onSubmit={submitDocuments} className="mt-5 space-y-4 rounded-3xl border border-slate-100 bg-white p-4">
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Submit missing documents</p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">Upload a clear ID image and a current profile/selfie image. Admin will review them before rider approval.</p>
+            </div>
+            <label className="block">
+              <span className="text-sm font-bold text-slate-700">Government ID image</span>
+              <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            </label>
+            <label className="block">
+              <span className="text-sm font-bold text-slate-700">Profile/selfie image</span>
+              <input type="file" accept="image/*" required onChange={(event) => setSelfie(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+            </label>
+            <Button icon={FiUpload} disabled={saving || !identityDocument || !selfie} fullWidth>
+              {saving ? 'Submitting...' : 'Submit Documents'}
+            </Button>
+          </form>
         </Card>
       </div>
     </div>

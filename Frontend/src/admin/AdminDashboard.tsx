@@ -295,6 +295,23 @@ function isExternalUrl(value: string) {
   return /^https?:\/\//i.test(value) || value.startsWith("/uploads/");
 }
 
+function isImageUrl(value: string) {
+  return /\.(?:png|jpe?g|webp|gif|avif)(?:\?|#|$)/i.test(value) || /res\.cloudinary\.com\/.+\/image\/upload/i.test(value);
+}
+
+function renderFileValue(value: string, label: string) {
+  const src = apiUrl(value);
+
+  return (
+    <span className="admin-detail-file">
+      {isImageUrl(value) ? <img src={src} alt={label} /> : null}
+      <a href={src} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    </span>
+  );
+}
+
 function renderRecordValue(value: unknown) {
   if (typeof value === "boolean") return prettyStatus(value);
 
@@ -307,9 +324,9 @@ function renderRecordValue(value: unknown) {
           const text = String(item || "");
 
           return isExternalUrl(text) ? (
-            <a key={`${text}-${index}`} href={apiUrl(text)} target="_blank" rel="noreferrer">
-              Open file {index + 1}
-            </a>
+            <span key={`${text}-${index}`}>
+              {renderFileValue(text, `Open file ${index + 1}`)}
+            </span>
           ) : (
             <span key={`${text}-${index}`}>{text}</span>
           );
@@ -323,11 +340,7 @@ function renderRecordValue(value: unknown) {
   if (!text) return "Not available";
 
   if (isExternalUrl(text)) {
-    return (
-      <a href={apiUrl(text)} target="_blank" rel="noreferrer">
-        Open file
-      </a>
-    );
+    return renderFileValue(text, "Open file");
   }
 
   return text;

@@ -14,6 +14,7 @@ import {
   createRiderAssignment,
   createRiderSafetyReport,
   failAssignment,
+  generateRiderPaymentLink,
   getRiderAssignment,
   getRiderSession,
   getRouteEstimate,
@@ -24,6 +25,7 @@ import {
   markRiderNotificationRead,
   registerRider,
   riderDashboard,
+  updateRiderVerificationDocuments,
   updateRiderAvailability,
   updateRiderLocation,
   verifyPickup,
@@ -32,6 +34,7 @@ import {
   createRiderAssignmentSchema,
   riderAvailabilitySchema,
   riderCompleteDeliverySchema,
+  riderDocumentUploadSchema,
   riderContactAuditSchema,
   riderFailSchema,
   riderLocationSchema,
@@ -65,6 +68,28 @@ function attachProofUpload(req, _res, next) {
   next();
 }
 
+const riderVerificationUpload = upload.fields([
+  { name: "identityDocument", maxCount: 1 },
+  { name: "selfie", maxCount: 1 },
+  { name: "profilePhoto", maxCount: 1 },
+]);
+
+function attachRiderVerificationUploads(req, _res, next) {
+  const files = req.files || {};
+  const identityDocument = files.identityDocument?.[0];
+  const selfie = files.selfie?.[0] || files.profilePhoto?.[0];
+
+  if (identityDocument) {
+    req.body.identityDocumentUrl = fileUrl(req, identityDocument);
+  }
+
+  if (selfie) {
+    req.body.selfieUrl = fileUrl(req, selfie);
+  }
+
+  next();
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
@@ -82,6 +107,8 @@ const locationLimiter = rateLimit({
 riderRouter.post(
   "/register",
   authLimiter,
+  riderVerificationUpload,
+  attachRiderVerificationUploads,
   validate(riderRegisterSchema),
   asyncRoute(async (req, res) => {
     const result = await registerRider(req.body, requestMeta(req));
@@ -122,6 +149,17 @@ riderRouter.use(requireAuth, requireEmailVerified);
 riderRouter.get("/dashboard", (req, res) => {
   res.json(riderDashboard(req.auth));
 });
+
+riderRouter.post(
+  "/verification-documents",
+  riderVerificationUpload,
+  attachRiderVerificationUploads,
+  validate(riderDocumentUploadSchema),
+  (req, res) => {
+    updateRiderVerificationDocuments(req.auth, req.body);
+    res.json(getRiderSession(req.auth));
+  },
+);
 
 riderRouter.patch("/availability", validate(riderAvailabilitySchema), (req, res) => {
   res.json({ riderProfile: updateRiderAvailability(req.auth, req.body) });
@@ -169,6 +207,13 @@ riderRouter.post(
   (req, res) => {
     res.json({ assignment: completeDelivery(req.auth, req.params.orderId, req.body) });
   },
+);
+
+riderRouter.post(
+  "/orders/:orderId/payment-link",
+  asyncRoute(async (req, res) => {
+    res.status(201).json(await generateRiderPaymentLink(req.auth, req.params.orderId));
+  }),
 );
 
 riderRouter.post(

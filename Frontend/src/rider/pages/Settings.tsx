@@ -1,4 +1,5 @@
 import { FiLock, FiShield } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 
@@ -23,7 +24,9 @@ export default function Settings() {
             <div>
               <h2 className="text-lg font-extrabold text-slate-950">Account Security</h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">Manage password updates, account protection and trusted device access.</p>
-              <button className="mt-4 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">Manage Security</button>
+              <Link to="/account/security" className="mt-4 inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">
+                Manage Security
+              </Link>
             </div>
           </div>
         </Card>
