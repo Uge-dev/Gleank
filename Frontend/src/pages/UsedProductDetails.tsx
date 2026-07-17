@@ -109,6 +109,11 @@ function UsedProductDetails() {
     if (!listing) return;
 
     requireAuth(async () => {
+      if (listing.sellerRole === "seller" && listing.sellerStoreSlug) {
+        navigate(`/messages?seller=${encodeURIComponent(listing.sellerStoreSlug)}`);
+        return;
+      }
+
       setIsMessaging(true);
       try {
         const response = await createConversation({
@@ -178,7 +183,13 @@ function UsedProductDetails() {
 
   const images = listing.imageUrls.length ? listing.imageUrls : [usedFallback];
   const isOwner = user?.id === listing.sellerId;
-  const isBuyable = listing.status === "active" && !isOwner;
+  const availableQuantity =
+    listing.availableQuantity !== undefined
+      ? Math.max(0, Number(listing.availableQuantity || 0))
+      : listing.status === "active"
+        ? 1
+        : 0;
+  const isBuyable = listing.status === "active" && !isOwner && availableQuantity > 0;
 
   return (
     <>
@@ -282,6 +293,11 @@ function UsedProductDetails() {
               </span>
               <span>{listing.deliveryOption}</span>
               <span>{listing.pickupLocation}</span>
+              <span>
+                {availableQuantity > 0
+                  ? `${availableQuantity} available`
+                  : "Unavailable"}
+              </span>
               {listing.serialNumber && <span>Serial: {listing.serialNumber}</span>}
             </div>
 
@@ -304,7 +320,11 @@ function UsedProductDetails() {
             <div className="used-details-actions secure-details-actions">
               <button type="button" onClick={handleBuySafely} disabled={!isBuyable}>
                 <FiShoppingBag />
-                {isOwner ? "Your item" : "Buy safely"}
+                {isOwner
+                  ? "Your item"
+                  : availableQuantity <= 0
+                    ? "Unavailable"
+                    : "Buy safely"}
               </button>
               <button type="button" onClick={() => void handleMessageSeller()} disabled={isOwner || isMessaging}>
                 <FiMessageCircle />

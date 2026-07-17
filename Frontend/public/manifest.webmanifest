@@ -8,22 +8,22 @@
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "browser"],
   "orientation": "portrait",
-  "background_color": "#070A12",
-  "theme_color": "#16A34A",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FF3C00",
   "categories": ["shopping", "business", "productivity"],
   "lang": "en",
   "dir": "ltr",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 512x512",
-      "type": "image/svg+xml",
+      "src": "/gleenc%20logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/pwa-maskable-icon.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
+      "src": "/gleenc%20logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ],
@@ -33,21 +33,21 @@
       "short_name": "Search",
       "description": "Find products, sellers, and stores.",
       "url": "/search?source=pwa-shortcut",
-      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
     },
     {
       "name": "My orders",
       "short_name": "Orders",
       "description": "Track buyer orders and delivery progress.",
       "url": "/orders?source=pwa-shortcut",
-      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
     },
     {
       "name": "Seller dashboard",
       "short_name": "Dashboard",
       "description": "Manage seller products, services, and readiness tasks.",
       "url": "/dashboard?source=pwa-shortcut",
-      "icons": [{ "src": "/favicon.svg", "sizes": "192x192", "type": "image/svg+xml" }]
+      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
     }
   ]
 }

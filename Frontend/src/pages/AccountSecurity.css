@@ -36,7 +36,7 @@
 }
 
 .security-back-link:hover {
-  color: #f97316;
+  color: #fbe703;
   transform: translateX(-2px);
 }
 
@@ -99,8 +99,8 @@
 }
 
 .security-alert-success {
-  background: #ecfdf5;
-  color: #047857;
+  background: #fff0eb;
+  color: #c52d00;
   border: 1px solid rgba(16, 185, 129, 0.16);
 }
 
@@ -130,7 +130,7 @@
   justify-content: center;
   margin-bottom: 0.9rem;
   background: #fff7ed;
-  color: #f97316;
+  color: #fbe703;
   font-size: 1.35rem;
 }
 
@@ -171,8 +171,8 @@
 }
 
 .security-card strong.is-good {
-  color: #047857;
-  background: #ecfdf5;
+  color: #c52d00;
+  background: #fff0eb;
   border: 1px solid rgba(16, 185, 129, 0.16);
 }
 
@@ -264,7 +264,7 @@
 
 .account-security-page .primary-button,
 .security-modal-card .primary-button {
-  background: linear-gradient(135deg, #f97316, #ffb000);
+  background: linear-gradient(135deg, #fbe703, #fbe703);
   color: #ffffff;
   box-shadow: 0 14px 28px rgba(249, 115, 22, 0.22);
 }
@@ -388,7 +388,7 @@
 
 .security-modal-close:hover {
   background: #fff7ed;
-  color: #f97316;
+  color: #fbe703;
   transform: rotate(4deg);
 }
 

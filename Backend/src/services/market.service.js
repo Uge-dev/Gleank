@@ -478,6 +478,19 @@ const productSelectSql = `
   JOIN stores ON stores.id = products.store_id
 `;
 
+const productEngagementOrderSql = `
+  (
+    CASE WHEN products.is_featured = 1 THEN 100000 ELSE 0 END
+    + ((SELECT COUNT(*) FROM product_shares WHERE product_shares.product_id = products.id) * 14)
+    + ((SELECT COUNT(*) FROM product_comments WHERE product_comments.product_id = products.id AND product_comments.is_deleted = 0) * 10)
+    + ((SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) * 6)
+    + ((SELECT COUNT(*) FROM saved_items WHERE saved_items.item_type = 'product' AND saved_items.item_id = products.id) * 5)
+    + ((SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) * 1)
+  ) DESC,
+  products.created_at DESC,
+  products.updated_at DESC
+`;
+
 const publicSellerVisibilitySql = `
   (
     COALESCE(stores.seller_type, 'campus') IN ('campus', 'used_market')
@@ -508,11 +521,7 @@ function listPublicProducts({
   const campusPattern = `%${escapeLike(cleanCampus)}%`;
   const orderSql =
     order === "engagement"
-      ? `
-        (SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) DESC,
-        (SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) DESC,
-        products.updated_at DESC
-      `
+      ? productEngagementOrderSql
       : `
         CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
         products.updated_at DESC
@@ -566,7 +575,7 @@ function listLocalMarketProducts(marketId, viewerId = "", limit = 100) {
         AND profile.status = 'approved'
         AND stores.status = 'active'
         AND products.status IN ('active', 'out_of_stock')
-      ORDER BY products.updated_at DESC
+      ORDER BY ${productEngagementOrderSql}
       LIMIT ?
     `)
     .all(marketId, Math.min(Math.max(Number(limit) || 100, 1), 100));
@@ -924,7 +933,7 @@ export function getMarketHub({ viewerId = "", campus = "" } = {}) {
       campus: cleanCampus,
       viewerId,
       limit: 32,
-      order: "fresh",
+      order: "engagement",
     }),
   };
 }
@@ -957,7 +966,7 @@ export function getCampusMarket({ query = "", campus = "", viewerId = "" } = {})
       campus: cleanCampus,
       viewerId,
       limit: 60,
-      order: "fresh",
+      order: "engagement",
     }),
     categories: getMarketCategories().filter((categoryItem) =>
       categoryItem.sources.includes("campus_market") || categoryItem.sources.includes("default"),
@@ -1042,7 +1051,7 @@ export function getNearbySellers({ query = "", campus = "", viewerId = "" } = {}
       campus: cleanCampus,
       viewerId,
       limit: 50,
-      order: "fresh",
+      order: "engagement",
     }),
   };
 }
@@ -1058,7 +1067,7 @@ export function searchMarket({ query = "", type = "all", campus = "", viewerId =
         campus,
         viewerId,
         limit: 60,
-        order: "fresh",
+        order: "engagement",
       })
     : [];
   const stores = include("stores")

@@ -148,7 +148,8 @@ export function UsedListingMarketCard({ listing }: { listing: UsedListing }) {
         <span className="market-source-pill"><i /> Used Market</span>
         <h3>{listing.name}</h3>
         <p>
-          {listing.category} • {listing.campus || listing.pickupLocation || "Used Market"}
+          {listing.category} • {listing.campus || listing.pickupLocation || "Used Market"} •{" "}
+          {Math.max(0, Number(listing.availableQuantity ?? 1))} available
         </p>
         <div className="market-live-meta">
           <strong>{formatNaira(listing.price)}</strong>

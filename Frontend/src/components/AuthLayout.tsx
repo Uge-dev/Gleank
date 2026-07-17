@@ -23,7 +23,7 @@ function AuthLayout({
     <section className="auth-page">
       <div className="auth-brand-panel">
         <Link to="/" className="auth-logo">
-          <span>G</span>
+          <img className="auth-logo-mark" src="/Gleenc%20Mark.png" alt="" />
           Gleenc
         </Link>
 

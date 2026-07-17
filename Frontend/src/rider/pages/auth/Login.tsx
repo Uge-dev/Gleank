@@ -42,7 +42,9 @@ export default function Login() {
         <div className="absolute -right-20 -top-20 h-72 w-72 rounded-full bg-gleenc-cyan/25 blur-3xl" />
         <div className="absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-gleenc-green/25 blur-3xl" />
         <div className="relative z-10 flex items-center gap-3">
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-gleenc-gradient text-2xl font-black text-slate-950">G</div>
+          <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-white">
+            <img src="/Gleenc%20Mark.png" alt="" className="h-12 w-12 object-contain" />
+          </div>
           <div>
             <p className="text-2xl font-black">Gleenc Rider</p>
             <p className="text-sm text-white/50">Delivery Management System</p>
@@ -60,7 +62,9 @@ export default function Login() {
       <section className="flex items-center justify-center px-2 py-10">
         <motion.form initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onSubmit={handleSubmit} className="w-full max-w-md rounded-[2rem] border border-slate-100 bg-white p-7 shadow-soft">
           <div className="mb-8 text-center">
-            <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl bg-gleenc-gradient text-2xl font-black text-slate-950 shadow-glow">G</div>
+            <div className="mx-auto grid h-16 w-16 place-items-center overflow-hidden rounded-3xl bg-white shadow-glow">
+              <img src="/Gleenc%20Mark.png" alt="" className="h-14 w-14 object-contain" />
+            </div>
             <h1 className="mt-5 text-3xl font-black text-slate-950">Welcome Rider</h1>
             <p className="mt-2 text-sm text-slate-500">Login to manage your assigned campus deliveries.</p>
           </div>

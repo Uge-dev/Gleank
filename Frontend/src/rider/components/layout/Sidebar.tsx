@@ -28,7 +28,9 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <aside className="flex h-full flex-col border-r border-slate-100 bg-white/90 p-5 backdrop-blur-xl">
       <div className="flex items-center gap-3 px-2">
-        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-gleenc-gradient font-black text-gleenc-dark shadow-glow">G</div>
+        <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-2xl bg-white shadow-glow">
+          <img src="/Gleenc%20Mark.png" alt="" className="h-10 w-10 object-contain" />
+        </div>
         <div>
           <p className="text-lg font-black tracking-tight text-slate-950">Gleenc</p>
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Rider DMS</p>

@@ -333,6 +333,12 @@ export type UsedListing = {
   areaLocation?: string;
   pickupLocation: string;
   deliveryOption: "Pickup" | "Delivery" | "Pickup & Delivery";
+  quantity?: number;
+  reservedQuantity?: number;
+  availableQuantity?: number;
+  sellerRole?: "buyer" | "seller" | "rider" | "admin" | string;
+  sellerStoreSlug?: string;
+  sellerStoreName?: string;
   imageUrls: string[];
   status: UsedListingStatus;
   verified: boolean;

@@ -90,13 +90,6 @@ function parseCart(value: string | null): CartItem[] {
             : undefined,
         quantity: Math.max(1, Number(item.quantity || 1)),
       }))
-      .map((item) => ({
-        ...item,
-        quantity:
-          item.stock !== undefined
-            ? Math.min(item.quantity, Math.max(1, item.stock))
-            : item.quantity,
-      }))
       .filter((item) => item.id && item.name && item.sellerId);
   } catch {
     return [];
@@ -215,10 +208,7 @@ export function CartProvider({ children }: CartProviderProps) {
           return {
             ...cartItem,
             stock: incomingStock ?? cartItem.stock,
-            quantity:
-              incomingStock !== undefined
-                ? Math.min(incomingStock, cartItem.quantity + incomingQuantity)
-                : cartItem.quantity + incomingQuantity,
+            quantity: cartItem.quantity + incomingQuantity,
           };
         });
       }
@@ -228,10 +218,7 @@ export function CartProvider({ children }: CartProviderProps) {
         {
           ...item,
           stock: incomingStock,
-          quantity:
-            incomingStock !== undefined
-              ? Math.min(incomingStock, incomingQuantity)
-              : incomingQuantity,
+          quantity: incomingQuantity,
         },
       ];
     });
@@ -248,10 +235,7 @@ export function CartProvider({ children }: CartProviderProps) {
 
         return {
           ...item,
-          quantity:
-            item.stock !== undefined
-              ? Math.min(item.stock, item.quantity + 1)
-              : item.quantity + 1,
+          quantity: item.quantity + 1,
         };
       }),
     );

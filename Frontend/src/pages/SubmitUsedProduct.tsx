@@ -529,6 +529,18 @@ function SubmitUsedProduct() {
                 <input name="price" type="number" min="0" step="0.01" placeholder="180000" required />
               </label>
               <label>
+                Available quantity
+                <input
+                  name="quantity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  defaultValue="1"
+                  placeholder="How many are available?"
+                  required
+                />
+              </label>
+              <label>
                 Condition
                 <select name="condition" required defaultValue="">
                   <option value="" disabled>Select condition</option>

@@ -44,6 +44,8 @@ const emptyResults: SearchResults = {
   usedListings: [],
 };
 
+type FeedProduct = SearchResults["products"][number];
+
 const productFallback =
   "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=900&q=80";
 
@@ -62,6 +64,34 @@ function getStoreInitials(storeName: string) {
     .join("")
     .slice(0, 2)
     .toUpperCase();
+}
+
+function freshnessBoost(product: FeedProduct) {
+  const createdAt = new Date(product.createdAt || product.updatedAt || "").getTime();
+
+  if (!Number.isFinite(createdAt)) return 0;
+
+  const ageDays = (Date.now() - createdAt) / (24 * 60 * 60 * 1000);
+
+  if (ageDays <= 1) return 900;
+  if (ageDays <= 3) return 520;
+  if (ageDays <= 7) return 260;
+  if (ageDays <= 14) return 110;
+  return 0;
+}
+
+function feedEngagementScore(product: FeedProduct) {
+  const interaction = product.interaction;
+
+  return (
+    (product.isFeatured ? 100_000 : 0) +
+    interaction.shareCount * 14 +
+    interaction.commentCount * 10 +
+    interaction.likeCount * 6 +
+    interaction.saveCount * 5 +
+    interaction.viewCount +
+    freshnessBoost(product)
+  );
 }
 
 function Home() {
@@ -307,23 +337,11 @@ async function handleProductViewed(productId: string) {
     }
 
     return [...productsOnly].sort((a, b) => {
-      const engagementA =
-        (a.isFeatured ? 100_000 : 0) +
-        a.interaction.viewCount +
-        a.interaction.likeCount * 3 +
-        a.interaction.commentCount * 4 +
-        a.interaction.saveCount * 2 +
-        a.interaction.shareCount * 5;
-      const engagementB =
-        (b.isFeatured ? 100_000 : 0) +
-        b.interaction.viewCount +
-        b.interaction.likeCount * 3 +
-        b.interaction.commentCount * 4 +
-        b.interaction.saveCount * 2 +
-        b.interaction.shareCount * 5;
+      const engagementA = feedEngagementScore(a);
+      const engagementB = feedEngagementScore(b);
 
       if (engagementA !== engagementB) return engagementB - engagementA;
-      return b.updatedAt.localeCompare(a.updatedAt);
+      return String(b.createdAt || b.updatedAt).localeCompare(String(a.createdAt || a.updatedAt));
     });
   }, [activeRightTab, marketplace.products, storeBySlug]);
 

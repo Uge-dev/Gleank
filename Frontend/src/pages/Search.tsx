@@ -344,22 +344,6 @@ function Search() {
                           <Link to={`/stores/${service.storeSlug}`}>
                             View seller
                           </Link>
-                          <button
-                            type="button"
-                            className="market-save-button"
-                            onClick={() =>
-                              void handleToggleSave("service", service.id)
-                            }
-                            aria-label="Save service"
-                          >
-                            <FiBookmark
-                              fill={
-                                isSaved("service", service.id)
-                                  ? "currentColor"
-                                  : "none"
-                              }
-                            />
-                          </button>
                         </div>
                       </div>
                     </article>

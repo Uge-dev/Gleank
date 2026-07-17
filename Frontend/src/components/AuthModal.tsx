@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   FiAlertCircle,
   FiCheckCircle,
@@ -22,6 +22,7 @@ type AuthModalProps = {
 };
 
 function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
+  const navigate = useNavigate();
   const { login } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -47,6 +48,16 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
       });
       onClose();
       onLoginSuccess?.(user);
+
+      if (!user.emailVerified) {
+        navigate("/verify-email");
+        return;
+      }
+
+      if (user.role === "rider") {
+        navigate("/rider");
+        return;
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error

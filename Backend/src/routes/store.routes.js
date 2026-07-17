@@ -146,6 +146,19 @@ function buildStoreHighlights(storeId, products, services) {
   });
 }
 
+const productEngagementOrderSql = `
+  (
+    CASE WHEN products.is_featured = 1 THEN 100000 ELSE 0 END
+    + ((SELECT COUNT(*) FROM product_shares WHERE product_shares.product_id = products.id) * 14)
+    + ((SELECT COUNT(*) FROM product_comments WHERE product_comments.product_id = products.id AND product_comments.is_deleted = 0) * 10)
+    + ((SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) * 6)
+    + ((SELECT COUNT(*) FROM saved_items WHERE saved_items.item_type = 'product' AND saved_items.item_id = products.id) * 5)
+    + ((SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) * 1)
+  ) DESC,
+  products.created_at DESC,
+  products.updated_at DESC
+`;
+
 storeRouter.get("/", (req, res) => {
   const query = String(req.query.q || "").trim().slice(0, 100);
   const pattern = `%${query.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
@@ -191,7 +204,7 @@ storeRouter.get("/", (req, res) => {
         )
       ORDER BY
         CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
-        products.updated_at DESC
+        ${productEngagementOrderSql}
       LIMIT 50
     `)
     .all(query, pattern, pattern, pattern, pattern, campusPriority, campusPriority)

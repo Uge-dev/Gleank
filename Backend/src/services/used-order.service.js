@@ -198,6 +198,72 @@ function openOrderForListing(listingId) {
     .get(listingId);
 }
 
+function listingQuantity(row) {
+  const parsed = Number(row?.quantity || 1);
+  return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+}
+
+function listingReservedQuantity(row) {
+  const parsed = Number(row?.reserved_quantity || 0);
+  return Number.isFinite(parsed) ? Math.max(0, Math.floor(parsed)) : 0;
+}
+
+function refreshUsedListingAvailability(listingId) {
+  const row = db.prepare("SELECT * FROM used_listings WHERE id = ?").get(listingId);
+  if (!row) return;
+
+  const quantity = listingQuantity(row);
+  const reservedQuantity = listingReservedQuantity(row);
+  const now = new Date().toISOString();
+
+  if (reservedQuantity >= quantity && row.status === "active") {
+    db.prepare("UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?").run(now, listingId);
+    return;
+  }
+
+  if (reservedQuantity < quantity && row.status === "sold") {
+    db.prepare("UPDATE used_listings SET status = 'active', updated_at = ? WHERE id = ?").run(now, listingId);
+  }
+}
+
+function reserveUsedListingUnit(listingId) {
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(`
+      UPDATE used_listings
+      SET reserved_quantity = reserved_quantity + 1,
+          status = CASE
+            WHEN reserved_quantity + 1 >= quantity THEN 'sold'
+            ELSE status
+          END,
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'active'
+        AND reserved_quantity < quantity
+    `)
+    .run(now, listingId);
+
+  if (!result.changes) {
+    throw new HttpError(409, "This used item is no longer available. Please choose another item or message the seller.");
+  }
+}
+
+function releaseUsedListingUnit(listingId) {
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE used_listings
+    SET reserved_quantity = CASE
+          WHEN reserved_quantity > 0 THEN reserved_quantity - 1
+          ELSE 0
+        END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, listingId);
+
+  refreshUsedListingAvailability(listingId);
+}
+
 export function listUsedOrders(userId) {
   return db
     .prepare(`
@@ -232,9 +298,8 @@ export function createUsedOrder(userId, input) {
   if (!listing) throw new HttpError(404, "This used item is not available for protected purchase.");
   if (listing.seller_id === userId) throw new HttpError(422, "You cannot buy your own used item.");
 
-  const existingOpen = openOrderForListing(listingId);
-  if (existingOpen) {
-    throw new HttpError(409, "This item is already in a protected checkout or order process.");
+  if (listingReservedQuantity(listing) >= listingQuantity(listing)) {
+    throw new HttpError(409, "This used item is no longer available. Please choose another item or message the seller.");
   }
 
   const buyerName = clean(input?.buyerName, 120);
@@ -296,6 +361,8 @@ export function createUsedOrder(userId, input) {
       now,
     );
 
+    reserveUsedListingUnit(listing.id);
+
     insertEvent(id, "pending_payment", "Protected order created. Buyer should complete payment to reserve this item.");
 
     const conversation = createUsedOrderConversation(userId, id);
@@ -350,7 +417,7 @@ export function markUsedOrderPaid(userId, orderId, paymentReference = "") {
       WHERE id = ?
     `).run(now, row.id);
 
-    db.prepare("UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?").run(now, row.listing_id);
+    refreshUsedListingAvailability(row.listing_id);
 
     insertEvent(
       row.id,
@@ -407,11 +474,11 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     db.prepare("UPDATE used_market_orders SET status = ?, updated_at = ? WHERE id = ?").run(status, now, row.id);
 
     if (status === "cancelled") {
-      db.prepare("UPDATE used_listings SET status = 'active', updated_at = ? WHERE id = ?").run(now, row.listing_id);
+      releaseUsedListingUnit(row.listing_id);
     }
 
     if (status === "completed") {
-      db.prepare("UPDATE used_listings SET status = 'sold', updated_at = ? WHERE id = ?").run(now, row.listing_id);
+      refreshUsedListingAvailability(row.listing_id);
     }
 
     insertEvent(row.id, status, note);

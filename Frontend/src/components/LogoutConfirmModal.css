@@ -41,7 +41,7 @@
 
 .logout-modal-close:hover {
   background: #fff7ed;
-  color: #f97316;
+  color: #fbe703;
 }
 
 .logout-modal-icon {
@@ -53,7 +53,7 @@
   justify-content: center;
   margin-bottom: 1rem;
   background: #fff7ed;
-  color: #f97316;
+  color: #fbe703;
   font-size: 1.55rem;
 }
 
@@ -114,7 +114,7 @@
 }
 
 .logout-modal-primary {
-  background: linear-gradient(135deg, #ef4444, #f97316);
+  background: linear-gradient(135deg, #ef4444, #fbe703);
   color: #ffffff;
   box-shadow: 0 14px 28px rgba(239, 68, 68, 0.2);
 }

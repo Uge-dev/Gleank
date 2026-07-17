@@ -32,6 +32,7 @@ import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { getUnreadMessageCount } from "../services/message.service";
 import { getNotificationUnreadCount } from "../services/notification.service";
+import { resolveMediaUrl } from "../utils/media";
 
 type NavItem = {
   label: string;
@@ -48,7 +49,7 @@ type NavItem = {
 function GleencNav() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, store, isAuthenticated, logout } = useAuth();
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false);
@@ -61,6 +62,12 @@ function GleencNav() {
 
   const isLoggedIn = isAuthenticated;
   const isSellerExperience = user?.role === "seller" || user?.role === "admin";
+  const sidebarAvatarUrl =
+    user?.role === "seller" && store?.logoUrl
+      ? resolveMediaUrl(store.logoUrl, "")
+      : user?.avatarUrl
+        ? resolveMediaUrl(user.avatarUrl, "")
+        : "";
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -299,8 +306,8 @@ function GleencNav() {
     <>
       <aside className="gleank-sidebar">
         <NavLink to="/" className="gleank-logo">
+          <img className="gleank-logo-mark" src="/Gleenc%20Mark.png" alt="" />
           <span className="gleank-logo-full">Gleenc</span>
-          <span className="gleank-logo-small">G</span>
         </NavLink>
 
         <nav className="gleank-sidebar-menu">
@@ -374,7 +381,11 @@ function GleencNav() {
             <div className="sidebar-user-box">
               <NavLink to="/profile" className="sidebar-user-profile">
                 <span>
-                  {(user?.name || "Gleenc User").charAt(0).toUpperCase()}
+                  {sidebarAvatarUrl ? (
+                    <img src={sidebarAvatarUrl} alt={user?.name || "Gleenc user"} />
+                  ) : (
+                    (user?.name || "Gleenc User").charAt(0).toUpperCase()
+                  )}
                 </span>
 
                 <div>

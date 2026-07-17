@@ -121,8 +121,6 @@ const { addToCart } = useCart();
     maxQuantity !== undefined && Number.isFinite(Number(maxQuantity))
       ? Math.max(0, Number(maxQuantity))
       : undefined;
-  const quantityAtMaxStock =
-    stockLimit !== undefined && quantity >= Math.max(1, stockLimit);
   const stockLabel =
     stockLimit === undefined
       ? "Stock confirmed"
@@ -185,11 +183,7 @@ const { addToCart } = useCart();
   }
 
   function increaseQuantity() {
-    setQuantity((currentQuantity) =>
-      stockLimit !== undefined
-        ? Math.min(stockLimit, currentQuantity + 1)
-        : currentQuantity + 1,
-    );
+    setQuantity((currentQuantity) => currentQuantity + 1);
   }
 
   function decreaseQuantity() {
@@ -410,8 +404,8 @@ const { addToCart } = useCart();
               type="button"
               onClick={increaseQuantity}
               aria-label="Increase quantity"
-              disabled={quantityAtMaxStock || stockLimit === 0}
-              title={quantityAtMaxStock ? "Maximum stock selected" : "Increase quantity"}
+              disabled={stockLimit === 0}
+              title="Increase quantity"
             >
               <FiPlus />
             </button>

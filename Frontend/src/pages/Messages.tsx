@@ -6,8 +6,6 @@ import {
   FiInfo,
   FiMessageCircle,
   FiMoreHorizontal,
-  FiPaperclip,
-  FiPhone,
   FiSearch,
   FiSend,
   FiShoppingBag,
@@ -131,6 +129,13 @@ function conversationPreview(conversation: GleencConversation) {
     image: resolveMediaUrl(conversation.storeLogoUrl, chatFallback),
     status: "Store",
   };
+}
+
+function getMessageTickState(message: GleencMessage, currentUserId?: string) {
+  if (!currentUserId || message.senderId !== currentUserId) return null;
+  if (message.isRead) return "read";
+  if (typeof navigator !== "undefined" && !navigator.onLine) return "offline";
+  return "delivered";
 }
 
 function Messages() {
@@ -547,10 +552,6 @@ function Messages() {
               </Link>
 
               <div className="chat-header-actions">
-                <button type="button" aria-label="Call">
-                  <FiPhone />
-                </button>
-
                 <Link
                   to={
                     activeConversation.storeSlug
@@ -614,7 +615,29 @@ function Messages() {
                         alt="Message attachment"
                       />
                     )}
-                    <time>{formatChatTime(message.createdAt)}</time>
+                    <span className="message-meta-line">
+                      <time>{formatChatTime(message.createdAt)}</time>
+                      {(() => {
+                        const tickState = getMessageTickState(message, user?.id);
+
+                        if (!tickState) return null;
+
+                        return (
+                          <span
+                            className={`message-tick-status ${tickState}`}
+                            aria-label={
+                              tickState === "read"
+                                ? "Message read"
+                                : tickState === "delivered"
+                                  ? "Message delivered"
+                                  : "Message sent"
+                            }
+                          >
+                            {tickState === "offline" ? "✓" : "✓✓"}
+                          </span>
+                        );
+                      })()}
+                    </span>
                   </div>
                 </div>
               ))}
@@ -633,14 +656,6 @@ function Messages() {
                   event.currentTarget.value = "";
                 }}
               />
-
-              <button
-                type="button"
-                aria-label="Attach file"
-                onClick={() => attachmentInputRef.current?.click()}
-              >
-                <FiPaperclip />
-              </button>
 
               <button
                 type="button"

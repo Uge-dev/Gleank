@@ -48,18 +48,18 @@
   align-items: center;
   justify-content: center;
   background: #fff4e8;
-  color: #f97316;
+  color: #fbe703;
   font-size: 1.8rem;
 }
 
 .payment-callback-card.is-success .payment-callback-icon {
-  background: #ecfdf5;
-  color: #10b981;
+  background: #fff0eb;
+  color: #ff3c00;
 }
 
 .payment-callback-card.is-pending .payment-callback-icon {
   background: #fff7ed;
-  color: #f59e0b;
+  color: #fbe703;
 }
 
 .payment-callback-card.is-failed .payment-callback-icon {
@@ -159,7 +159,7 @@
 }
 
 .payment-callback-primary {
-  background: linear-gradient(135deg, #f97316, #ffb000);
+  background: linear-gradient(135deg, #fbe703, #fbe703);
   color: #ffffff;
   box-shadow: 0 14px 28px rgba(249, 115, 22, 0.24);
 }

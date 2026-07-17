@@ -55,6 +55,7 @@ function Checkout() {
   const [quoteError, setQuoteError] = useState("");
   const [error, setError] = useState("");
   const [stockNotice, setStockNotice] = useState("");
+  const [stockNoticeSellerSlug, setStockNoticeSellerSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
@@ -194,8 +195,29 @@ function Checkout() {
       return;
     }
 
+    const overstockItem = cartItems.find((item) => {
+      return (
+        item.stock !== undefined &&
+        Number.isFinite(Number(item.stock)) &&
+        item.quantity > Math.max(0, Number(item.stock))
+      );
+    });
+
+    if (overstockItem) {
+      const available = Math.max(0, Number(overstockItem.stock || 0));
+      setError("");
+      setStockNoticeSellerSlug(overstockItem.sellerId);
+      setStockNotice(
+        available <= 0
+          ? `${overstockItem.name} is out of stock right now. Remove it from your cart or message the seller before checkout.`
+          : `${overstockItem.name} has only ${available} item(s) in stock, but your cart has ${overstockItem.quantity}. Reduce the quantity in your cart or message the seller for more availability.`,
+      );
+      return;
+    }
+
     setError("");
     setStockNotice("");
+    setStockNoticeSellerSlug("");
     setIsSubmitting(true);
 
     try {
@@ -253,6 +275,7 @@ window.location.href = paymentResponse.payment.authorizationUrl;
       setError(message);
       if (isInventoryError(message)) {
         setStockNotice(message);
+        setStockNoticeSellerSlug("");
       }
     } finally {
       setIsSubmitting(false);
@@ -310,6 +333,18 @@ window.location.href = paymentResponse.payment.authorizationUrl;
               <button type="button" onClick={() => navigate("/cart")}>
                 Review cart
               </button>
+              {stockNoticeSellerSlug && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(
+                      `/messages?seller=${encodeURIComponent(stockNoticeSellerSlug)}`,
+                    )
+                  }
+                >
+                  Message seller
+                </button>
+              )}
               <button type="button" onClick={() => setStockNotice("")}>
                 Close
               </button>

@@ -10,6 +10,9 @@ const MAX_USED_IMAGES = 10;
 const selectListing = `
   SELECT used_listings.*, users.name AS seller_name,
          users.phone AS seller_phone,
+         users.role AS seller_role,
+         stores.slug AS seller_store_slug,
+         stores.name AS seller_store_name,
          trust.status AS trust_status,
          trust.identity_proof_url AS trust_identity_proof_url,
          trust.face_verified AS trust_face_verified,
@@ -21,6 +24,7 @@ const selectListing = `
          payout.payout_verified AS payout_verified
   FROM used_listings
   JOIN users ON users.id = used_listings.seller_id
+  LEFT JOIN stores ON stores.owner_id = used_listings.seller_id AND stores.status = 'active'
   LEFT JOIN user_trust_profiles trust ON trust.user_id = used_listings.seller_id
   LEFT JOIN user_payout_accounts payout ON payout.user_id = used_listings.seller_id
 `;
@@ -51,6 +55,18 @@ function parseObject(value) {
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
+}
+
+function safePositiveInteger(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.floor(parsed));
+}
+
+function availableQuantity(row) {
+  const quantity = safePositiveInteger(row.quantity, 1);
+  const reservedQuantity = Math.max(0, Math.floor(Number(row.reserved_quantity || 0)));
+  return Math.max(0, quantity - reservedQuantity);
 }
 
 function computePlatformPrice(price) {
@@ -109,6 +125,9 @@ function serializeUsedListing(row, includePrivate = false) {
     id: row.id,
     sellerId: row.seller_id,
     sellerName: row.seller_name,
+    sellerRole: row.seller_role || "buyer",
+    sellerStoreSlug: row.seller_store_slug || "",
+    sellerStoreName: row.seller_store_name || "",
     sellerPhone: includePrivate ? row.seller_phone : "",
     name: row.name,
     category: row.category,
@@ -126,6 +145,9 @@ function serializeUsedListing(row, includePrivate = false) {
     areaLocation: row.area_location || row.campus,
     pickupLocation: row.pickup_location,
     deliveryOption: row.delivery_option,
+    quantity: safePositiveInteger(row.quantity, 1),
+    reservedQuantity: includePrivate ? Math.max(0, Number(row.reserved_quantity || 0)) : undefined,
+    availableQuantity: availableQuantity(row),
     imageUrls: parseImages(row.image_urls),
     status: row.status,
     verified: row.status === "active" && trustComplete && payoutComplete,
@@ -168,6 +190,7 @@ export function listUsedListings({ query = "", category = "" }) {
     .prepare(`
       ${selectListing}
       WHERE used_listings.status = 'active'
+        AND COALESCE(used_listings.quantity, 1) > COALESCE(used_listings.reserved_quantity, 0)
         AND (? = '' OR used_listings.category = ?)
         AND (
           ? = ''
@@ -245,6 +268,7 @@ export function createUsedListing(userId, input, files) {
   }
 
   const price = computePlatformPrice(input.price);
+  const quantity = safePositiveInteger(input.quantity, 1);
   const metadata = categoryMetadataFromInput(input);
   const risk = riskProfile(input, metadata);
   const status = env.autoApproveUsedListings && !risk.reviewRequired ? "active" : "pending";
@@ -258,12 +282,12 @@ export function createUsedListing(userId, input, files) {
     INSERT INTO used_listings (
       id, seller_id, name, category, description, condition, price_kobo,
       seller_price_kobo, platform_fee_kobo, buyer_price_kobo, campus, area_location,
-      pickup_location, delivery_option, serial_number, image_urls,
+      pickup_location, delivery_option, quantity, reserved_quantity, serial_number, image_urls,
       ownership_proof_url, receipt_url, status, reason_for_selling,
       defects_disclosed, confirmation_text, review_note, trust_profile_id,
       payout_account_id, category_metadata, risk_level, review_required,
       seller_verification_level, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     userId,
@@ -279,6 +303,7 @@ export function createUsedListing(userId, input, files) {
     clean(input.areaLocation || input.locationArea || input.campus || "", 160),
     clean(input.pickupLocation, 160),
     clean(input.deliveryOption, 30),
+    quantity,
     clean(input.serialNumber, 120),
     JSON.stringify(images),
     files.ownershipProof?.url || null,

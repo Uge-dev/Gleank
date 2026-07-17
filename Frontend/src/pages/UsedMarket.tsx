@@ -347,7 +347,10 @@ function UsedMarket() {
                     <h3>{listing.name}</h3>
                   </Link>
                   <strong>{formatPrice(listing.price)}</strong>
-                  <p>{listing.category} • {listing.deliveryOption}</p>
+                  <p>
+                    {listing.category} • {listing.deliveryOption} •{" "}
+                    {Math.max(0, Number(listing.availableQuantity ?? 1))} available
+                  </p>
 
                   <UsedListingTrustBadges listing={listing} compact />
 

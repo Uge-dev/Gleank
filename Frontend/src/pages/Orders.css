@@ -51,7 +51,7 @@
   padding: 0.7rem 1rem;
   border: none;
   border-radius: 999px;
-  background: linear-gradient(135deg, #f97316, #ea580c);
+  background: linear-gradient(135deg, #fbe703, #c52d00);
   color: #ffffff;
   font-weight: 950;
   cursor: pointer;
@@ -187,8 +187,8 @@ html[data-theme="dark"] .order-action-row a:last-child {
   margin-bottom: 10px !important;
   padding: 7px 11px !important;
   border-radius: 999px !important;
-  background: #ecfdf5 !important;
-  color: #15803d !important;
+  background: #fff0eb !important;
+  color: #c52d00 !important;
   font-size: 12px !important;
   font-weight: 950 !important;
   letter-spacing: 0.06em !important;
@@ -223,7 +223,7 @@ html[data-theme="dark"] .order-action-row a:last-child {
 }
 
 .orders-upgraded-page .orders-filter-bar button.active {
-  background: var(--brand-green, #16a34a) !important;
+  background: var(--brand-green, #ff3c00) !important;
   color: #ffffff !important;
   box-shadow: 0 12px 28px rgba(22, 163, 74, 0.22) !important;
 }
@@ -267,7 +267,7 @@ html[data-theme="dark"] .order-action-row a:last-child {
   padding: 6px 10px !important;
   border-radius: 999px !important;
   background: var(--soft-bg, #f8fafc) !important;
-  color: var(--brand-green, #16a34a) !important;
+  color: var(--brand-green, #ff3c00) !important;
   font-size: 11px !important;
   font-weight: 950 !important;
   letter-spacing: 0.04em !important;

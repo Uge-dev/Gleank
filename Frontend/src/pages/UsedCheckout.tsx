@@ -70,6 +70,20 @@ function UsedCheckout() {
     event.preventDefault();
     if (!listing) return;
 
+    const availableQuantity =
+      listing.availableQuantity !== undefined
+        ? Math.max(0, Number(listing.availableQuantity || 0))
+        : listing.status === "active"
+          ? 1
+          : 0;
+
+    if (listing.status !== "active" || availableQuantity <= 0) {
+      setError(
+        "This used item is no longer available. Go back to the item page or message the seller for updated availability.",
+      );
+      return;
+    }
+
     const formData = new FormData(event.currentTarget);
     setIsSubmitting(true);
     setError("");
@@ -125,6 +139,12 @@ function UsedCheckout() {
 
   const protectionFee = Math.round(listing.price * 0.03);
   const total = listing.price + protectionFee;
+  const availableQuantity =
+    listing.availableQuantity !== undefined
+      ? Math.max(0, Number(listing.availableQuantity || 0))
+      : listing.status === "active"
+        ? 1
+        : 0;
 
   return (
     <section className="used-checkout-page">
@@ -223,6 +243,11 @@ function UsedCheckout() {
           <img src={resolveMediaUrl(listing.imageUrls[0], usedFallback)} alt={listing.name} />
           <h2>{listing.name}</h2>
           <p>{listing.condition} • {listing.campus}</p>
+          <p>
+            {availableQuantity > 0
+              ? `${availableQuantity} available`
+              : "Currently unavailable"}
+          </p>
 
           <div className="used-summary-lines">
             <div>

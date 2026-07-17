@@ -27,7 +27,7 @@ function cartStockState(item: CartItem) {
 
   return {
     stockLimit,
-    atMaxStock: stockLimit !== undefined && item.quantity >= stockLimit,
+    overStock: stockLimit !== undefined && item.quantity > stockLimit,
   };
 }
 
@@ -99,7 +99,7 @@ function Cart() {
       <section className="cart-layout">
         <div className="cart-items-panel">
           {cartItems.map((item) => {
-            const { stockLimit, atMaxStock } = cartStockState(item);
+            const { stockLimit, overStock } = cartStockState(item);
 
             return (
               <article className="cart-item-card" key={item.id}>
@@ -110,10 +110,10 @@ function Cart() {
                 <h2>{item.name}</h2>
                 <p>Sold by {item.sellerName}</p>
                 {stockLimit !== undefined && (
-                  <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
+                  <small className={overStock ? "cart-stock-note limit" : "cart-stock-note"}>
                     {stockLimit <= 0
                       ? "Out of stock"
-                      : `${stockLimit} In stock${atMaxStock ? " • max selected" : ""}`}
+                      : `${stockLimit} In stock${overStock ? " • reduce before checkout" : ""}`}
                   </small>
                 )}
                 <strong>{formatPrice(item.numericPrice)}</strong>
@@ -135,8 +135,7 @@ function Cart() {
                     type="button"
                     onClick={() => increaseQuantity(item.id)}
                     aria-label="Increase quantity"
-                    disabled={atMaxStock}
-                    title={atMaxStock ? "Maximum stock selected" : "Increase quantity"}
+                    title="Increase quantity"
                   >
                     <FiPlus />
                   </button>

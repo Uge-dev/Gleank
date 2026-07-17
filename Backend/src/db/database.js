@@ -1090,6 +1090,8 @@ ensureColumn("services", "reviewed_by", "TEXT");
 ensureColumn("used_listings", "seller_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_listings", "quantity", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("used_listings", "reserved_quantity", "INTEGER NOT NULL DEFAULT 0");
 
 ensureColumn("orders", "payment_method", "TEXT NOT NULL DEFAULT 'pay_now'");
 ensureColumn("orders", "stage4_status", "TEXT NOT NULL DEFAULT ''");
