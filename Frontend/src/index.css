@@ -31025,7 +31025,7 @@ html[data-theme="dark"] select {
 .market-live-store-row p {
   margin-top: 7px;
   color: var(--text-muted, #64748b);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
   line-height: 1.45;
 }
@@ -31070,7 +31070,7 @@ html[data-theme="dark"] select {
 
 .market-live-meta strong {
   color: var(--text-main, #111827);
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 950;
 }
 
@@ -32381,7 +32381,7 @@ textarea:focus {
   }
 
   .market-live-meta strong {
-    font-size: 12px !important;
+    font-size: 15px !important;
   }
 
   .market-source-pill {
@@ -33029,7 +33029,7 @@ textarea:focus {
   display: block !important;
   margin: 0 !important;
   color: var(--text-main, #111827) !important;
-  font-size: 16px !important;
+  font-size: 20px !important;
   line-height: 1.18 !important;
 }
 
@@ -33377,7 +33377,7 @@ textarea:focus {
   .market-live-card.used .market-live-body p,
   .market-live-card.local-market .market-live-body p,
   .market-live-card.product .market-product-seller {
-    font-size: 10.5px !important;
+    font-size: 12px !important;
     line-height: 1.35 !important;
   }
 
@@ -33391,7 +33391,7 @@ textarea:focus {
   .market-live-card.product .market-live-body .market-live-meta strong,
   .market-live-card.used .market-live-body .market-live-meta strong,
   .market-live-card.local-market .market-live-body .market-live-meta strong {
-    font-size: 12px !important;
+    font-size: 15px !important;
   }
 }
 
@@ -33519,5 +33519,19 @@ textarea:focus {
     height: 190px !important;
     min-height: 190px !important;
     max-height: 190px !important;
+  }
+}
+
+/* Final July 17 market product view-count sizing */
+.market-live-card.product .market-live-meta small {
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  line-height: 1.15 !important;
+}
+
+@media (max-width: 720px) {
+  .market-live-card.product .market-live-meta small {
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
   }
 }
