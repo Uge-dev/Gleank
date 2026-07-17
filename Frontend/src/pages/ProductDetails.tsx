@@ -207,6 +207,37 @@ function ProductDetails() {
     });
   }
 
+  function handleAddRelatedToCart(relatedProduct: ProductDetailsResponse["product"]) {
+    if (relatedProduct.status === "out_of_stock" || Number(relatedProduct.stock || 0) <= 0) {
+      setShareNotice("This related product is currently out of stock.");
+      window.setTimeout(() => setShareNotice(""), 2200);
+      return;
+    }
+
+    if (user?.id === relatedProduct.store.ownerId) {
+      setShareNotice("You cannot order your own product.");
+      window.setTimeout(() => setShareNotice(""), 2200);
+      return;
+    }
+
+    addToCart({
+      id: relatedProduct.id,
+      name: relatedProduct.name,
+      price: formatPrice(relatedProduct.price),
+      numericPrice: relatedProduct.price,
+      image: resolveMediaUrl(relatedProduct.imageUrls[0], productFallback),
+      sellerName: relatedProduct.store.name,
+      sellerId: relatedProduct.store.slug,
+      campus: relatedProduct.store.campus,
+      category: relatedProduct.category,
+      stock: relatedProduct.stock,
+      quantity: 1,
+    });
+
+    setShareNotice("Related product added to cart.");
+    window.setTimeout(() => setShareNotice(""), 2200);
+  }
+
   function handleOrderNow() {
     if (!requireAuth()) return;
     handleAddToCart();
@@ -487,7 +518,7 @@ function ProductDetails() {
               className="product-info-box comment-box"
               id="product-comments"
             >
-              <h2>Comments</h2>
+              <h2>Review</h2>
               <div className="comment-list">
                 {data.comments.length ? (
                   data.comments.map((comment) => (
@@ -500,14 +531,14 @@ function ProductDetails() {
                     </div>
                   ))
                 ) : (
-                  <p>No comments yet. Start the conversation.</p>
+                  <p>No reviews yet. Drop the first review.</p>
                 )}
               </div>
-              <div className="product-comment-form">
+              <div className="product-review-form">
                 <textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
-                  placeholder="Ask about this product..."
+                  placeholder="Drop a review about this product..."
                   maxLength={500}
                   rows={3}
                 />
@@ -516,7 +547,7 @@ function ProductDetails() {
                   onClick={() => void handleCommentSubmit()}
                   disabled={isCommenting || !commentText.trim()}
                 >
-                  {isCommenting ? "Posting..." : "Post Comment"}
+                  {isCommenting ? "Dropping..." : "Drop Review"}
                 </button>
               </div>
             </section>
@@ -538,10 +569,8 @@ function ProductDetails() {
                 <RelatedProductCard
                   key={relatedProduct.id}
                   product={relatedProduct}
-                  saved={isSaved("product", relatedProduct.id)}
-                  onToggleSave={() =>
-                    void handleToggleSave("product", relatedProduct.id)
-                  }
+                  disabled={user?.id === relatedProduct.store.ownerId}
+                  onAddToCart={() => handleAddRelatedToCart(relatedProduct)}
                 />
               ))}
             </div>

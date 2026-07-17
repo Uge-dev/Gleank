@@ -1,12 +1,12 @@
 import { Link } from "react-router-dom";
-import { FiBookmark } from "react-icons/fi";
+import { FiShoppingCart } from "react-icons/fi";
 import type { PublicProduct } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
 type RelatedProductCardProps = {
   product: PublicProduct;
-  saved: boolean;
-  onToggleSave: () => void;
+  onAddToCart: () => void;
+  disabled?: boolean;
 };
 
 const productFallback =
@@ -22,9 +22,12 @@ function formatPrice(price: number) {
 
 function RelatedProductCard({
   product,
-  saved,
-  onToggleSave,
+  onAddToCart,
+  disabled = false,
 }: RelatedProductCardProps) {
+  const isAvailable =
+    product.status !== "out_of_stock" && Number(product.stock || 0) > 0;
+
   return (
     <article className="related-product-card">
       <div className="related-product-image">
@@ -45,8 +48,15 @@ function RelatedProductCard({
         <strong>{formatPrice(product.price)}</strong>
 
         <div className="related-product-actions">
-          <button type="button" onClick={onToggleSave} aria-label="Save product">
-            <FiBookmark fill={saved ? "currentColor" : "none"} />
+          <button
+            type="button"
+            className="related-add-cart-btn"
+            onClick={onAddToCart}
+            disabled={disabled || !isAvailable}
+            aria-label={`Add ${product.name} to cart`}
+          >
+            <FiShoppingCart />
+            <span>Add to cart</span>
           </button>
           <Link to={`/products/${product.id}`}>View</Link>
         </div>

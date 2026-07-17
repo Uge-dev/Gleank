@@ -32864,3 +32864,405 @@ textarea:focus {
     height: 124px !important;
   }
 }
+
+/* Restore the original marketplace card structure.
+   Keep this after the brand/mobile overrides so market pages use the fuller
+   previous card layout, while images stay controlled instead of stretching. */
+.market-live-card {
+  border-radius: 24px !important;
+  background: var(--soft-bg, #f8fafc) !important;
+}
+
+.market-live-card:hover {
+  transform: translateY(-3px) !important;
+  border-color: rgba(22, 163, 74, 0.28) !important;
+  box-shadow: 0 20px 55px rgba(15, 23, 42, 0.09) !important;
+}
+
+.market-live-image,
+.market-live-store-cover {
+  background:
+    radial-gradient(circle at 20% 10%, rgba(22, 163, 74, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(22, 163, 74, 0.1), rgba(249, 115, 22, 0.09)) !important;
+  color: #16a34a !important;
+}
+
+.market-live-card.product .market-live-image,
+.market-live-card.used .market-live-image,
+.market-live-card.local-market .market-live-image {
+  height: 150px !important;
+  min-height: 150px !important;
+  aspect-ratio: auto !important;
+}
+
+.market-live-store-cover {
+  height: auto !important;
+  min-height: 108px !important;
+}
+
+.market-live-avatar {
+  background: linear-gradient(135deg, #16a34a, #f97316) !important;
+}
+
+.market-live-card .market-source-pill {
+  margin: 0 0 9px !important;
+  padding: 6px 9px !important;
+  border-color: rgba(22, 163, 74, 0.18) !important;
+  background: #ecfdf5 !important;
+  color: #15803d !important;
+  font-size: 10px !important;
+}
+
+@media (max-width: 720px) {
+  .market-live-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    height: 150px !important;
+    min-height: 150px !important;
+  }
+
+  .market-live-store-cover {
+    min-height: 108px !important;
+  }
+
+  .market-live-body,
+  .market-live-store-row {
+    padding: 15px !important;
+  }
+
+  .market-live-body h3,
+  .market-live-store-row h3 {
+    font-size: 16px !important;
+    line-height: 1.18 !important;
+  }
+
+  .market-live-body p,
+  .market-live-store-row p,
+  .market-product-seller {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+
+  .market-live-body .market-live-meta,
+  .market-live-meta {
+    padding: 0 15px 15px !important;
+    gap: 10px !important;
+    font-size: 12px !important;
+  }
+
+  .market-live-body .market-live-meta {
+    padding: 0 !important;
+    margin-top: 14px !important;
+  }
+
+  .market-live-meta strong {
+    font-size: 15px !important;
+  }
+
+  .market-live-image span {
+    left: 12px !important;
+    bottom: 12px !important;
+    max-width: calc(100% - 24px) !important;
+    padding: 7px 10px !important;
+    font-size: 11px !important;
+  }
+}
+
+.market-live-card.product,
+.market-live-card.used,
+.market-live-card.local-market {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  overflow: hidden !important;
+  border-radius: 24px !important;
+}
+
+.market-live-card.product .market-live-image,
+.market-live-card.used .market-live-image,
+.market-live-card.local-market .market-live-image {
+  flex: 0 0 150px !important;
+  width: 100% !important;
+  height: 150px !important;
+  max-height: 150px !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+}
+
+.market-live-card.product .market-live-image img,
+.market-live-card.used .market-live-image img,
+.market-live-card.local-market .market-live-image img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.market-live-card.product .market-live-body,
+.market-live-card.used .market-live-body,
+.market-live-card.local-market .market-live-body {
+  position: relative !important;
+  z-index: 2 !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  padding: 15px !important;
+  background: var(--soft-bg, #f8fafc) !important;
+  color: var(--text-main, #111827) !important;
+}
+
+.market-live-card.product .market-live-body h3,
+.market-live-card.used .market-live-body h3,
+.market-live-card.local-market .market-live-body h3 {
+  display: block !important;
+  margin: 0 !important;
+  color: var(--text-main, #111827) !important;
+  font-size: 16px !important;
+  line-height: 1.18 !important;
+}
+
+.market-live-card.product .market-live-body p,
+.market-live-card.used .market-live-body p,
+.market-live-card.local-market .market-live-body p,
+.market-live-card.product .market-product-seller {
+  display: block !important;
+  color: var(--text-muted, #64748b) !important;
+}
+
+.market-live-card.product .market-live-body .market-live-meta,
+.market-live-card.used .market-live-body .market-live-meta,
+.market-live-card.local-market .market-live-body .market-live-meta {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-top: 14px !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 720px) {
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    flex-basis: 148px !important;
+    height: 148px !important;
+    max-height: 148px !important;
+  }
+}
+
+/* =========================================================
+   PRODUCT DETAIL + VERIFICATION FINAL FIXES — JULY 17
+========================================================= */
+
+.seller-store-stats div {
+  display: grid !important;
+  justify-items: center !important;
+  align-content: center !important;
+  gap: 6px !important;
+  min-height: 88px !important;
+  padding: 16px 12px !important;
+  text-align: center !important;
+}
+
+.seller-store-stats svg {
+  position: static !important;
+  width: 18px !important;
+  height: 18px !important;
+  margin: 0 auto !important;
+  display: block !important;
+}
+
+.seller-store-stats strong {
+  margin-top: 0 !important;
+}
+
+.seller-store-actions button,
+.seller-store-actions a {
+  min-height: 46px !important;
+  border: none !important;
+  border-radius: 999px !important;
+  padding: 0 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-weight: 900 !important;
+  text-decoration: none !important;
+}
+
+.seller-store-actions button {
+  background: #ff3c00 !important;
+  color: #ffffff !important;
+}
+
+.seller-store-actions a {
+  background: #111827 !important;
+  color: #ffffff !important;
+}
+
+.product-media-arrow {
+  top: 50% !important;
+}
+
+.product-media-dots {
+  bottom: 22px !important;
+}
+
+.comment-box h2 {
+  margin-bottom: 14px !important;
+}
+
+.product-review-form {
+  margin-top: 16px !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  gap: 12px !important;
+}
+
+.product-review-form textarea {
+  width: 100% !important;
+  min-height: 96px !important;
+  border: 1px solid var(--border-color, #dbe1e8) !important;
+  border-radius: 16px !important;
+  padding: 14px 15px !important;
+  background: var(--input-bg, #f8fafc) !important;
+  color: var(--text-main, #111827) !important;
+  resize: vertical !important;
+  outline: none !important;
+  font: inherit !important;
+}
+
+.product-review-form textarea:focus {
+  border-color: #ff3c00 !important;
+  background: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(255, 60, 0, 0.1) !important;
+}
+
+.product-review-form button {
+  width: fit-content !important;
+  min-width: 150px !important;
+  min-height: 46px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  padding: 0 24px !important;
+  background: #111827 !important;
+  color: #ffffff !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: 950 !important;
+}
+
+.product-review-form button:disabled {
+  opacity: 0.55 !important;
+  cursor: not-allowed !important;
+}
+
+.related-product-actions {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.74fr) !important;
+}
+
+.related-product-actions .related-add-cart-btn {
+  width: 100% !important;
+  padding: 0 12px !important;
+  background: #ff3c00 !important;
+  color: #ffffff !important;
+  border: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  white-space: nowrap !important;
+}
+
+.related-product-actions .related-add-cart-btn svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.related-product-actions .related-add-cart-btn:disabled {
+  background: #e5e7eb !important;
+  color: #94a3b8 !important;
+}
+
+.seller-onboarding-hero {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(251, 231, 3, 0.12), transparent 34%),
+    radial-gradient(circle at 92% 18%, rgba(251, 231, 3, 0.08), transparent 30%),
+    linear-gradient(135deg, #ffffff 0%, #fffef2 100%) !important;
+  border-color: rgba(251, 231, 3, 0.24) !important;
+}
+
+.seller-onboarding-form > button,
+.seller-status-card button,
+.seller-payout-card button {
+  width: fit-content !important;
+  min-width: 142px !important;
+  min-height: 48px !important;
+  padding: 0 24px !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+}
+
+.seller-onboarding-form > button {
+  justify-self: start !important;
+}
+
+.message-bubble .message-meta-line {
+  width: 100% !important;
+}
+
+.message-bubble-row:not(.mine) .message-meta-line {
+  justify-content: flex-start !important;
+}
+
+.message-bubble-row.mine .message-meta-line {
+  justify-content: flex-end !important;
+}
+
+.message-tick-status {
+  display: inline-flex !important;
+  min-width: 18px !important;
+  justify-content: center !important;
+}
+
+@media (max-width: 640px) {
+  .seller-store-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .product-review-form button {
+    width: 100% !important;
+  }
+
+  .related-product-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .related-product-actions .related-add-cart-btn,
+  .related-product-actions a {
+    min-height: 42px !important;
+  }
+
+  .seller-onboarding-form > button,
+  .seller-status-card button,
+  .seller-payout-card button {
+    width: 100% !important;
+  }
+}

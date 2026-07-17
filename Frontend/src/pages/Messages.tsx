@@ -132,9 +132,15 @@ function conversationPreview(conversation: GleencConversation) {
 }
 
 function getMessageTickState(message: GleencMessage, currentUserId?: string) {
-  if (!currentUserId || message.senderId !== currentUserId) return null;
+  if (!currentUserId) return null;
   if (message.isRead) return "read";
-  if (typeof navigator !== "undefined" && !navigator.onLine) return "offline";
+  if (
+    message.senderId === currentUserId &&
+    typeof navigator !== "undefined" &&
+    !navigator.onLine
+  ) {
+    return "offline";
+  }
   return "delivered";
 }
 

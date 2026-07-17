@@ -15,13 +15,13 @@
   "dir": "ltr",
   "icons": [
     {
-      "src": "/gleenc%20logo.png",
+      "src": "/glc%20red%20yel%20logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/gleenc%20logo.png",
+      "src": "/glc%20red%20yel%20logo.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -33,21 +33,21 @@
       "short_name": "Search",
       "description": "Find products, sellers, and stores.",
       "url": "/search?source=pwa-shortcut",
-      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
+      "icons": [{ "src": "/glc%20red%20yel%20logo.png", "sizes": "512x512", "type": "image/png" }]
     },
     {
       "name": "My orders",
       "short_name": "Orders",
       "description": "Track buyer orders and delivery progress.",
       "url": "/orders?source=pwa-shortcut",
-      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
+      "icons": [{ "src": "/glc%20red%20yel%20logo.png", "sizes": "512x512", "type": "image/png" }]
     },
     {
       "name": "Seller dashboard",
       "short_name": "Dashboard",
       "description": "Manage seller products, services, and readiness tasks.",
       "url": "/dashboard?source=pwa-shortcut",
-      "icons": [{ "src": "/gleenc%20logo.png", "sizes": "512x512", "type": "image/png" }]
+      "icons": [{ "src": "/glc%20red%20yel%20logo.png", "sizes": "512x512", "type": "image/png" }]
     }
   ]
 }
