@@ -33266,3 +33266,258 @@ textarea:focus {
     width: 100% !important;
   }
 }
+
+/* =========================================================
+   PROFILE + MARKET MOBILE CORRECTIONS — JULY 17
+========================================================= */
+
+.profile-hero-card,
+.profile-section-card,
+.profile-stat-card {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(251, 231, 3, 0.09), transparent 36%),
+    #ffffff !important;
+  border-color: rgba(251, 231, 3, 0.18) !important;
+}
+
+.profile-action-list a,
+.profile-settings-list button,
+.profile-meta-row span,
+.profile-seller-box,
+.profile-used-market-box {
+  background:
+    radial-gradient(circle at 96% 10%, rgba(251, 231, 3, 0.1), transparent 34%),
+    rgba(251, 231, 3, 0.045) !important;
+  border-color: rgba(251, 231, 3, 0.14) !important;
+}
+
+.profile-action-icon,
+.profile-stat-card div,
+.profile-seller-box > div {
+  background: rgba(251, 231, 3, 0.14) !important;
+  color: #9a3412 !important;
+}
+
+.profile-avatar,
+.sidebar-user-profile > span {
+  overflow: hidden !important;
+}
+
+.profile-avatar > img,
+.sidebar-user-profile > span img {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: inherit !important;
+}
+
+.market-live-card.product .market-live-body,
+.market-live-card.used .market-live-body,
+.market-live-card.local-market .market-live-body {
+  text-align: center !important;
+}
+
+.market-live-card.product .market-product-seller {
+  text-align: center !important;
+}
+
+.market-live-card.product .market-live-body .market-live-meta,
+.market-live-card.used .market-live-body .market-live-meta,
+.market-live-card.local-market .market-live-body .market-live-meta {
+  justify-content: center !important;
+  flex-wrap: wrap !important;
+  gap: 8px 12px !important;
+}
+
+@media (max-width: 720px) {
+  .market-live-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+  }
+
+  .market-live-card.product,
+  .market-live-card.used,
+  .market-live-card.local-market {
+    border-radius: 20px !important;
+  }
+
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    flex: 0 0 174px !important;
+    height: 174px !important;
+    min-height: 174px !important;
+    max-height: 174px !important;
+  }
+
+  .market-live-card.product .market-live-image img,
+  .market-live-card.used .market-live-image img,
+  .market-live-card.local-market .market-live-image img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    object-position: center !important;
+  }
+
+  .market-live-card.product .market-live-body,
+  .market-live-card.used .market-live-body,
+  .market-live-card.local-market .market-live-body {
+    padding: 12px 9px 13px !important;
+  }
+
+  .market-live-card.product .market-live-body h3,
+  .market-live-card.used .market-live-body h3,
+  .market-live-card.local-market .market-live-body h3 {
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+  }
+
+  .market-live-card.product .market-live-body p,
+  .market-live-card.used .market-live-body p,
+  .market-live-card.local-market .market-live-body p,
+  .market-live-card.product .market-product-seller {
+    font-size: 10.5px !important;
+    line-height: 1.35 !important;
+  }
+
+  .market-live-card.product .market-live-body .market-live-meta,
+  .market-live-card.used .market-live-body .market-live-meta,
+  .market-live-card.local-market .market-live-body .market-live-meta {
+    margin-top: 10px !important;
+    font-size: 10.5px !important;
+  }
+
+  .market-live-card.product .market-live-body .market-live-meta strong,
+  .market-live-card.used .market-live-body .market-live-meta strong,
+  .market-live-card.local-market .market-live-body .market-live-meta strong {
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .market-live-grid {
+    gap: 9px !important;
+  }
+
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    flex-basis: 156px !important;
+    height: 156px !important;
+    min-height: 156px !important;
+    max-height: 156px !important;
+  }
+}
+
+/* Final July 17 marketplace, notification, and chat polish */
+.used-details-price,
+.used-details-content .used-details-price,
+.secure-used-card-body > strong {
+  color: #0f172a !important;
+}
+
+.secure-used-card-actions a,
+.secure-details-actions .secondary,
+.used-details-actions .secondary {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+}
+
+.secure-used-card-actions a:hover,
+.secure-details-actions .secondary:hover,
+.used-details-actions .secondary:hover {
+  background: #020617 !important;
+  border-color: #020617 !important;
+  color: #ffffff !important;
+}
+
+.notification-filter-row button.active,
+.notification-filter-row button.active:hover {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+}
+
+.notification-filter-row button.active small,
+.notification-filter-row button.active span {
+  background: #ffffff !important;
+  color: #111827 !important;
+}
+
+.mini-seller {
+  cursor: pointer;
+}
+
+.mini-seller:focus-visible {
+  outline: 3px solid rgba(17, 24, 39, 0.22);
+  outline-offset: 3px;
+}
+
+.messages-sidebar-header span {
+  color: #0f172a !important;
+}
+
+.conversation-avatar-wrap small,
+.chat-seller-avatar small,
+.used-chat-presence-dot {
+  background: #22c55e !important;
+  border-color: #ffffff !important;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.16) !important;
+}
+
+.used-chat-avatar-wrap {
+  position: relative;
+  display: inline-block;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+}
+
+.used-chat-avatar-wrap img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.used-chat-presence-dot {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+}
+
+@media (max-width: 720px) {
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    flex-basis: 214px !important;
+    height: 214px !important;
+    min-height: 214px !important;
+    max-height: 214px !important;
+  }
+
+  .market-live-card.product .market-live-image img,
+  .market-live-card.used .market-live-image img,
+  .market-live-card.local-market .market-live-image img {
+    object-fit: cover !important;
+    object-position: center center !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .market-live-card.product .market-live-image,
+  .market-live-card.used .market-live-image,
+  .market-live-card.local-market .market-live-image {
+    flex-basis: 190px !important;
+    height: 190px !important;
+    min-height: 190px !important;
+    max-height: 190px !important;
+  }
+}

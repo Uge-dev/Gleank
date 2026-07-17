@@ -516,7 +516,19 @@ viewCount={product.interaction.viewCount}
                       : null;
 
                     return (
-                      <div className="mini-seller" key={store.id}>
+                      <div
+                        className="mini-seller"
+                        key={store.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => navigate(`/stores/${store.slug || store.id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            navigate(`/stores/${store.slug || store.id}`);
+                          }
+                        }}
+                      >
                         <span>
                           {storeLogoUrl ? (
                             <img src={storeLogoUrl} alt={store.name} />
@@ -534,7 +546,10 @@ viewCount={product.interaction.viewCount}
 
                         <button
                           type="button"
-                          onClick={() => void handleToggleFollow(store.slug)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleToggleFollow(store.slug);
+                          }}
                         >
                           {store.interaction.isFollowing
                             ? "Following"

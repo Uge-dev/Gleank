@@ -62,12 +62,11 @@ function GleencNav() {
 
   const isLoggedIn = isAuthenticated;
   const isSellerExperience = user?.role === "seller" || user?.role === "admin";
-  const sidebarAvatarUrl =
-    user?.role === "seller" && store?.logoUrl
-      ? resolveMediaUrl(store.logoUrl, "")
-      : user?.avatarUrl
-        ? resolveMediaUrl(user.avatarUrl, "")
-        : "";
+  const sidebarAvatarUrl = store?.logoUrl
+    ? resolveMediaUrl(store.logoUrl, "")
+    : user?.avatarUrl
+      ? resolveMediaUrl(user.avatarUrl, "")
+      : "";
 
   useEffect(() => {
     if (!isLoggedIn) {

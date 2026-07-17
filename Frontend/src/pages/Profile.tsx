@@ -119,15 +119,14 @@ function Profile() {
   const displayName = user?.name || "Gleenc User";
   const displayEmail = user?.email || "user@gleenc.com";
   const displayCampus = user?.campus || "Campus not set";
-  const accountType = user?.role === "seller" ? "Campus Seller" : "Campus Buyer";
-  const profileAvatarUrl =
-    user?.role === "seller" && store?.logoUrl
-      ? resolveMediaUrl(store.logoUrl, "")
-      : uploadedAvatarUrl
-        ? uploadedAvatarUrl
-        : user?.avatarUrl
-          ? resolveMediaUrl(user.avatarUrl, "")
-          : "";
+  const accountType = user?.role === "seller" || store ? "Campus Seller" : "Campus Buyer";
+  const profileAvatarUrl = store?.logoUrl
+    ? resolveMediaUrl(store.logoUrl, "")
+    : uploadedAvatarUrl
+      ? uploadedAvatarUrl
+      : user?.avatarUrl
+        ? resolveMediaUrl(user.avatarUrl, "")
+        : "";
 
   async function handleLogoutConfirm() {
     setIsLoggingOut(true);
@@ -183,7 +182,7 @@ function Profile() {
               <FiUser />
             )}
 
-            {user?.role !== "seller" && (
+            {!store && user?.role !== "seller" && (
               <label className="profile-avatar-upload">
                 <FiCamera />
                 <span>{isUploadingAvatar ? "Uploading..." : "Change photo"}</span>
@@ -229,15 +228,15 @@ function Profile() {
           <button
             type="button"
             className="profile-edit-btn"
-            disabled={isUploadingAvatar || user?.role === "seller"}
+            disabled={isUploadingAvatar || user?.role === "seller" || Boolean(store)}
             onClick={() => {
-              if (user?.role !== "seller") {
+              if (user?.role !== "seller" && !store) {
                 avatarInputRef.current?.click();
               }
             }}
           >
             <FiEdit3 />
-            {user?.role === "seller"
+            {user?.role === "seller" || store
               ? "Store logo controls profile"
               : isUploadingAvatar
                 ? "Uploading..."

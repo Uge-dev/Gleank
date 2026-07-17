@@ -18,6 +18,14 @@ const usedFallback =
   "https://images.unsplash.com/photo-1523206489230-c012c64b2b48?auto=format&fit=crop&w=900&q=80";
 
 const chatEmojis = ["😀", "😂", "😍", "🔥", "👏", "🙏", "💚", "💯", "😭", "🤝", "👍", "✨"];
+const activePresenceWindowMs = 5 * 60 * 1000;
+
+function conversationIsActive(conversation: GleencConversation) {
+  if (!conversation.lastMessageAt) return false;
+  const lastSeen = new Date(conversation.lastMessageAt).getTime();
+  if (Number.isNaN(lastSeen)) return false;
+  return Date.now() - lastSeen <= activePresenceWindowMs;
+}
 
 function UsedMessages() {
   const { user } = useAuth();
@@ -131,7 +139,10 @@ function UsedMessages() {
                   setSelectedAttachment(null);
                 }}
               >
-                <img src={resolveMediaUrl(conversation.listingImageUrl, usedFallback)} alt={conversation.listingName || "Used item"} />
+                <span className="used-chat-avatar-wrap">
+                  <img src={resolveMediaUrl(conversation.listingImageUrl, usedFallback)} alt={conversation.listingName || "Used item"} />
+                  {conversationIsActive(conversation) && <small className="used-chat-presence-dot" />}
+                </span>
                 <div>
                   <strong>{conversation.otherUserName}</strong>
                   <span>{conversation.listingName || "Used Market chat"}</span>
@@ -154,7 +165,10 @@ function UsedMessages() {
                 >
                   <FiArrowLeft />
                 </button>
-                <img src={resolveMediaUrl(activeConversation.listingImageUrl, usedFallback)} alt={activeConversation.listingName} />
+                <span className="used-chat-avatar-wrap">
+                  <img src={resolveMediaUrl(activeConversation.listingImageUrl, usedFallback)} alt={activeConversation.listingName} />
+                  {conversationIsActive(activeConversation) && <small className="used-chat-presence-dot" />}
+                </span>
                 <div>
                   <strong>{activeConversation.listingName || "Used Market conversation"}</strong>
                   <span>Chat with {activeConversation.otherUserName}</span>

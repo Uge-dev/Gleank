@@ -244,6 +244,14 @@ export function createUsedListingConversation(userId, listingId) {
     throw new HttpError(422, "You cannot start a buyer conversation with your own listing.");
   }
 
+  const sellerStore = db
+    .prepare("SELECT id, slug FROM stores WHERE owner_id = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1")
+    .get(listing.seller_id);
+
+  if (sellerStore) {
+    return createStoreConversation(userId, sellerStore.slug || sellerStore.id);
+  }
+
   const existing = db
     .prepare(`
       SELECT id FROM conversations

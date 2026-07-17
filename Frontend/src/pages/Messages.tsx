@@ -39,6 +39,7 @@ const chatEmojis = ["😀", "😂", "😍", "🔥", "👏", "🙏", "💚", "�
 
 const chatFallback =
   "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=600&q=80";
+const activePresenceWindowMs = 5 * 60 * 1000;
 
 function formatChatTime(value?: string | null) {
   if (!value) return "Now";
@@ -83,6 +84,13 @@ function conversationImage(conversation: GleencConversation) {
 function conversationCampus(conversation: GleencConversation) {
   if (conversation.contextType === "support") return "Admin support";
   return conversation.storeCampus || "Campus chat";
+}
+
+function conversationIsActive(conversation: GleencConversation) {
+  if (!conversation.lastMessageAt) return false;
+  const lastSeen = new Date(conversation.lastMessageAt).getTime();
+  if (Number.isNaN(lastSeen)) return false;
+  return Date.now() - lastSeen <= activePresenceWindowMs;
 }
 
 function conversationPreview(conversation: GleencConversation) {
@@ -476,7 +484,7 @@ function Messages() {
                         <span>{conversationAvatar(conversation)}</span>
                       )}
 
-                      <small />
+                      {conversationIsActive(conversation) && <small />}
                     </div>
 
                     <div className="conversation-info">
@@ -548,7 +556,7 @@ function Messages() {
                     <span>{conversationAvatar(activeConversation)}</span>
                   )}
 
-                  <small />
+                  {conversationIsActive(activeConversation) && <small />}
                 </div>
 
                 <div>
