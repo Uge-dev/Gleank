@@ -75,6 +75,8 @@ export type AdminSeller = {
   pickupLocation?: string;
   locationArea?: string;
   whatsappPhone?: string;
+  profileCompletionPercent?: number;
+  completionMissingFields?: string[];
   status: AdminStatus;
   products: number;
   orders: number;
@@ -267,6 +269,11 @@ export type AdminRider = {
   safetyStatus: string;
   ratingAverage: number;
   completedDeliveries: number;
+  profileCompletionPercent: number;
+  completionMissingFields: string[];
+  verificationStages?: Record<string, boolean>;
+  capacityLocked?: boolean;
+  capacityChangeUnlockedUntil?: string | null;
   identityDocumentUrl: string | null;
   selfieUrl: string | null;
   createdAt: string;
@@ -279,7 +286,7 @@ export type AdminDispute = {
   title: string;
   buyer: string;
   seller: string;
-  type: "delivery" | "payment" | "product" | "seller" | "refund";
+  type: "delivery" | "payment" | "product" | "seller" | "refund" | "rider";
   priority: "low" | "medium" | "high";
   message: string;
   status: AdminStatus;

@@ -13,10 +13,12 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+    setIsSubmitting(true);
     try {
       const rider = await login(email, password);
       if (rider.emailVerified === false) {
@@ -33,6 +35,8 @@ export default function Login() {
         return;
       }
       setError(err instanceof Error ? err.message : 'Email or password is incorrect.');
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -86,7 +90,9 @@ export default function Login() {
           </label>
 
           {error && <p className="mb-4 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
-          <Button fullWidth size="lg">Login</Button>
+          <Button fullWidth size="lg" disabled={isSubmitting}>
+            {isSubmitting ? 'Signing in...' : 'Login'}
+          </Button>
           <p className="mt-4 text-center text-sm">
             <Link to="/forgot-password" className="font-extrabold text-gleenc-cyan">Forgot password?</Link>
           </p>

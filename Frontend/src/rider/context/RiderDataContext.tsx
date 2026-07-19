@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shouldUseApi, shouldUseMock } from '../config/env';
 import { deliveryActivities, earningsSummary, completedOrders as seedCompletedOrders } from '../data/mockData';
@@ -100,6 +100,36 @@ function proofLocationFromPoint(lat?: number | null, lng?: number | null) {
   };
 }
 
+function playRiderDispatchBeep() {
+  if (typeof window === 'undefined') return;
+  try {
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audio = new AudioContextClass();
+    const oscillator = audio.createOscillator();
+    const gain = audio.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.0001;
+    oscillator.connect(gain);
+    gain.connect(audio.destination);
+    oscillator.start();
+    gain.gain.exponentialRampToValueAtTime(0.18, audio.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.65);
+    oscillator.stop(audio.currentTime + 0.7);
+    window.setTimeout(() => void audio.close().catch(() => undefined), 900);
+  } catch {
+    // Browser audio can be blocked until the rider interacts with the page.
+  }
+}
+
+function showRiderNotification(title: string, body: string) {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission === 'granted') {
+    new Notification(title, { body, tag: 'gleenc-rider-dispatch' });
+  }
+}
+
 export function RiderDataProvider({ children }: { children: ReactNode }) {
   const initial = shouldUseMock() ? riderLocalStore.load() : emptyLocalState();
   const [assignments, setAssignments] = useState<PrivateAssignment[]>(initial.assignments);
@@ -109,6 +139,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const [unlockedOrderIds, setUnlockedOrderIds] = useState<string[]>(initial.unlockedOrderIds);
   const [loading, setLoading] = useState(false);
   const [apiConnected, setApiConnected] = useState(false);
+  const hydratedRef = useRef(false);
+  const knownAssignmentIdsRef = useRef<Set<string>>(new Set(initial.assignments.map((item) => item.id)));
+  const knownNotificationIdsRef = useRef<Set<string>>(new Set(initial.notifications.map((item) => item.id)));
 
   function applyStateFromLocal() {
     const state = riderLocalStore.load();
@@ -136,10 +169,33 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const payload = await riderApi.dashboard();
-      setAssignments(payload.assignments);
+      const nextAssignments = payload.assignments;
+      const nextNotifications = payload.notifications;
+      if (hydratedRef.current) {
+        const newAssignments = nextAssignments.filter((item) => item.status === 'assigned' && !knownAssignmentIdsRef.current.has(item.id));
+        const newDispatchNotifications = nextNotifications.filter((item) =>
+          !knownNotificationIdsRef.current.has(item.id) &&
+          !item.read &&
+          /assignment|dispatch|delivery/i.test(`${item.type} ${item.title} ${item.message}`),
+        );
+
+        if (newAssignments.length || newDispatchNotifications.length) {
+          playRiderDispatchBeep();
+          showRiderNotification(
+            'New Gleenc dispatch',
+            newAssignments[0]?.sellerName || newDispatchNotifications[0]?.message || 'A delivery task needs your attention.',
+          );
+        }
+      }
+
+      knownAssignmentIdsRef.current = new Set(nextAssignments.map((item) => item.id));
+      knownNotificationIdsRef.current = new Set(nextNotifications.map((item) => item.id));
+      hydratedRef.current = true;
+
+      setAssignments(nextAssignments);
       setOrders(payload.orders);
       setCompleted(payload.completed);
-      setNotifications(payload.notifications);
+      setNotifications(nextNotifications);
       setUnlockedOrderIds(payload.orders.map((order) => order.id));
       setApiConnected(true);
     } catch {
@@ -153,7 +209,12 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    refresh();
+    void refresh();
+    if (!shouldUseApi()) return undefined;
+    const interval = window.setInterval(() => {
+      void refresh();
+    }, 15000);
+    return () => window.clearInterval(interval);
   }, []);
 
   function updateAssignmentStatus(assignmentId: string, status: AssignmentStatus) {

@@ -82,14 +82,14 @@ export default function AssignedOrders() {
     <div>
       <PageHeader
         title="Assigned Orders"
-        subtitle="Automated Gleenc dispatch offers and private delivery tasks. Customer/order/payment details remain locked until pickup OTP and proof are recorded."
+        subtitle="Gleenc dispatch offers and private delivery tasks. Customer/order/payment details remain locked until pickup OTP and proof are recorded."
       />
 
       {(dispatches.length > 0 || dispatchLoading || dispatchError) && (
         <section className="mb-6">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-gleenc-green">Automated dispatch</p>
+              <p className="text-xs font-black uppercase tracking-[0.3em] text-gleenc-green">Gleenc dispatch</p>
               <h2 className="text-xl font-black text-slate-950">Batch offers waiting for you</h2>
             </div>
             {dispatchLoading && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Refreshing</span>}

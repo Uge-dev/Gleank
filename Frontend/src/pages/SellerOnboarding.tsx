@@ -211,6 +211,19 @@ function SellerOnboarding() {
   const sellerSetupComplete =
     verificationReady && subscriptionActive && platformFeeReady && payoutReady;
   const payoutAccount = state?.readiness?.payoutAccount;
+  const sellerCompletionChecks = [
+    { label: "Email verified", done: Boolean(user?.emailVerified) },
+    { label: "Phone verification ready", done: phoneReady },
+    { label: "Face verification complete", done: faceReady },
+    { label: "Seller verified", done: verificationReady },
+    { label: "Subscription active", done: subscriptionActive },
+    { label: "Payout account ready", done: payoutReady },
+    { label: "Platform fee ready", done: platformFeeReady },
+  ];
+  const sellerCompletionPercent = Math.round(
+    (sellerCompletionChecks.filter((item) => item.done).length / sellerCompletionChecks.length) * 100,
+  );
+  const sellerMissingChecks = sellerCompletionChecks.filter((item) => !item.done).map((item) => item.label);
 
   return (
     <section className="seller-onboarding-page">
@@ -534,6 +547,20 @@ function SellerOnboarding() {
         </form>
 
         <aside className="seller-onboarding-side">
+          <div className="seller-status-card seller-completion-card">
+            <FiCheckCircle />
+            <span>Profile completion</span>
+            <h3>{sellerCompletionPercent}% complete</h3>
+            <div className="seller-completion-meter" aria-label={`Seller profile ${sellerCompletionPercent}% complete`}>
+              <div style={{ width: `${sellerCompletionPercent}%` }} />
+            </div>
+            <p>
+              {sellerMissingChecks.length
+                ? `Remaining: ${sellerMissingChecks.slice(0, 3).join(", ")}${sellerMissingChecks.length > 3 ? "..." : ""}`
+                : "All seller setup checks are complete."}
+            </p>
+          </div>
+
           <div className="seller-status-card" id="seller-review-section">
             <FiShield />
             <span>Verification status</span>

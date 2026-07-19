@@ -869,6 +869,12 @@
   background: var(--admin-red);
 }
 
+.admin-action-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: grayscale(0.2);
+}
+
 .admin-empty-state {
   padding: 26px;
   color: var(--admin-muted);

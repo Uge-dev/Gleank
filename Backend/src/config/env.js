@@ -105,7 +105,7 @@ export const env = {
     process.env.RIDER_DISPATCH_TIMEOUT_HEAVY_FRAGILE_SECONDS,
     900,
   ),
-  maxDispatchAttempts: numberFromEnv(process.env.MAX_DISPATCH_ATTEMPTS, 5),
+  maxDispatchAttempts: numberFromEnv(process.env.MAX_DISPATCH_ATTEMPTS, 6),
   sellerConfirmationWindowMinutes: numberFromEnv(
     process.env.SELLER_CONFIRMATION_WINDOW_MINUTES,
     10,

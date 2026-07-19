@@ -35,6 +35,14 @@ export const registerSchema = z
     vehiclePlate: z.string().trim().max(40).optional().default(""),
     coverageArea: z.string().trim().max(160).optional().default(""),
     homeAddress: z.string().trim().max(240).optional().default(""),
+    transportType: z.string().trim().max(80).optional().default(""),
+    maxPackageSize: z.string().trim().max(80).optional().default("small_medium"),
+    maxWeightClass: z.string().trim().max(80).optional().default("up_to_medium"),
+    fragileHandlingAbility: z.string().trim().max(100).optional().default("can_handle_fragile"),
+    deliveryBagType: z.string().trim().max(100).optional().default("medium_delivery_bag"),
+    maxPickupsPerBatch: z.coerce.number().int().min(1).max(10).optional().default(4),
+    gpsPermissionStatus: z.string().trim().max(80).optional().default("gps_disabled"),
+    canReceiveAutoDispatch: z.coerce.boolean().optional().default(true),
   })
   .superRefine((value, context) => {
     if (value.role === "seller" && value.storeName.length < 2) {

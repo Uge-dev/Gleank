@@ -17,6 +17,16 @@ type BackendRiderProfile = {
   whatsappPhone?: string;
   vehicleType?: string;
   vehiclePlate?: string;
+  transportType?: string;
+  maxPackageSize?: string;
+  maxWeightClass?: string;
+  fragileHandlingAbility?: string;
+  deliveryBagType?: string;
+  maxPickupsPerBatch?: number;
+  capacityLocked?: boolean;
+  profileCompletionPercent?: number;
+  completionMissingFields?: string[];
+  verificationStages?: Record<string, boolean>;
   coverageArea?: string;
   homeAddress?: string;
   emergencyContactName?: string;
@@ -353,6 +363,10 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
       verificationStatus: mapVerificationStatus(profile.verificationStatus),
       maxPackageValue: Number(profile.maxPackageValue || 0),
       activeZone: profile.coverageArea || user.campus || 'Gleenc coverage',
+      profileCompletionPercent: Number(profile.profileCompletionPercent || 0),
+      completionMissingFields: Array.isArray(profile.completionMissingFields) ? profile.completionMissingFields.map(String) : [],
+      verificationStages: profile.verificationStages && typeof profile.verificationStages === 'object' ? profile.verificationStages as Record<string, boolean> : {},
+      capacityLocked: Boolean(profile.capacityLocked),
       documents: [
         {
           id: 'identity-document',
@@ -472,9 +486,15 @@ export const riderApi = {
     formData.append('email', payload.email || '');
     formData.append('password', payload.password);
     formData.append('phone', payload.phone || '');
-    formData.append('vehicleType', payload.vehicleType || '');
-    formData.append('vehiclePlate', payload.vehiclePlate || '');
-    formData.append('coverageArea', payload.activeZone || '');
+  formData.append('vehicleType', payload.vehicleType || '');
+  formData.append('vehiclePlate', payload.vehiclePlate || '');
+  formData.append('coverageArea', payload.activeZone || '');
+  formData.append('transportType', payload.transportType || payload.vehicleType || 'motorcycle');
+  formData.append('maxPackageSize', payload.maxPackageSize || 'small_medium');
+  formData.append('maxWeightClass', payload.maxWeightClass || 'up_to_medium');
+  formData.append('fragileHandlingAbility', payload.fragileHandlingAbility || 'can_handle_fragile');
+  formData.append('deliveryBagType', payload.deliveryBagType || 'medium_delivery_bag');
+  formData.append('maxPickupsPerBatch', String(payload.maxPickupsPerBatch || 4));
 
     if (payload.identityDocument) {
       formData.append('identityDocument', payload.identityDocument);

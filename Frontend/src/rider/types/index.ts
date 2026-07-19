@@ -63,6 +63,16 @@ export interface Rider {
   verificationStatus: VerificationStatus;
   maxPackageValue: number;
   activeZone: string;
+  profileCompletionPercent?: number;
+  completionMissingFields?: string[];
+  verificationStages?: Record<string, boolean>;
+  capacityLocked?: boolean;
+  transportType?: string;
+  maxPackageSize?: string;
+  maxWeightClass?: string;
+  fragileHandlingAbility?: string;
+  deliveryBagType?: string;
+  maxPickupsPerBatch?: number;
   documents: RiderDocument[];
   emergencyContact: EmergencyContact;
   guarantor: Guarantor;

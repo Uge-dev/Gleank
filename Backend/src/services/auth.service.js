@@ -56,8 +56,11 @@ function createRiderProfileFromAuth(userId, input, now) {
       id, user_id, full_name, phone, whatsapp_phone, vehicle_type, vehicle_plate,
       coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
       guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
+      transport_type, max_package_size, max_weight_class, fragile_handling_ability,
+      delivery_bag_type, max_pickups_per_batch, service_zone_ids, gps_permission_status,
+      can_receive_auto_dispatch, capacity_locked, live_face_verified,
       verification_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', 'pending_review', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       full_name = excluded.full_name,
       phone = excluded.phone,
@@ -66,6 +69,17 @@ function createRiderProfileFromAuth(userId, input, now) {
       vehicle_plate = excluded.vehicle_plate,
       coverage_area = excluded.coverage_area,
       home_address = excluded.home_address,
+      transport_type = excluded.transport_type,
+      max_package_size = excluded.max_package_size,
+      max_weight_class = excluded.max_weight_class,
+      fragile_handling_ability = excluded.fragile_handling_ability,
+      delivery_bag_type = excluded.delivery_bag_type,
+      max_pickups_per_batch = excluded.max_pickups_per_batch,
+      service_zone_ids = excluded.service_zone_ids,
+      gps_permission_status = excluded.gps_permission_status,
+      can_receive_auto_dispatch = excluded.can_receive_auto_dispatch,
+      capacity_locked = 1,
+      live_face_verified = excluded.live_face_verified,
       updated_at = excluded.updated_at
   `).run(
     createId("rpr"),
@@ -79,6 +93,15 @@ function createRiderProfileFromAuth(userId, input, now) {
     input.homeAddress || "",
     input.identityDocumentUrl || null,
     input.selfieUrl || null,
+    input.transportType || input.vehicleType || "motorcycle",
+    input.maxPackageSize || "small_medium",
+    input.maxWeightClass || "up_to_medium",
+    input.fragileHandlingAbility || "can_handle_fragile",
+    input.deliveryBagType || "medium_delivery_bag",
+    Number(input.maxPickupsPerBatch || 4),
+    JSON.stringify(Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : []),
+    input.gpsPermissionStatus || "gps_disabled",
+    input.canReceiveAutoDispatch === false ? 0 : 1,
     now,
     now,
   );

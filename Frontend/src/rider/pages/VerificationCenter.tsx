@@ -19,6 +19,7 @@ export default function VerificationCenter() {
   const [error, setError] = useState('');
 
   if (!rider) return null;
+  const needsRequiredDocuments = rider.documents.some((doc) => doc.required && doc.status === 'not_submitted');
 
   async function submitDocuments(event: FormEvent) {
     event.preventDefault();
@@ -121,23 +122,29 @@ export default function VerificationCenter() {
             <p className="rounded-2xl bg-slate-50 p-4">Level 3: trusted history + low complaints. Faster assignment priority.</p>
             <p className="rounded-2xl bg-slate-50 p-4">Level 4: optional NIN/vendor KYC + admin approval. High-value used-market/electronics delivery.</p>
           </div>
-          <form onSubmit={submitDocuments} className="mt-5 space-y-4 rounded-3xl border border-slate-100 bg-white p-4">
-            <div>
-              <p className="text-sm font-black uppercase tracking-widest text-slate-400">Submit missing documents</p>
-              <p className="mt-1 text-sm leading-6 text-slate-500">Upload a clear ID image and a current profile/selfie image. Admin will review them before rider approval.</p>
+          {needsRequiredDocuments ? (
+            <form onSubmit={submitDocuments} className="mt-5 space-y-4 rounded-3xl border border-slate-100 bg-white p-4">
+              <div>
+                <p className="text-sm font-black uppercase tracking-widest text-slate-400">Submit missing documents</p>
+                <p className="mt-1 text-sm leading-6 text-slate-500">Upload a clear ID image and a current live profile/selfie image. Admin will review them before rider approval.</p>
+              </div>
+              <label className="block">
+                <span className="text-sm font-bold text-slate-700">Government ID image</span>
+                <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+              </label>
+              <label className="block">
+                <span className="text-sm font-bold text-slate-700">Live profile/selfie image</span>
+                <input type="file" accept="image/*" capture="user" required onChange={(event) => setSelfie(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
+              </label>
+              <Button icon={FiUpload} disabled={saving || !identityDocument || !selfie} fullWidth>
+                {saving ? 'Submitting...' : 'Submit Documents'}
+              </Button>
+            </form>
+          ) : (
+            <div className="mt-5 rounded-3xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800">
+              Required onboarding documents have been submitted. Admin will complete the rider verification stages from the admin dashboard.
             </div>
-            <label className="block">
-              <span className="text-sm font-bold text-slate-700">Government ID image</span>
-              <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
-            </label>
-            <label className="block">
-              <span className="text-sm font-bold text-slate-700">Profile/selfie image</span>
-              <input type="file" accept="image/*" required onChange={(event) => setSelfie(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
-            </label>
-            <Button icon={FiUpload} disabled={saving || !identityDocument || !selfie} fullWidth>
-              {saving ? 'Submitting...' : 'Submit Documents'}
-            </Button>
-          </form>
+          )}
         </Card>
       </div>
     </div>

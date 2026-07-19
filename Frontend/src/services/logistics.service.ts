@@ -52,6 +52,8 @@ export type RiderCapacityProfile = {
   gpsPermissionStatus: string;
   availabilityMode: string;
   canReceiveAutoDispatch: boolean;
+  capacityLocked?: boolean;
+  capacityChangeUnlockedUntil?: string | null;
   currentActiveBatchCount: number;
   acceptanceRate: number;
   rejectionRate: number;

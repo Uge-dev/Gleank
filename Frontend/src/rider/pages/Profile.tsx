@@ -18,6 +18,7 @@ export default function Profile() {
   const [capacity, setCapacity] = useState<RiderCapacityProfile | null>(null);
   const [savingCapacity, setSavingCapacity] = useState(false);
   const [notice, setNotice] = useState('');
+  const [availabilityNotice, setAvailabilityNotice] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -39,6 +40,10 @@ export default function Profile() {
 
   async function saveCapacity() {
     if (!capacity) return;
+    if (capacity.capacityLocked) {
+      setNotice('Delivery capacity is locked after onboarding. Contact admin support to request a capacity change.');
+      return;
+    }
     setSavingCapacity(true);
     setNotice('');
     try {
@@ -55,6 +60,7 @@ export default function Profile() {
   function toggleZone(zoneId: string) {
     setCapacity((current) => {
       if (!current) return current;
+      if (current.capacityLocked) return current;
       const exists = current.serviceZoneIds.includes(zoneId);
       return {
         ...current,
@@ -81,6 +87,22 @@ export default function Profile() {
           <div className="mt-4 flex justify-center gap-2">
             <StatusBadge value={rider.status} />
             <StatusBadge value={rider.availability} pulse={rider.availability === 'online'} />
+          </div>
+          <div className="mt-5 rounded-3xl border border-slate-100 bg-slate-50 p-4 text-left">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">Profile completion</p>
+              <strong className="text-sm text-slate-950">{rider.profileCompletionPercent || 0}%</strong>
+            </div>
+            <div className="mt-3 h-2 rounded-full bg-white">
+              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, Math.max(0, rider.profileCompletionPercent || 0))}%` }} />
+            </div>
+            {rider.completionMissingFields?.length ? (
+              <p className="mt-3 text-xs font-bold leading-5 text-slate-500">
+                Missing: {rider.completionMissingFields.slice(0, 4).join(', ')}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs font-bold text-emerald-700">All rider profile fields are complete.</p>
+            )}
           </div>
           <div className="mt-6 grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-slate-50 p-4">
@@ -113,13 +135,22 @@ export default function Profile() {
           </div>
           <div className="mt-7">
             <label className="text-sm font-bold text-slate-700">Availability</label>
-            <select value={rider.availability} onChange={(event) => updateAvailability(event.target.value as typeof rider.availability)} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-gleenc-cyan">
+            <select
+              value={rider.availability}
+              onChange={(event) => {
+                setAvailabilityNotice('');
+                updateAvailability(event.target.value as typeof rider.availability)
+                  .catch((error) => setAvailabilityNotice(error instanceof Error ? error.message : 'Availability could not be changed.'));
+              }}
+              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-gleenc-cyan"
+            >
               <option value="online">Online</option>
               <option value="offline">Offline</option>
               <option value="busy">Busy</option>
               <option value="break">Break</option>
             </select>
             <p className="mt-2 text-sm text-slate-500">Sellers can only assign delivery tasks to available online riders.</p>
+            {availabilityNotice && <p className="mt-2 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">{availabilityNotice}</p>}
           </div>
         </Card>
 
@@ -135,16 +166,21 @@ export default function Profile() {
             <button
               type="button"
               onClick={() => void saveCapacity()}
-              disabled={!capacity || savingCapacity}
+              disabled={!capacity || savingCapacity || Boolean(capacity?.capacityLocked)}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black text-white disabled:opacity-60"
             >
-              <FiSave /> {savingCapacity ? 'Saving...' : 'Save capacity'}
+              <FiSave /> {capacity?.capacityLocked ? 'Capacity locked' : savingCapacity ? 'Saving...' : 'Save capacity'}
             </button>
           </div>
+          {capacity?.capacityLocked && (
+            <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+              Delivery capacity is locked after onboarding. To change vehicle, package size, weight, fragile handling, bag type, or batch pickup capacity, chat with admin support so admin can unlock it for your rider account.
+            </div>
+          )}
 
           {capacity && (
             <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <CapacitySelect label="Transport type" value={capacity.transportType} onChange={(value) => setCapacity({ ...capacity, transportType: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Transport type" value={capacity.transportType} onChange={(value) => setCapacity({ ...capacity, transportType: value })} options={[
                 ['walking', 'Walking'],
                 ['bicycle', 'Bicycle'],
                 ['motorcycle', 'Motorcycle'],
@@ -152,26 +188,26 @@ export default function Profile() {
                 ['car', 'Car'],
                 ['van', 'Van'],
               ]} />
-              <CapacitySelect label="Maximum package size" value={capacity.maxPackageSize} onChange={(value) => setCapacity({ ...capacity, maxPackageSize: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Maximum package size" value={capacity.maxPackageSize} onChange={(value) => setCapacity({ ...capacity, maxPackageSize: value })} options={[
                 ['small_only', 'Small only'],
                 ['small_medium', 'Small + medium'],
                 ['small_medium_large', 'Small, medium + large'],
                 ['large_and_bulky', 'Large and bulky'],
                 ['extra_large_supported', 'Extra large supported'],
               ]} />
-              <CapacitySelect label="Maximum weight" value={capacity.maxWeightClass} onChange={(value) => setCapacity({ ...capacity, maxWeightClass: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Maximum weight" value={capacity.maxWeightClass} onChange={(value) => setCapacity({ ...capacity, maxWeightClass: value })} options={[
                 ['very_light_only', 'Very light only'],
                 ['up_to_light', 'Up to light'],
                 ['up_to_medium', 'Up to medium'],
                 ['up_to_heavy', 'Up to heavy'],
                 ['very_heavy_supported', 'Very heavy supported'],
               ]} />
-              <CapacitySelect label="Fragile handling" value={capacity.fragileHandlingAbility} onChange={(value) => setCapacity({ ...capacity, fragileHandlingAbility: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Fragile handling" value={capacity.fragileHandlingAbility} onChange={(value) => setCapacity({ ...capacity, fragileHandlingAbility: value })} options={[
                 ['cannot_handle_fragile', 'Cannot handle fragile'],
                 ['can_handle_fragile', 'Can handle fragile'],
                 ['can_handle_very_fragile', 'Can handle very fragile'],
               ]} />
-              <CapacitySelect label="Delivery bag / box" value={capacity.deliveryBagType} onChange={(value) => setCapacity({ ...capacity, deliveryBagType: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Delivery bag / box" value={capacity.deliveryBagType} onChange={(value) => setCapacity({ ...capacity, deliveryBagType: value })} options={[
                 ['none', 'None'],
                 ['small_delivery_bag', 'Small delivery bag'],
                 ['medium_delivery_bag', 'Medium delivery bag'],
@@ -187,16 +223,17 @@ export default function Profile() {
                   max={5}
                   value={capacity.maxPickupsPerBatch}
                   onChange={(event) => setCapacity({ ...capacity, maxPickupsPerBatch: Number(event.target.value) })}
+                  disabled={capacity.capacityLocked}
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
                 />
               </label>
-              <CapacitySelect label="GPS / zone mode" value={capacity.gpsPermissionStatus} onChange={(value) => setCapacity({ ...capacity, gpsPermissionStatus: value })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="GPS / zone mode" value={capacity.gpsPermissionStatus} onChange={(value) => setCapacity({ ...capacity, gpsPermissionStatus: value })} options={[
                 ['gps_enabled', 'GPS enabled'],
                 ['gps_disabled', 'GPS disabled'],
                 ['gps_permission_denied', 'GPS denied'],
                 ['gps_unavailable', 'GPS unavailable'],
               ]} />
-              <CapacitySelect label="Current working zone" value={capacity.currentZoneId || ''} onChange={(value) => setCapacity({ ...capacity, currentZoneId: value || null })} options={[
+              <CapacitySelect disabled={capacity.capacityLocked} label="Current working zone" value={capacity.currentZoneId || ''} onChange={(value) => setCapacity({ ...capacity, currentZoneId: value || null })} options={[
                 ['', 'Select zone'],
                 ...zones.map((zone) => [zone.id, zone.name] as [string, string]),
               ]} />
@@ -205,6 +242,7 @@ export default function Profile() {
                   type="checkbox"
                   checked={capacity.canReceiveAutoDispatch}
                   onChange={(event) => setCapacity({ ...capacity, canReceiveAutoDispatch: event.target.checked })}
+                  disabled={capacity.capacityLocked}
                   className="h-5 w-5 accent-emerald-600"
                 />
                 Receive automated dispatches
@@ -222,6 +260,7 @@ export default function Profile() {
                   key={zone.id}
                   type="button"
                   onClick={() => toggleZone(zone.id)}
+                  disabled={capacity?.capacityLocked}
                   className={`rounded-full px-4 py-2 text-xs font-black capitalize ${
                     capacity?.serviceZoneIds.includes(zone.id)
                       ? 'bg-emerald-600 text-white'
@@ -253,11 +292,13 @@ function CapacitySelect({
   value,
   options,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
   options: Array<[string, string]>;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <label className="rounded-3xl bg-slate-50 p-4">
@@ -265,6 +306,7 @@ function CapacitySelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
         className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
       >
         {options.map(([optionValue, optionLabel]) => (

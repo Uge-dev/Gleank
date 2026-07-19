@@ -19,6 +19,14 @@ export type RegisterInput = {
   vehiclePlate?: string;
   coverageArea?: string;
   homeAddress?: string;
+  transportType?: string;
+  maxPackageSize?: string;
+  maxWeightClass?: string;
+  fragileHandlingAbility?: string;
+  deliveryBagType?: string;
+  maxPickupsPerBatch?: number | string;
+  gpsPermissionStatus?: string;
+  canReceiveAutoDispatch?: boolean;
   identityDocument?: File | null;
   selfie?: File | null;
 };
@@ -46,6 +54,14 @@ export function register(input: RegisterInput) {
     formData.append("vehiclePlate", input.vehiclePlate || "");
     formData.append("coverageArea", input.coverageArea || input.campus || "");
     formData.append("homeAddress", input.homeAddress || "");
+    formData.append("transportType", input.transportType || input.vehicleType || "motorcycle");
+    formData.append("maxPackageSize", input.maxPackageSize || "small_medium");
+    formData.append("maxWeightClass", input.maxWeightClass || "up_to_medium");
+    formData.append("fragileHandlingAbility", input.fragileHandlingAbility || "can_handle_fragile");
+    formData.append("deliveryBagType", input.deliveryBagType || "medium_delivery_bag");
+    formData.append("maxPickupsPerBatch", String(input.maxPickupsPerBatch || 4));
+    formData.append("gpsPermissionStatus", input.gpsPermissionStatus || "gps_disabled");
+    formData.append("canReceiveAutoDispatch", String(input.canReceiveAutoDispatch !== false));
 
     if (input.identityDocument) {
       formData.append("identityDocument", input.identityDocument);

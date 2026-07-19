@@ -243,6 +243,8 @@ function serializeCapacity(row) {
     gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
     availabilityMode: row.availability_mode || row.availability || "offline",
     canReceiveAutoDispatch: row.can_receive_auto_dispatch !== 0,
+    capacityLocked: row.capacity_locked === 1,
+    capacityChangeUnlockedUntil: row.capacity_change_unlocked_until || null,
     currentActiveBatchCount: Number(row.current_active_batch_count || 0),
     acceptanceRate: Number(row.acceptance_rate ?? 1),
     rejectionRate: Number(row.rejection_rate ?? 0),
@@ -1479,25 +1481,17 @@ export function offerNextRiderForBatch(batchId, { internal = false } = {}) {
   }
   const attempts = Number(batch.dispatch_attempt_count || 0);
   if (attempts >= env.maxDispatchAttempts) {
-    db.prepare("UPDATE delivery_batches SET dispatch_status = 'no_rider_available', updated_at = ? WHERE id = ?").run(nowIso(), batchId);
-    const intervention = queueIntervention({
-      type: "no_rider_available",
-      priority: batch.risk_level === "high" ? "critical" : "high",
-      relatedBatchId: batchId,
-      reason: "No rider accepted this batch within the dispatch attempt limit.",
-    });
-    return { batch: getDeliveryBatchById(batchId), attempt: null, intervention };
+    const reason = "No rider accepted this batch within the dispatch attempt limit. Please manually assign an available rider from your seller dashboard.";
+    db.prepare("UPDATE delivery_batches SET dispatch_status = 'seller_manual_assignment_required', updated_at = ? WHERE id = ?").run(nowIso(), batchId);
+    notifyBatchSellersManualAssignment(batchId, reason);
+    return { batch: getDeliveryBatchById(batchId), attempt: null, sellerManualAssignmentRequired: true };
   }
   const [candidate] = eligibleRidersForBatch(batchId);
   if (!candidate) {
-    db.prepare("UPDATE delivery_batches SET dispatch_status = 'no_rider_available', updated_at = ? WHERE id = ?").run(nowIso(), batchId);
-    const intervention = queueIntervention({
-      type: "no_rider_available",
-      priority: batch.risk_level === "high" ? "critical" : "high",
-      relatedBatchId: batchId,
-      reason: "No compatible rider is online for this zone/capacity right now.",
-    });
-    return { batch: getDeliveryBatchById(batchId), attempt: null, intervention };
+    const reason = "No compatible rider is online for this zone/capacity right now. Please manually assign an available rider from your seller dashboard.";
+    db.prepare("UPDATE delivery_batches SET dispatch_status = 'seller_manual_assignment_required', updated_at = ? WHERE id = ?").run(nowIso(), batchId);
+    notifyBatchSellersManualAssignment(batchId, reason);
+    return { batch: getDeliveryBatchById(batchId), attempt: null, sellerManualAssignmentRequired: true };
   }
 
   const now = nowIso();
@@ -1756,10 +1750,50 @@ function notifyBatchParties(batchId, title, body, eventKey) {
   }));
 }
 
+function notifyBatchSellersManualAssignment(batchId, reason) {
+  const sellers = db.prepare(`
+    SELECT DISTINCT pickup_tasks.seller_id AS user_id, pickup_tasks.order_id AS order_id
+    FROM pickup_tasks
+    WHERE pickup_tasks.delivery_batch_id = ?
+  `).all(batchId);
+
+  createNotificationForUsers(sellers.map((seller) => seller.user_id), {
+    type: "order",
+    title: "Manual rider assignment required",
+    body: reason,
+    actionLabel: "Assign rider",
+    actionPath: "/dashboard",
+  });
+
+  sellers.forEach((seller) => notificationEvent({
+    userId: seller.user_id,
+    role: "seller",
+    eventKey: "manual_rider_assignment_required",
+    title: "Manual rider assignment required",
+    body: reason,
+    relatedOrderId: seller.order_id,
+    relatedBatchId: batchId,
+  }));
+}
+
+function assertRiderCapacityEditable(riderId) {
+  const existing = db.prepare("SELECT * FROM rider_capacity_profiles WHERE rider_id = ?").get(riderId);
+  const riderProfile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
+  const unlockUntil = riderProfile?.capacity_change_unlocked_until || existing?.capacity_change_unlocked_until || "";
+  const unlockedByAdmin = unlockUntil && new Date(unlockUntil).getTime() > Date.now();
+
+  if ((existing?.capacity_locked === 1 || riderProfile?.capacity_locked === 1) && !unlockedByAdmin) {
+    throw new HttpError(423, "Delivery capacity is locked after onboarding. Contact admin support to request a capacity change.");
+  }
+
+  return { existing, riderProfile, unlockedByAdmin };
+}
+
 export function updateRiderCapacity(auth, input = {}) {
   const riderId = requireRider(auth);
   const now = nowIso();
-  const existing = db.prepare("SELECT * FROM rider_capacity_profiles WHERE rider_id = ?").get(riderId);
+  const { existing } = assertRiderCapacityEditable(riderId);
+
   const payload = {
     transportType: clean(input.transportType ?? existing?.transport_type ?? "motorcycle", 60),
     maxPackageSize: clean(input.maxPackageSize ?? existing?.max_package_size ?? "small_medium", 60),
@@ -1780,8 +1814,8 @@ export function updateRiderCapacity(auth, input = {}) {
       id, rider_id, transport_type, max_package_size, max_weight_class,
       fragile_handling_ability, delivery_bag_type, max_pickups_per_batch,
       service_zone_ids, current_zone_id, gps_permission_status, availability_mode,
-      can_receive_auto_dispatch, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      can_receive_auto_dispatch, capacity_locked, capacity_change_unlocked_until, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
     ON CONFLICT(rider_id) DO UPDATE SET
       transport_type = excluded.transport_type,
       max_package_size = excluded.max_package_size,
@@ -1794,6 +1828,8 @@ export function updateRiderCapacity(auth, input = {}) {
       gps_permission_status = excluded.gps_permission_status,
       availability_mode = excluded.availability_mode,
       can_receive_auto_dispatch = excluded.can_receive_auto_dispatch,
+      capacity_locked = 1,
+      capacity_change_unlocked_until = NULL,
       updated_at = excluded.updated_at
   `).run(
     id,
@@ -1818,6 +1854,7 @@ export function updateRiderCapacity(auth, input = {}) {
         fragile_handling_ability = ?, delivery_bag_type = ?,
         max_pickups_per_batch = ?, service_zone_ids = ?, current_zone_id = ?,
         gps_permission_status = ?, availability_mode = ?, can_receive_auto_dispatch = ?,
+        capacity_locked = 1, capacity_change_unlocked_until = NULL,
         updated_at = ?
     WHERE user_id = ?
   `).run(
@@ -1863,6 +1900,7 @@ export function getRiderCapacity(auth) {
 
 export function updateRiderServiceZones(auth, zoneIds = []) {
   const riderId = requireRider(auth);
+  assertRiderCapacityEditable(riderId);
   const cleanZoneIds = Array.isArray(zoneIds) ? zoneIds.map(String) : [];
   setRiderServiceZones(riderId, cleanZoneIds);
   db.prepare("UPDATE rider_profiles SET service_zone_ids = ?, updated_at = ? WHERE user_id = ?").run(JSON.stringify(cleanZoneIds), nowIso(), riderId);
@@ -1871,6 +1909,7 @@ export function updateRiderServiceZones(auth, zoneIds = []) {
 
 export function updateRiderCurrentZone(auth, input = {}) {
   const riderId = requireRider(auth);
+  assertRiderCapacityEditable(riderId);
   const zoneId = clean(input.currentZoneId || input.zoneId, 140);
   if (!zoneId) throw new HttpError(422, "Current zone is required.");
   const now = nowIso();

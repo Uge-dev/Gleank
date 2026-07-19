@@ -56,6 +56,7 @@ import {
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
   type AdminProfile,
+  unlockAdminRiderCapacity,
   updateAdminRecordFields,
   updateAdminRecordStatus,
   updateAdminRiderVerification,
@@ -219,9 +220,19 @@ function MiniQueue({ title, value, helper, tone }: { title: string; value: strin
   );
 }
 
-function ActionButton({ children, tone = "default", onClick }: { children: string; tone?: "default" | "danger" | "success" | "soft"; onClick: () => void }) {
+function ActionButton({
+  children,
+  tone = "default",
+  onClick,
+  disabled = false,
+}: {
+  children: string;
+  tone?: "default" | "danger" | "success" | "soft";
+  onClick: () => void;
+  disabled?: boolean;
+}) {
   return (
-    <button className={`admin-action-btn ${tone}`} type="button" onClick={onClick}>
+    <button className={`admin-action-btn ${tone}`} type="button" onClick={onClick} disabled={disabled}>
       {children}
     </button>
   );
@@ -487,6 +498,7 @@ function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [search, setSearch] = useState("");
   const [riderFilter, setRiderFilter] = useState("all");
+  const [disputeFilter, setDisputeFilter] = useState<"all" | "buyer" | "seller" | "rider">("all");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [riders, setRiders] = useState<AdminRider[]>([]);
   const [loading, setLoading] = useState(true);
@@ -581,6 +593,12 @@ function AdminDashboard() {
     () => Array.from(new Set(riders.filter((rider) => rider.coverageArea).map((rider) => rider.coverageArea))).slice(0, 12),
     [riders],
   );
+  const disputeRows = useMemo(() => {
+    if (disputeFilter === "rider") return data.disputes.filter((dispute) => dispute.type === "rider");
+    if (disputeFilter === "buyer") return data.disputes.filter((dispute) => dispute.buyer && dispute.type !== "rider");
+    if (disputeFilter === "seller") return data.disputes.filter((dispute) => dispute.seller && dispute.type !== "rider");
+    return data.disputes;
+  }, [data.disputes, disputeFilter]);
   const supportRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return data.supportConversations;
@@ -637,6 +655,20 @@ function AdminDashboard() {
         safetyStatus,
         verificationLevel: rider.verificationLevel || 1,
         maxPackageValueKobo: Math.max(0, Math.round((rider.maxPackageValue || 0) * 100)),
+      });
+      await refreshRiderRows();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function unlockRiderCapacity(rider: AdminRider) {
+    setLoadError("");
+    try {
+      await unlockAdminRiderCapacity(rider.userId, {
+        minutes: 120,
+        note: "Admin unlocked rider delivery capacity for profile correction after support review.",
       });
       await refreshRiderRows();
       await loadAdminData(false);
@@ -964,7 +996,8 @@ function AdminDashboard() {
                 { label: "Products", render: (seller) => seller.products },
                 { label: "Orders", render: (seller) => seller.orders },
                 { label: "Earnings", render: (seller) => seller.earnings },
-                { label: "Verification", render: (seller) => <StatusBadge status={seller.verificationStatus} /> },
+                  { label: "Verification", render: (seller) => <StatusBadge status={seller.verificationStatus} /> },
+                  { label: "Completion", render: (seller) => `${seller.profileCompletionPercent ?? (seller.verificationStatus === "approved" || seller.verificationStatus === "verified" ? 100 : 60)}%` },
                 { label: "Status", render: (seller) => <StatusBadge status={seller.status} /> },
                 { label: "Payout", render: (seller) => <StatusBadge status={seller.payoutStatus} /> },
                 { label: "Joined", render: (seller) => seller.joined },
@@ -975,7 +1008,13 @@ function AdminDashboard() {
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} products`, { storeName: seller.storeName, products: seller.products, note: "This links to all products/services uploaded by this seller." })}>Products</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} orders`, { storeName: seller.storeName, orders: seller.orders, note: "This links to seller order history." })}>Orders</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${seller.storeName} payout`, { storeName: seller.storeName, payoutStatus: seller.payoutStatus, bankStatus: seller.bankStatus, earnings: seller.earnings })}>Payout</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeFields("sellers", seller.id, { verificationStatus: "approved", status: "active" })}>Approve</ActionButton>
+                  <ActionButton
+                    tone="success"
+                    disabled={seller.verificationStatus === "approved" || seller.verificationStatus === "verified"}
+                    onClick={() => changeFields("sellers", seller.id, { verificationStatus: "approved", status: "active" })}
+                  >
+                    {seller.verificationStatus === "approved" || seller.verificationStatus === "verified" ? "Verified" : "Approve"}
+                  </ActionButton>
                   <ActionButton tone="danger" onClick={() => changeStatus("sellers", seller.id, "rejected", "verificationStatus")}>Reject</ActionButton>
                   <ActionButton tone="soft" onClick={() => changeStatus("sellers", seller.id, "active")}>Activate</ActionButton>
                   <ActionButton tone="danger" onClick={() => changeStatus("sellers", seller.id, "suspended")}>Suspend</ActionButton>
@@ -1268,6 +1307,14 @@ function AdminDashboard() {
                   { label: "Vehicle", render: (rider) => rider.vehiclePlate ? `${rider.vehicleType} · ${rider.vehiclePlate}` : rider.vehicleType || "Not added" },
                   { label: "Coverage/location", render: (rider) => rider.coverageArea || rider.homeAddress || "Not set" },
                   { label: "Verification", render: (rider) => <StatusBadge status={rider.verificationStatus} /> },
+                  { label: "Completion", render: (rider) => `${rider.profileCompletionPercent || 0}%` },
+                  {
+                    label: "Stages",
+                    render: (rider) => {
+                      const stages = Object.values(rider.verificationStages || {});
+                      return `${stages.filter(Boolean).length}/${stages.length || 4}`;
+                    },
+                  },
                   { label: "Safety", render: (rider) => <StatusBadge status={rider.safetyStatus} /> },
                   { label: "Availability", render: (rider) => <StatusBadge status={rider.availability} /> },
                   { label: "Completed", render: (rider) => rider.completedDeliveries },
@@ -1283,9 +1330,20 @@ function AdminDashboard() {
                     </ActionButton>
                     <ActionButton
                       tone="success"
+                      disabled={rider.verificationStatus === "verified"}
                       onClick={() => changeRiderVerification(rider, "verified", "Admin verified rider profile. Rider may receive delivery assignments.", "normal")}
                     >
-                      Verify
+                      {rider.verificationStatus === "verified" ? "Verified" : "Verify"}
+                    </ActionButton>
+                    <ActionButton
+                      tone="soft"
+                      disabled={Boolean(
+                        rider.capacityChangeUnlockedUntil &&
+                          new Date(rider.capacityChangeUnlockedUntil).getTime() > Date.now(),
+                      )}
+                      onClick={() => unlockRiderCapacity(rider)}
+                    >
+                      Unlock capacity
                     </ActionButton>
                     <ActionButton
                       tone="soft"
@@ -1312,34 +1370,53 @@ function AdminDashboard() {
           ) : null}
 
           {activeTab === "disputes" ? (
-            <DataTable<AdminDispute>
-              title="Disputes and Complaints"
-              subtitle="Resolve buyer-seller issues, request evidence, approve refunds and protect platform trust."
-              rows={data.disputes}
-              search={search}
-              onView={(dispute) => openRecord(dispute.title, dispute)}
-              columns={[
-                { label: "Complaint ID", render: (dispute) => dispute.id },
-                { label: "Order", render: (dispute) => dispute.orderId },
-                { label: "Buyer", render: (dispute) => dispute.buyer },
-                { label: "Seller", render: (dispute) => dispute.seller },
-                { label: "Type", render: (dispute) => dispute.type },
-                { label: "Message", render: (dispute) => <span className="admin-message-cell">{dispute.message}</span> },
-                { label: "Priority", render: (dispute) => <StatusBadge status={dispute.priority} /> },
-                { label: "Status", render: (dispute) => <StatusBadge status={dispute.status} /> },
-                { label: "Date", render: (dispute) => dispute.createdAt },
-              ]}
-              actions={(dispute) => (
-                <>
-                  <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "reviewing")}>Review</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "waiting_for_buyer")}>Ask Buyer</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "waiting_for_seller")}>Ask Seller</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeFields("disputes", dispute.id, { status: "resolved", actionTaken: "Refund approved or dispute settled by admin." })}>Approve Refund</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeStatus("disputes", dispute.id, "resolved")}>Resolve</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeStatus("disputes", dispute.id, "rejected")}>Reject</ActionButton>
-                </>
-              )}
-            />
+            <section className="admin-filtered-table">
+              <div className="admin-filter-row" aria-label="Dispute filters">
+                {[
+                  ["all", "All Issues"],
+                  ["buyer", "Buyer"],
+                  ["seller", "Seller"],
+                  ["rider", "Rider"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={disputeFilter === value ? "active" : ""}
+                    onClick={() => setDisputeFilter(value as typeof disputeFilter)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <DataTable<AdminDispute>
+                title="Disputes and Complaints"
+                subtitle="Resolve buyer, seller and rider reports, request evidence, approve refunds and protect platform trust."
+                rows={disputeRows}
+                search={search}
+                onView={(dispute) => openRecord(dispute.title, dispute)}
+                columns={[
+                  { label: "Complaint ID", render: (dispute) => dispute.id },
+                  { label: "Order", render: (dispute) => dispute.orderId },
+                  { label: "Buyer", render: (dispute) => dispute.buyer || "Not applicable" },
+                  { label: "Seller/Rider", render: (dispute) => dispute.seller || "Not applicable" },
+                  { label: "Type", render: (dispute) => dispute.type },
+                  { label: "Message", render: (dispute) => <span className="admin-message-cell">{dispute.message}</span> },
+                  { label: "Priority", render: (dispute) => <StatusBadge status={dispute.priority} /> },
+                  { label: "Status", render: (dispute) => <StatusBadge status={dispute.status} /> },
+                  { label: "Date", render: (dispute) => dispute.createdAt },
+                ]}
+                actions={(dispute) => (
+                  <>
+                    <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "reviewing")}>Review</ActionButton>
+                    <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "waiting_for_buyer")}>Ask Buyer</ActionButton>
+                    <ActionButton tone="soft" onClick={() => changeStatus("disputes", dispute.id, "waiting_for_seller")}>Ask Seller</ActionButton>
+                    <ActionButton tone="success" onClick={() => changeFields("disputes", dispute.id, { status: "resolved", actionTaken: "Refund approved or dispute settled by admin." })}>Approve Refund</ActionButton>
+                    <ActionButton tone="success" onClick={() => changeStatus("disputes", dispute.id, "resolved")}>Resolve</ActionButton>
+                    <ActionButton tone="danger" onClick={() => changeStatus("disputes", dispute.id, "rejected")}>Reject</ActionButton>
+                  </>
+                )}
+              />
+            </section>
           ) : null}
 
           {activeTab === "support" ? (

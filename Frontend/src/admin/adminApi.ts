@@ -249,6 +249,11 @@ function normalizeRider(row: {
     safetyStatus: String(profile.safetyStatus || "normal"),
     ratingAverage: Number(profile.ratingAverage || 0),
     completedDeliveries: Number(profile.completedDeliveries || 0),
+    profileCompletionPercent: Number(profile.profileCompletionPercent || 0),
+    completionMissingFields: Array.isArray(profile.completionMissingFields) ? profile.completionMissingFields.map(String) : [],
+    verificationStages: profile.verificationStages && typeof profile.verificationStages === "object" ? profile.verificationStages as Record<string, boolean> : {},
+    capacityLocked: Boolean(profile.capacityLocked),
+    capacityChangeUnlockedUntil: profile.capacityChangeUnlockedUntil ? String(profile.capacityChangeUnlockedUntil) : null,
     identityDocumentUrl: profile.identityDocumentUrl ? String(profile.identityDocumentUrl) : null,
     selfieUrl: profile.selfieUrl ? String(profile.selfieUrl) : null,
     createdAt: String(profile.createdAt || row.user.createdAt || ""),
@@ -292,6 +297,19 @@ export async function updateAdminRiderVerification(
 ) {
   return request<{ success: boolean; riderProfile: Record<string, unknown> }>(
     `/admin/riders/${riderId}/verification`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    },
+  );
+}
+
+export async function unlockAdminRiderCapacity(
+  riderId: string,
+  fields: { minutes?: number; note?: string } = {},
+) {
+  return request<{ success: boolean; riderProfile: Record<string, unknown> }>(
+    `/admin/riders/${riderId}/capacity-unlock`,
     {
       method: "PATCH",
       body: JSON.stringify(fields),

@@ -34,6 +34,15 @@ function numberOrNull(value) {
   return Number.isFinite(n) ? n : null;
 }
 
+function safeJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function secret() {
   return process.env.RIDER_OTP_SECRET || env.jwtSecret || "gleank-rider-otp-secret";
 }
@@ -63,6 +72,52 @@ function phoneForWhatsapp(value) {
   return digits;
 }
 
+function riderCompletion(row) {
+  if (!row) {
+    return {
+      profileCompletionPercent: 0,
+      completionMissingFields: ["Rider profile"],
+      verificationStages: {
+        onboardingDocuments: false,
+        liveFaceVerification: false,
+        profileDetails: false,
+        adminVerified: false,
+      },
+    };
+  }
+
+  const checks = [
+    ["Full name", row.full_name],
+    ["Phone number", row.phone],
+    ["Vehicle type", row.vehicle_type || row.transport_type],
+    ["Vehicle / bike number", row.vehicle_plate],
+    ["Coverage area", row.coverage_area],
+    ["Home address", row.home_address],
+    ["Emergency contact", row.emergency_contact_name && row.emergency_contact_phone],
+    ["Guarantor", row.guarantor_name && row.guarantor_phone],
+    ["Government ID", row.identity_document_url],
+    ["Profile/selfie image", row.selfie_url],
+    ["Delivery capacity", row.transport_type && row.max_package_size && row.max_weight_class && row.delivery_bag_type],
+    ["Live face verification", Number(row.live_face_verified || 0) === 1 || Boolean(row.selfie_url)],
+  ];
+
+  const completed = checks.filter(([, value]) => Boolean(value)).length;
+  const profileDetails = ["full_name", "phone", "vehicle_type", "vehicle_plate", "coverage_area", "home_address"].every((field) =>
+    Boolean(row[field] || (field === "vehicle_type" ? row.transport_type : "")),
+  );
+
+  return {
+    profileCompletionPercent: Math.round((completed / checks.length) * 100),
+    completionMissingFields: checks.filter(([, value]) => !value).map(([label]) => label),
+    verificationStages: {
+      onboardingDocuments: Boolean(row.identity_document_url && row.selfie_url),
+      liveFaceVerification: Number(row.live_face_verified || 0) === 1 || Boolean(row.selfie_url),
+      profileDetails,
+      adminVerified: row.verification_status === "verified",
+    },
+  };
+}
+
 function distanceMeters(a, b) {
   if (!a || !b || a.lat == null || a.lng == null || b.lat == null || b.lng == null) return Infinity;
   const earth = 6371000;
@@ -81,6 +136,8 @@ function money(kobo) {
 
 function serializeProfile(row) {
   if (!row) return null;
+  const serviceZoneIds = safeJsonArray(row.service_zone_ids);
+  const completion = riderCompletion(row);
   return {
     id: row.id,
     userId: row.user_id,
@@ -95,18 +152,13 @@ function serializeProfile(row) {
     fragileHandlingAbility: row.fragile_handling_ability || "can_handle_fragile",
     deliveryBagType: row.delivery_bag_type || "medium_delivery_bag",
     maxPickupsPerBatch: row.max_pickups_per_batch || 4,
-    serviceZoneIds: (() => {
-      try {
-        const parsed = JSON.parse(row.service_zone_ids || "[]");
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
-      }
-    })(),
+    serviceZoneIds,
     currentZoneId: row.current_zone_id || null,
     gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
     availabilityMode: row.availability_mode || row.availability || "offline",
     canReceiveAutoDispatch: row.can_receive_auto_dispatch !== 0,
+    capacityLocked: row.capacity_locked === 1,
+    capacityChangeUnlockedUntil: row.capacity_change_unlocked_until || null,
     currentActiveBatchCount: row.current_active_batch_count || 0,
     acceptanceRate: row.acceptance_rate ?? 1,
     rejectionRate: row.rejection_rate ?? 0,
@@ -120,6 +172,7 @@ function serializeProfile(row) {
     guarantorPhone: row.guarantor_phone || "",
     identityDocumentUrl: row.identity_document_url || null,
     selfieUrl: row.selfie_url || null,
+    liveFaceVerified: row.live_face_verified === 1 || Boolean(row.selfie_url),
     ninLast4: row.nin_last4 || "",
     verificationStatus: row.verification_status,
     verificationNote: row.verification_note,
@@ -136,6 +189,7 @@ function serializeProfile(row) {
     safetyStatus: row.safety_status,
     ratingAverage: row.rating_average,
     completedDeliveries: row.completed_deliveries,
+    ...completion,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -431,8 +485,11 @@ export async function registerRider(input, meta = {}) {
         id, user_id, full_name, phone, whatsapp_phone, vehicle_type, vehicle_plate,
         coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
         guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
+        transport_type, max_package_size, max_weight_class, fragile_handling_ability,
+        delivery_bag_type, max_pickups_per_batch, service_zone_ids, gps_permission_status,
+        can_receive_auto_dispatch, capacity_locked, live_face_verified,
         verification_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         full_name = excluded.full_name,
         phone = excluded.phone,
@@ -448,6 +505,17 @@ export async function registerRider(input, meta = {}) {
         identity_document_url = excluded.identity_document_url,
         selfie_url = excluded.selfie_url,
         nin_last4 = excluded.nin_last4,
+        transport_type = excluded.transport_type,
+        max_package_size = excluded.max_package_size,
+        max_weight_class = excluded.max_weight_class,
+        fragile_handling_ability = excluded.fragile_handling_ability,
+        delivery_bag_type = excluded.delivery_bag_type,
+        max_pickups_per_batch = excluded.max_pickups_per_batch,
+        service_zone_ids = excluded.service_zone_ids,
+        gps_permission_status = excluded.gps_permission_status,
+        can_receive_auto_dispatch = excluded.can_receive_auto_dispatch,
+        capacity_locked = 1,
+        live_face_verified = excluded.live_face_verified,
         updated_at = excluded.updated_at
     `).run(
       createId("rpr"),
@@ -466,6 +534,15 @@ export async function registerRider(input, meta = {}) {
       input.identityDocumentUrl || null,
       input.selfieUrl || null,
       input.ninLast4 || "",
+      input.transportType || input.vehicleType || "motorcycle",
+      input.maxPackageSize || "small_medium",
+      input.maxWeightClass || "up_to_medium",
+      input.fragileHandlingAbility || "can_handle_fragile",
+      input.deliveryBagType || "medium_delivery_bag",
+      Number(input.maxPickupsPerBatch || 4),
+      JSON.stringify(Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : []),
+      input.gpsPermissionStatus || "gps_disabled",
+      input.canReceiveAutoDispatch === false ? 0 : 1,
       now,
       now,
     );
@@ -1089,6 +1166,17 @@ export function createRiderSafetyReport(auth, input) {
     actionLabel: "Open safety center",
     actionPath: "/rider/safety",
   });
+  const admins = db.prepare("SELECT id FROM users WHERE role = 'admin' AND is_active = 1").all();
+  for (const admin of admins) {
+    createNotification({
+      userId: admin.id,
+      type: "admin",
+      title: "New rider dispute/compliance report",
+      body: clean(input.note, 180) || "A rider submitted a safety or compliance report.",
+      actionLabel: "Open admin disputes",
+      actionPath: "/admin?tab=disputes",
+    });
+  }
   return db.prepare("SELECT * FROM rider_safety_reports WHERE id = ?").get(id);
 }
 
@@ -1164,7 +1252,19 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
         verification_level = COALESCE(?, verification_level),
         max_package_value_kobo = COALESCE(?, max_package_value_kobo),
         safety_status = COALESCE(?, safety_status),
-        availability = CASE WHEN ? IN ('rejected','suspended') THEN 'offline' ELSE availability END,
+        availability = CASE
+          WHEN ? IN ('rejected','suspended') THEN 'offline'
+          WHEN ? = 'verified' THEN 'online'
+          ELSE availability
+        END,
+        availability_mode = CASE
+          WHEN ? IN ('rejected','suspended') THEN 'offline'
+          WHEN ? = 'verified' THEN CASE
+            WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+            ELSE 'online_zone_only'
+          END
+          ELSE availability_mode
+        END,
         updated_at = ?
     WHERE user_id = ?
   `).run(
@@ -1173,6 +1273,9 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
     input.verificationLevel ?? null,
     input.maxPackageValueKobo ?? null,
     input.safetyStatus ?? null,
+    input.verificationStatus,
+    input.verificationStatus,
+    input.verificationStatus,
     input.verificationStatus,
     now,
     riderId,
@@ -1185,5 +1288,41 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
     actionLabel: "Open rider dashboard",
     actionPath: "/rider",
   });
+  return serializeProfile(getRiderProfile(riderId));
+}
+
+export function adminUnlockRiderCapacityChange(auth, riderId, input = {}) {
+  if (!auth || auth.role !== "admin") throw new HttpError(403, "Only admins can unlock rider capacity changes.");
+  const rider = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'rider'").get(riderId);
+  if (!rider) throw new HttpError(404, "Rider account was not found.");
+  const existing = getRiderProfile(riderId);
+  if (!existing) throw new HttpError(404, "Rider profile was not found.");
+
+  const minutes = Math.min(1440, Math.max(15, Number(input.minutes || 120)));
+  const unlockUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+  const note = clean(input.note || "Admin opened a temporary delivery-capacity change window.", 500);
+  const now = nowIso();
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET capacity_change_unlocked_until = ?, verification_note = ?, updated_at = ?
+    WHERE user_id = ?
+  `).run(unlockUntil, note, now, riderId);
+
+  db.prepare(`
+    UPDATE rider_capacity_profiles
+    SET capacity_change_unlocked_until = ?, updated_at = ?
+    WHERE rider_id = ?
+  `).run(unlockUntil, now, riderId);
+
+  createNotification({
+    userId: riderId,
+    type: "admin",
+    title: "Capacity change unlocked",
+    body: `Admin unlocked your rider delivery capacity settings until ${new Date(unlockUntil).toLocaleString()}.`,
+    actionLabel: "Update capacity",
+    actionPath: "/rider/profile",
+  });
+
   return serializeProfile(getRiderProfile(riderId));
 }

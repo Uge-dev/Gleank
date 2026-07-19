@@ -177,10 +177,24 @@ export function runRiderMigrations() {
       verification_level INTEGER NOT NULL DEFAULT 1 CHECK (verification_level >= 1 AND verification_level <= 5),
       max_package_value_kobo INTEGER NOT NULL DEFAULT 2000000 CHECK (max_package_value_kobo >= 0),
       availability TEXT NOT NULL DEFAULT 'offline' CHECK (availability IN ('offline','online','busy')),
+      transport_type TEXT NOT NULL DEFAULT 'motorcycle',
+      max_package_size TEXT NOT NULL DEFAULT 'small_medium',
+      max_weight_class TEXT NOT NULL DEFAULT 'up_to_medium',
+      fragile_handling_ability TEXT NOT NULL DEFAULT 'can_handle_fragile',
+      delivery_bag_type TEXT NOT NULL DEFAULT 'medium_delivery_bag',
+      max_pickups_per_batch INTEGER NOT NULL DEFAULT 4,
+      service_zone_ids TEXT NOT NULL DEFAULT '[]',
+      current_zone_id TEXT,
+      gps_permission_status TEXT NOT NULL DEFAULT 'gps_disabled',
+      availability_mode TEXT NOT NULL DEFAULT 'offline',
+      can_receive_auto_dispatch INTEGER NOT NULL DEFAULT 1,
+      capacity_locked INTEGER NOT NULL DEFAULT 0,
+      capacity_change_unlocked_until TEXT,
       current_lat REAL,
       current_lng REAL,
       current_accuracy_meters REAL,
       last_location_at TEXT,
+      live_face_verified INTEGER NOT NULL DEFAULT 0,
       safety_status TEXT NOT NULL DEFAULT 'normal' CHECK (safety_status IN ('normal','flagged','suspended')),
       rating_average REAL NOT NULL DEFAULT 0,
       completed_deliveries INTEGER NOT NULL DEFAULT 0,
@@ -353,6 +367,21 @@ export function runRiderMigrations() {
   ensureColumn("rider_assignments", "dispatch_timeout_seconds", "INTEGER NOT NULL DEFAULT 600");
   ensureColumn("rider_assignments", "dispatch_expires_at", "TEXT");
   ensureColumn("rider_assignments", "dispatch_timeout_policy", "TEXT NOT NULL DEFAULT 'campus'");
+
+  ensureColumn("rider_profiles", "transport_type", "TEXT NOT NULL DEFAULT 'motorcycle'");
+  ensureColumn("rider_profiles", "max_package_size", "TEXT NOT NULL DEFAULT 'small_medium'");
+  ensureColumn("rider_profiles", "max_weight_class", "TEXT NOT NULL DEFAULT 'up_to_medium'");
+  ensureColumn("rider_profiles", "fragile_handling_ability", "TEXT NOT NULL DEFAULT 'can_handle_fragile'");
+  ensureColumn("rider_profiles", "delivery_bag_type", "TEXT NOT NULL DEFAULT 'medium_delivery_bag'");
+  ensureColumn("rider_profiles", "max_pickups_per_batch", "INTEGER NOT NULL DEFAULT 4");
+  ensureColumn("rider_profiles", "service_zone_ids", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("rider_profiles", "current_zone_id", "TEXT");
+  ensureColumn("rider_profiles", "gps_permission_status", "TEXT NOT NULL DEFAULT 'gps_disabled'");
+  ensureColumn("rider_profiles", "availability_mode", "TEXT NOT NULL DEFAULT 'offline'");
+  ensureColumn("rider_profiles", "can_receive_auto_dispatch", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn("rider_profiles", "capacity_locked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_profiles", "capacity_change_unlocked_until", "TEXT");
+  ensureColumn("rider_profiles", "live_face_verified", "INTEGER NOT NULL DEFAULT 0");
 }
 
 runRiderMigrations();

@@ -15,6 +15,8 @@ export default function SafetyCenter() {
   const [note, setNote] = useState('');
   const [type, setType] = useState<SafetyReportPayload['type']>('other');
   const [reference, setReference] = useState('');
+  const emergencyPhone = import.meta.env.VITE_RIDER_EMERGENCY_PHONE || rider?.emergencyContact.phone || '+2348000000000';
+  const emergencyName = import.meta.env.VITE_RIDER_EMERGENCY_NAME || rider?.emergencyContact.name || 'Gleenc Rider Support';
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -31,9 +33,9 @@ export default function SafetyCenter() {
           <Card className="p-6">
             <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-950"><FiPhoneCall /> Emergency Contact</h2>
             <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-              <p className="font-extrabold text-slate-950">{rider?.emergencyContact.name}</p>
-              <p className="mt-1 text-sm text-slate-500">{rider?.emergencyContact.relationship}</p>
-              <a href={`tel:${rider?.emergencyContact.phone}`} className="mt-4 inline-flex"><Button variant="danger" icon={FiPhoneCall}>Call {rider?.emergencyContact.phone}</Button></a>
+              <p className="font-extrabold text-slate-950">{emergencyName}</p>
+              <p className="mt-1 text-sm text-slate-500">{rider?.emergencyContact.relationship || 'Emergency support contact'}</p>
+              <a href={`tel:${emergencyPhone}`} className="mt-4 inline-flex"><Button variant="danger" icon={FiPhoneCall}>Call {emergencyPhone}</Button></a>
             </div>
           </Card>
           <SecurityChecklist

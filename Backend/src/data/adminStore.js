@@ -131,6 +131,28 @@ function sellerPayoutStatus(row) {
   return "on_hold";
 }
 
+function sellerCompletion(row) {
+  const checks = [
+    ["Store name", row.name],
+    ["Owner phone", row.owner_phone || row.phone],
+    ["Campus", row.campus],
+    ["Category", row.category],
+    ["Identity proof", row.seller_identity_proof_url],
+    ["Face verification", row.seller_face_verified],
+    ["Business description", row.seller_business_description],
+    ["Pickup location", row.seller_pickup_location || row.pickup_location],
+    ["Location area", row.seller_location_area || row.location_area],
+    ["WhatsApp phone", row.seller_whatsapp_phone || row.whatsapp_phone],
+    ["Payout account", row.bank_name && row.account_name],
+    ["Subscription", row.subscription_status === "active"],
+  ];
+
+  return {
+    profileCompletionPercent: Math.round((checks.filter(([, value]) => Boolean(value)).length / checks.length) * 100),
+    completionMissingFields: checks.filter(([, value]) => !value).map(([label]) => label),
+  };
+}
+
 function estimateFeeKobo(amountKobo) {
   return Math.round((Number(amountKobo || 0) * 5) / 105);
 }
@@ -247,6 +269,7 @@ function buildSellers() {
       pickupLocation: row.seller_pickup_location || row.pickup_location || "",
       locationArea: row.seller_location_area || row.location_area || "",
       whatsappPhone: row.seller_whatsapp_phone || "",
+      ...sellerCompletion(row),
       status: row.status === "paused" ? "suspended" : "active",
       products: Number(row.product_count || 0) + Number(row.service_count || 0),
       orders: Number(row.order_count || 0),
@@ -700,7 +723,29 @@ function buildDisputes() {
       createdAt: dateOnly(row.created_at),
     }));
 
-  return [...stage4Disputes, ...orderDisputes, ...usedReports];
+  const riderReports = db
+    .prepare(`
+      SELECT rider_safety_reports.*, users.name AS rider_name, users.email AS rider_email
+      FROM rider_safety_reports
+      JOIN users ON users.id = rider_safety_reports.rider_id
+      ORDER BY rider_safety_reports.created_at DESC
+    `)
+    .all()
+    .map((row) => ({
+      id: row.id,
+      orderId: row.order_id || row.assignment_id || "",
+      title: "Rider dispute and compliance report",
+      buyer: "",
+      seller: row.rider_name,
+      type: "rider",
+      priority: ["safety_threat", "threat", "accident"].includes(row.report_type) ? "high" : "medium",
+      message: row.note || `Rider ${row.rider_email || row.rider_name} submitted a ${row.report_type} report.`,
+      status: row.status,
+      adminDecision: "",
+      createdAt: dateOnly(row.created_at),
+    }));
+
+  return [...stage4Disputes, ...orderDisputes, ...usedReports, ...riderReports];
 }
 
 function buildFeedback() {
@@ -1232,10 +1277,24 @@ function updateDispute(id, fields) {
     const orderId = id.replace(/^dsp-/, "");
     const status = fields.status === "resolved" || fields.status === "rejected" ? "completed" : "disputed";
     db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(status, now, orderId);
-  } else {
-    const status = fields.status === "resolved" ? "resolved" : fields.status === "rejected" ? "dismissed" : "reviewing";
-    db.prepare("UPDATE used_listing_reports SET status = ? WHERE id = ?").run(status, id);
+    return;
   }
+
+  const reportStatus = fields.status === "resolved" ? "resolved" : fields.status === "rejected" ? "dismissed" : "reviewing";
+  const riderReport = db.prepare("SELECT id FROM rider_safety_reports WHERE id = ?").get(id);
+  if (riderReport) {
+    db.prepare("UPDATE rider_safety_reports SET status = ?, updated_at = ? WHERE id = ?").run(reportStatus, now, id);
+    return;
+  }
+
+  const usedReport = db.prepare("SELECT id FROM used_listing_reports WHERE id = ?").get(id);
+  if (usedReport) {
+    db.prepare("UPDATE used_listing_reports SET status = ? WHERE id = ?").run(reportStatus, id);
+    return;
+  }
+
+  const status = fields.status || "reviewing";
+  db.prepare("UPDATE disputes SET status = ?, updated_at = ? WHERE id = ?").run(status, now, id);
 }
 
 function updateMarket(id, fields) {

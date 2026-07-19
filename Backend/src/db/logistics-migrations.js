@@ -148,6 +148,8 @@ export function runLogisticsMigrations() {
       gps_permission_status TEXT NOT NULL DEFAULT 'gps_disabled',
       availability_mode TEXT NOT NULL DEFAULT 'offline',
       can_receive_auto_dispatch INTEGER NOT NULL DEFAULT 1,
+      capacity_locked INTEGER NOT NULL DEFAULT 0,
+      capacity_change_unlocked_until TEXT,
       current_active_batch_count INTEGER NOT NULL DEFAULT 0,
       acceptance_rate REAL NOT NULL DEFAULT 1,
       rejection_rate REAL NOT NULL DEFAULT 0,
@@ -534,11 +536,15 @@ export function runLogisticsMigrations() {
   ensureColumn("rider_profiles", "last_known_accuracy", "REAL");
   ensureColumn("rider_profiles", "last_known_at", "TEXT");
   ensureColumn("rider_profiles", "can_receive_auto_dispatch", "INTEGER NOT NULL DEFAULT 1");
+  ensureColumn("rider_profiles", "capacity_locked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_profiles", "capacity_change_unlocked_until", "TEXT");
   ensureColumn("rider_profiles", "current_active_batch_count", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("rider_profiles", "acceptance_rate", "REAL NOT NULL DEFAULT 1");
   ensureColumn("rider_profiles", "rejection_rate", "REAL NOT NULL DEFAULT 0");
   ensureColumn("rider_profiles", "response_speed_score", "REAL NOT NULL DEFAULT 1");
   ensureColumn("rider_profiles", "reliability_score", "REAL NOT NULL DEFAULT 1");
+  ensureColumn("rider_capacity_profiles", "capacity_locked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_capacity_profiles", "capacity_change_unlocked_until", "TEXT");
 
   ensureColumn("rider_assignments", "delivery_batch_id", "TEXT");
   ensureColumn("rider_assignments", "pickup_task_id", "TEXT");

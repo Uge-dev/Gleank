@@ -57,6 +57,14 @@ function Signup() {
         vehiclePlate: String(formData.get("vehiclePlate") || "").trim(),
         coverageArea: String(formData.get("coverageArea") || "").trim(),
         homeAddress: String(formData.get("homeAddress") || "").trim(),
+        transportType: String(formData.get("transportType") || formData.get("vehicleType") || "").trim(),
+        maxPackageSize: String(formData.get("maxPackageSize") || "small_medium").trim(),
+        maxWeightClass: String(formData.get("maxWeightClass") || "up_to_medium").trim(),
+        fragileHandlingAbility: String(formData.get("fragileHandlingAbility") || "can_handle_fragile").trim(),
+        deliveryBagType: String(formData.get("deliveryBagType") || "medium_delivery_bag").trim(),
+        maxPickupsPerBatch: String(formData.get("maxPickupsPerBatch") || "4"),
+        gpsPermissionStatus: String(formData.get("gpsPermissionStatus") || "gps_disabled"),
+        canReceiveAutoDispatch: formData.get("canReceiveAutoDispatch") === "on",
         identityDocument: identityDocument instanceof File ? identityDocument : null,
         selfie: selfie instanceof File ? selfie : null,
         password: String(formData.get("password") || ""),
@@ -208,11 +216,13 @@ function Signup() {
                 <span>Vehicle type</span>
                 <div className="auth-input-box">
                   <FiTruck />
-                  <select name="vehicleType" required defaultValue="Motorcycle">
-                    <option value="Walking">Walking</option>
-                    <option value="Bicycle">Bicycle</option>
-                    <option value="Motorcycle">Motorcycle</option>
-                    <option value="Car">Car</option>
+                  <select name="vehicleType" required defaultValue="motorcycle">
+                    <option value="walking">Walking</option>
+                    <option value="bicycle">Bicycle</option>
+                    <option value="motorcycle">Motorcycle</option>
+                    <option value="tricycle_keke">Tricycle/Keke</option>
+                    <option value="car">Car</option>
+                    <option value="van">Van</option>
                   </select>
                 </div>
               </label>
@@ -241,6 +251,72 @@ function Signup() {
                     required
                   />
                 </div>
+              </label>
+
+              <label>
+                <span>Maximum package size</span>
+                <div className="auth-input-box">
+                  <FiTruck />
+                  <select name="maxPackageSize" required defaultValue="small_medium">
+                    <option value="small_only">Small only</option>
+                    <option value="small_medium">Small + medium</option>
+                    <option value="small_medium_large">Small, medium + large</option>
+                    <option value="large_and_bulky">Large and bulky</option>
+                  </select>
+                </div>
+              </label>
+
+              <label>
+                <span>Maximum weight</span>
+                <div className="auth-input-box">
+                  <FiTruck />
+                  <select name="maxWeightClass" required defaultValue="up_to_medium">
+                    <option value="very_light_only">Very light only</option>
+                    <option value="up_to_light">Up to light</option>
+                    <option value="up_to_medium">Up to medium</option>
+                    <option value="up_to_heavy">Up to heavy</option>
+                  </select>
+                </div>
+              </label>
+
+              <label>
+                <span>Fragile handling</span>
+                <div className="auth-input-box">
+                  <FiShield />
+                  <select name="fragileHandlingAbility" required defaultValue="can_handle_fragile">
+                    <option value="cannot_handle_fragile">Cannot handle fragile</option>
+                    <option value="can_handle_fragile">Can handle fragile</option>
+                    <option value="can_handle_very_fragile">Can handle very fragile</option>
+                  </select>
+                </div>
+              </label>
+
+              <label>
+                <span>Delivery bag / box</span>
+                <div className="auth-input-box">
+                  <FiShoppingBag />
+                  <select name="deliveryBagType" required defaultValue="medium_delivery_bag">
+                    <option value="none">None</option>
+                    <option value="small_delivery_bag">Small delivery bag</option>
+                    <option value="medium_delivery_bag">Medium delivery bag</option>
+                    <option value="large_delivery_box">Large delivery box</option>
+                    <option value="insulated_bag">Insulated bag</option>
+                    <option value="fragile_item_box">Fragile item box</option>
+                  </select>
+                </div>
+              </label>
+
+              <label>
+                <span>Max pickups per batch</span>
+                <div className="auth-input-box">
+                  <FiTruck />
+                  <input name="maxPickupsPerBatch" type="number" min={1} max={5} defaultValue={4} required />
+                </div>
+              </label>
+
+              <label className="terms-row">
+                <input name="canReceiveAutoDispatch" type="checkbox" defaultChecked />
+                <span>Allow compatible automated dispatch offers after admin verification.</span>
               </label>
 
               <label>

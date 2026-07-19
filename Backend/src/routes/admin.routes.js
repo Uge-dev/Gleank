@@ -27,6 +27,7 @@ import {
   adminUpdateSellerCategoryApproval,
 } from "../services/market.service.js";
 import {
+  adminUnlockRiderCapacityChange,
   adminListRiders,
   adminUpdateRiderVerification,
 } from "../services/rider.service.js";
@@ -376,6 +377,21 @@ router.patch("/riders/:riderId/verification", requireAdmin, (req, res) => {
     });
   } catch (error) {
     res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update rider verification" });
+  }
+});
+
+router.patch("/riders/:riderId/capacity-unlock", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      riderProfile: adminUnlockRiderCapacityChange(
+        { role: "admin" },
+        req.params.riderId,
+        req.body || {},
+      ),
+    });
+  } catch (error) {
+    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not unlock rider capacity changes" });
   }
 });
 

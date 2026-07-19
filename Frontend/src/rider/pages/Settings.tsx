@@ -1,9 +1,12 @@
-import { FiLock, FiShield } from 'react-icons/fi';
+import { FiLock, FiMail, FiShield } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
+import { useAuth } from '../context/AuthContext';
 
 export default function Settings() {
+  const { rider } = useAuth();
+
   return (
     <div>
       <PageHeader title="Settings" subtitle="Security and delivery preferences for the rider account." />
@@ -23,9 +26,15 @@ export default function Settings() {
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-slate-100 text-slate-700"><FiLock /></div>
             <div>
               <h2 className="text-lg font-extrabold text-slate-950">Account Security</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Manage password updates, account protection and trusted device access.</p>
-              <Link to="/account/security" className="mt-4 inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">
-                Manage Security
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                This is the rider-only security area. Password reset works from the shared Gleenc login, but it will return this account to the rider workspace because the account role is rider.
+              </p>
+              <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm font-bold text-slate-700">
+                <p className="flex items-center gap-2"><FiMail /> {rider?.email || 'Rider email not loaded'}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">Use this same email on the normal Gleenc login page. Gleenc will detect rider role and open Rider Dashboard.</p>
+              </div>
+              <Link to="/forgot-password" className="mt-4 inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">
+                Reset Rider Password
               </Link>
             </div>
           </div>
