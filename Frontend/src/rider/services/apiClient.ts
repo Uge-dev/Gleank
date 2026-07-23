@@ -1,4 +1,5 @@
 import { config } from '../config/env';
+import { cleanErrorMessage } from '../../lib/errorMessages';
 
 export class ApiClientError extends Error {
   status?: number;
@@ -45,8 +46,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       const backendMessage =
         typeof payload === 'object' && payload && 'message' in payload
           ? String((payload as { message?: unknown }).message)
+          : typeof payload === 'object' && payload && 'error' in payload &&
+              typeof (payload as { error?: unknown }).error === 'object' &&
+              (payload as { error?: { message?: unknown } }).error?.message
+            ? String((payload as { error?: { message?: unknown } }).error?.message)
           : '';
-      const message = backendMessage || 'The request could not be completed.';
+      const message = cleanErrorMessage(backendMessage, response.status, 'The request could not be completed.');
       throw new ApiClientError(message, response.status, payload);
     }
 
@@ -54,7 +59,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   } catch (error) {
     if (error instanceof ApiClientError) throw error;
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new ApiClientError('We could not connect right now. Please check your internet connection and try again.', 408);
+      throw new ApiClientError('The rider service is taking too long to respond. Please try again in a moment.', 408);
     }
     throw new ApiClientError('We could not connect right now. Please check your internet connection and try again.', 0);
   } finally {

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FiCreditCard, FiExternalLink, FiLink, FiRefreshCw } from 'react-icons/fi';
 import type { FullDeliveryOrder } from '../../types';
-import { formatCurrency } from '../../utils/format';
 import { paymentStatusLabel } from '../../utils/status';
 import { useRiderData } from '../../context/RiderDataContext';
 import Button from '../ui/Button';
@@ -63,8 +62,8 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
           <p className="mt-2 font-extrabold text-slate-950">{order.paymentMethod === 'paid_online' ? 'Pay Now' : 'Pay at Delivery'}</p>
         </div>
         <div className="rounded-2xl bg-slate-50 p-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Total Amount</p>
-          <p className="mt-2 font-extrabold text-slate-950">{formatCurrency(order.totalAmount)}</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Privacy</p>
+          <p className="mt-2 font-extrabold text-slate-950">Amount hidden from rider</p>
         </div>
         <div className="rounded-2xl bg-slate-50 p-4">
           <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Status</p>
@@ -74,7 +73,7 @@ export default function PaymentPanel({ order }: { order: FullDeliveryOrder }) {
 
       {!isPaid && (
         <div className="mt-5 rounded-[1.3rem] border border-rose-100 bg-rose-50 p-4">
-          <p className="font-bold text-rose-700">Outstanding Amount: {formatCurrency(order.totalAmount)}</p>
+          <p className="font-bold text-rose-700">Buyer payment is still pending.</p>
           <p className="mt-1 text-sm leading-6 text-rose-600">Generate a Gleenc/Paystack payment link for the buyer. Riders must never collect cash or mark payment manually.</p>
           {paymentError && <p className="mt-3 rounded-2xl bg-white p-3 text-sm font-bold text-rose-700">{paymentError}</p>}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">

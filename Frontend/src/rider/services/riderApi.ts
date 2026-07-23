@@ -22,7 +22,6 @@ type BackendRiderProfile = {
   maxWeightClass?: string;
   fragileHandlingAbility?: string;
   deliveryBagType?: string;
-  maxPickupsPerBatch?: number;
   capacityLocked?: boolean;
   profileCompletionPercent?: number;
   completionMissingFields?: string[];
@@ -204,7 +203,7 @@ function mapCategory(row: BackendAssignment): PrivateAssignment['category'] {
 }
 
 function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
-  const orderValue = Number(row.packageValue || 0);
+  const orderValue = 0;
   const pickupLocation = row.pickupLocation || row.pickupPoint?.address || 'Pickup location unavailable';
   const deliveryLocation = row.deliveryLocation || row.deliveryPoint?.address || 'Delivery location locked until pickup';
 
@@ -260,8 +259,8 @@ function normalizeProofRecord(row: BackendAssignment, type: 'pickup' | 'delivery
 }
 
 function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
-  const packageValue = Number(row.packageValue || 0);
-  const deliveryFee = Number(row.deliveryFee || 0);
+  const packageValue = 0;
+  const deliveryFee = 0;
   const status = mapAssignmentStatus(row.status);
   const paymentStatus = (row.paymentStatus as FullDeliveryOrder['paymentStatus']) || 'unpaid';
   const paymentMethod = row.paymentMethod === 'pay_on_delivery' || paymentStatus === 'unpaid' ? 'pay_on_delivery' : 'paid_online';
@@ -478,7 +477,11 @@ export const riderApi = {
     return apiRequest<BackendRiderAuthResponse>('/api/rider/session').then(normalizeRider);
   },
   login(email: string, password: string) {
-    return apiRequest<BackendRiderAuthResponse>('/api/rider/login', { method: 'POST', body: JSON.stringify({ email, password }) }).then(normalizeRider);
+    return apiRequest<BackendRiderAuthResponse>('/api/rider/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      timeoutMs: 45000,
+    }).then(normalizeRider);
   },
   signup(payload: RiderSignupPayload) {
     const formData = new FormData();
@@ -494,7 +497,6 @@ export const riderApi = {
   formData.append('maxWeightClass', payload.maxWeightClass || 'up_to_medium');
   formData.append('fragileHandlingAbility', payload.fragileHandlingAbility || 'can_handle_fragile');
   formData.append('deliveryBagType', payload.deliveryBagType || 'medium_delivery_bag');
-  formData.append('maxPickupsPerBatch', String(payload.maxPickupsPerBatch || 4));
 
     if (payload.identityDocument) {
       formData.append('identityDocument', payload.identityDocument);
@@ -507,6 +509,7 @@ export const riderApi = {
     return apiRequest<BackendRiderAuthResponse>('/api/rider/register', {
       method: 'POST',
       body: formData,
+      timeoutMs: 90000,
     }).then(normalizeRider);
   },
   uploadVerificationDocuments(identityDocument: File, selfie: File) {
@@ -517,6 +520,7 @@ export const riderApi = {
     return apiRequest<BackendRiderAuthResponse>('/api/rider/verification-documents', {
       method: 'POST',
       body: formData,
+      timeoutMs: 90000,
     }).then(normalizeRider);
   },
   logout() {

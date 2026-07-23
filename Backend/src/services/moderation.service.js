@@ -18,6 +18,16 @@ const VALID_AVAILABILITY = new Set([
   "substitute_available",
 ]);
 
+const CATEGORY_PRICE_RANGES_KOBO = [
+  { pattern: /food|meal|shawarma|snack|drink|restaurant/i, min: 100_00, max: 50_000_00 },
+  { pattern: /book|textbook|stationer/i, min: 200_00, max: 80_000_00 },
+  { pattern: /fashion|cloth|shoe|bag|accessor/i, min: 500_00, max: 500_000_00 },
+  { pattern: /phone|laptop|electronic|gadget/i, min: 2_000_00, max: 5_000_000_00 },
+  { pattern: /beauty|hair|makeup|skin/i, min: 500_00, max: 300_000_00 },
+  { pattern: /home|household|furniture|appliance/i, min: 500_00, max: 2_000_000_00 },
+  { pattern: /service|repair|cleaning|delivery|design|skill/i, min: 500_00, max: 1_500_000_00 },
+];
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -60,6 +70,11 @@ function riskLevel(score) {
 
 function priceKoboFromInput(input) {
   return Math.round(Number(input?.price || 0) * 100);
+}
+
+function categoryPriceRange(input) {
+  const source = `${input?.category || ""} ${input?.name || ""} ${input?.serviceType || ""}`;
+  return CATEGORY_PRICE_RANGES_KOBO.find((rule) => rule.pattern.test(source)) || null;
 }
 
 function availabilityFromInput(input, stock = 1) {
@@ -192,6 +207,32 @@ export function evaluateListingModeration({ store, input, images = [], itemType 
   }
 
   const priceKobo = priceKoboFromInput(input);
+  const range = categoryPriceRange(input);
+
+  if (range && priceKobo > 0 && priceKobo < range.min && requestedStatus === "active") {
+    addReason(
+      reasons,
+      "below_category_price_range",
+      "This price looks unusually low for the selected category. The listing was saved for review instead of going public.",
+      25,
+      "review",
+    );
+    score += 25;
+    reviewRequired = true;
+  }
+
+  if (range && priceKobo > range.max && requestedStatus === "active") {
+    addReason(
+      reasons,
+      "above_category_price_range",
+      "This price is above the normal range for the selected category and needs admin review before publishing.",
+      25,
+      "review",
+    );
+    score += 25;
+    reviewRequired = true;
+  }
+
   if (priceKobo > 500_000_00) {
     addReason(reasons, "high_value", "High-value listings need admin review before going public.", 35, "review");
     score += 35;

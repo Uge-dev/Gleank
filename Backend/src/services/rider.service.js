@@ -151,7 +151,6 @@ function serializeProfile(row) {
     maxWeightClass: row.max_weight_class || "up_to_medium",
     fragileHandlingAbility: row.fragile_handling_ability || "can_handle_fragile",
     deliveryBagType: row.delivery_bag_type || "medium_delivery_bag",
-    maxPickupsPerBatch: row.max_pickups_per_batch || 4,
     serviceZoneIds,
     currentZoneId: row.current_zone_id || null,
     gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
@@ -199,6 +198,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
   if (!row) return null;
   const pickedUp = ["picked_up", "out_for_delivery", "delivered"].includes(row.status);
   const reveal = revealPrivate || pickedUp;
+  const revealPackage = revealPrivate || ["accepted", "arrived_pickup", "picked_up", "out_for_delivery", "delivered"].includes(row.status);
   const sellerAllowsWhatsApp = row.seller_allows_whatsapp !== 0;
   const timeoutSeconds = Number(row.dispatch_timeout_seconds || env.riderDispatchTimeoutCampusSeconds || 600);
   return {
@@ -246,11 +246,12 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     sellerAllowsWhatsApp,
     buyerName: reveal ? row.buyer_name : "Locked until pickup",
     buyerPhone: reveal ? row.buyer_phone : "",
-    packageSummary: reveal ? row.package_summary : "Package details unlock after seller pickup OTP is verified.",
-    packageValueKobo: row.package_value_kobo,
-    packageValue: money(row.package_value_kobo),
-    deliveryFeeKobo: row.delivery_fee_kobo,
-    deliveryFee: money(row.delivery_fee_kobo),
+    packageSummary: revealPackage ? row.package_summary : "Accept this delivery to see package summary.",
+    packageTagCode: revealPrivate && row.status === "delivered" ? row.package_tag_code || "" : "",
+    packageValueKobo: 0,
+    packageValue: 0,
+    deliveryFeeKobo: 0,
+    deliveryFee: 0,
     deliveryBatchId: row.delivery_batch_id || null,
     pickupTaskId: row.pickup_task_id || null,
     pickupProof: row.pickup_proof_created_at ? {
@@ -486,10 +487,10 @@ export async function registerRider(input, meta = {}) {
         coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
         guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
         transport_type, max_package_size, max_weight_class, fragile_handling_ability,
-        delivery_bag_type, max_pickups_per_batch, service_zone_ids, gps_permission_status,
+        delivery_bag_type, service_zone_ids, gps_permission_status,
         can_receive_auto_dispatch, capacity_locked, live_face_verified,
         verification_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         full_name = excluded.full_name,
         phone = excluded.phone,
@@ -510,7 +511,6 @@ export async function registerRider(input, meta = {}) {
         max_weight_class = excluded.max_weight_class,
         fragile_handling_ability = excluded.fragile_handling_ability,
         delivery_bag_type = excluded.delivery_bag_type,
-        max_pickups_per_batch = excluded.max_pickups_per_batch,
         service_zone_ids = excluded.service_zone_ids,
         gps_permission_status = excluded.gps_permission_status,
         can_receive_auto_dispatch = excluded.can_receive_auto_dispatch,
@@ -539,7 +539,6 @@ export async function registerRider(input, meta = {}) {
       input.maxWeightClass || "up_to_medium",
       input.fragileHandlingAbility || "can_handle_fragile",
       input.deliveryBagType || "medium_delivery_bag",
-      Number(input.maxPickupsPerBatch || 4),
       JSON.stringify(Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : []),
       input.gpsPermissionStatus || "gps_disabled",
       input.canReceiveAutoDispatch === false ? 0 : 1,
@@ -618,7 +617,9 @@ export function getRiderSession(auth) {
 
 export function updateRiderAvailability(auth, input) {
   const userId = requireRiderUser(auth);
-  const profile = input.availability === "online" ? requireVerifiedRider(userId) : getRiderProfile(userId);
+  const profile = ["online", "busy"].includes(input.availability)
+    ? requireVerifiedRider(userId)
+    : getRiderProfile(userId);
   if (!profile) throw new HttpError(404, "Rider profile was not found.");
   const now = nowIso();
   const location = input.currentLocation || null;
@@ -805,8 +806,8 @@ export function createRiderAssignment(auth, input) {
         payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
         pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
-        package_value_kobo, delivery_fee_kobo, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        package_tag_code, package_value_kobo, delivery_fee_kobo, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -842,6 +843,7 @@ export function createRiderAssignment(auth, input) {
       input.buyerName || order.buyer_name || "Buyer",
       input.buyerPhone || order.buyer_phone || "",
       packageSummary,
+      order.package_tag_code || "",
       input.packageValueKobo || order.total_kobo || 0,
       input.deliveryFeeKobo || order.delivery_fee_kobo || 0,
       now,
@@ -1245,6 +1247,13 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
   const existing = getRiderProfile(riderId);
   if (!existing) throw new HttpError(404, "Rider profile was not found.");
   const now = nowIso();
+  const requestedMaxPackageValueKobo = Number(input.maxPackageValueKobo ?? existing.max_package_value_kobo ?? 0);
+  const nextMaxPackageValueKobo =
+    input.verificationStatus === "verified" && requestedMaxPackageValueKobo <= 0
+      ? 2_000_000
+      : requestedMaxPackageValueKobo > 0
+        ? requestedMaxPackageValueKobo
+        : null;
   db.prepare(`
     UPDATE rider_profiles
     SET verification_status = ?,
@@ -1271,7 +1280,7 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
     input.verificationStatus,
     clean(input.verificationNote, 500),
     input.verificationLevel ?? null,
-    input.maxPackageValueKobo ?? null,
+    nextMaxPackageValueKobo,
     input.safetyStatus ?? null,
     input.verificationStatus,
     input.verificationStatus,

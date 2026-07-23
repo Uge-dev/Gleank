@@ -142,7 +142,6 @@ export function runLogisticsMigrations() {
       max_weight_class TEXT NOT NULL DEFAULT 'up_to_medium',
       fragile_handling_ability TEXT NOT NULL DEFAULT 'can_handle_fragile',
       delivery_bag_type TEXT NOT NULL DEFAULT 'medium_delivery_bag',
-      max_pickups_per_batch INTEGER NOT NULL DEFAULT 4,
       service_zone_ids TEXT NOT NULL DEFAULT '[]',
       current_zone_id TEXT,
       gps_permission_status TEXT NOT NULL DEFAULT 'gps_disabled',
@@ -526,7 +525,6 @@ export function runLogisticsMigrations() {
   ensureColumn("rider_profiles", "max_weight_class", "TEXT NOT NULL DEFAULT 'up_to_medium'");
   ensureColumn("rider_profiles", "fragile_handling_ability", "TEXT NOT NULL DEFAULT 'can_handle_fragile'");
   ensureColumn("rider_profiles", "delivery_bag_type", "TEXT NOT NULL DEFAULT 'medium_delivery_bag'");
-  ensureColumn("rider_profiles", "max_pickups_per_batch", "INTEGER NOT NULL DEFAULT 4");
   ensureColumn("rider_profiles", "service_zone_ids", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("rider_profiles", "current_zone_id", "TEXT");
   ensureColumn("rider_profiles", "gps_permission_status", "TEXT NOT NULL DEFAULT 'gps_disabled'");

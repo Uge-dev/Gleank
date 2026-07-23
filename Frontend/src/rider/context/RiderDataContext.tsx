@@ -142,6 +142,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const hydratedRef = useRef(false);
   const knownAssignmentIdsRef = useRef<Set<string>>(new Set(initial.assignments.map((item) => item.id)));
   const knownNotificationIdsRef = useRef<Set<string>>(new Set(initial.notifications.map((item) => item.id)));
+  const knownDispatchOfferIdsRef = useRef<Set<string>>(new Set());
 
   function applyStateFromLocal() {
     const state = riderLocalStore.load();
@@ -169,17 +170,20 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const payload = await riderApi.dashboard();
+      const dispatchPayload = await riderApi.activeDispatches().catch(() => ({ dispatches: [] }));
       const nextAssignments = payload.assignments;
       const nextNotifications = payload.notifications;
+      const nextDispatchOffers = dispatchPayload.dispatches || [];
       if (hydratedRef.current) {
         const newAssignments = nextAssignments.filter((item) => item.status === 'assigned' && !knownAssignmentIdsRef.current.has(item.id));
+        const newDispatchOffers = nextDispatchOffers.filter((item) => item.status === 'offered' && !knownDispatchOfferIdsRef.current.has(item.id));
         const newDispatchNotifications = nextNotifications.filter((item) =>
           !knownNotificationIdsRef.current.has(item.id) &&
           !item.read &&
           /assignment|dispatch|delivery/i.test(`${item.type} ${item.title} ${item.message}`),
         );
 
-        if (newAssignments.length || newDispatchNotifications.length) {
+        if (newAssignments.length || newDispatchOffers.length || newDispatchNotifications.length) {
           playRiderDispatchBeep();
           showRiderNotification(
             'New Gleenc dispatch',
@@ -190,6 +194,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
 
       knownAssignmentIdsRef.current = new Set(nextAssignments.map((item) => item.id));
       knownNotificationIdsRef.current = new Set(nextNotifications.map((item) => item.id));
+      knownDispatchOfferIdsRef.current = new Set(nextDispatchOffers.map((item) => item.id));
       hydratedRef.current = true;
 
       setAssignments(nextAssignments);
@@ -318,7 +323,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     async completeDelivery(orderId: string, customerDeliveryCode = '', proofFile?: File | null, proofNote?: string, locationLabel?: string) {
       if (!proofFile) return { ok: false, message: 'Upload delivery proof photo before confirming delivery.' };
       const order = orders.find((item) => item.id === orderId);
-      const assignment = assignments.find((item) => item.id === order?.assignmentId);
+      const assignment = assignments.find((item) => item.id === order?.assignmentId || item.orderId === orderId);
       if (shouldUseApi()) {
         try {
           const response = await riderApi.completeDelivery(orderId, {

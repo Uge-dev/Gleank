@@ -33,6 +33,22 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const legacyUserKey = "gleank_user";
+const clientAuthStorageKeys = [
+  legacyUserKey,
+  "gleank_pending_payment_reference",
+  "gleank_last_orders",
+  "gleank_last_order",
+  "gleenc-rider-dashboard-state-v4",
+];
+
+function clearClientAuthStorage() {
+  if (typeof window === "undefined") return;
+
+  for (const key of clientAuthStorageKeys) {
+    localStorage.removeItem(key);
+    sessionStorage.removeItem(key);
+  }
+}
 
 function syncLegacyUser(user: AuthUser | null) {
   if (user) {
@@ -44,7 +60,7 @@ function syncLegacyUser(user: AuthUser | null) {
       }),
     );
   } else {
-    localStorage.removeItem(legacyUserKey);
+    clearClientAuthStorage();
   }
 
   window.dispatchEvent(new Event("gleank-auth-change"));

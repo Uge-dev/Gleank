@@ -30,8 +30,12 @@ paymentRouter.use(requireAuth, requireEmailVerified);
 paymentRouter.post(
   "/initialize",
   asyncRoute(async (req, res) => {
+    const payment = await initializePayment(req.auth.user_id, req.body);
     res.status(201).json({
-      payment: await initializePayment(req.auth.user_id, req.body),
+      success: true,
+      message: "Payment checkout is ready.",
+      data: { payment },
+      payment,
     });
   }),
 );
@@ -39,11 +43,15 @@ paymentRouter.post(
 paymentRouter.post(
   "/pay-at-delivery/initialize",
   asyncRoute(async (req, res) => {
+    const payment = await initializePayAtDeliveryPayment(
+      req.auth.user_id,
+      String(req.body?.orderId || req.body?.targetId || ""),
+    );
     res.status(201).json({
-      payment: await initializePayAtDeliveryPayment(
-        req.auth.user_id,
-        String(req.body?.orderId || req.body?.targetId || ""),
-      ),
+      success: true,
+      message: "Pay at Delivery payment checkout is ready.",
+      data: { payment },
+      payment,
     });
   }),
 );
@@ -51,11 +59,15 @@ paymentRouter.post(
 paymentRouter.post(
   "/verify",
   asyncRoute(async (req, res) => {
+    const payment = await verifyPayment(
+      req.auth.user_id,
+      String(req.body?.reference || ""),
+    );
     res.json({
-      payment: await verifyPayment(
-        req.auth.user_id,
-        String(req.body?.reference || ""),
-      ),
+      success: true,
+      message: payment.status === "paid" ? "Payment verified successfully." : "Payment verification checked.",
+      data: { payment },
+      payment,
     });
   }),
 );
@@ -63,8 +75,12 @@ paymentRouter.post(
 paymentRouter.get(
   "/verify/:reference",
   asyncRoute(async (req, res) => {
+    const payment = await verifyPayment(req.auth.user_id, req.params.reference);
     res.json({
-      payment: await verifyPayment(req.auth.user_id, req.params.reference),
+      success: true,
+      message: payment.status === "paid" ? "Payment verified successfully." : "Payment verification checked.",
+      data: { payment },
+      payment,
     });
   }),
 );

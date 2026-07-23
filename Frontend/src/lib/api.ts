@@ -1,3 +1,5 @@
+import { cleanErrorMessage, isTechnicalMessage } from "./errorMessages";
+
 function resolveApiUrl() {
   const configuredUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, "") || "/api";
 
@@ -61,14 +63,10 @@ export class ApiError extends Error {
 
 export function friendlyApiErrorMessage(error: unknown) {
   if (error instanceof ApiError) {
-    if (error.status === 0 || error.status === 408) {
-      return "We could not connect right now. Please check your internet connection and try again.";
-    }
-
-    return error.message || "The request could not be completed.";
+    return cleanErrorMessage(error.message, error.status, "The request could not be completed.");
   }
 
-  if (error instanceof TypeError || (error instanceof Error && /failed to fetch|network|load failed/i.test(error.message))) {
+  if (error instanceof TypeError || (error instanceof Error && isTechnicalMessage(error.message))) {
     return "We could not connect right now. Please check your internet connection and try again.";
   }
 
@@ -124,7 +122,10 @@ export async function apiRequest<T>(
 
     throw new ApiError(
       response.status,
-      body.error?.message || body.message || "The request could not be completed.",
+      cleanErrorMessage(
+        body.error?.message || body.message || "The request could not be completed.",
+        response.status,
+      ),
       body.error?.details,
     );
   }

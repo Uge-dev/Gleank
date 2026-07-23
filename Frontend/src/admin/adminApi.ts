@@ -1,4 +1,5 @@
 import type { AdminDataset, AdminRider, AdminStatus } from "./adminData";
+import { cleanErrorMessage } from "../lib/errorMessages";
 
 function resolveAdminApiBase() {
   const configuredUrl = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, "") || "/api";
@@ -82,7 +83,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     }
 
     const error = await response.json().catch(() => ({ message: "" }));
-    throw new Error(error.message || "Admin request could not be completed.");
+    throw new Error(cleanErrorMessage(error.message, response.status, "Admin request could not be completed."));
   }
 
   return response.json() as Promise<T>;

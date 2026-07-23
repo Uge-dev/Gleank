@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { FiAlertTriangle, FiCheckCircle, FiMapPin, FiPhoneCall, FiShield } from 'react-icons/fi';
 import { useRiderData } from '../context/RiderDataContext';
-import { formatCurrency, formatDateTime } from '../utils/format';
+import { formatDateTime } from '../utils/format';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Modal from '../components/ui/Modal';
@@ -92,22 +92,18 @@ export default function DeliveryDetails() {
               </div>
               <StatusBadge value={order.status} />
             </div>
-            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <div className="rounded-2xl bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Delivery OTP</p>
                 <p className="mt-2 text-sm font-black text-slate-950">Enter only after buyer provides it</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Amount</p>
-                <p className="mt-2 text-xl font-black text-slate-950">{formatCurrency(order.totalAmount)}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Payment</p>
+                <p className="mt-2 text-sm font-black text-slate-950">{isPaid ? 'Confirmed' : 'Buyer payment pending'}</p>
               </div>
               <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Delivery Fee</p>
-                <p className="mt-2 text-xl font-black text-slate-950">{formatCurrency(order.deliveryFee)}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Rider Earning</p>
-                <p className="mt-2 text-xl font-black text-slate-950">{formatCurrency(order.riderEarning)}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Security</p>
+                <p className="mt-2 text-sm font-black text-slate-950">Proof photo required</p>
               </div>
             </div>
           </Card>
@@ -150,9 +146,17 @@ export default function DeliveryDetails() {
           <Card className="p-5">
             <h2 className="text-xl font-extrabold text-slate-950">Complete Delivery</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">Enabled only after payment is confirmed. Buyer must provide delivery OTP and rider must submit proof.</p>
-            <Button className="mt-5" icon={FiCheckCircle} size="lg" disabled={!isPaid} onClick={() => setConfirmOpen(true)} fullWidth>
-              Complete With OTP
-            </Button>
+            {isPaid ? (
+              <Link to={`/rider/verify/${order.assignmentId}`} className="mt-5 block">
+                <Button icon={FiCheckCircle} size="lg" fullWidth>
+                  Open Code Verification
+                </Button>
+              </Link>
+            ) : (
+              <Button className="mt-5" icon={FiCheckCircle} size="lg" disabled fullWidth>
+                Open Code Verification
+              </Button>
+            )}
             {!isPaid && <p className="mt-3 text-center text-xs font-bold text-rose-600">Confirm payment first before completing delivery.</p>}
             <Button className="mt-3" variant="danger" icon={FiAlertTriangle} onClick={() => setSafetyOpen(true)} fullWidth>Report Issue</Button>
             <Link to="/rider/active" className="mt-3 block text-center text-sm font-bold text-slate-500 hover:text-slate-950">

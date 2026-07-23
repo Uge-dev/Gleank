@@ -51,6 +51,13 @@ function generateVerificationCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function generatePackageTagCode() {
+  return `GLC-TAG-${Date.now().toString().slice(-6)}-${Math.random()
+    .toString(36)
+    .slice(2, 5)
+    .toUpperCase()}`;
+}
+
 function statusLabel(status) {
   const labels = {
     pending_payment: "Pending payment",
@@ -133,6 +140,7 @@ function serializeOrder(row, events = []) {
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
     verificationCode: row.verification_code || "",
+    packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     events,
@@ -337,8 +345,8 @@ export function createUsedOrder(userId, input) {
         seller_confirmation_required, payout_status,
         item_price_kobo, protection_fee_kobo, delivery_fee_kobo, total_kobo,
         buyer_name, buyer_phone, campus, delivery_option, delivery_address,
-        pickup_location, note, verification_code, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        pickup_location, note, verification_code, package_tag_code, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       generateOrderCode(),
@@ -357,6 +365,7 @@ export function createUsedOrder(userId, input) {
       pickupLocation,
       note,
       generateVerificationCode(),
+      generatePackageTagCode(),
       now,
       now,
     );

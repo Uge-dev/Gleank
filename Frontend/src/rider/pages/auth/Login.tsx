@@ -94,7 +94,7 @@ export default function Login() {
             {isSubmitting ? 'Signing in...' : 'Login'}
           </Button>
           <p className="mt-4 text-center text-sm">
-            <Link to="/forgot-password" className="font-extrabold text-gleenc-cyan">Forgot password?</Link>
+            <Link to="/rider/forgot-password" className="font-extrabold text-gleenc-cyan">Forgot password?</Link>
           </p>
           <p className="mt-5 text-center text-sm text-slate-500">New rider? <Link to="/rider/signup" className="font-extrabold text-gleenc-cyan">Create account</Link></p>
         </motion.form>

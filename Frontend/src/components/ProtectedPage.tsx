@@ -15,7 +15,8 @@ type ProtectedPageProps = {
 function ProtectedPage({ children, roles }: ProtectedPageProps) {
   const { isAuthenticated, isLoading, user } = useAuth();
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const roleAllowed = !roles?.length || Boolean(user && roles.includes(user.role));
+  const effectiveRoles = roles?.length ? roles : (["buyer", "seller", "admin"] as UserRole[]);
+  const roleAllowed = Boolean(user && effectiveRoles.includes(user.role));
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -39,6 +40,23 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
   }
 
   if (isAuthenticated && !roleAllowed) {
+    if (user?.role === "rider") {
+      return (
+        <section className="protected-popup-page">
+          <div className="protected-popup-card role-blocked-card">
+            <FiShield />
+            <span>Rider account</span>
+            <h1>Open your rider dashboard</h1>
+            <p>
+              This account is registered for deliveries, so rider tools stay
+              separate from buyer and seller pages.
+            </p>
+            <Link to="/rider">Go to rider dashboard</Link>
+          </div>
+        </section>
+      );
+    }
+
     return (
       <section className="protected-popup-page">
         <div className="protected-popup-card role-blocked-card">

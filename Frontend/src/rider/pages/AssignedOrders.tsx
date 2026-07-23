@@ -9,7 +9,7 @@ import PageHeader from '../components/ui/PageHeader';
 import { shouldUseApi } from '../config/env';
 import { riderApi } from '../services/riderApi';
 import type { RiderDispatchOffer } from '../services/riderApi';
-import { formatCurrency, formatDateTime } from '../utils/format';
+import { formatDateTime } from '../utils/format';
 
 const categories = ['All', 'Food', 'Groceries', 'Fashion', 'Electronics', 'Books', 'Health', 'Beauty', 'Household', 'Used Items', 'Others'];
 const channels = ['All', 'campus', 'physical_market', 'nearby_market', 'used_market'];
@@ -85,16 +85,19 @@ export default function AssignedOrders() {
         subtitle="Gleenc dispatch offers and private delivery tasks. Customer/order/payment details remain locked until pickup OTP and proof are recorded."
       />
 
-      {(dispatches.length > 0 || dispatchLoading || dispatchError) && (
-        <section className="mb-6">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-gleenc-green">Gleenc dispatch</p>
-              <h2 className="text-xl font-black text-slate-950">Batch offers waiting for you</h2>
-            </div>
-            {dispatchLoading && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Refreshing</span>}
+      <section className="mb-6">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.3em] text-gleenc-green">Gleenc dispatch</p>
+            <h2 className="text-xl font-black text-slate-950">Batch offers waiting for you</h2>
           </div>
-          {dispatchError && <div className="mb-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{dispatchError}</div>}
+          {dispatchLoading && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Refreshing</span>}
+        </div>
+        {dispatchError && <div className="mb-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{dispatchError}</div>}
+        {!dispatchLoading && !dispatchError && dispatches.length === 0 && (
+          <EmptyState icon={FiTruck} title="No dispatch offers available right now" message="Keep your availability online. New seller-ready orders will appear here automatically." />
+        )}
+        {dispatches.length > 0 && (
           <div className="grid gap-4 xl:grid-cols-2">
             {dispatches.map((offer) => {
               const batch = offer.batch;
@@ -114,8 +117,8 @@ export default function AssignedOrders() {
                       <p className="mt-1 text-sm font-bold text-slate-500">{packageLabel}</p>
                     </div>
                     <div className="rounded-2xl bg-white px-4 py-3 text-right shadow-sm">
-                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Delivery fee</p>
-                      <p className="text-lg font-black text-slate-950">{formatCurrency(Number(batch?.deliveryFee || 0))}</p>
+                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Dispatch privacy</p>
+                      <p className="text-sm font-black text-slate-950">No payment details shown</p>
                     </div>
                   </div>
 
@@ -170,8 +173,8 @@ export default function AssignedOrders() {
               );
             })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       <div className="mb-4 overflow-x-auto pb-2">
         <div className="flex min-w-max gap-2">

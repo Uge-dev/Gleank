@@ -68,7 +68,7 @@ test("seller can register and load workspace", async () => {
     .field("stock", "5")
     .field("status", "active")
     .field("isFeatured", "true")
-    .field("retainedImageUrls", "[]");
+    .field("retainedImageUrls", JSON.stringify(["/uploads/test-power-bank.jpg"]));
 
   assert.equal(productResponse.status, 201);
   assert.equal(productResponse.body.product.stock, 5);
@@ -82,11 +82,13 @@ test("seller can register and load workspace", async () => {
     .post("/api/seller/services")
     .field("name", "Test Repair")
     .field("category", "Repairs")
+    .field("serviceType", "Phone repair")
+    .field("location", "FUPRE campus")
     .field("description", "A test service.")
     .field("price", "5000")
     .field("durationMinutes", "45")
     .field("status", "active")
-    .field("retainedImageUrls", "[]");
+    .field("retainedImageUrls", JSON.stringify(["/uploads/test-repair.jpg"]));
 
   assert.equal(serviceResponse.status, 201);
   assert.equal(serviceResponse.body.service.durationMinutes, 45);
@@ -209,6 +211,7 @@ test("seller can register and load workspace", async () => {
     .field("condition", "Very Good")
     .field("price", "180000")
     .field("campus", "FUPRE")
+    .field("areaLocation", "FUPRE main campus")
     .field("pickupLocation", "Main gate")
     .field("deliveryOption", "Pickup")
     .field("serialNumber", "TEST-123")
@@ -231,6 +234,10 @@ test("seller can register and load workspace", async () => {
     })
     .attach("ownershipProof", Buffer.from("test-proof"), {
       filename: "proof.png",
+      contentType: "image/png",
+    })
+    .attach("identityProof", Buffer.from("test-id-proof"), {
+      filename: "identity-proof.png",
       contentType: "image/png",
     });
 

@@ -1,5 +1,4 @@
 import type { FullDeliveryOrder } from '../../types';
-import { formatCurrency } from '../../utils/format';
 import Card from '../ui/Card';
 
 export default function ProductList({ order }: { order: FullDeliveryOrder }) {
@@ -13,9 +12,8 @@ export default function ProductList({ order }: { order: FullDeliveryOrder }) {
             <div className="min-w-0 flex-1">
               <p className="font-extrabold text-slate-950">{product.name}</p>
               <p className="mt-1 text-sm font-semibold text-slate-500">Qty: {product.quantity}</p>
-              <p className="mt-2 text-sm font-black text-slate-950">{formatCurrency(product.price)}</p>
+              <p className="mt-2 text-sm font-black text-slate-500">Protected package item</p>
             </div>
-            <p className="hidden text-sm font-extrabold text-slate-950 sm:block">{formatCurrency(product.quantity * product.price)}</p>
           </div>
         ))}
       </div>

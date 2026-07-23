@@ -11,7 +11,7 @@ import {
   listOrderReturns,
   respondToReturnRequest,
 } from "./return-dispute.service.js";
-import { createParentOrderForOrders } from "./logistics.service.js";
+import { createParentOrderForOrders, syncOrderReadinessForDispatch } from "./logistics.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -123,6 +123,13 @@ function generateVerificationCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
+function generatePackageTagCode() {
+  return `GLC-TAG-${Date.now().toString().slice(-6)}-${Math.random()
+    .toString(36)
+    .slice(2, 5)
+    .toUpperCase()}`;
+}
+
 function statusLabel(status) {
   const labels = {
     pending_payment: "Pending Payment",
@@ -200,6 +207,7 @@ function serializeOrder(row, items = [], events = []) {
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
     verificationCode: row.payment_status === "paid" ? row.verification_code || "" : "",
+    packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     items,
@@ -512,9 +520,9 @@ export function createOrders(userId, input) {
           seller_confirmation_required, payout_status, stock_reserved,
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
           campus, delivery_option, delivery_address, pickup_location, note,
-          verification_code, created_at, updated_at
+          verification_code, package_tag_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -541,6 +549,7 @@ export function createOrders(userId, input) {
         pickupLocation,
         note,
         generateVerificationCode(),
+        generatePackageTagCode(),
         now,
         now,
       );
@@ -681,6 +690,8 @@ export function sellerConfirmOrder(user, orderId, note = "") {
     actionLabel: "View order",
     actionPath: `/orders/${row.id}`,
   });
+
+  syncOrderReadinessForDispatch(row.id);
 
   return getOrder(user.user_id, row.id);
 }
@@ -947,6 +958,8 @@ export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
       actionLabel: "View order",
       actionPath: `/orders/${row.id}`,
     });
+
+    syncOrderReadinessForDispatch(row.id);
 
     return getOrder(userId, row.id);
   });

@@ -21,7 +21,31 @@ function normalizeUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+function listUrlsFromEnv(...values) {
+  return values
+    .flatMap((value) => String(value || "").split(","))
+    .map(normalizeUrl)
+    .filter(Boolean);
+}
+
 const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
+const corsOrigins = Array.from(
+  new Set([
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "https://gleank.vercel.app",
+    "https://beta.gleenc.com",
+    frontendUrl,
+    ...listUrlsFromEnv(
+      process.env.CORS_ORIGINS,
+      process.env.FRONTEND_URL,
+      process.env.FRONTEND_URLS,
+      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+    ),
+  ].filter(Boolean)),
+);
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
 const paystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
 const emailProvider = String(process.env.EMAIL_PROVIDER || "").toLowerCase();
@@ -32,6 +56,7 @@ export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: numberFromEnv(process.env.PORT, 4000),
   frontendUrl,
+  corsOrigins,
   databaseProvider,
   databaseUrl: process.env.DATABASE_URL || "",
   databasePath: path.resolve(
@@ -118,10 +143,6 @@ export const env = {
   requireGpsForHighRiskDelivery: booleanFromEnv(
     process.env.REQUIRE_GPS_FOR_HIGH_RISK_DELIVERY,
     true,
-  ),
-  maxPickupsPerBatchDefault: numberFromEnv(
-    process.env.MAX_PICKUPS_PER_BATCH_DEFAULT,
-    4,
   ),
   enableAutomatedDispatch: booleanFromEnv(process.env.ENABLE_AUTOMATED_DISPATCH, true),
   enableSellerRiderManualAssignment: booleanFromEnv(

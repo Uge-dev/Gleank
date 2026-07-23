@@ -52,6 +52,12 @@ function SellerSubscription() {
   }
 }
 
+  const canPay = !subscription?.isActive || Boolean(subscription?.canRenew);
+  const subscriptionStatus = subscription?.status || "inactive";
+  const renewalText = subscription?.renewalOpensAt && !subscription?.canRenew
+    ? `Renewal opens ${new Date(subscription.renewalOpensAt).toLocaleString()}.`
+    : "";
+
   if (isLoading) {
     return <section className="seller-subscription-page"><LoadingState title="Loading subscription" message="Checking seller monthly fee status." /></section>;
   }
@@ -62,7 +68,7 @@ function SellerSubscription() {
       <div className="seller-onboarding-hero subscription-hero">
         <span><FiCreditCard /> Seller Subscription</span>
         <h1>₦1,999 monthly seller access.</h1>
-        <p>Seller publishing tools stay active only while the monthly fee is active. Use Paystack checkout in test mode until live payment activation is ready.</p>
+        <p>Seller publishing tools are controlled by backend-verified Paystack payments. Each payment gives 31 days of access with a 7-day grace period.</p>
       </div>
 
       {error && <div className="seller-onboarding-message error">{error}</div>}
@@ -72,11 +78,15 @@ function SellerSubscription() {
         <div className="subscription-plan-icon"><FiCreditCard /></div>
         <span>Campus Seller Monthly</span>
         <h2>₦{(subscription?.amount || 1999).toLocaleString()} / month</h2>
-        <p>Status: <strong>{subscription?.status || "inactive"}</strong></p>
+        <p>Status: <strong>{subscriptionStatus.replaceAll("_", " ")}</strong></p>
         {subscription?.currentPeriodEnd && <p>Active until {new Date(subscription.currentPeriodEnd).toLocaleString()}</p>}
-        {!subscription?.isActive ? (
+        {subscription?.gracePeriodEndsAt && subscription?.isGracePeriod && (
+          <p>Grace period ends {new Date(subscription.gracePeriodEndsAt).toLocaleString()}</p>
+        )}
+        {renewalText && <p>{renewalText}</p>}
+        {canPay ? (
           <button type="button" onClick={activateDevelopment} disabled={isSubmitting}>
-            <FiRefreshCw /> {isSubmitting ? "Opening payment..." : "Pay with Paystack"}
+            <FiRefreshCw /> {isSubmitting ? "Opening payment..." : subscription?.isActive ? "Renew with Paystack" : "Pay with Paystack"}
           </button>
         ) : (
           <Link to="/dashboard">Open seller dashboard</Link>

@@ -43,14 +43,30 @@ function normalizeCorsOrigin(value) {
 }
 
 const allowedCorsOrigins = new Set(
-  [
-    env.frontendUrl,
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-  ]
+  (env.corsOrigins || [env.frontendUrl])
     .map(normalizeCorsOrigin)
     .filter(Boolean),
 );
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowedCorsOrigins.has(normalizeCorsOrigin(origin))) {
+      callback(null, true);
+      return;
+    }
+
+    const error = new Error(`CORS origin is not allowed: ${origin}`);
+    error.status = 403;
+    callback(error);
+  },
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
 
 app.set("trust proxy", 1);
 app.use(
@@ -59,22 +75,7 @@ app.use(
   }),
 );
 app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
-
-      if (allowedCorsOrigins.has(normalizeCorsOrigin(origin))) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`CORS origin is not allowed: ${origin}`));
-    },
-    credentials: true,
-  }),
+  cors(corsOptions),
 );
 app.use(express.json({
   limit: "1mb",

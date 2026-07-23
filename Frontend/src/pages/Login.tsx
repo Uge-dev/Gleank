@@ -2,7 +2,6 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FiAlertCircle, FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
-import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../context/AuthContext";
 
 function Login() {
@@ -45,11 +44,8 @@ function Login() {
   }
 
   return (
-    <AuthLayout
-      eyebrow="Welcome back"
-      title="Login to continue shopping, selling, and chatting."
-      description="Your Gleenc account now uses real server authentication and persistent sessions."
-    >
+    <section className="auth-page auth-page-centered">
+      <div className="auth-form-panel">
       <div className="auth-form-card">
         <div className="auth-form-header">
           <span>Secure login</span>
@@ -122,7 +118,8 @@ function Login() {
           New to Gleenc? <Link to="/signup">Create account</Link>
         </p>
       </div>
-    </AuthLayout>
+      </div>
+    </section>
   );
 }
 

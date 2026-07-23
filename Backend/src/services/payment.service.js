@@ -3,11 +3,15 @@ import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
-import { ensureSellerSubscription } from "./subscription.service.js";
+import {
+  assertSellerSubscriptionCanStartCheckout,
+  renewSellerSubscriptionFromPayment,
+} from "./subscription.service.js";
 import {
   ensurePayoutForStoreOrder,
   ensurePayoutForUsedOrder,
 } from "./payout.service.js";
+import { syncOrderReadinessForDispatch } from "./logistics.service.js";
 
 function clean(value, max = 240) {
   return String(value || "").trim().slice(0, max);
@@ -15,10 +19,6 @@ function clean(value, max = 240) {
 
 function nowIso() {
   return new Date().toISOString();
-}
-
-function addDays(date, days) {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }
 
 function reference(prefix) {
@@ -111,6 +111,28 @@ function findUser(userId) {
   }
 
   return user;
+}
+
+function findStoreForSeller(userId) {
+  return db
+    .prepare("SELECT id, name, slug FROM stores WHERE owner_id = ?")
+    .get(userId);
+}
+
+function findRecentPendingSellerSubscriptionPayment(userId) {
+  const cutoff = new Date(Date.now() - 45 * 60 * 1_000).toISOString();
+  return db
+    .prepare(`
+      SELECT *
+      FROM payment_transactions
+      WHERE user_id = ?
+        AND purpose = 'seller_subscription'
+        AND status = 'initialized'
+        AND created_at >= ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `)
+    .get(userId, cutoff);
 }
 
 function createLocalAuthorizationUrl(paymentReference) {
@@ -407,6 +429,7 @@ function markStoreOrderPaid(row) {
     `Paystack payment verified. Reference: ${row.reference}`,
   );
   ensurePayoutForStoreOrder(order.id);
+  syncOrderReadinessForDispatch(order.id);
 }
 
 function markUsedOrderPaid(row) {
@@ -461,68 +484,7 @@ function markUsedOrderPaid(row) {
   ensurePayoutForUsedOrder(order.id);
 }
 
-function renewSellerSubscription(row) {
-  ensureSellerSubscription(row.user_id);
-
-  const subscription = db
-    .prepare("SELECT * FROM seller_subscriptions WHERE user_id = ?")
-    .get(row.user_id);
-
-  if (!subscription) {
-    throw new HttpError(404, "Seller subscription was not found.");
-  }
-
-  const now = new Date();
-  const existingEnd = subscription.current_period_end
-    ? new Date(subscription.current_period_end)
-    : null;
-
-  const periodStart =
-    existingEnd && existingEnd.getTime() > now.getTime() ? existingEnd : now;
-  const periodEnd = addDays(periodStart, 30);
-  const nowText = now.toISOString();
-
-  db.prepare(`
-    UPDATE seller_subscriptions
-    SET status = 'active',
-        starts_at = COALESCE(starts_at, ?),
-        current_period_start = ?,
-        current_period_end = ?,
-        next_renewal_at = ?,
-        last_payment_reference = ?,
-        amount_kobo = ?,
-        updated_at = ?
-    WHERE user_id = ?
-  `).run(
-    nowText,
-    periodStart.toISOString(),
-    periodEnd.toISOString(),
-    periodEnd.toISOString(),
-    row.reference,
-    row.amount_kobo,
-    nowText,
-    row.user_id,
-  );
-
-  db.prepare(`
-    INSERT INTO seller_subscription_events (
-      id,
-      subscription_id,
-      event_type,
-      amount_kobo,
-      note,
-      created_at
-    ) VALUES (?, ?, 'renewed', ?, ?, ?)
-  `).run(
-    createId("sse"),
-    subscription.id,
-    row.amount_kobo,
-    `Paystack seller subscription payment verified. Reference: ${row.reference}`,
-    nowText,
-  );
-}
-
-function applySuccessfulPayment(row) {
+function applySuccessfulPayment(row, providerResponse = {}) {
   if (row.purpose === "store_order") {
     markStoreOrderPaid(row);
     return;
@@ -534,7 +496,11 @@ function applySuccessfulPayment(row) {
   }
 
   if (row.purpose === "seller_subscription") {
-    renewSellerSubscription(row);
+    renewSellerSubscriptionFromPayment(row.user_id, row.reference, {
+      paidAt: providerResponse?.data?.paid_at || providerResponse?.data?.paidAt || nowIso(),
+      amountKobo: row.amount_kobo,
+      note: `Paystack seller subscription payment verified. Reference: ${row.reference}`,
+    });
     return;
   }
 
@@ -644,10 +610,24 @@ export async function initializePayment(userId, input) {
   }
 
   if (purpose === "seller_subscription") {
-    const subscription = ensureSellerSubscription(userId);
+    if (user.role !== "seller") {
+      throw new HttpError(403, "Only seller accounts can activate seller subscriptions.");
+    }
+
+    const subscription = assertSellerSubscriptionCanStartCheckout(userId);
+    const existingPending = findRecentPendingSellerSubscriptionPayment(userId);
+    if (existingPending) {
+      return serializePayment(existingPending);
+    }
+
+    const store = findStoreForSeller(userId);
     subscriptionId = subscription.id || null;
     amountKobo = subscription.amountKobo || env.sellerMonthlyFeeKobo;
     prefix = "GLK-SUB";
+
+    if (!store) {
+      throw new HttpError(422, "Complete your seller profile before activating a subscription.");
+    }
   }
 
   const paymentReference = reference(prefix);
@@ -687,6 +667,11 @@ export async function initializePayment(userId, input) {
     authorizationUrl,
     metadata: {
       targetId,
+      sellerId: purpose === "seller_subscription" ? user.id : "",
+      sellerEmail: purpose === "seller_subscription" ? user.email : "",
+      storeId: purpose === "seller_subscription" ? findStoreForSeller(userId)?.id || "" : "",
+      subscriptionId: subscriptionId || "",
+      expectedAmountKobo: amountKobo,
       paystackAccessCode,
       initializedAt: nowIso(),
     },
@@ -729,6 +714,13 @@ export async function verifyPayment(userId, paymentReference) {
     throw new HttpError(403, "This payment does not belong to your account.");
   }
 
+  if (row.purpose === "seller_subscription") {
+    const user = findUser(userId);
+    if (user.role !== "seller") {
+      throw new HttpError(403, "Seller subscription payments require a seller account.");
+    }
+  }
+
   if (row.status === "paid") {
     return serializePayment(row);
   }
@@ -739,7 +731,12 @@ export async function verifyPayment(userId, paymentReference) {
     }
 
     transaction(() => {
-      applySuccessfulPayment(row);
+      applySuccessfulPayment(row, {
+        data: {
+          status: "success",
+          paid_at: nowIso(),
+        },
+      });
 
       db.prepare(`
         UPDATE payment_transactions
@@ -778,6 +775,11 @@ export async function verifyPayment(userId, paymentReference) {
   const internalStatus = internalStatusFromPaystackStatus(providerStatus);
 
   if (providerStatus === "success") {
+    if (String(data.reference || "") !== String(row.reference)) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment reference mismatch. Please contact support.");
+    }
+
     if (paidAmountKobo !== Number(row.amount_kobo)) {
       updatePaymentFromProvider(row, providerResponse, "failed");
       throw new HttpError(422, "Payment amount mismatch. Please contact support.");
@@ -789,7 +791,7 @@ export async function verifyPayment(userId, paymentReference) {
     }
 
     transaction(() => {
-      applySuccessfulPayment(row);
+      applySuccessfulPayment(row, providerResponse);
       updatePaymentFromProvider(row, providerResponse, "paid");
     });
 
@@ -854,7 +856,7 @@ export async function handlePaystackWebhook({ rawBody, body, signature }) {
   }
 
   transaction(() => {
-    applySuccessfulPayment(row);
+    applySuccessfulPayment(row, { data });
     updatePaymentFromProvider(row, { data }, "paid");
   });
 

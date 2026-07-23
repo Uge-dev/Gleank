@@ -40,7 +40,6 @@ export const registerSchema = z
     maxWeightClass: z.string().trim().max(80).optional().default("up_to_medium"),
     fragileHandlingAbility: z.string().trim().max(100).optional().default("can_handle_fragile"),
     deliveryBagType: z.string().trim().max(100).optional().default("medium_delivery_bag"),
-    maxPickupsPerBatch: z.coerce.number().int().min(1).max(10).optional().default(4),
     gpsPermissionStatus: z.string().trim().max(80).optional().default("gps_disabled"),
     canReceiveAutoDispatch: z.coerce.boolean().optional().default(true),
   })
@@ -81,11 +80,13 @@ export const verifyEmailSchema = z.object({
 
 export const forgotPasswordSchema = z.object({
   email,
+  role: z.enum(["buyer", "seller", "rider"]).optional(),
 });
 
 export const resetPasswordSchema = z.object({
   token: z.string().trim().min(32).max(256),
   password,
+  role: z.enum(["buyer", "seller", "rider"]).optional(),
 });
 
 export const changePasswordSchema = z.object({

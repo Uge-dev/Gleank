@@ -114,6 +114,13 @@ riderRouter.post(
     const result = await registerRider(req.body, requestMeta(req));
     res.cookie(sessionCookieName, result.session.token, sessionCookieOptions());
     res.status(201).json({
+      success: true,
+      message: "Rider account created. Verify your email to continue.",
+      data: {
+        user: result.user,
+        riderProfile: result.riderProfile,
+        emailVerificationRequired: result.emailVerificationRequired,
+      },
       user: result.user,
       riderProfile: result.riderProfile,
       emailVerificationRequired: result.emailVerificationRequired,
@@ -130,7 +137,13 @@ riderRouter.post(
   asyncRoute(async (req, res) => {
     const result = await loginRider(req.body, requestMeta(req));
     res.cookie(sessionCookieName, result.session.token, sessionCookieOptions());
-    res.json({ user: result.user, riderProfile: result.riderProfile });
+    res.json({
+      success: true,
+      message: "Rider login successful.",
+      data: { user: result.user, riderProfile: result.riderProfile },
+      user: result.user,
+      riderProfile: result.riderProfile,
+    });
   }),
 );
 
@@ -141,7 +154,13 @@ riderRouter.post("/logout", (req, res) => {
 });
 
 riderRouter.get("/session", requireAuth, (req, res) => {
-  res.json(getRiderSession(req.auth));
+  const session = getRiderSession(req.auth);
+  res.json({
+    success: true,
+    message: "Rider session loaded.",
+    data: session,
+    ...session,
+  });
 });
 
 riderRouter.use(requireAuth, requireEmailVerified);
@@ -162,7 +181,8 @@ riderRouter.post(
 );
 
 riderRouter.patch("/availability", validate(riderAvailabilitySchema), (req, res) => {
-  res.json({ riderProfile: updateRiderAvailability(req.auth, req.body) });
+  updateRiderAvailability(req.auth, req.body);
+  res.json(getRiderSession(req.auth));
 });
 
 riderRouter.patch("/location", locationLimiter, validate(riderLocationSchema), (req, res) => {

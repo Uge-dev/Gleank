@@ -24,7 +24,6 @@ export type RegisterInput = {
   maxWeightClass?: string;
   fragileHandlingAbility?: string;
   deliveryBagType?: string;
-  maxPickupsPerBatch?: number | string;
   gpsPermissionStatus?: string;
   canReceiveAutoDispatch?: boolean;
   identityDocument?: File | null;
@@ -59,7 +58,6 @@ export function register(input: RegisterInput) {
     formData.append("maxWeightClass", input.maxWeightClass || "up_to_medium");
     formData.append("fragileHandlingAbility", input.fragileHandlingAbility || "can_handle_fragile");
     formData.append("deliveryBagType", input.deliveryBagType || "medium_delivery_bag");
-    formData.append("maxPickupsPerBatch", String(input.maxPickupsPerBatch || 4));
     formData.append("gpsPermissionStatus", input.gpsPermissionStatus || "gps_disabled");
     formData.append("canReceiveAutoDispatch", String(input.canReceiveAutoDispatch !== false));
 
@@ -106,14 +104,14 @@ export function logout() {
   });
 }
 
-export function requestPasswordReset(email: string) {
+export function requestPasswordReset(email: string, role?: "buyer" | "seller" | "rider") {
   return apiRequest<{ message: string }>("/auth/forgot-password", {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({ email, ...(role ? { role } : {}) }),
   });
 }
 
-export function resetPassword(input: { token: string; password: string }) {
+export function resetPassword(input: { token: string; password: string; role?: "buyer" | "seller" | "rider" }) {
   return apiRequest<{ message: string }>("/auth/reset-password", {
     method: "POST",
     body: JSON.stringify(input),

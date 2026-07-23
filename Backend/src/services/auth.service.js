@@ -57,10 +57,10 @@ function createRiderProfileFromAuth(userId, input, now) {
       coverage_area, home_address, emergency_contact_name, emergency_contact_phone,
       guarantor_name, guarantor_phone, identity_document_url, selfie_url, nin_last4,
       transport_type, max_package_size, max_weight_class, fragile_handling_ability,
-      delivery_bag_type, max_pickups_per_batch, service_zone_ids, gps_permission_status,
+      delivery_bag_type, service_zone_ids, gps_permission_status,
       can_receive_auto_dispatch, capacity_locked, live_face_verified,
       verification_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       full_name = excluded.full_name,
       phone = excluded.phone,
@@ -74,7 +74,6 @@ function createRiderProfileFromAuth(userId, input, now) {
       max_weight_class = excluded.max_weight_class,
       fragile_handling_ability = excluded.fragile_handling_ability,
       delivery_bag_type = excluded.delivery_bag_type,
-      max_pickups_per_batch = excluded.max_pickups_per_batch,
       service_zone_ids = excluded.service_zone_ids,
       gps_permission_status = excluded.gps_permission_status,
       can_receive_auto_dispatch = excluded.can_receive_auto_dispatch,
@@ -98,7 +97,6 @@ function createRiderProfileFromAuth(userId, input, now) {
     input.maxWeightClass || "up_to_medium",
     input.fragileHandlingAbility || "can_handle_fragile",
     input.deliveryBagType || "medium_delivery_bag",
-    Number(input.maxPickupsPerBatch || 4),
     JSON.stringify(Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : []),
     input.gpsPermissionStatus || "gps_disabled",
     input.canReceiveAutoDispatch === false ? 0 : 1,
@@ -378,6 +376,18 @@ export async function requestPasswordReset(input, meta = {}) {
     return { message: resetRequestMessage };
   }
 
+  if (input.role && user.role !== input.role) {
+    createLoginAttempt({
+      email,
+      userId: user.id,
+      success: false,
+      reason: "password_reset_requested_wrong_role",
+      meta: cleanMeta,
+    });
+
+    return { message: resetRequestMessage };
+  }
+
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = passwordResetExpiry();
 
@@ -401,6 +411,7 @@ export async function requestPasswordReset(input, meta = {}) {
       to: user.email,
       name: user.name,
       token,
+      role: input.role || user.role,
     }),
     { required: env.isProduction },
   );
@@ -427,6 +438,15 @@ export async function resetPassword(input, meta = {}) {
 
     if (!reset || reset.used_at || new Date(reset.expires_at).getTime() <= Date.now()) {
       throw new HttpError(400, "This password reset link is invalid or has expired.");
+    }
+
+    const user = findUserById(reset.user_id);
+    if (!user) {
+      throw new HttpError(404, "Account was not found.");
+    }
+
+    if (input.role && user.role !== input.role) {
+      throw new HttpError(403, `This password reset link is not for a ${input.role} account.`);
     }
 
     updateUserPassword(reset.user_id, passwordHash, now);

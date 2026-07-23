@@ -46,7 +46,6 @@ export type RiderCapacityProfile = {
   maxWeightClass: string;
   fragileHandlingAbility: string;
   deliveryBagType: string;
-  maxPickupsPerBatch: number;
   serviceZoneIds: string[];
   currentZoneId: string | null;
   gpsPermissionStatus: string;

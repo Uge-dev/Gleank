@@ -59,6 +59,13 @@ authRouter.post("/register", validate(registerSchema), async (req, res) => {
     sessionCookieOptions(),
   );
   res.status(201).json({
+    success: true,
+    message: "Account created successfully.",
+    data: {
+      user: result.user,
+      store: result.store,
+      emailVerificationRequired: result.emailVerificationRequired,
+    },
     user: result.user,
     store: result.store,
     emailVerificationRequired: result.emailVerificationRequired,
@@ -72,7 +79,13 @@ authRouter.post("/login", loginLimiter, validate(loginSchema), async (req, res) 
     result.session.token,
     sessionCookieOptions(),
   );
-  res.json({ user: result.user, store: result.store });
+  res.json({
+    success: true,
+    message: "Login successful.",
+    data: { user: result.user, store: result.store },
+    user: result.user,
+    store: result.store,
+  });
 });
 
 authRouter.post("/verify-email", validate(verifyEmailSchema), (req, res) => {
@@ -107,8 +120,13 @@ authRouter.post("/logout", (req, res) => {
 });
 
 authRouter.get("/me", requireAuth, (req, res) => {
+  const user = serializeUser(req.auth);
+  const store = serializeStore(findStoreByOwnerId(req.auth.user_id));
   res.json({
-    user: serializeUser(req.auth),
-    store: serializeStore(findStoreByOwnerId(req.auth.user_id)),
+    success: true,
+    message: "Session loaded.",
+    data: { user, store },
+    user,
+    store,
   });
 });

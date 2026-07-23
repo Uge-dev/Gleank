@@ -308,8 +308,9 @@ This link expires soon. If you did not create a Gleenc account, ignore this emai
   return { sent: true };
 }
 
-export async function sendPasswordResetEmail({ to, name, token }) {
-  const resetUrl = buildFrontendUrl(`/forgot-password?token=${encodeURIComponent(token)}`);
+export async function sendPasswordResetEmail({ to, name, token, role = "" }) {
+  const resetPath = role === "rider" ? "/rider/reset-password" : "/forgot-password";
+  const resetUrl = buildFrontendUrl(`${resetPath}?token=${encodeURIComponent(token)}`);
   const safeName = escapeHtml(name || "there");
 
   await sendTransactionalEmail({

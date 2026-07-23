@@ -5,6 +5,9 @@ import { useAuth } from './context/AuthContext';
 import RiderLayout from './layouts/RiderLayout';
 import Login from './pages/auth/Login';
 import Signup from './pages/auth/Signup';
+import RiderForgotPassword from './pages/auth/ForgotPassword';
+import RiderResetPassword from './pages/auth/ResetPassword';
+import RiderVerifyResetCode from './pages/auth/VerifyResetCode';
 import Dashboard from './pages/Dashboard';
 import AssignedOrders from './pages/AssignedOrders';
 import ActiveDeliveries from './pages/ActiveDeliveries';
@@ -42,6 +45,9 @@ export default function App() {
         <Route path="/" element={<Navigate to="/rider" replace />} />
         <Route path="/rider/login" element={<Login />} />
         <Route path="/rider/signup" element={<Signup />} />
+        <Route path="/rider/forgot-password" element={<RiderForgotPassword />} />
+        <Route path="/rider/verify-reset-code" element={<RiderVerifyResetCode />} />
+        <Route path="/rider/reset-password" element={<RiderResetPassword />} />
         <Route
           path="/rider"
           element={

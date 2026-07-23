@@ -12,6 +12,7 @@ import {
 import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { createId } from "../lib/ids.js";
+import { safeErrorMessage, shouldLogTechnicalError } from "../lib/safe-error-message.js";
 import {
   adminCreateMarket,
   adminListMarketRequests,
@@ -89,6 +90,15 @@ function ensureAdminProfile() {
   return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
 }
 
+function sendAdminError(res, error, fallback = "Admin request could not be completed.") {
+  const status = error?.status || error?.statusCode || 500;
+  if (shouldLogTechnicalError(error, status)) {
+    console.error(error);
+  }
+  const message = safeErrorMessage(error, { status, fallback });
+  res.status(status).json({ message });
+}
+
 router.post("/login", (req, res) => {
   const { email, password } = req.body || {};
   const adminEmail = process.env.ADMIN_EMAIL || "admin@gleank.com";
@@ -141,7 +151,7 @@ router.post("/profile/avatar", requireAdmin, upload.single("avatar"), (req, res)
     const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(existing.id);
     res.json({ admin: serializeAdminProfile(updated) });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not upload admin profile image" });
+    sendAdminError(res, error, "Could not upload admin profile image.");
   }
 });
 
@@ -150,7 +160,7 @@ router.post("/support/:conversationId/messages", requireAdmin, (req, res) => {
     const data = sendAdminSupportMessage(req.params.conversationId, req.body);
     res.status(201).json({ success: true, data });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not send support reply" });
+    sendAdminError(res, error, "Could not send support reply.");
   }
 });
 
@@ -159,7 +169,7 @@ router.patch("/support/:conversationId/read", requireAdmin, (req, res) => {
     const data = markSupportConversationRead(req.params.conversationId);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not mark support conversation as read" });
+    sendAdminError(res, error, "Could not mark support conversation as read.");
   }
 });
 
@@ -172,7 +182,7 @@ router.get("/markets", requireAdmin, (req, res) => {
       }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load markets" });
+    sendAdminError(res, error, "Could not load markets.");
   }
 });
 
@@ -186,7 +196,7 @@ router.get("/markets/requests", requireAdmin, (req, res) => {
       }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load market requests" });
+    sendAdminError(res, error, "Could not load market requests.");
   }
 });
 
@@ -197,7 +207,7 @@ router.patch("/markets/requests/:requestId/approve", requireAdmin, (req, res) =>
       request: adminUpdateMarketRequestStatus(req.params.requestId, "approved", req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not approve market request" });
+    sendAdminError(res, error, "Could not approve market request.");
   }
 });
 
@@ -208,7 +218,7 @@ router.patch("/markets/requests/:requestId/reject", requireAdmin, (req, res) => 
       request: adminUpdateMarketRequestStatus(req.params.requestId, "rejected", req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not reject market request" });
+    sendAdminError(res, error, "Could not reject market request.");
   }
 });
 
@@ -219,7 +229,7 @@ router.patch("/markets/requests/:requestId/status", requireAdmin, (req, res) => 
       request: adminUpdateMarketRequestStatus(req.params.requestId, req.body?.status, req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market request" });
+    sendAdminError(res, error, "Could not update market request.");
   }
 });
 
@@ -233,7 +243,7 @@ router.get("/seller-category-approvals", requireAdmin, (req, res) => {
       }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load seller category approvals" });
+    sendAdminError(res, error, "Could not load seller category approvals.");
   }
 });
 
@@ -244,7 +254,7 @@ router.post("/markets", requireAdmin, (req, res) => {
       market: adminCreateMarket(req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not create market" });
+    sendAdminError(res, error, "Could not create market.");
   }
 });
 
@@ -255,7 +265,7 @@ router.patch("/markets/:marketId", requireAdmin, (req, res) => {
       market: adminUpdateMarket(req.params.marketId, req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market" });
+    sendAdminError(res, error, "Could not update market.");
   }
 });
 
@@ -266,7 +276,7 @@ router.patch("/markets/:marketId/status", requireAdmin, (req, res) => {
       market: adminUpdateMarketStatus(req.params.marketId, req.body?.status),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market status" });
+    sendAdminError(res, error, "Could not update market status.");
   }
 });
 
@@ -279,7 +289,7 @@ router.get("/markets/:marketId/sellers", requireAdmin, (req, res) => {
       }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load market sellers" });
+    sendAdminError(res, error, "Could not load market sellers.");
   }
 });
 
@@ -293,7 +303,7 @@ router.patch("/markets/:marketId/categories", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market categories" });
+    sendAdminError(res, error, "Could not update market categories.");
   }
 });
 
@@ -309,7 +319,7 @@ router.patch("/markets/:marketId/sellers/:profileId/status", requireAdmin, (req,
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update market seller status" });
+    sendAdminError(res, error, "Could not update market seller status.");
   }
 });
 
@@ -320,7 +330,7 @@ router.patch("/sellers/:sellerId/market-approval", requireAdmin, (req, res) => {
       ...adminUpdateSellerMarketApproval(req.params.sellerId, req.body || {}),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller market approval" });
+    sendAdminError(res, error, "Could not update seller market approval.");
   }
 });
 
@@ -335,7 +345,7 @@ router.patch("/sellers/:sellerId/category-approval", requireAdmin, (req, res) =>
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller category approval" });
+    sendAdminError(res, error, "Could not update seller category approval.");
   }
 });
 
@@ -350,7 +360,7 @@ router.patch("/seller-category-approvals/:approvalId", requireAdmin, (req, res) 
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update seller category approval" });
+    sendAdminError(res, error, "Could not update seller category approval.");
   }
 });
 
@@ -361,7 +371,7 @@ router.get("/riders", requireAdmin, (req, res) => {
       riders: adminListRiders({ role: "admin" }, String(req.query.status || "")),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load riders" });
+    sendAdminError(res, error, "Could not load riders.");
   }
 });
 
@@ -376,7 +386,7 @@ router.patch("/riders/:riderId/verification", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update rider verification" });
+    sendAdminError(res, error, "Could not update rider verification.");
   }
 });
 
@@ -391,7 +401,7 @@ router.patch("/riders/:riderId/capacity-unlock", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not unlock rider capacity changes" });
+    sendAdminError(res, error, "Could not unlock rider capacity changes.");
   }
 });
 
@@ -405,7 +415,7 @@ router.get("/products/moderation", requireAdmin, (req, res) => {
       }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load product moderation" });
+    sendAdminError(res, error, "Could not load product moderation.");
   }
 });
 
@@ -420,7 +430,7 @@ router.patch("/products/:productId/moderation", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update product moderation" });
+    sendAdminError(res, error, "Could not update product moderation.");
   }
 });
 
@@ -431,7 +441,7 @@ router.get("/payouts", requireAdmin, (req, res) => {
       payouts: adminListPayouts({ status: String(req.query.status || "") }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load payouts" });
+    sendAdminError(res, error, "Could not load payouts.");
   }
 });
 
@@ -446,7 +456,7 @@ router.patch("/payouts/:payoutId", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update payout" });
+    sendAdminError(res, error, "Could not update payout.");
   }
 });
 
@@ -457,7 +467,7 @@ router.get("/stage4/disputes", requireAdmin, (req, res) => {
       disputes: adminListDisputes({ status: String(req.query.status || "") }),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not load disputes" });
+    sendAdminError(res, error, "Could not load disputes.");
   }
 });
 
@@ -472,7 +482,7 @@ router.patch("/stage4/disputes/:disputeId", requireAdmin, (req, res) => {
       ),
     });
   } catch (error) {
-    res.status(error.status || error.statusCode || 500).json({ message: error.message || "Could not update dispute" });
+    sendAdminError(res, error, "Could not update dispute.");
   }
 });
 
@@ -488,7 +498,7 @@ router.patch("/:collection/:id/status", requireAdmin, (req, res) => {
     const data = updateRecordStatus(collection, id, status, field);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not update admin record" });
+    sendAdminError(res, error, "Could not update admin record.");
   }
 });
 
@@ -505,7 +515,7 @@ router.patch("/:collection/:id", requireAdmin, (req, res) => {
     const data = updateRecordFields(collection, id, fields);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not update admin record" });
+    sendAdminError(res, error, "Could not update admin record.");
   }
 });
 
@@ -515,7 +525,7 @@ router.delete("/:collection/:id", requireAdmin, (req, res) => {
     const data = deleteRecord(collection, id);
     res.json({ success: true, data });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ message: error.message || "Could not delete admin record" });
+    sendAdminError(res, error, "Could not delete admin record.");
   }
 });
 

@@ -19,6 +19,7 @@ export default function Profile() {
   const [savingCapacity, setSavingCapacity] = useState(false);
   const [notice, setNotice] = useState('');
   const [availabilityNotice, setAvailabilityNotice] = useState('');
+  const [availabilityUpdating, setAvailabilityUpdating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -139,17 +140,21 @@ export default function Profile() {
               value={rider.availability}
               onChange={(event) => {
                 setAvailabilityNotice('');
+                setAvailabilityUpdating(true);
                 updateAvailability(event.target.value as typeof rider.availability)
-                  .catch((error) => setAvailabilityNotice(error instanceof Error ? error.message : 'Availability could not be changed.'));
+                  .then(() => setAvailabilityNotice('Availability updated.'))
+                  .catch((error) => setAvailabilityNotice(error instanceof Error ? error.message : 'Availability could not be changed.'))
+                  .finally(() => setAvailabilityUpdating(false));
               }}
+              disabled={availabilityUpdating}
               className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-gleenc-cyan"
             >
               <option value="online">Online</option>
               <option value="offline">Offline</option>
               <option value="busy">Busy</option>
-              <option value="break">Break</option>
             </select>
             <p className="mt-2 text-sm text-slate-500">Sellers can only assign delivery tasks to available online riders.</p>
+            {availabilityUpdating && <p className="mt-2 rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-600">Updating availability...</p>}
             {availabilityNotice && <p className="mt-2 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">{availabilityNotice}</p>}
           </div>
         </Card>
@@ -160,7 +165,7 @@ export default function Profile() {
               <h2 className="text-xl font-extrabold text-slate-950">Delivery Capacity</h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                 Gleenc uses this to avoid assigning packages beyond your vehicle, bag,
-                fragile handling ability, pickup count, and service zones.
+                fragile handling ability, and service zones.
               </p>
             </div>
             <button
@@ -174,7 +179,7 @@ export default function Profile() {
           </div>
           {capacity?.capacityLocked && (
             <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
-              Delivery capacity is locked after onboarding. To change vehicle, package size, weight, fragile handling, bag type, or batch pickup capacity, chat with admin support so admin can unlock it for your rider account.
+              Delivery capacity is locked after onboarding. To change vehicle, package size, weight, fragile handling, bag type, or service zones, chat with admin support so admin can unlock it for your rider account.
             </div>
           )}
 
@@ -215,18 +220,6 @@ export default function Profile() {
                 ['insulated_bag', 'Insulated bag'],
                 ['fragile_item_box', 'Fragile item box'],
               ]} />
-              <label className="rounded-3xl bg-slate-50 p-4">
-                <span className="text-xs font-black uppercase tracking-widest text-slate-400">Max pickups per batch</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={capacity.maxPickupsPerBatch}
-                  onChange={(event) => setCapacity({ ...capacity, maxPickupsPerBatch: Number(event.target.value) })}
-                  disabled={capacity.capacityLocked}
-                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none"
-                />
-              </label>
               <CapacitySelect disabled={capacity.capacityLocked} label="GPS / zone mode" value={capacity.gpsPermissionStatus} onChange={(value) => setCapacity({ ...capacity, gpsPermissionStatus: value })} options={[
                 ['gps_enabled', 'GPS enabled'],
                 ['gps_disabled', 'GPS disabled'],

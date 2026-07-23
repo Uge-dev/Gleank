@@ -33,7 +33,7 @@ export default function Settings() {
                 <p className="flex items-center gap-2"><FiMail /> {rider?.email || 'Rider email not loaded'}</p>
                 <p className="mt-2 text-xs leading-5 text-slate-500">Use this same email on the normal Gleenc login page. Gleenc will detect rider role and open Rider Dashboard.</p>
               </div>
-              <Link to="/forgot-password" className="mt-4 inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">
+              <Link to="/rider/forgot-password" className="mt-4 inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white">
                 Reset Rider Password
               </Link>
             </div>

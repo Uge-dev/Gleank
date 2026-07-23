@@ -24,7 +24,6 @@ export default function Signup() {
     maxWeightClass: 'up_to_medium',
     fragileHandlingAbility: 'can_handle_fragile',
     deliveryBagType: 'medium_delivery_bag',
-    maxPickupsPerBatch: 4,
   });
 
   async function handleSubmit(event: FormEvent) {
@@ -128,10 +127,6 @@ export default function Signup() {
             </select>
           </label>
           <label className="block">
-            <span className="text-sm font-bold text-slate-700">Max Pickups Per Batch</span>
-            <input required type="number" min={1} max={5} value={form.maxPickupsPerBatch} onChange={(event) => setForm({ ...form, maxPickupsPerBatch: Number(event.target.value) })} className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
-          </label>
-          <label className="block">
             <span className="text-sm font-bold text-slate-700">Government ID</span>
             <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
           </label>
@@ -148,9 +143,8 @@ export default function Signup() {
         {error && <p className="mb-5 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
 
         <div className="mt-5 rounded-3xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-          <strong className="block text-amber-900">Verification flow</strong>
-          1. Verify email after signup. 2. Admin reviews your rider details. 3. Complete phone OTP verification.
-          Riders cannot go online or receive delivery assignments until admin marks the profile verified.
+          <strong className="block text-amber-900">Rider approval</strong>
+          Verify your email after signup, then complete the remaining rider checks from your dashboard.
         </div>
 
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

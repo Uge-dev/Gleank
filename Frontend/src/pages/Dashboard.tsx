@@ -34,10 +34,12 @@ import { formatNaira } from "../utils/price";
 import { resolveMediaUrl } from "../utils/media";
 import {
   createSellerHighlight,
+  assignDeliveryRiderToOrder,
   deleteSellerHighlight,
   deleteSellerProduct,
   deleteSellerService,
   confirmSellerOrderItemAvailability,
+  getAvailableDeliveryRiders,
   getSellerPickupTasks,
   markSellerPickupTaskReady,
   getSellerWorkspace,
@@ -46,7 +48,7 @@ import {
   updateSellerHighlight,
   updateSellerStore,
 } from "../services/seller.service";
-import type { SellerPickupTask } from "../services/seller.service";
+import type { AvailableDeliveryRider, SellerPickupTask } from "../services/seller.service";
 import type {
   SellerProduct,
   SellerService,
@@ -78,6 +80,8 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [availableRiders, setAvailableRiders] = useState<AvailableDeliveryRider[]>([]);
+  const [isLoadingRiders, setIsLoadingRiders] = useState(false);
   const [taskActionId, setTaskActionId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingStore, setIsSavingStore] = useState(false);
@@ -117,10 +121,23 @@ function Dashboard() {
     }
   }, []);
 
+  const loadAvailableRiders = useCallback(async () => {
+    setIsLoadingRiders(true);
+    try {
+      const response = await getAvailableDeliveryRiders();
+      setAvailableRiders(response.riders || []);
+    } catch {
+      setAvailableRiders([]);
+    } finally {
+      setIsLoadingRiders(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadWorkspace();
     void loadPickupTasks();
-  }, [loadPickupTasks, loadWorkspace]);
+    void loadAvailableRiders();
+  }, [loadAvailableRiders, loadPickupTasks, loadWorkspace]);
 
   const categories = useMemo(() => {
     const productCategories = (workspace?.products || []).map(
@@ -415,6 +432,44 @@ function Dashboard() {
     }
   }
 
+  async function handleAssignManualRider(task: SellerPickupTask, riderId: string) {
+    if (!task.orderId) {
+      setError("This order is not ready for rider assignment yet.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setTaskActionId(`assign-${task.id}-${riderId}`);
+
+    try {
+      await assignDeliveryRiderToOrder({
+        orderId: task.orderId,
+        riderId,
+        packageSummary:
+          task.orderItems.map((item) => `${item.name} x${item.quantity}`).join(", ") ||
+          `Gleenc package ${task.orderCode}`,
+        category: String(task.packageProfileSnapshot?.category || ""),
+        packageTags: [
+          String(task.packageProfileSnapshot?.packageSize || ""),
+          String(task.packageProfileSnapshot?.packageWeightClass || ""),
+          String(task.packageProfileSnapshot?.fragilityLevel || ""),
+        ].filter(Boolean),
+      });
+      setNotice("Rider assigned. Buyer and rider have been notified.");
+      await loadPickupTasks();
+      await loadAvailableRiders();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Rider could not be assigned.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="seller-workspace-page">
@@ -612,10 +667,14 @@ function Dashboard() {
           tasks={pickupTasks}
           loading={isLoadingTasks}
           actionId={taskActionId}
+          availableRiders={availableRiders}
+          ridersLoading={isLoadingRiders}
           onRefresh={loadPickupTasks}
+          onRefreshRiders={loadAvailableRiders}
           onConfirm={handleConfirmPickupTask}
           onReject={handleRejectPickupTask}
           onMarkReady={handleMarkPickupReady}
+          onAssignRider={handleAssignManualRider}
         />
       )}
 
@@ -954,18 +1013,26 @@ function SellerOrderReadinessPanel({
   tasks,
   loading,
   actionId,
+  availableRiders,
+  ridersLoading,
   onRefresh,
+  onRefreshRiders,
   onConfirm,
   onReject,
   onMarkReady,
+  onAssignRider,
 }: {
   tasks: SellerPickupTask[];
   loading: boolean;
   actionId: string;
+  availableRiders: AvailableDeliveryRider[];
+  ridersLoading: boolean;
   onRefresh: () => Promise<void>;
+  onRefreshRiders: () => Promise<void>;
   onConfirm: (task: SellerPickupTask) => Promise<void>;
   onReject: (task: SellerPickupTask) => Promise<void>;
   onMarkReady: (task: SellerPickupTask) => Promise<void>;
+  onAssignRider: (task: SellerPickupTask, riderId: string) => Promise<void>;
 }) {
   const activeTasks = tasks.filter((task) => !["picked_up", "cancelled"].includes(task.status));
 
@@ -993,6 +1060,7 @@ function SellerOrderReadinessPanel({
             const confirmBusy = actionId === `confirm-${task.id}`;
             const rejectBusy = actionId === `reject-${task.id}`;
             const readyBusy = actionId === `ready-${task.id}`;
+            const assigningBusy = actionId.startsWith(`assign-${task.id}-`);
             const profile = task.packageProfileSnapshot || {};
             const profileText = [
               profile.packageSize,
@@ -1021,6 +1089,7 @@ function SellerOrderReadinessPanel({
                 <div className="seller-order-task-meta">
                   <span><FiMapPin /> {task.pickupLandmark || task.pickupZoneId || "Pickup location from store profile"}</span>
                   <span><FiPackage /> {task.itemCount || task.orderItems.length} item(s)</span>
+                  {task.packageTagCode ? <span><FiArchive /> Tag {task.packageTagCode}</span> : null}
                   {profileText ? <span><FiTruck /> {profileText.replaceAll("_", " ")}</span> : null}
                 </div>
 
@@ -1044,6 +1113,57 @@ function SellerOrderReadinessPanel({
                   <div className="seller-order-rejection-note">
                     <FiAlertCircle />
                     {task.sellerRejectionNote}
+                  </div>
+                ) : null}
+
+                {task.assignedRiderId ? (
+                  <div className="seller-order-manual-dispatch active">
+                    <strong>Rider assigned</strong>
+                    <span>This package is now connected to a rider assignment.</span>
+                  </div>
+                ) : task.manualAssignmentAllowed ? (
+                  <div className="seller-order-manual-dispatch">
+                    <div>
+                      <strong>Manual rider assignment required</strong>
+                      <span>Automatic dispatch could not secure a rider. Choose a verified online rider below.</span>
+                    </div>
+                    <div className="seller-order-rider-list">
+                      {availableRiders.length ? availableRiders.slice(0, 6).map((rider) => {
+                        const busy = actionId === `assign-${task.id}-${rider.id}`;
+                        return (
+                          <button
+                            type="button"
+                            key={rider.id}
+                            disabled={assigningBusy || busy}
+                            onClick={() => void onAssignRider(task, rider.id)}
+                          >
+                            <span>{rider.name || "Verified rider"}</span>
+                            <small>
+                              {[rider.profile?.transportType, rider.profile?.coverageArea]
+                                .filter(Boolean)
+                                .join(" · ") || "Online rider"}
+                            </small>
+                            <em>{busy ? "Assigning..." : "Assign"}</em>
+                          </button>
+                        );
+                      }) : (
+                        <p>{ridersLoading ? "Loading available riders..." : "No verified online riders are available right now."}</p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="seller-order-rider-refresh"
+                      disabled={ridersLoading}
+                      onClick={() => void onRefreshRiders()}
+                    >
+                      <FiRefreshCw />
+                      {ridersLoading ? "Refreshing..." : "Refresh riders"}
+                    </button>
+                  </div>
+                ) : task.sellerMarkedReady ? (
+                  <div className="seller-order-manual-dispatch muted">
+                    <strong>Automatic dispatch running</strong>
+                    <span>Manual assignment unlocks only if rider offers time out or no compatible rider is online.</span>
                   </div>
                 ) : null}
 

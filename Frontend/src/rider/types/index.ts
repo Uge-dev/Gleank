@@ -72,7 +72,6 @@ export interface Rider {
   maxWeightClass?: string;
   fragileHandlingAbility?: string;
   deliveryBagType?: string;
-  maxPickupsPerBatch?: number;
   documents: RiderDocument[];
   emergencyContact: EmergencyContact;
   guarantor: Guarantor;

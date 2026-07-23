@@ -30,7 +30,7 @@ export const config = {
       '/api',
   ),
   riderApiMode: (import.meta.env.VITE_RIDER_API_MODE || 'api') as 'mock' | 'api' | 'hybrid',
-  apiTimeoutMs: Number(import.meta.env.VITE_API_TIMEOUT_MS || 12000)
+  apiTimeoutMs: Number(import.meta.env.VITE_API_TIMEOUT_MS || 30000)
 };
 
 export function shouldUseApi() {

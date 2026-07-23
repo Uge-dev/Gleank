@@ -160,8 +160,14 @@
 
 .payment-callback-primary {
   background: linear-gradient(135deg, #fbe703, #fbe703);
-  color: #ffffff;
+  color: #111827;
   box-shadow: 0 14px 28px rgba(249, 115, 22, 0.24);
+}
+
+.payment-callback-card.is-failed .payment-callback-primary {
+  background: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 14px 28px rgba(239, 68, 68, 0.2);
 }
 
 .payment-callback-secondary {

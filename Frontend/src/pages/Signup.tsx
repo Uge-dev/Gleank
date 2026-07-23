@@ -62,7 +62,6 @@ function Signup() {
         maxWeightClass: String(formData.get("maxWeightClass") || "up_to_medium").trim(),
         fragileHandlingAbility: String(formData.get("fragileHandlingAbility") || "can_handle_fragile").trim(),
         deliveryBagType: String(formData.get("deliveryBagType") || "medium_delivery_bag").trim(),
-        maxPickupsPerBatch: String(formData.get("maxPickupsPerBatch") || "4"),
         gpsPermissionStatus: String(formData.get("gpsPermissionStatus") || "gps_disabled"),
         canReceiveAutoDispatch: formData.get("canReceiveAutoDispatch") === "on",
         identityDocument: identityDocument instanceof File ? identityDocument : null,
@@ -303,14 +302,6 @@ function Signup() {
                     <option value="insulated_bag">Insulated bag</option>
                     <option value="fragile_item_box">Fragile item box</option>
                   </select>
-                </div>
-              </label>
-
-              <label>
-                <span>Max pickups per batch</span>
-                <div className="auth-input-box">
-                  <FiTruck />
-                  <input name="maxPickupsPerBatch" type="number" min={1} max={5} defaultValue={4} required />
                 </div>
               </label>
 

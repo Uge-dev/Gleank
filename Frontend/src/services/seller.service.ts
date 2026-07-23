@@ -30,6 +30,7 @@ export type SellerPickupTask = {
   sellerId: string;
   sellerName: string;
   orderCode: string;
+  packageTagCode?: string;
   pickupZoneId: string | null;
   pickupLandmark: string;
   pickupSequence: number;
@@ -39,6 +40,11 @@ export type SellerPickupTask = {
   status: string;
   sellerConfirmedAvailability: boolean;
   sellerMarkedReady: boolean;
+  batchStatus?: string;
+  dispatchStatus?: string;
+  assignedRiderId?: string | null;
+  dispatchAttemptCount?: number;
+  manualAssignmentAllowed?: boolean;
   confirmationDeadlineAt: string | null;
   sellerConfirmedAt: string | null;
   sellerRejectedAt: string | null;
@@ -47,6 +53,21 @@ export type SellerPickupTask = {
   pickedUpAt: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AvailableDeliveryRider = {
+  id: string;
+  name: string;
+  phone: string;
+  profile?: {
+    availability?: string;
+    coverageArea?: string;
+    transportType?: string;
+    maxPackageSize?: string;
+    maxWeightClass?: string;
+    ratingAverage?: number;
+    completedDeliveries?: number;
+  };
 };
 
 export function getSellerPickupTasks() {
@@ -80,6 +101,30 @@ export function markSellerPickupTaskReady(pickupTaskId: string) {
       method: "POST",
     },
   );
+}
+
+export function getAvailableDeliveryRiders() {
+  return apiRequest<{ riders: AvailableDeliveryRider[] }>("/rider/available");
+}
+
+export function assignDeliveryRiderToOrder(input: {
+  orderId: string;
+  riderId: string;
+  packageSummary?: string;
+  category?: string;
+  packageTags?: string[];
+}) {
+  return apiRequest<{ assignment: unknown }>("/rider/assignments", {
+    method: "POST",
+    body: JSON.stringify({
+      orderType: "store_order",
+      orderId: input.orderId,
+      riderId: input.riderId,
+      packageSummary: input.packageSummary || "",
+      category: input.category || "",
+      packageTags: input.packageTags || [],
+    }),
+  });
 }
 
 export function updateSellerStore(formData: FormData) {

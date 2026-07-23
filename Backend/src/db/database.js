@@ -455,6 +455,7 @@ db.exec(`
     pickup_location TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
+    package_tag_code TEXT NOT NULL DEFAULT '',
     stock_reserved INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -572,6 +573,7 @@ db.exec(`
     pickup_location TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
+    package_tag_code TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE,
@@ -822,6 +824,8 @@ db.exec(`
     current_period_start TEXT,
     current_period_end TEXT,
     next_renewal_at TEXT,
+    grace_period_ends_at TEXT,
+    last_payment_at TEXT,
     last_payment_reference TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -922,6 +926,9 @@ ensureColumn("users", "failed_login_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "locked_until", "TEXT");
 ensureColumn("users", "last_login_at", "TEXT");
 ensureColumn("users", "last_password_change_at", "TEXT");
+
+ensureColumn("seller_subscriptions", "grace_period_ends_at", "TEXT");
+ensureColumn("seller_subscriptions", "last_payment_at", "TEXT");
 
 ensureColumn("sessions", "user_agent", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("sessions", "ip_address", "TEXT NOT NULL DEFAULT ''");

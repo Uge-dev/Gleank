@@ -101,7 +101,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiConnected(false);
     },
     async updateAvailability(availability: Availability) {
-      setLoading(true);
       try {
         if (shouldUseApi()) {
           const response = await riderApi.updateAvailability(availability);
@@ -123,8 +122,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         setApiConnected(false);
         throw error instanceof Error ? error : new Error('Availability update failed.');
-      } finally {
-        setLoading(false);
       }
     },
     updateRiderLocally(patch: Partial<Rider>) {

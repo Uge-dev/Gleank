@@ -127,6 +127,7 @@ function ensureExistingOrderLocationColumns() {
   ensureColumn("orders", "delivery_lng", "REAL");
   ensureColumn("orders", "seller_pickup_code_hash", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("orders", "buyer_delivery_code_hash", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("orders", "package_tag_code", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("orders", "assigned_rider_id", "TEXT");
   ensureColumn("orders", "rider_assignment_id", "TEXT");
 
@@ -136,6 +137,7 @@ function ensureExistingOrderLocationColumns() {
   ensureColumn("used_market_orders", "delivery_lng", "REAL");
   ensureColumn("used_market_orders", "seller_pickup_code_hash", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("used_market_orders", "buyer_delivery_code_hash", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("used_market_orders", "package_tag_code", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("used_market_orders", "assigned_rider_id", "TEXT");
   ensureColumn("used_market_orders", "rider_assignment_id", "TEXT");
 }
@@ -182,7 +184,6 @@ export function runRiderMigrations() {
       max_weight_class TEXT NOT NULL DEFAULT 'up_to_medium',
       fragile_handling_ability TEXT NOT NULL DEFAULT 'can_handle_fragile',
       delivery_bag_type TEXT NOT NULL DEFAULT 'medium_delivery_bag',
-      max_pickups_per_batch INTEGER NOT NULL DEFAULT 4,
       service_zone_ids TEXT NOT NULL DEFAULT '[]',
       current_zone_id TEXT,
       gps_permission_status TEXT NOT NULL DEFAULT 'gps_disabled',
@@ -242,6 +243,7 @@ export function runRiderMigrations() {
       buyer_name TEXT NOT NULL DEFAULT '',
       buyer_phone TEXT NOT NULL DEFAULT '',
       package_summary TEXT NOT NULL DEFAULT '',
+      package_tag_code TEXT NOT NULL DEFAULT '',
       package_value_kobo INTEGER NOT NULL DEFAULT 0 CHECK (package_value_kobo >= 0),
       delivery_fee_kobo INTEGER NOT NULL DEFAULT 0 CHECK (delivery_fee_kobo >= 0),
       pickup_proof_url TEXT,
@@ -367,13 +369,13 @@ export function runRiderMigrations() {
   ensureColumn("rider_assignments", "dispatch_timeout_seconds", "INTEGER NOT NULL DEFAULT 600");
   ensureColumn("rider_assignments", "dispatch_expires_at", "TEXT");
   ensureColumn("rider_assignments", "dispatch_timeout_policy", "TEXT NOT NULL DEFAULT 'campus'");
+  ensureColumn("rider_assignments", "package_tag_code", "TEXT NOT NULL DEFAULT ''");
 
   ensureColumn("rider_profiles", "transport_type", "TEXT NOT NULL DEFAULT 'motorcycle'");
   ensureColumn("rider_profiles", "max_package_size", "TEXT NOT NULL DEFAULT 'small_medium'");
   ensureColumn("rider_profiles", "max_weight_class", "TEXT NOT NULL DEFAULT 'up_to_medium'");
   ensureColumn("rider_profiles", "fragile_handling_ability", "TEXT NOT NULL DEFAULT 'can_handle_fragile'");
   ensureColumn("rider_profiles", "delivery_bag_type", "TEXT NOT NULL DEFAULT 'medium_delivery_bag'");
-  ensureColumn("rider_profiles", "max_pickups_per_batch", "INTEGER NOT NULL DEFAULT 4");
   ensureColumn("rider_profiles", "service_zone_ids", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("rider_profiles", "current_zone_id", "TEXT");
   ensureColumn("rider_profiles", "gps_permission_status", "TEXT NOT NULL DEFAULT 'gps_disabled'");
@@ -382,6 +384,31 @@ export function runRiderMigrations() {
   ensureColumn("rider_profiles", "capacity_locked", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("rider_profiles", "capacity_change_unlocked_until", "TEXT");
   ensureColumn("rider_profiles", "live_face_verified", "INTEGER NOT NULL DEFAULT 0");
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET max_package_value_kobo = 2000000,
+        availability = CASE WHEN availability = 'offline' THEN 'online' ELSE availability END,
+        availability_mode = CASE
+          WHEN availability_mode = 'offline' THEN 'online_zone_only'
+          ELSE availability_mode
+        END
+    WHERE verification_status = 'verified'
+      AND safety_status = 'normal'
+      AND COALESCE(max_package_value_kobo, 0) <= 0
+  `).run();
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET availability = 'online',
+        availability_mode = CASE
+          WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+          ELSE 'online_zone_only'
+        END
+    WHERE verification_status = 'verified'
+      AND safety_status = 'normal'
+      AND availability = 'offline'
+  `).run();
 }
 
 runRiderMigrations();

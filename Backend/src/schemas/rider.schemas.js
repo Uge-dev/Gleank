@@ -50,7 +50,6 @@ export const riderRegisterSchema = z.object({
   maxWeightClass: z.string().trim().max(60).optional().default("up_to_medium"),
   fragileHandlingAbility: z.string().trim().max(80).optional().default("can_handle_fragile"),
   deliveryBagType: z.string().trim().max(80).optional().default("medium_delivery_bag"),
-  maxPickupsPerBatch: z.coerce.number().int().min(1).max(5).optional().default(4),
   gpsPermissionStatus: z.string().trim().max(80).optional().default("gps_disabled"),
   canReceiveAutoDispatch: z.coerce.boolean().optional().default(true),
   emergencyContactName: z.string().trim().max(100).optional().default(""),
