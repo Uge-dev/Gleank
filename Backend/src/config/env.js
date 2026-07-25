@@ -47,7 +47,15 @@ const corsOrigins = Array.from(
   ].filter(Boolean)),
 );
 const paymentProvider = String(process.env.PAYMENT_PROVIDER || "local").toLowerCase();
-const paystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
+const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY || "";
+const configuredPaystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
+const paystackMode =
+  configuredPaystackMode ||
+  (paystackSecretKey.startsWith("sk_test_")
+    ? "test"
+    : paystackSecretKey.startsWith("sk_live_")
+      ? "live"
+      : "");
 const emailProvider = String(process.env.EMAIL_PROVIDER || "").toLowerCase();
 const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
 const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
@@ -93,7 +101,7 @@ export const env = {
   platformFeePercent: numberFromEnv(process.env.PLATFORM_FEE_PERCENT, 5),
 
   paymentProvider,
-  paystackSecretKey: process.env.PAYSTACK_SECRET_KEY || "",
+  paystackSecretKey,
   paystackPublicKey: process.env.PAYSTACK_PUBLIC_KEY || "",
   paystackMode,
   allowPaystackTestKeysInProduction: booleanFromEnv(

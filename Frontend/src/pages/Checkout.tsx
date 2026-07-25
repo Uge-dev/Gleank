@@ -256,16 +256,38 @@ function Checkout() {
         return;
       }
 
-      const paymentResponse = await initializeOrdersPayment(
-  response.orders.map((order) => order.id),
-);
+      const createdOrders = response.orders || [];
 
-sessionStorage.setItem(
-  "gleank_pending_payment_reference",
-  paymentResponse.payment.reference,
-);
+      if (createdOrders.length === 0) {
+        throw new Error("Order could not be created.");
+      }
 
-window.location.href = paymentResponse.payment.authorizationUrl;
+      let paymentResponse;
+
+      try {
+        paymentResponse = await initializeOrdersPayment(
+          createdOrders.map((order) => order.id),
+        );
+      } catch (paymentError) {
+        const orderId = createdOrders[0]?.id || "";
+        clearCart();
+        navigate(`/orders/${orderId}`, {
+          state: {
+            paymentNotice:
+              paymentError instanceof Error
+                ? paymentError.message
+                : "Your order was created, but payment checkout could not be opened. Use Continue Payment to try again.",
+          },
+        });
+        return;
+      }
+
+      sessionStorage.setItem(
+        "gleank_pending_payment_reference",
+        paymentResponse.payment.reference,
+      );
+
+      window.location.href = paymentResponse.payment.authorizationUrl;
     } catch (requestError) {
       const message =
         requestError instanceof Error

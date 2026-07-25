@@ -193,14 +193,27 @@ function requirePaystackConfig() {
 async function paystackRequest(path, options = {}) {
   requirePaystackConfig();
 
-  const response = await fetch(`${env.paystackBaseUrl || "https://api.paystack.co"}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${env.paystackSecretKey}`,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  let response;
+
+  try {
+    response = await fetch(`${env.paystackBaseUrl || "https://api.paystack.co"}${path}`, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${env.paystackSecretKey}`,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+  } catch (error) {
+    throw new HttpError(
+      502,
+      "Payment checkout could not be started because Paystack could not be reached. Please try again shortly.",
+      {
+        provider: "paystack",
+        reason: error?.code || error?.name || "network_error",
+      },
+    );
+  }
 
   const body = await response.json().catch(() => ({}));
 

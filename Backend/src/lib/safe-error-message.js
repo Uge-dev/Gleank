@@ -51,6 +51,9 @@ export function safeErrorMessage(error, {
     if (/\b(?:SMTP|nodemailer|Brevo|email)\b/i.test(rawMessage)) {
       return "We could not send the email right now. Please try again shortly.";
     }
+    if (/\b(?:Paystack|payment provider|payment checkout)\b/i.test(rawMessage)) {
+      return "Payment checkout could not be started. Please try again shortly.";
+    }
     if (/\b(?:Cloudinary|upload|image)\b/i.test(rawMessage)) {
       return "We could not upload the image right now. Please try again.";
     }

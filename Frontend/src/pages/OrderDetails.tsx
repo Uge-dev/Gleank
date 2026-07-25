@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   FiArrowLeft,
   FiCheck,
@@ -57,6 +57,13 @@ function canContinuePayment(order: GleencOrder) {
 
 function OrderDetails() {
   const { id = "" } = useParams();
+  const location = useLocation();
+  const paymentNotice =
+    typeof location.state === "object" &&
+    location.state &&
+    "paymentNotice" in location.state
+      ? String(location.state.paymentNotice || "")
+      : "";
   const [order, setOrder] = useState<GleencOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -148,6 +155,7 @@ function OrderDetails() {
         <div className="order-details-status-pill">{order.statusLabel}</div>
       </div>
 
+      {paymentNotice && <div className="order-details-payment-notice">{paymentNotice}</div>}
       {paymentError && <div className="order-details-payment-error">{paymentError}</div>}
 
       <div className="order-details-grid">

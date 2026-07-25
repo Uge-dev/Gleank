@@ -637,15 +637,26 @@ export function createOrders(userId, input) {
       output.push(hydrateOrder(getOrderRowByIdForUser(userId, orderId)));
     }
 
-    createParentOrderForOrders({
-      buyerId: userId,
-      orderIds: output.map((order) => order.id),
-    });
-
     return output.map((order) => hydrateOrder(getOrderRowByIdForUser(userId, order.id)));
   });
 
-  return createdOrders;
+  const createdOrderIds = createdOrders.map((order) => order.id);
+
+  try {
+    transaction(() => {
+      createParentOrderForOrders({
+        buyerId: userId,
+        orderIds: createdOrderIds,
+      });
+    });
+  } catch (error) {
+    console.error("Order logistics grouping failed after checkout order creation:", error);
+  }
+
+  return createdOrderIds
+    .map((orderId) => getOrderRowByIdForUser(userId, orderId))
+    .filter(Boolean)
+    .map(hydrateOrder);
 }
 
 export function sellerConfirmOrder(user, orderId, note = "") {
