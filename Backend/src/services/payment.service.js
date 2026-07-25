@@ -409,6 +409,10 @@ function markStoreOrderPaid(row) {
         payment_status = 'paid',
         stage4_payment_status = 'paid',
         stage4_status = ?,
+        delivery_status = CASE
+          WHEN delivery_status = 'out_for_delivery' THEN 'buyer_code_unlocked'
+          ELSE delivery_status
+        END,
         payout_status = 'on_hold',
         updated_at = ?
     WHERE id = ?

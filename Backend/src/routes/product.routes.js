@@ -13,13 +13,28 @@ import {
 } from "../services/interaction.service.js";
 import {
   getProductModerationStatus,
+  publishProductAfterValidation,
   updateProductAvailability,
+  validateProductForPublication,
 } from "../services/moderation.service.js";
+import { validateProductPrice } from "../services/price-validation.service.js";
 
 export const productRouter = Router();
 
+productRouter.post("/validate-price", requireAuth, (req, res) => {
+  res.json({ validation: validateProductPrice(req.body || {}) });
+});
+
 productRouter.get("/:id/moderation-status", requireAuth, (req, res) => {
   res.json({ moderation: getProductModerationStatus(req.params.id) });
+});
+
+productRouter.post("/:id/validate", requireAuth, (req, res) => {
+  res.json({ validation: validateProductForPublication(req.auth, req.params.id) });
+});
+
+productRouter.post("/:id/publish", requireAuth, (req, res) => {
+  res.json(publishProductAfterValidation(req.auth, req.params.id, req.body || {}));
 });
 
 productRouter.patch("/:id/availability", requireAuth, (req, res) => {

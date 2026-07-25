@@ -32,7 +32,7 @@ export default function DeliveryDetails() {
   const [safetyNote, setSafetyNote] = useState('');
 
   if (!order) return <Navigate to="/rider/active" replace />;
-  if (!unlockedOrderIds.includes(order.id)) return <Navigate to={`/rider/verify/${order.assignmentId}`} replace />;
+  if (!unlockedOrderIds.includes(order.id)) return <Navigate to="/rider/verify-code" replace />;
 
   const isPaid = order.paymentStatus === 'paid';
 
@@ -147,7 +147,7 @@ export default function DeliveryDetails() {
             <h2 className="text-xl font-extrabold text-slate-950">Complete Delivery</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">Enabled only after payment is confirmed. Buyer must provide delivery OTP and rider must submit proof.</p>
             {isPaid ? (
-              <Link to={`/rider/verify/${order.assignmentId}`} className="mt-5 block">
+              <Link to="/rider/verify-code" className="mt-5 block">
                 <Button icon={FiCheckCircle} size="lg" fullWidth>
                   Open Code Verification
                 </Button>

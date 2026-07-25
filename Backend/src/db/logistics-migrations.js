@@ -497,6 +497,10 @@ export function runLogisticsMigrations() {
   ensureColumn("products", "package_profile_admin_verified", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("products", "package_profile_risk_flag", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("products", "stock_status", "TEXT NOT NULL DEFAULT 'in_stock'");
+  ensureColumn("products", "delivery_readiness_type", "TEXT NOT NULL DEFAULT 'immediate'");
+  ensureColumn("products", "delivery_readiness_value", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("products", "delivery_ready_after_minutes", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("products", "delivery_ready_at", "TEXT");
 
   ensureColumn("stores", "pickup_zone_id", "TEXT");
   ensureColumn("stores", "delivery_area", "TEXT NOT NULL DEFAULT ''");
@@ -511,6 +515,38 @@ export function runLogisticsMigrations() {
   ensureColumn("orders", "seller_confirmation_deadline_at", "TEXT");
   ensureColumn("orders", "package_ready_at", "TEXT");
   ensureColumn("orders", "auto_dispatch_status", "TEXT NOT NULL DEFAULT 'not_started'");
+  ensureColumn("orders", "delivery_status", "TEXT NOT NULL DEFAULT 'order_created'");
+  ensureColumn("orders", "dispatch_status", "TEXT NOT NULL DEFAULT 'not_started'");
+  ensureColumn("orders", "seller_confirmation_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn("orders", "seller_ready_status", "TEXT NOT NULL DEFAULT 'pending'");
+  ensureColumn("orders", "seller_ready_at", "TEXT");
+  ensureColumn("orders", "buyer_delivery_window_start", "TEXT");
+  ensureColumn("orders", "buyer_delivery_window_end", "TEXT");
+  ensureColumn("orders", "pickup_verified_at", "TEXT");
+  ensureColumn("orders", "delivery_verified_at", "TEXT");
+  ensureColumn("orders", "delivered_at", "TEXT");
+  ensureColumn("orders", "cancelled_at", "TEXT");
+  ensureColumn("orders", "seller_pickup_code_verified_at", "TEXT");
+  ensureColumn("orders", "buyer_delivery_code_verified_at", "TEXT");
+  ensureColumn("orders", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("orders", "last_code_attempt_at", "TEXT");
+
+  ensureColumn("delivery_batches", "manual_assignment_unlocked", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("delivery_batches", "manual_assignment_unlocked_at", "TEXT");
+  ensureColumn("delivery_batches", "auto_dispatch_started_at", "TEXT");
+  ensureColumn("delivery_batches", "auto_dispatch_expires_at", "TEXT");
+  ensureColumn("delivery_batches", "assigned_by_seller_id", "TEXT");
+  ensureColumn("delivery_batches", "assigned_manually_at", "TEXT");
+  ensureColumn("delivery_batches", "rider_accepted_at", "TEXT");
+  ensureColumn("delivery_batches", "rider_declined_at", "TEXT");
+  ensureColumn("delivery_batches", "pickup_task_id", "TEXT");
+  ensureColumn("delivery_batches", "delivery_task_id", "TEXT");
+  ensureColumn("pickup_tasks", "seller_pickup_code_verified_at", "TEXT");
+  ensureColumn("delivery_tasks", "buyer_delivery_code_verified_at", "TEXT");
+  ensureColumn("rider_assignments", "seller_pickup_code_verified_at", "TEXT");
+  ensureColumn("rider_assignments", "buyer_delivery_code_verified_at", "TEXT");
+  ensureColumn("rider_assignments", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_assignments", "last_code_attempt_at", "TEXT");
 
   ensureColumn("used_market_orders", "parent_order_id", "TEXT");
   ensureColumn("used_market_orders", "delivery_batch_id", "TEXT");

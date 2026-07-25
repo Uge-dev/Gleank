@@ -1,4 +1,4 @@
-import { apiRequest } from "../lib/api";
+import { apiRequest, apiUrl } from "../lib/api";
 
 export type GleencNotificationType =
   | "order"
@@ -52,4 +52,40 @@ export function clearNotifications() {
   return apiRequest<NotificationListResponse>("/notifications", {
     method: "DELETE",
   });
+}
+
+export function subscribeToNotifications(handlers: {
+  onNotification?: (notification: GleencNotification) => void;
+  onUnreadCount?: (payload: { unreadCount: number }) => void;
+  onError?: () => void;
+}) {
+  if (typeof window === "undefined" || !("EventSource" in window)) {
+    return () => {};
+  }
+
+  const stream = new EventSource(apiUrl("/notifications/stream"), {
+    withCredentials: true,
+  });
+
+  stream.addEventListener("notification", (event) => {
+    try {
+      handlers.onNotification?.(JSON.parse(event.data) as GleencNotification);
+    } catch {
+      // Ignore malformed events.
+    }
+  });
+
+  stream.addEventListener("unread-count", (event) => {
+    try {
+      handlers.onUnreadCount?.(JSON.parse(event.data) as { unreadCount: number });
+    } catch {
+      // Ignore malformed events.
+    }
+  });
+
+  stream.onerror = () => {
+    handlers.onError?.();
+  };
+
+  return () => stream.close();
 }

@@ -28,7 +28,9 @@ import {
   updateRiderVerificationDocuments,
   updateRiderAvailability,
   updateRiderLocation,
+  verifyDeliveryCode,
   verifyPickup,
+  verifyPickupByOrder,
 } from "../services/rider.service.js";
 import {
   createRiderAssignmentSchema,
@@ -42,9 +44,14 @@ import {
   riderPickupSchema,
   riderRegisterSchema,
   riderSecurityReportSchema,
+  riderVerifyDeliveryCodeSchema,
   riderAdminVerificationSchema,
   routeEstimateQuerySchema,
 } from "../schemas/rider.schemas.js";
+import {
+  getRiderLocationStatus,
+  upsertRiderLocation,
+} from "../services/location.service.js";
 
 export const riderRouter = Router();
 
@@ -185,6 +192,14 @@ riderRouter.patch("/availability", validate(riderAvailabilitySchema), (req, res)
   res.json(getRiderSession(req.auth));
 });
 
+riderRouter.get("/location/status", (req, res) => {
+  res.json(getRiderLocationStatus(req.auth));
+});
+
+riderRouter.post("/location", locationLimiter, validate(riderLocationSchema), (req, res) => {
+  res.json(upsertRiderLocation(req.auth, req.body));
+});
+
 riderRouter.patch("/location", locationLimiter, validate(riderLocationSchema), (req, res) => {
   res.json({ riderProfile: updateRiderLocation(req.auth, req.body) });
 });
@@ -220,12 +235,66 @@ riderRouter.post(
 );
 
 riderRouter.post(
+  "/orders/:orderId/verify-pickup-code",
+  upload.single("proofPhoto"),
+  attachProofUpload,
+  validate(riderPickupSchema),
+  (req, res) => {
+    const assignment = verifyPickupByOrder(req.auth, req.params.orderId, req.body);
+    res.json({
+      success: true,
+      message: "Pickup confirmed successfully.",
+      data: {
+        orderStatus: "picked_up",
+        deliveryStatus: "out_for_delivery",
+        assignment,
+      },
+      assignment,
+    });
+  },
+);
+
+riderRouter.post(
+  "/orders/:orderId/verify-delivery-code",
+  validate(riderVerifyDeliveryCodeSchema),
+  (req, res) => {
+    const assignment = verifyDeliveryCode(req.auth, req.params.orderId, req.body);
+    res.json({
+      success: true,
+      message: "Delivery code verified successfully.",
+      data: {
+        orderStatus: "delivery_verified",
+        packageTagCode: assignment.packageTagCode || "",
+        products: [],
+        assignment,
+      },
+      assignment,
+    });
+  },
+);
+
+riderRouter.post(
   "/orders/:orderId/complete",
   upload.single("proofPhoto"),
   attachProofUpload,
   validate(riderCompleteDeliverySchema),
   (req, res) => {
     res.json({ assignment: completeDelivery(req.auth, req.params.orderId, req.body) });
+  },
+);
+
+riderRouter.post(
+  "/orders/:orderId/complete-delivery",
+  upload.single("proofPhoto"),
+  attachProofUpload,
+  validate(riderCompleteDeliverySchema),
+  (req, res) => {
+    const assignment = completeDelivery(req.auth, req.params.orderId, req.body);
+    res.json({
+      success: true,
+      message: "Delivery completed successfully.",
+      assignment,
+    });
   },
 );
 

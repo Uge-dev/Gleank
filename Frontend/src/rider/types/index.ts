@@ -110,6 +110,9 @@ export interface PrivateAssignment {
   requiresPickupOtp: boolean;
   requiresDeliveryOtp: boolean;
   sellerRating: number;
+  packageTagCode?: string;
+  sellerPickupCodeVerifiedAt?: string | null;
+  buyerDeliveryCodeVerifiedAt?: string | null;
 }
 
 export interface ProductItem {
@@ -147,6 +150,9 @@ export interface FullDeliveryOrder {
   orderChannel: OrderChannel;
   marketName?: string;
   products: ProductItem[];
+  packageTagCode?: string;
+  sellerPickupCodeVerifiedAt?: string | null;
+  buyerDeliveryCodeVerifiedAt?: string | null;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
   escrowStatus: EscrowStatus;

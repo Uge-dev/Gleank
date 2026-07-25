@@ -3,6 +3,9 @@ import { Routes, Route, useLocation } from "react-router-dom";
 
 import { applyTheme, getSavedTheme, watchSystemTheme } from "./utils/theme";
 
+import { AuthProvider } from "./context/AuthContext";
+import { CartProvider } from "./context/CartContext";
+import { SavedProvider } from "./context/SavedContext";
 import GleencNav from "./components/GleencNav";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedPage from "./components/ProtectedPage";
@@ -79,12 +82,15 @@ function App() {
   }
 
   return (
-    <div className="gleank-app">
-      <GleencNav />
-      <CartDrawer />
+    <AuthProvider>
+      <SavedProvider>
+        <CartProvider>
+          <div className="gleank-app">
+            <GleencNav />
+            <CartDrawer />
 
-      <main className="gleank-main">
-        <Routes>
+            <main className="gleank-main">
+              <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
           <Route path="/market" element={<Market />} />
@@ -280,9 +286,12 @@ function App() {
           <Route path="/help" element={<Help />} />
 
           <Route path="*" element={<NotFound />} />
-        </Routes>
-      </main>
-    </div>
+              </Routes>
+            </main>
+          </div>
+        </CartProvider>
+      </SavedProvider>
+    </AuthProvider>
   );
 }
 

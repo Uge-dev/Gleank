@@ -14,12 +14,44 @@ import {
 
 fs.mkdirSync(env.uploadsPath, { recursive: true });
 
-const allowedTypes = new Set([
+const allowedImageTypes = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
   "image/gif",
 ]);
+const allowedDocumentTypes = new Set([
+  ...allowedImageTypes,
+  "application/pdf",
+]);
+const documentFieldNames = new Set([
+  "identityDocument",
+  "businessDocument",
+  "vehicleDocument",
+  "identityProof",
+  "documents",
+]);
+
+function normalizedCloudinaryFolder(req, file) {
+  const root = env.cloudinaryFolder.replace(/\/+$/, "") || "gleenc";
+  const field = file.fieldname || "";
+  const url = req.originalUrl || "";
+
+  if (["logo", "avatar", "profilePhoto"].includes(field)) return `${root}/profiles`;
+  if (field === "cover") return `${root}/covers`;
+  if (["selfie", "faceImage"].includes(field)) return `${root}/kyc/selfies`;
+  if (documentFieldNames.has(field)) return `${root}/kyc/documents`;
+  if (field.includes("proof") || url.includes("/complete") || url.includes("/pickup")) {
+    return `${root}/delivery/proofs`;
+  }
+  if (url.includes("/services")) return `${root}/services`;
+  if (url.includes("/used-market")) return `${root}/used-market`;
+  return `${root}/products`;
+}
+
+function isDocumentUpload(file) {
+  return documentFieldNames.has(file.fieldname || "");
+}
 
 function collectFileBuffer(file) {
   return new Promise((resolve, reject) => {
@@ -32,11 +64,21 @@ function collectFileBuffer(file) {
 }
 
 async function compressImage(file, inputBuffer) {
+  if (file.mimetype === "application/pdf") {
+    return {
+      buffer: inputBuffer,
+      extension: ".pdf",
+      mimetype: file.mimetype,
+      resourceType: "raw",
+    };
+  }
+
   if (file.mimetype === "image/gif") {
     return {
       buffer: inputBuffer,
       extension: path.extname(file.originalname).toLowerCase() || ".gif",
       mimetype: file.mimetype,
+      resourceType: "image",
     };
   }
 
@@ -61,6 +103,7 @@ async function compressImage(file, inputBuffer) {
       buffer: outputBuffer,
       extension: ".webp",
       mimetype: "image/webp",
+      resourceType: "image",
     };
   } catch (error) {
     if (env.nodeEnv === "test") {
@@ -68,6 +111,7 @@ async function compressImage(file, inputBuffer) {
         buffer: inputBuffer,
         extension: path.extname(file.originalname).toLowerCase() || ".bin",
         mimetype: file.mimetype,
+        resourceType: file.mimetype === "application/pdf" ? "raw" : "image",
       };
     }
 
@@ -84,12 +128,22 @@ class GleencImageStorage {
 
       if (isCloudinaryEnabled()) {
         const publicId = `${path.parse(filename).name}`;
-        const result = await uploadCloudinaryBuffer(image.buffer, {
-          folder: env.cloudinaryFolder,
-          publicId,
-          format: image.extension === ".webp" ? "webp" : undefined,
-          tag: req.auth?.role || "upload",
-        });
+        let result;
+
+        try {
+          result = await uploadCloudinaryBuffer(image.buffer, {
+            folder: normalizedCloudinaryFolder(req, file),
+            publicId,
+            resourceType: image.resourceType || "image",
+            format: image.extension === ".webp" ? "webp" : undefined,
+            tag: req.auth?.role || "upload",
+          });
+        } catch {
+          throw new HttpError(
+            503,
+            "The upload service could not save this file right now. Please try again.",
+          );
+        }
 
         callback(null, {
           filename,
@@ -148,8 +202,15 @@ export const upload = multer({
     files: 15,
   },
   fileFilter: (_req, file, callback) => {
+    const allowedTypes = isDocumentUpload(file) ? allowedDocumentTypes : allowedImageTypes;
+
     if (!allowedTypes.has(file.mimetype)) {
-      callback(new HttpError(415, "Only JPEG, PNG, WebP, and GIF images are allowed."));
+      callback(new HttpError(
+        415,
+        isDocumentUpload(file)
+          ? "Only JPEG, PNG, WebP, GIF, and PDF files are allowed for verification documents."
+          : "Only JPEG, PNG, WebP, and GIF images are allowed.",
+      ));
       return;
     }
 

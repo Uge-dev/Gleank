@@ -51,6 +51,10 @@ const paystackMode = String(process.env.PAYSTACK_MODE || "").toLowerCase();
 const emailProvider = String(process.env.EMAIL_PROVIDER || "").toLowerCase();
 const storageProvider = String(process.env.STORAGE_PROVIDER || "local").toLowerCase();
 const databaseProvider = String(process.env.DATABASE_PROVIDER || "sqlite").toLowerCase();
+const kycProvider = String(process.env.KYC_PROVIDER || "manual").toLowerCase();
+const mapProvider = String(process.env.MAP_PROVIDER || "manual").toLowerCase();
+const realtimeProvider = String(process.env.REALTIME_PROVIDER || "sse").toLowerCase();
+const ocrProvider = String(process.env.OCR_PROVIDER || "none").toLowerCase();
 
 export const env = {
   nodeEnv: process.env.NODE_ENV || "development",
@@ -116,6 +120,18 @@ export const env = {
   autoApproveUsedListings: booleanFromEnv(
     process.env.AUTO_APPROVE_USED_LISTINGS,
     process.env.NODE_ENV !== "production",
+  ),
+  autoVerifyRidersInDev: booleanFromEnv(
+    process.env.AUTO_VERIFY_RIDERS_IN_DEV,
+    false,
+  ),
+  autoSetRidersOnlineInDev: booleanFromEnv(
+    process.env.AUTO_SET_RIDERS_ONLINE_IN_DEV,
+    false,
+  ),
+  enableTestRiderDispatch: booleanFromEnv(
+    process.env.ENABLE_TEST_RIDER_DISPATCH,
+    false,
   ),
   riderDispatchTimeoutSeconds: numberFromEnv(process.env.RIDER_DISPATCH_TIMEOUT_SECONDS, 600),
   riderDispatchTimeoutCampusSeconds: numberFromEnv(
@@ -217,6 +233,28 @@ export const env = {
   emailProvider,
   brevoApiKey: process.env.BREVO_API_KEY || "",
   emailDiagnosticToken: process.env.EMAIL_DIAGNOSTIC_TOKEN || "",
+  kycProvider,
+  dojahAppId: process.env.DOJAH_APP_ID || "",
+  dojahPublicKey: process.env.DOJAH_PUBLIC_KEY || "",
+  dojahSecretKey: process.env.DOJAH_SECRET_KEY || "",
+  dojahBaseUrl: normalizeUrl(process.env.DOJAH_BASE_URL || "https://api.dojah.io"),
+  dojahEnvironment: String(process.env.DOJAH_ENVIRONMENT || "sandbox").toLowerCase(),
+  dojahWebhookSecret: process.env.DOJAH_WEBHOOK_SECRET || "",
+  mapProvider,
+  geoapifyApiKey: process.env.GEOAPIFY_API_KEY || "",
+  geoapifyBaseUrl: normalizeUrl(process.env.GEOAPIFY_BASE_URL || "https://api.geoapify.com/v1"),
+  realtimeProvider,
+  enableRealtime: booleanFromEnv(process.env.ENABLE_REALTIME, true),
+  realtimeHeartbeatMs: numberFromEnv(process.env.REALTIME_HEARTBEAT_MS, 25000),
+  enableOcrModeration: booleanFromEnv(process.env.ENABLE_OCR_MODERATION, false),
+  ocrProvider,
+  moderationStrictMode: booleanFromEnv(
+    process.env.MODERATION_STRICT_MODE,
+    process.env.NODE_ENV === "production",
+  ),
+  firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "",
+  firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL || "",
+  firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || "",
   isProduction: process.env.NODE_ENV === "production",
 };
 
@@ -230,6 +268,18 @@ if (!["sqlite", "postgres"].includes(env.databaseProvider)) {
 
 if (!["local", "cloudinary"].includes(env.storageProvider)) {
   throw new Error("STORAGE_PROVIDER must be either local or cloudinary.");
+}
+
+if (!["mock", "manual", "dojah"].includes(env.kycProvider)) {
+  throw new Error("KYC_PROVIDER must be one of mock, manual, or dojah.");
+}
+
+if (!["manual", "geoapify"].includes(env.mapProvider)) {
+  throw new Error("MAP_PROVIDER must be either manual or geoapify.");
+}
+
+if (!["sse", "socketio", "none"].includes(env.realtimeProvider)) {
+  throw new Error("REALTIME_PROVIDER must be one of sse, socketio, or none.");
 }
 
 if (env.databaseProvider === "postgres" && !env.databaseUrl) {
@@ -254,6 +304,24 @@ if (env.isProduction && env.storageProvider !== "cloudinary") {
 if (env.isProduction && env.databaseProvider !== "postgres") {
   console.warn(
     "Production database is set to sqlite. Set DATABASE_PROVIDER=postgres and DATABASE_URL to use persistent Neon storage.",
+  );
+}
+
+if (env.isProduction && env.kycProvider === "mock") {
+  console.warn(
+    "KYC_PROVIDER=mock is not a real production verification provider. New KYC checks will require admin review.",
+  );
+}
+
+if (env.kycProvider === "dojah" && (!env.dojahAppId || !env.dojahSecretKey)) {
+  console.warn(
+    "KYC_PROVIDER=dojah is selected but DOJAH_APP_ID or DOJAH_SECRET_KEY is missing. KYC will fall back to manual review.",
+  );
+}
+
+if (env.mapProvider === "geoapify" && !env.geoapifyApiKey) {
+  console.warn(
+    "MAP_PROVIDER=geoapify is selected but GEOAPIFY_API_KEY is missing. Location features will use manual area fallback.",
   );
 }
 

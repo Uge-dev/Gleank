@@ -54,8 +54,8 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
         return;
       }
 
-      if (user.role === "rider") {
-        navigate("/rider");
+      if (user.role === "admin") {
+        navigate("/admin");
         return;
       }
     } catch (requestError) {
@@ -100,6 +100,11 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
           <div className="auth-inline-message error" role="alert">
             <FiAlertCircle />
             <span>{error}</span>
+            {error.toLowerCase().includes("rider account") && (
+              <Link to="/rider/login" onClick={onClose}>
+                Go to Rider Login
+              </Link>
+            )}
           </div>
         )}
 
@@ -170,8 +175,8 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
             Create one
           </Link>
         </div>
-        <Link className="auth-rider-link" to="/rider/signup" onClick={onClose}>
-          <FiTruck /> Become a rider
+        <Link className="auth-rider-link" to="/rider/login" onClick={onClose}>
+          <FiTruck /> Login/Create Riders Account
         </Link>
       </div>
     </div>

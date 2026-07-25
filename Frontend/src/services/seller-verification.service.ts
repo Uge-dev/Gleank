@@ -36,3 +36,17 @@ export function updateSellerVerification(formData: FormData) {
     body: formData,
   });
 }
+
+export function saveSellerVerificationDraft(payload: FormData | Record<string, unknown>) {
+  return apiRequest<SellerVerificationResponse>("/seller-verification/me/draft", {
+    method: "PATCH",
+    body: payload instanceof FormData ? payload : JSON.stringify(payload),
+  });
+}
+
+export function submitSellerVerification(formData: FormData) {
+  return apiRequest<SellerVerificationResponse>("/seller-verification/me/submit", {
+    method: "POST",
+    body: formData,
+  });
+}

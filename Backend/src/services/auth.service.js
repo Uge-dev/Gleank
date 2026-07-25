@@ -153,11 +153,75 @@ function assertPasswordPolicy(password) {
   }
 }
 
+function shouldApplyDevelopmentRiderDispatchDefaults() {
+  return !env.isProduction && (
+    env.autoVerifyRidersInDev ||
+    env.autoSetRidersOnlineInDev ||
+    env.enableTestRiderDispatch
+  );
+}
+
+function applyDevelopmentRiderDispatchDefaults(userId, now) {
+  if (!shouldApplyDevelopmentRiderDispatchDefaults()) return;
+
+  const shouldVerify = env.autoVerifyRidersInDev || env.enableTestRiderDispatch;
+  const shouldSetOnline = env.autoSetRidersOnlineInDev || env.enableTestRiderDispatch;
+  const shouldVerifyEmail = env.enableTestRiderDispatch;
+
+  db.prepare(`
+    UPDATE users
+    SET is_active = 1,
+        email_verified = CASE WHEN ? THEN 1 ELSE email_verified END,
+        email_verified_at = CASE
+          WHEN ? THEN COALESCE(email_verified_at, ?)
+          ELSE email_verified_at
+        END,
+        updated_at = ?
+    WHERE id = ? AND role = 'rider'
+  `).run(
+    shouldVerifyEmail ? 1 : 0,
+    shouldVerifyEmail ? 1 : 0,
+    now,
+    now,
+    userId,
+  );
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET verification_status = CASE WHEN ? THEN 'verified' ELSE verification_status END,
+        availability = CASE WHEN ? THEN 'online' ELSE availability END,
+        availability_mode = CASE
+          WHEN ? AND gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+          WHEN ? THEN 'online_zone_only'
+          ELSE availability_mode
+        END,
+        safety_status = 'normal',
+        can_receive_auto_dispatch = 1,
+        capacity_locked = 0,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    shouldVerify ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    now,
+    userId,
+  );
+}
+
 export async function registerUser(input, meta = {}) {
   const email = String(input.email || "").trim().toLowerCase();
 
-  if (findUserByEmail(email)) {
-    throw new HttpError(409, "This email already has a Gleenc account. Please log in with that account.");
+  const existingUser = findUserByEmail(email);
+  if (existingUser) {
+    if (existingUser.role === "rider" && input.role !== "rider") {
+      throw new HttpError(409, "This email is already registered as a rider account. Please use the rider login page.");
+    }
+    if (input.role === "rider" && existingUser.role !== "rider") {
+      throw new HttpError(409, "This email is already registered. Please use a different email or contact support.");
+    }
+    throw new HttpError(409, "An account already exists with this email. Please login with the correct account type.");
   }
 
   if (input.role === "rider" && (!input.identityDocumentUrl || !input.selfieUrl)) {
@@ -210,6 +274,7 @@ export async function registerUser(input, meta = {}) {
 
     if (input.role === "rider") {
       createRiderProfileFromAuth(userId, input, now);
+      applyDevelopmentRiderDispatchDefaults(userId, now);
     }
 
     createSecurityEvent(userId, "account_registered", { role: input.role }, cleanMeta);
@@ -229,7 +294,7 @@ export async function registerUser(input, meta = {}) {
   }
 
   return {
-    user: serializeUser(result.user),
+    user: serializeUser(findUserById(result.user.id) || result.user),
     store: serializeStore(findStoreByOwnerId(result.user.id)),
     session: createSession(result.user.id, cleanMeta),
     emailVerificationRequired: !emailVerified,

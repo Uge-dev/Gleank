@@ -22,14 +22,22 @@ export default function Login() {
     try {
       const rider = await login(email, password);
       if (rider.emailVerified === false) {
-        navigate('/verify-email');
+        navigate('/rider/verify-email');
         return;
       }
       navigate('/rider');
     } catch (err) {
       if (
         err instanceof ApiClientError &&
-        (err.status === 401 || err.status === 403)
+        err.status === 403 &&
+        /not a rider|rider account/i.test(err.message)
+      ) {
+        setError('This account is not a rider account. Please use the correct login page.');
+        return;
+      }
+      if (
+        err instanceof ApiClientError &&
+        err.status === 401
       ) {
         setError('Email or password is incorrect.');
         return;
@@ -96,7 +104,7 @@ export default function Login() {
           <p className="mt-4 text-center text-sm">
             <Link to="/rider/forgot-password" className="font-extrabold text-gleenc-cyan">Forgot password?</Link>
           </p>
-          <p className="mt-5 text-center text-sm text-slate-500">New rider? <Link to="/rider/signup" className="font-extrabold text-gleenc-cyan">Create account</Link></p>
+          <p className="mt-5 text-center text-sm text-slate-500">New rider? <Link to="/rider/signup" className="font-extrabold text-gleenc-cyan">Create Riders Account</Link></p>
         </motion.form>
       </section>
     </main>

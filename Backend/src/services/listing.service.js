@@ -24,6 +24,40 @@ function computePlatformPrice(price) {
   return { sellerPriceKobo, platformFeeKobo, buyerPriceKobo };
 }
 
+function normalizeDeliveryReadiness(input = {}) {
+  const type = ["immediate", "hours", "days", "scheduled_date"].includes(input.deliveryReadinessType)
+    ? input.deliveryReadinessType
+    : "immediate";
+  const value = String(input.deliveryReadinessValue || "").trim().slice(0, 80);
+  let readyAfterMinutes = Math.max(0, Math.round(Number(input.deliveryReadyAfterMinutes || 0)));
+  let readyAt = String(input.deliveryReadyAt || "").trim().slice(0, 80) || null;
+
+  if (type === "hours") {
+    const hours = Math.max(1, Number(value || input.deliveryReadinessHours || 1));
+    readyAfterMinutes = Math.round(hours * 60);
+    readyAt = null;
+  } else if (type === "days") {
+    const days = Math.max(1, Number(value || input.deliveryReadinessDays || 1));
+    readyAfterMinutes = Math.round(days * 1440);
+    readyAt = null;
+  } else if (type === "scheduled_date") {
+    readyAfterMinutes = 0;
+    if (!readyAt) {
+      throw new HttpError(422, "Select the date/time this product will be ready for delivery.");
+    }
+  } else {
+    readyAfterMinutes = 0;
+    readyAt = null;
+  }
+
+  return {
+    type,
+    value,
+    readyAfterMinutes,
+    readyAt,
+  };
+}
+
 function serviceAmountRange(input) {
   const basePrice = Number(input.price || 0);
   const minPrice = Number(input.minPrice || 0) > 0 ? Number(input.minPrice) : basePrice;
@@ -127,13 +161,16 @@ export function createProduct(userId, input, uploadedUrls) {
   const moderationPatch = moderationSqlPatch(moderation);
   const status = moderationPatch.publicStatus;
   const price = computePlatformPrice(input.price);
+  const readiness = normalizeDeliveryReadiness(input);
 
   db.prepare(`
     INSERT INTO products (
       id, store_id, name, slug, category, description, price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo,
       stock, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
-      availability_status, seller_confirmation_required, return_policy, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      availability_status, seller_confirmation_required, return_policy, delivery_readiness_type,
+      delivery_readiness_value, delivery_ready_after_minutes, delivery_ready_at,
+      is_featured, image_urls, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -155,6 +192,10 @@ export function createProduct(userId, input, uploadedUrls) {
     moderationPatch.availabilityStatus,
     moderationPatch.sellerConfirmationRequired,
     moderationPatch.returnPolicy,
+    readiness.type,
+    readiness.value,
+    readiness.readyAfterMinutes,
+    readiness.readyAt,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     now,
@@ -186,6 +227,7 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
   const moderationPatch = moderationSqlPatch(moderation);
   const status = moderationPatch.publicStatus;
   const price = computePlatformPrice(input.price);
+  const readiness = normalizeDeliveryReadiness(input);
 
   db.prepare(`
     UPDATE products
@@ -194,6 +236,8 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
         stock = ?, status = ?, moderation_status = ?, moderation_note = ?,
         moderation_reasons = ?, risk_score = ?, risk_level = ?,
         availability_status = ?, seller_confirmation_required = ?, return_policy = ?,
+        delivery_readiness_type = ?, delivery_readiness_value = ?,
+        delivery_ready_after_minutes = ?, delivery_ready_at = ?,
         reviewed_by = NULL, reviewed_at = NULL,
         is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
@@ -216,6 +260,10 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
     moderationPatch.availabilityStatus,
     moderationPatch.sellerConfirmationRequired,
     moderationPatch.returnPolicy,
+    readiness.type,
+    readiness.value,
+    readiness.readyAfterMinutes,
+    readiness.readyAt,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     new Date().toISOString(),

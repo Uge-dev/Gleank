@@ -5,6 +5,7 @@ import helmet from "helmet";
 import path from "node:path";
 import { env } from "./config/env.js";
 import { cleanExpiredSessions } from "./db/database.js";
+import { runStage3Migrations } from "./db/stage3-migrations.js";
 import { optionalAuth } from "./middleware/auth.js";
 import {
   errorHandler,
@@ -33,10 +34,15 @@ import adminRoutes from "./routes/admin.routes.js";
 import { deliveryRouter } from "./routes/delivery.routes.js";
 import { riderRouter } from "./routes/rider.routes.js";
 import { logisticsRouter } from "./routes/logistics.routes.js";
+import { kycRouter } from "./routes/kyc.routes.js";
+import { locationRouter } from "./routes/location.routes.js";
+import { buyerRouter } from "./routes/buyer.routes.js";
+import { webhookRouter } from "./routes/webhook.routes.js";
 
 export const app = express();
 
 cleanExpiredSessions();
+runStage3Migrations();
 
 function normalizeCorsOrigin(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -110,6 +116,7 @@ app.use("/api/orders", orderRouter);
 app.use("/api/delivery", deliveryRouter);
 app.use("/api/saved", savedRouter);
 app.use("/api/users", userRouter);
+app.use("/api/buyer", buyerRouter);
 app.use("/api/stores", storeRouter);
 app.use("/api/market", marketRouter);
 app.use("/api/seller", sellerRouter);
@@ -117,6 +124,9 @@ app.use("/api/used-market", usedMarketRouter);
 app.use("/api/used-orders", usedOrderRouter);
 app.use("/api/messages", messageRouter);
 app.use("/api/trust", trustRouter);
+app.use("/api/kyc", kycRouter);
+app.use("/api/location", locationRouter);
+app.use("/api/webhooks", webhookRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 app.use("/api/seller-verification", sellerVerificationRouter);

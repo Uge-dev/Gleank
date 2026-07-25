@@ -34,8 +34,8 @@ export default function CompletedDeliveries() {
                   <p className="mt-2 text-sm font-bold text-slate-800">{order.paymentMethod === 'paid_online' ? 'Pay Now' : 'Pay at Delivery via Gleenc'}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Amount</p>
-                  <p className="mt-2 text-sm font-black text-slate-950">{formatCurrency(order.totalAmount)}</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Rider Earning</p>
+                  <p className="mt-2 text-sm font-black text-slate-950">{formatCurrency(order.riderEarning)}</p>
                 </div>
               </div>
             </Card>

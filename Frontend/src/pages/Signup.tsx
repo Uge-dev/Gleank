@@ -70,7 +70,7 @@ function Signup() {
         role: accountType,
       });
       if (!responseUser.emailVerified) {
-        navigate("/verify-email");
+        navigate(responseUser.role === "rider" ? "/rider/verify-email" : "/verify-email");
         return;
       }
       if (responseUser.role === "rider") {

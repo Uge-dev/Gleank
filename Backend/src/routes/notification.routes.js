@@ -7,6 +7,7 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../services/notification.service.js";
+import { subscribeNotificationStream } from "../services/realtime.service.js";
 
 export const notificationRouter = Router();
 
@@ -20,8 +21,20 @@ notificationRouter.get("/unread-count", (req, res) => {
   res.json({ unreadCount: getNotificationUnreadCount(req.auth.user_id) });
 });
 
+notificationRouter.get("/stream", (req, res) => {
+  subscribeNotificationStream(req.auth.user_id, req, res);
+});
+
+notificationRouter.post("/read-all", (req, res) => {
+  res.json(markAllNotificationsRead(req.auth.user_id));
+});
+
 notificationRouter.patch("/read-all", (req, res) => {
   res.json(markAllNotificationsRead(req.auth.user_id));
+});
+
+notificationRouter.post("/:id/read", (req, res) => {
+  res.json(markNotificationRead(req.auth.user_id, req.params.id));
 });
 
 notificationRouter.patch("/:id/read", (req, res) => {

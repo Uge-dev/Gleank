@@ -4,6 +4,7 @@ import { requireAuth } from "../middleware/auth.js";
 import {
   getSellerReadiness,
   getSellerVerification,
+  updateSellerOnboardingDraft,
   upsertSellerVerification,
 } from "../services/seller-verification.service.js";
 import { ensureSellerSubscription, getSellerSubscription } from "../services/subscription.service.js";
@@ -28,6 +29,42 @@ sellerVerificationRouter.get("/me", (req, res) => {
     subscription: getSellerSubscription(req.auth.user_id),
   });
 });
+
+sellerVerificationRouter.patch("/me/draft", upload.single("identityProof"), (req, res) => {
+  const identityProofUrl = req.file ? fileUrl(req, req.file) : null;
+  const verification = updateSellerOnboardingDraft(
+    req.auth.user_id,
+    req.body,
+    identityProofUrl,
+  );
+  ensureSellerSubscription(req.auth.user_id);
+
+  res.json({
+    verification,
+    readiness: getSellerReadiness(req.auth.user_id),
+    subscription: getSellerSubscription(req.auth.user_id),
+  });
+});
+
+sellerVerificationRouter.post(
+  "/me/submit",
+  upload.single("identityProof"),
+  (req, res) => {
+    const identityProofUrl = req.file ? fileUrl(req, req.file) : null;
+    const verification = upsertSellerVerification(
+      req.auth.user_id,
+      req.body,
+      identityProofUrl,
+    );
+    ensureSellerSubscription(req.auth.user_id);
+
+    res.json({
+      verification,
+      readiness: getSellerReadiness(req.auth.user_id),
+      subscription: getSellerSubscription(req.auth.user_id),
+    });
+  },
+);
 
 sellerVerificationRouter.put(
   "/me",

@@ -19,6 +19,7 @@ export type CartItem = {
   sellerId: string;
   campus: string;
   category?: string;
+  deliveryReadinessLabel?: string;
   stock?: number;
   quantity: number;
 };
@@ -84,6 +85,9 @@ function parseCart(value: string | null): CartItem[] {
         sellerId: String(item.sellerId || ""),
         campus: String(item.campus || ""),
         category: item.category ? String(item.category) : undefined,
+        deliveryReadinessLabel: item.deliveryReadinessLabel
+          ? String(item.deliveryReadinessLabel)
+          : undefined,
         stock:
           Number.isFinite(Number(item.stock)) && Number(item.stock) >= 0
             ? Number(item.stock)
@@ -208,6 +212,8 @@ export function CartProvider({ children }: CartProviderProps) {
           return {
             ...cartItem,
             stock: incomingStock ?? cartItem.stock,
+            deliveryReadinessLabel:
+              item.deliveryReadinessLabel || cartItem.deliveryReadinessLabel,
             quantity: cartItem.quantity + incomingQuantity,
           };
         });

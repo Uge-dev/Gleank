@@ -37,7 +37,7 @@ export default function Signup() {
     try {
       setIsSubmitting(true);
       await signup({ ...form, identityDocument, selfie });
-      navigate('/verify-email');
+      navigate('/rider/verify-email');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Rider account could not be created.');
     } finally {
@@ -150,7 +150,7 @@ export default function Signup() {
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-slate-500">Already have an account? <Link to="/rider/login" className="font-extrabold text-gleenc-cyan">Login</Link></p>
           <Button size="lg" disabled={isSubmitting}>
-            {isSubmitting ? 'Creating account...' : 'Create Account'}
+            {isSubmitting ? 'Creating riders account...' : 'Create Riders Account'}
           </Button>
         </div>
       </motion.form>

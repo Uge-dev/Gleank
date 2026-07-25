@@ -26,8 +26,8 @@ function Login() {
         navigate("/verify-email");
         return;
       }
-      if (user.role === "rider") {
-        navigate("/rider");
+      if (user.role === "admin") {
+        navigate("/admin");
         return;
       }
 
@@ -56,7 +56,10 @@ function Login() {
         {error && (
           <div className="auth-inline-message error" role="alert">
             <FiAlertCircle />
-            {error}
+            <span>{error}</span>
+            {error.toLowerCase().includes("rider account") && (
+              <Link to="/rider/login">Go to Rider Login</Link>
+            )}
           </div>
         )}
 

@@ -24,6 +24,10 @@ import {
   storeUpdateSchema,
 } from "../schemas/seller.schemas.js";
 import {
+  createRiderAssignment,
+  listAvailableRiders,
+} from "../services/rider.service.js";
+import {
   createProduct,
   createService,
   deleteProduct,
@@ -46,6 +50,10 @@ import {
 } from "../services/seller-verification.service.js";
 import { ensureSellerSubscription, getSellerSubscription } from "../services/subscription.service.js";
 import { listSellerPayouts } from "../services/payout.service.js";
+import {
+  getSellerPickupLocation,
+  upsertSellerPickupLocation,
+} from "../services/location.service.js";
 
 export const sellerRouter = Router();
 
@@ -123,6 +131,14 @@ sellerRouter.get("/markets/status", requireAuth, (req, res) => {
 
 sellerRouter.use(requireRole("seller", "admin"));
 
+sellerRouter.get("/pickup-location", (req, res) => {
+  res.json(getSellerPickupLocation(req.auth));
+});
+
+sellerRouter.post("/pickup-location", (req, res) => {
+  res.json(upsertSellerPickupLocation(req.auth, req.body || {}));
+});
+
 function serializeHighlight(row) {
   return {
     id: row.id,
@@ -188,6 +204,18 @@ sellerRouter.get("/workspace", (req, res) => {
     services: workspace.services,
     highlights,
   });
+});
+
+sellerRouter.get("/orders/:orderId/available-riders", (req, res) => {
+  res.json({ riders: listAvailableRiders(req.auth) });
+});
+
+sellerRouter.post("/orders/:orderId/assign-rider", (req, res) => {
+  res.status(201).json(createRiderAssignment(req.auth, {
+    ...(req.body || {}),
+    orderType: "store_order",
+    orderId: req.params.orderId,
+  }));
 });
 
 sellerRouter.get("/payouts", (req, res) => {

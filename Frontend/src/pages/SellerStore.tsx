@@ -18,22 +18,15 @@ import {
 import AuthModal from "../components/AuthModal";
 import EmptyState from "../components/EmptyState";
 import ErrorState from "../components/ErrorState";
-import FeedPostCard from "../components/FeedPostCard";
 import LoadingState from "../components/LoadingState";
+import { MarketProductCard } from "../components/MarketCards";
 import { useAuth } from "../context/AuthContext";
-import { useSaved } from "../context/SavedContext";
-import ProductCommentDrawer from "../components/ProductCommentDrawer";
-import {
-  likePublicProduct,
-  sharePublicProduct,
-  unlikePublicProduct,
-  viewPublicProduct,
-} from "../services/marketplace.service";
 import {
   followPublicStore,
   getPublicStore,
   unfollowPublicStore,
 } from "../services/seller.service";
+import type { MarketProduct } from "../services/market.service";
 import type {
   PublicStoreWorkspace,
   SellerProduct,
@@ -95,12 +88,7 @@ function SellerStore() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { isSaved, toggleSaved } = useSaved();
-  const viewedProductIdsRef = useRef<Set<string>>(new Set());
   const tabsContainerRef = useRef<HTMLDivElement | null>(null);
-  const [activeCommentProductId, setActiveCommentProductId] = useState<
-  string | null
->(null);
 
   const [workspace, setWorkspace] = useState<PublicStoreWorkspace | null>(null);
   const [activeTab, setActiveTab] = useState<StoreTab>("Products");
@@ -348,136 +336,6 @@ function SellerStore() {
     selectTab(tabs[nextIndex]);
   }
 
-  function updateProductInteraction(
-    productId: string,
-    interaction: SellerProduct["interaction"],
-  ) {
-    setWorkspace((current) => {
-      if (!current) return current;
-
-      return {
-        ...current,
-        products: current.products.map((product) =>
-          product.id === productId
-            ? {
-                ...product,
-                interaction,
-              }
-            : product,
-        ),
-      };
-    });
-  }
-
-  function handleCommentCreated(productId: string) {
-  setWorkspace((current) => {
-    if (!current) return current;
-
-    return {
-      ...current,
-      products: current.products.map((product) =>
-        product.id === productId
-          ? {
-              ...product,
-              interaction: product.interaction
-                ? {
-                    ...product.interaction,
-                    commentCount: product.interaction.commentCount + 1,
-                  }
-                : product.interaction,
-            }
-          : product,
-      ),
-    };
-  });
-}
-
-async function handleProductViewed(productId: string) {
-  if (!isAuthenticated) return;
-  if (viewedProductIdsRef.current.has(productId)) return;
-
-  viewedProductIdsRef.current.add(productId);
-
-  try {
-    const response = await viewPublicProduct(productId);
-    updateProductInteraction(productId, response.interaction);
-  } catch {
-    // View tracking should never break the seller profile.
-  }
-}
-
-  async function toggleProductLike(product: SellerProduct) {
-    if (!requireAuth()) return;
-
-    try {
-      const response = product.interaction?.liked
-        ? await unlikePublicProduct(product.id)
-        : await likePublicProduct(product.id);
-
-      updateProductInteraction(product.id, response.interaction);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "The like action could not be completed.",
-      );
-    }
-  }
-
-  async function toggleProductSave(product: SellerProduct) {
-    if (!requireAuth()) return;
-
-    try {
-      const saved = await toggleSaved("product", product.id);
-      const currentInteraction = product.interaction;
-
-      if (currentInteraction) {
-        updateProductInteraction(product.id, {
-          ...currentInteraction,
-          saveCount: Math.max(
-            0,
-            currentInteraction.saveCount + (saved ? 1 : -1),
-          ),
-        });
-      }
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "The save action could not be completed.",
-      );
-    }
-  }
-
-  function openProductComments(product: SellerProduct) {
-  setActiveCommentProductId(product.id);
-}
-
-  async function shareProduct(product: SellerProduct) {
-    if (!requireAuth()) return;
-
-    const url = `${window.location.origin}/products/${product.id}`;
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: product.name,
-          text: product.description,
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-        setShareNotice("Product link copied");
-        window.setTimeout(() => setShareNotice(""), 2200);
-      }
-
-      const response = await sharePublicProduct(product.id);
-      updateProductInteraction(product.id, response.interaction);
-    } catch {
-      // Closing native share is not an application error.
-    }
-  }
-
   if (isLoading) {
     return (
       <section className="seller-store-page">
@@ -697,14 +555,6 @@ async function handleProductViewed(productId: string) {
             <ProductGrid
               products={filteredProducts}
               store={store}
-              isFollowing={isFollowing}
-              isProductSaved={(productId) => isSaved("product", productId)}
-              onToggleLike={toggleProductLike}
-              onToggleSave={toggleProductSave}
-              onToggleStoreFollow={toggleFollow}
-              onComment={openProductComments}
-              onShare={shareProduct}
-              onView={handleProductViewed}
             />
           )}
 
@@ -721,14 +571,6 @@ async function handleProductViewed(productId: string) {
               <ProductGrid
                 products={favoriteProducts}
                 store={store}
-                isFollowing={isFollowing}
-                isProductSaved={(productId) => isSaved("product", productId)}
-                onToggleLike={toggleProductLike}
-                onToggleSave={toggleProductSave}
-                onToggleStoreFollow={toggleFollow}
-                onComment={openProductComments}
-                onShare={shareProduct}
-                onView={handleProductViewed}
                 favorite
               />
 
@@ -792,52 +634,58 @@ async function handleProductViewed(productId: string) {
         onClose={() => setAuthModalOpen(false)}
       />
 
-      <ProductCommentDrawer
-  isOpen={Boolean(activeCommentProductId)}
-  productId={activeCommentProductId}
-  productName={
-    workspace?.products.find((item) => item.id === activeCommentProductId)
-      ?.name
-  }
-  onClose={() => setActiveCommentProductId(null)}
-  onRequireAuth={() => requireAuth()}
-  onCommentCreated={() => {
-    if (activeCommentProductId) {
-      handleCommentCreated(activeCommentProductId);
-    }
-  }}
-/>
     </>
   );
+}
+
+function marketSourceLabel(store: PublicStoreWorkspace["store"]) {
+  if (store.sellerType === "local_market") return "Local Market";
+  if (store.sellerType === "nearby") return "Nearby Market";
+  if (store.sellerType === "used_market") return "Used Market";
+  return "Campus Market";
+}
+
+function toMarketProduct(
+  product: SellerProduct,
+  store: PublicStoreWorkspace["store"],
+): MarketProduct {
+  return {
+    ...product,
+    storeName: store.name,
+    storeSlug: store.slug,
+    storeCampus: store.campus,
+    store: {
+      id: store.id,
+      slug: store.slug,
+      name: store.name,
+      campus: store.campus,
+      category: store.category,
+      logoUrl: store.logoUrl,
+      coverUrl: store.coverUrl,
+      verified: store.verified,
+      sellerType: store.sellerType,
+      marketId: store.marketId,
+    },
+    interaction: product.interaction || {
+      likeCount: 0,
+      commentCount: 0,
+      saveCount: 0,
+      shareCount: 0,
+      viewCount: 0,
+      liked: false,
+    },
+  };
 }
 
 function ProductGrid({
   products,
   store,
-  isFollowing,
-  isProductSaved,
-  onToggleLike,
-  onToggleSave,
-  onToggleStoreFollow,
-  onComment,
-  onShare,
-  onView,
   favorite = false,
 }: {
   products: SellerProduct[];
   store: PublicStoreWorkspace["store"];
-  isFollowing: boolean;
-  isProductSaved: (productId: string) => boolean;
-  onToggleLike: (product: SellerProduct) => void | Promise<void>;
-  onToggleSave: (product: SellerProduct) => void | Promise<void>;
-  onToggleStoreFollow: () => void | Promise<void>;
-  onComment: (product: SellerProduct) => void;
-  onShare: (product: SellerProduct) => void | Promise<void>;
-  onView: (productId: string) => void | Promise<void>;
   favorite?: boolean;
 }) {
-  const { user } = useAuth();
-
   if (!products.length) {
     return (
       <div className="seller-empty-box">
@@ -852,53 +700,15 @@ function ProductGrid({
     );
   }
 
-  const storeLogoUrl = store.logoUrl
-    ? resolveMediaUrl(store.logoUrl, "")
-    : null;
-
   return (
-    <div className="seller-feed-product-list">
-      {products.map((product) => {
-        const productImages = product.imageUrls.length
-          ? product.imageUrls
-          : [productFallback];
-
-        return (
-          <FeedPostCard
-            key={product.id}
-            id={product.id}
-            storeName={store.name}
-            username={store.slug}
-            campus={store.campus}
-            storeLogoUrl={storeLogoUrl}
-            productName={product.name}
-            price={formatPrice(product.price)}
-            category={product.category}
-            badgeText={
-              product.status === "out_of_stock" ? "Out of Stock" : "Available"
-            }
-            images={productImages.map((image) =>
-              resolveMediaUrl(image, productFallback),
-            )}
-            maxQuantity={product.stock}
-            isOwnProduct={Boolean(user?.id && store.ownerId === user.id)}
-            productSaved={isProductSaved(product.id)}
-            productLiked={Boolean(product.interaction?.liked)}
-            likeCount={product.interaction?.likeCount || 0}
-            commentCount={product.interaction?.commentCount || 0}
-            shareCount={product.interaction?.shareCount || 0}
-            viewCount={product.interaction?.viewCount || 0}
-            storeFollowing={isFollowing}
-            onRequireAuth={() => undefined}
-            onToggleProductSave={() => void onToggleSave(product)}
-            onToggleStoreFollow={() => void onToggleStoreFollow()}
-            onToggleLike={() => void onToggleLike(product)}
-            onComment={() => onComment(product)}
-            onShare={() => void onShare(product)}
-            onViewed={() => void onView(product.id)}
-          />
-        );
-      })}
+    <div className="seller-store-market-grid">
+      {products.map((product) => (
+        <MarketProductCard
+          key={product.id}
+          product={toMarketProduct(product, store)}
+          sourceLabel={marketSourceLabel(store)}
+        />
+      ))}
     </div>
   );
 }

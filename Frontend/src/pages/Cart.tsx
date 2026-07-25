@@ -109,14 +109,19 @@ function Cart() {
                 <span>{item.campus || "Campus product"}</span>
                 <h2>{item.name}</h2>
                 <p>Sold by {item.sellerName}</p>
-                {stockLimit !== undefined && (
-                  <small className={overStock ? "cart-stock-note limit" : "cart-stock-note"}>
-                    {stockLimit <= 0
-                      ? "Out of stock"
-                      : `${stockLimit} In stock${overStock ? " • reduce before checkout" : ""}`}
-                  </small>
-                )}
-                <strong>{formatPrice(item.numericPrice)}</strong>
+	                {stockLimit !== undefined && (
+	                  <small className={overStock ? "cart-stock-note limit" : "cart-stock-note"}>
+	                    {stockLimit <= 0
+	                      ? "Out of stock"
+	                      : `${stockLimit} In stock${overStock ? " • reduce before checkout" : ""}`}
+	                  </small>
+	                )}
+	                {item.deliveryReadinessLabel && (
+	                  <small className="cart-stock-note readiness">
+	                    {item.deliveryReadinessLabel}
+	                  </small>
+	                )}
+	                <strong>{formatPrice(item.numericPrice)}</strong>
               </div>
 
               <div className="cart-item-actions">

@@ -125,12 +125,20 @@ export const riderPickupSchema = z.object({
 });
 
 export const riderCompleteDeliverySchema = z.object({
-  customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP."),
+  customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP.").optional().default(""),
   proofUrl: optionalUploadedFileUrl,
   proofFileName: z.string().trim().min(1, "Upload delivery proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),
   locationLabel: z.string().trim().max(240).optional().default(""),
   proofLocation: coordinate,
+});
+
+export const riderVerifyDeliveryCodeSchema = z.object({
+  customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP.").optional(),
+  code: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP.").optional(),
+}).refine((value) => value.customerDeliveryCode || value.code, {
+  message: "Enter the buyer delivery OTP.",
+  path: ["customerDeliveryCode"],
 });
 
 export const riderFailSchema = z.object({

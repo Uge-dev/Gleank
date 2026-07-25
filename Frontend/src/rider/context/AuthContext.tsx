@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shouldUseApi, shouldUseMock } from '../config/env';
 import { riderApi } from '../services/riderApi';
@@ -12,6 +12,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<Rider>;
   signup: (payload: Partial<Rider> & { password: string; identityDocument?: File | null; selfie?: File | null }) => Promise<Rider>;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   updateAvailability: (availability: Availability) => Promise<void>;
   updateRiderLocally: (patch: Partial<Rider>) => void;
 }
@@ -23,14 +24,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(() => shouldUseApi());
   const [apiConnected, setApiConnected] = useState(false);
 
+  const refreshSession = useCallback(async () => {
+    if (!shouldUseApi()) return;
+    const response = await riderApi.session();
+    setRider(response.rider);
+    setApiConnected(true);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     if (!shouldUseApi()) return;
     setLoading(true);
-    riderApi.session()
-      .then((response) => {
+    refreshSession()
+      .then(() => {
         if (!mounted) return;
-        setRider(response.rider);
         setApiConnected(true);
       })
       .catch(() => {
@@ -42,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshSession]);
 
   const value = useMemo<AuthContextValue>(() => ({
     rider,
@@ -100,6 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setRider(null);
       setApiConnected(false);
     },
+    refreshSession,
     async updateAvailability(availability: Availability) {
       try {
         if (shouldUseApi()) {
@@ -127,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateRiderLocally(patch: Partial<Rider>) {
       setRider((current) => (current ? { ...current, ...patch } : current));
     }
-  }), [apiConnected, loading, rider]);
+  }), [apiConnected, loading, refreshSession, rider]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

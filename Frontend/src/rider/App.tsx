@@ -8,6 +8,7 @@ import Signup from './pages/auth/Signup';
 import RiderForgotPassword from './pages/auth/ForgotPassword';
 import RiderResetPassword from './pages/auth/ResetPassword';
 import RiderVerifyResetCode from './pages/auth/VerifyResetCode';
+import RiderVerifyEmail from './pages/auth/VerifyEmail';
 import Dashboard from './pages/Dashboard';
 import AssignedOrders from './pages/AssignedOrders';
 import ActiveDeliveries from './pages/ActiveDeliveries';
@@ -35,6 +36,7 @@ function ProtectedRoute({ children }: { children: ReactElement }) {
     );
   }
   if (!rider) return <Navigate to="/rider/login" replace />;
+  if (rider.emailVerified === false) return <Navigate to="/rider/verify-email" replace />;
   return children;
 }
 
@@ -46,6 +48,7 @@ export default function App() {
         <Route path="/rider/login" element={<Login />} />
         <Route path="/rider/signup" element={<Signup />} />
         <Route path="/rider/forgot-password" element={<RiderForgotPassword />} />
+        <Route path="/rider/verify-email" element={<RiderVerifyEmail />} />
         <Route path="/rider/verify-reset-code" element={<RiderVerifyResetCode />} />
         <Route path="/rider/reset-password" element={<RiderResetPassword />} />
         <Route
@@ -59,6 +62,7 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="assigned" element={<AssignedOrders />} />
           <Route path="active" element={<ActiveDeliveries />} />
+          <Route path="verify-code" element={<DeliveryVerification />} />
           <Route path="verify/:assignmentId" element={<DeliveryVerification />} />
           <Route path="verify" element={<DeliveryVerification />} />
           <Route path="delivery/:orderId" element={<DeliveryDetails />} />

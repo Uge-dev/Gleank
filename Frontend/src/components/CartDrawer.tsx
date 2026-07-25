@@ -115,15 +115,20 @@ function CartDrawer() {
                       <p>
                         {item.sellerName} • {item.campus}
                       </p>
-                      {stockLimit !== undefined && (
-                        <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
-                          {stockLimit <= 0
-                            ? "Out of stock"
-                            : `${stockLimit} In stock${atMaxStock ? " • max selected" : ""}`}
-                        </small>
-                      )}
+	                      {stockLimit !== undefined && (
+	                        <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
+	                          {stockLimit <= 0
+	                            ? "Out of stock"
+	                            : `${stockLimit} In stock${atMaxStock ? " • max selected" : ""}`}
+	                        </small>
+	                      )}
+	                      {item.deliveryReadinessLabel && (
+	                        <small className="cart-stock-note readiness">
+	                          {item.deliveryReadinessLabel}
+	                        </small>
+	                      )}
 
-                      <strong>{item.price}</strong>
+	                      <strong>{item.price}</strong>
 
                       <div className="cart-item-controls">
                         <div className="cart-quantity-control">

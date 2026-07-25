@@ -210,6 +210,7 @@ function Create() {
       requiredFields.push(["batchingEligibility", "Batching eligibility is required."]);
       requiredFields.push(["requiredVehicleType", "Required vehicle is required."]);
       requiredFields.push(["estimatedPackageUnits", "Package units are required."]);
+      requiredFields.push(["deliveryReadinessType", "Delivery readiness timing is required."]);
     } else {
       requiredFields.push(["serviceType", "Service type is required."]);
       requiredFields.push(["location", "Service location is required."]);
@@ -228,6 +229,22 @@ function Create() {
 
     if (createType === "product" && Number(formData.get("stock") || 0) <= 0) {
       return "Stock quantity must be at least 1 before publishing.";
+    }
+
+    if (createType === "product") {
+      const readinessType = String(formData.get("deliveryReadinessType") || "immediate");
+      const readinessValue = String(formData.get("deliveryReadinessValue") || "").trim();
+      const readyAt = String(formData.get("deliveryReadyAt") || "").trim();
+
+      if ((readinessType === "hours" || readinessType === "days") && Number(readinessValue || 0) < 1) {
+        return readinessType === "hours"
+          ? "Enter how many hours before this product is ready."
+          : "Enter how many days before this product is ready.";
+      }
+
+      if (readinessType === "scheduled_date" && !readyAt) {
+        return "Select the exact date/time this product will be ready.";
+      }
     }
 
     if (previews.length < 1) {
@@ -535,6 +552,44 @@ function Create() {
                 <option value="substitute_available">Substitute available</option>
               </select>
             </label>
+
+            {createType === "product" && (
+              <>
+                <label>
+                  <span>When will this product be ready for delivery?</span>
+                  <select
+                    name="deliveryReadinessType"
+                    defaultValue={existingProduct?.deliveryReadiness?.type || "immediate"}
+                  >
+                    <option value="immediate">Ready immediately</option>
+                    <option value="hours">Ready in hours</option>
+                    <option value="days">Ready in days</option>
+                    <option value="scheduled_date">Ready on selected date</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>Hours/days value</span>
+                  <input
+                    name="deliveryReadinessValue"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={existingProduct?.deliveryReadiness?.value || ""}
+                    placeholder="Example: 3"
+                  />
+                </label>
+
+                <label>
+                  <span>Selected ready date/time</span>
+                  <input
+                    name="deliveryReadyAt"
+                    type="datetime-local"
+                    defaultValue={existingProduct?.deliveryReadiness?.readyAt?.slice(0, 16) || ""}
+                  />
+                </label>
+              </>
+            )}
 
             <label>
               <span>Return policy</span>

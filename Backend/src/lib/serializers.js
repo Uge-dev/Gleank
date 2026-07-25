@@ -91,6 +91,20 @@ export function serializeStore(row) {
     marketId: row.market_id || null,
     shopStallNumber: row.shop_stall_number || "",
     shopSection: row.shop_section || "",
+    marketSection: row.market_section || row.shop_section || "",
+    shopNumber: row.shop_number || row.shop_stall_number || "",
+    shopId: row.shop_id || "",
+    governmentTaxId: row.government_tax_id || "",
+    marketAssociationId: row.market_association_id || "",
+    internalGleencShopCode: row.internal_gleenc_shop_code || "",
+    pickupInstruction: row.pickup_instruction || "",
+    kycProvider: row.kyc_provider || "manual",
+    kycStatus: row.kyc_status || "not_started",
+    kycLevel: Number(row.kyc_level || 0),
+    kycVerifiedAt: row.kyc_verified_at || null,
+    phoneVerificationStatus: row.phone_verification_status || "not_started",
+    payoutAccountStatus: row.payout_account_status || "not_started",
+    profileCompletionPercent: Number(row.profile_completion_percent || 0),
     pickupLat: row.pickup_lat === null || row.pickup_lat === undefined ? null : Number(row.pickup_lat),
     pickupLng: row.pickup_lng === null || row.pickup_lng === undefined ? null : Number(row.pickup_lng),
     createdAt: row.created_at,
@@ -100,6 +114,17 @@ export function serializeStore(row) {
 
 export function serializeProduct(row) {
   if (!row) return null;
+
+  const deliveryReadinessType = row.delivery_readiness_type || "immediate";
+  const deliveryReadyAfterMinutes = numberOrFallback(row.delivery_ready_after_minutes, 0);
+  const deliveryReadinessLabel =
+    deliveryReadinessType === "hours"
+      ? `Ready for delivery in ${Math.max(1, Math.round(deliveryReadyAfterMinutes / 60))} hour(s)`
+      : deliveryReadinessType === "days"
+        ? `Ready for delivery in ${Math.max(1, Math.round(deliveryReadyAfterMinutes / 1440))} day(s)`
+        : deliveryReadinessType === "scheduled_date" && row.delivery_ready_at
+          ? `Ready for delivery from ${row.delivery_ready_at}`
+          : "Ready for delivery immediately";
 
   return {
     id: row.id,
@@ -116,7 +141,19 @@ export function serializeProduct(row) {
     moderationReasons: safeJsonArray(row.moderation_reasons),
     riskScore: numberOrFallback(row.risk_score, 0),
     riskLevel: row.risk_level || "low",
+    priceValidationStatus: row.price_validation_status || "not_checked",
+    priceValidationNote: row.price_validation_note || "",
+    ocrReviewStatus: row.ocr_review_status || "not_run",
+    requiresAdminReview: Boolean(row.requires_admin_review),
+    lastValidatedAt: row.last_validated_at || null,
     availabilityStatus: row.availability_status || "available_now",
+    deliveryReadiness: {
+      type: deliveryReadinessType,
+      value: row.delivery_readiness_value || "",
+      readyAfterMinutes: deliveryReadyAfterMinutes,
+      readyAt: row.delivery_ready_at || null,
+      label: deliveryReadinessLabel,
+    },
     sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
     returnPolicy: row.return_policy || "standard",
     packageProfile: {

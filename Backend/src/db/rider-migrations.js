@@ -370,6 +370,12 @@ export function runRiderMigrations() {
   ensureColumn("rider_assignments", "dispatch_expires_at", "TEXT");
   ensureColumn("rider_assignments", "dispatch_timeout_policy", "TEXT NOT NULL DEFAULT 'campus'");
   ensureColumn("rider_assignments", "package_tag_code", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "delivery_batch_id", "TEXT");
+  ensureColumn("rider_assignments", "pickup_task_id", "TEXT");
+  ensureColumn("rider_assignments", "seller_pickup_code_verified_at", "TEXT");
+  ensureColumn("rider_assignments", "buyer_delivery_code_verified_at", "TEXT");
+  ensureColumn("rider_assignments", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_assignments", "last_code_attempt_at", "TEXT");
 
   ensureColumn("rider_profiles", "transport_type", "TEXT NOT NULL DEFAULT 'motorcycle'");
   ensureColumn("rider_profiles", "max_package_size", "TEXT NOT NULL DEFAULT 'small_medium'");

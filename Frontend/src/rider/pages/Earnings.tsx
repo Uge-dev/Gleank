@@ -15,7 +15,7 @@ export default function Earnings() {
         <StatCard label="Weekly Earnings" value={formatCurrency(earnings.weekly)} icon={FiTrendingUp} tone="cyan" />
         <StatCard label="Monthly Earnings" value={formatCurrency(earnings.monthly)} icon={FiBarChart2} tone="purple" />
         <StatCard label="Platform Payout Pending" value={formatCurrency(earnings.riderPayoutPending)} icon={FiCreditCard} tone="orange" />
-        <StatCard label="Platform Payments Delivered" value={formatCurrency(earnings.onlinePaymentsDelivered)} icon={FiCreditCard} tone="dark" />
+        <StatCard label="Online Deliveries" value={earnings.onlinePaymentsDelivered} icon={FiCreditCard} tone="dark" />
         <StatCard label="Completed Deliveries Count" value={earnings.completedDeliveriesCount} icon={FiCheckCircle} tone="green" />
       </div>
       <div className="mt-6">

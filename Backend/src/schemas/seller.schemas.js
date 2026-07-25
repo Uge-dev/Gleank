@@ -60,6 +60,10 @@ const returnPolicySchema = z
   .enum(["standard", "limited", "final_sale"])
   .default("standard");
 
+const deliveryReadinessSchema = z
+  .enum(["immediate", "hours", "days", "scheduled_date"])
+  .default("immediate");
+
 export const storeUpdateSchema = z.object({
   name: z.string().trim().min(2).max(100),
   description: z.string().trim().max(1_500).default(""),
@@ -90,6 +94,10 @@ export const productSchema = z.object({
   status: z.enum(["draft", "active", "out_of_stock"]).default("draft"),
   availabilityStatus: availabilitySchema,
   returnPolicy: returnPolicySchema,
+  deliveryReadinessType: deliveryReadinessSchema,
+  deliveryReadinessValue: z.string().trim().max(80).optional().default(""),
+  deliveryReadyAfterMinutes: optionalNumberValue(0).default(0),
+  deliveryReadyAt: z.string().trim().max(80).optional().default(""),
   isFeatured: booleanValue.optional().default(false),
   packageSize: z.enum(["small", "medium", "large", "extra_large"]).optional(),
   packageWeightClass: z.enum(["very_light", "light", "medium", "heavy", "very_heavy"]).optional(),

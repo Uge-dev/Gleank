@@ -36,6 +36,7 @@ interface RiderDataContextValue {
   refresh: () => Promise<void>;
   startDelivery: (assignmentId: string) => Promise<void>;
   verifyPickupCode: (sellerPickupCode: string, assignmentId?: string, proofFile?: File | null, proofNote?: string, locationLabel?: string) => Promise<VerifyResult>;
+  verifyDeliveryCode: (orderId: string, customerDeliveryCode: string) => Promise<VerifyResult>;
   generatePayment: (orderId: string) => Promise<PaymentLinkResult>;
   confirmOnlinePayment: (orderId: string) => Promise<void>;
   markCashReceived: (orderId: string) => void;
@@ -75,9 +76,9 @@ function calculateEarnings(completed: FullDeliveryOrder[], orders: FullDeliveryO
     ...base,
     today: Math.max(base.today, deliveredToday.reduce((sum, order) => sum + order.riderEarning, 0)),
     completedDeliveriesCount: (includeMockBase ? earningsSummary.completedDeliveriesCount - seedCompletedOrders.length : 0) + completed.length,
-    cashCollected: cashOrders.reduce((sum, order) => sum + (order.paymentStatus === 'paid_cash' ? order.totalAmount : 0), 0),
-    onlinePaymentsDelivered: onlineDelivered.reduce((sum, order) => sum + order.totalAmount, 0),
-    platformFeesHandled: completed.reduce((sum, order) => sum + order.platformFee, 0),
+    cashCollected: cashOrders.length,
+    onlinePaymentsDelivered: onlineDelivered.length,
+    platformFeesHandled: 0,
     riderPayoutPending
   };
 }
@@ -286,6 +287,29 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       const result = riderLocalStore.verifyPickup(assignmentId, sellerPickupCode, proofFile.name, proofNote, locationLabel);
       applyStateFromLocal();
       return result.ok ? { ok: true, order: result.order } : { ok: false, message: result.message };
+    },
+    async verifyDeliveryCode(orderId: string, customerDeliveryCode: string) {
+      if (!orderId) return { ok: false, message: 'Active delivery order is required.' };
+      if (!customerDeliveryCode.trim()) return { ok: false, message: 'Enter the buyer delivery code to continue.' };
+      if (shouldUseApi()) {
+        try {
+          const response = await riderApi.verifyDeliveryCode(orderId, customerDeliveryCode);
+          setAssignments((current) => current.map((item) => (item.id === response.assignment.id ? response.assignment : item)));
+          if (response.order) {
+            setOrders((current) => [response.order!, ...current.filter((item) => item.id !== response.order!.id)]);
+            setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order!.id])));
+          }
+          setApiConnected(true);
+          return { ok: true, order: response.order };
+        } catch (error) {
+          setApiConnected(false);
+          if (!shouldUseMock()) {
+            return { ok: false, message: error instanceof Error ? error.message : 'Delivery code verification failed.' };
+          }
+        }
+      }
+      if (!shouldUseMock()) return { ok: false, message: 'Rider API is not connected.' };
+      return { ok: false, message: 'Delivery code verification needs the live Gleenc API.' };
     },
     async generatePayment(orderId: string) {
       if (shouldUseApi()) {

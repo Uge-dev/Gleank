@@ -48,15 +48,25 @@ import {
 import {
   adminLogin,
   clearAdminToken,
+  createAdminPriceRange,
   deleteAdminRecord,
+  deleteAdminPriceRange,
+  decideAdminKyc,
+  fetchAdminAuditLogs,
   fetchAdminDataset,
+  fetchAdminKyc,
   fetchAdminProfile,
+  fetchAdminPriceRanges,
   fetchAdminRiders,
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
+  type AdminAuditLog,
+  type AdminKycVerification,
+  type AdminPriceRange,
   type AdminProfile,
   unlockAdminRiderCapacity,
+  updateAdminPriceRange,
   updateAdminRecordFields,
   updateAdminRecordStatus,
   updateAdminRiderVerification,
@@ -501,6 +511,9 @@ function AdminDashboard() {
   const [disputeFilter, setDisputeFilter] = useState<"all" | "buyer" | "seller" | "rider">("all");
   const [data, setData] = useState<AdminDataset>(emptyAdminDataset);
   const [riders, setRiders] = useState<AdminRider[]>([]);
+  const [kycRows, setKycRows] = useState<AdminKycVerification[]>([]);
+  const [priceRanges, setPriceRanges] = useState<AdminPriceRange[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -534,10 +547,13 @@ function AdminDashboard() {
       const nextData = await fetchAdminDataset();
       setData({ ...emptyAdminDataset, ...nextData });
 
-      const [profileResult, riderRowsResult] =
+      const [profileResult, riderRowsResult, kycResult, priceRangeResult, auditLogResult] =
         await Promise.allSettled([
           fetchAdminProfile(),
           fetchAdminRiders(),
+          fetchAdminKyc(),
+          fetchAdminPriceRanges(),
+          fetchAdminAuditLogs(),
         ]);
 
       if (profileResult.status === "fulfilled") {
@@ -546,6 +562,18 @@ function AdminDashboard() {
 
       if (riderRowsResult.status === "fulfilled") {
         setRiders(riderRowsResult.value);
+      }
+
+      if (kycResult.status === "fulfilled") {
+        setKycRows(kycResult.value.verifications);
+      }
+
+      if (priceRangeResult.status === "fulfilled") {
+        setPriceRanges(priceRangeResult.value.priceRanges);
+      }
+
+      if (auditLogResult.status === "fulfilled") {
+        setAuditLogs(auditLogResult.value.logs);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -671,6 +699,68 @@ function AdminDashboard() {
         note: "Admin unlocked rider delivery capacity for profile correction after support review.",
       });
       await refreshRiderRows();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function decideKycReview(row: AdminKycVerification, action: "approve" | "reject" | "request-resubmission") {
+    const reason =
+      action === "approve"
+        ? ""
+        : window.prompt(
+            action === "reject"
+              ? "Enter rejection reason:"
+              : "Tell the seller/rider what they need to resubmit:",
+            row.failureReason || "",
+          );
+
+    if (reason === null) return;
+
+    setLoadError("");
+    try {
+      await decideAdminKyc(row.id, action, { reason: reason || undefined });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function createPriceRangeFromPrompt() {
+    const category = window.prompt("Category name for this price range:");
+    if (!category) return;
+    const minPrice = Number(window.prompt("Minimum price in naira:", "0") || 0);
+    const maxPrice = Number(window.prompt("Maximum price in naira:", "0") || 0);
+    const actionInput = window.prompt("Action when price is outside range: allow, warn, review, or block", "review") || "review";
+    const action = ["allow", "warn", "review", "block"].includes(actionInput) ? actionInput as AdminPriceRange["action"] : "review";
+
+    setLoadError("");
+    try {
+      await createAdminPriceRange({ category, minPrice, maxPrice, action, isActive: true });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function togglePriceRange(range: AdminPriceRange) {
+    setLoadError("");
+    try {
+      await updateAdminPriceRange(range.id, { isActive: !range.isActive });
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function removePriceRange(range: AdminPriceRange) {
+    const confirmed = window.confirm(`Delete the ${range.category} price range?`);
+    if (!confirmed) return;
+
+    setLoadError("");
+    try {
+      await deleteAdminPriceRange(range.id);
       await loadAdminData(false);
     } catch {
       showAdminConnectionNotice();
@@ -1431,23 +1521,92 @@ function AdminDashboard() {
           ) : null}
 
           {activeTab === "activityLogs" ? (
-            <DataTable<AdminActivityLog>
-              title="Admin Activity Logs"
-              subtitle="Every important admin action should be recorded for safety and accountability."
-              rows={data.activityLogs}
-              search={search}
-              onView={(log) => openRecord(log.action, log)}
-              columns={[
-                { label: "Admin", render: (log) => log.admin },
-                { label: "Action", render: (log) => log.action },
-                { label: "Target", render: (log) => log.target },
-                { label: "Time", render: (log) => log.time },
-              ]}
-            />
+            <div className="admin-stage3-grid">
+              <DataTable<AdminAuditLog>
+                title="Stage 3 Audit Trail"
+                subtitle="Live admin actions for KYC, price controls and trust operations."
+                rows={auditLogs}
+                search={search}
+                onView={(log) => openRecord(log.action, log as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Admin", render: (log) => log.adminName },
+                  { label: "Action", render: (log) => log.action },
+                  { label: "Target", render: (log) => `${log.targetType} ${log.targetId}`.trim() },
+                  { label: "Summary", render: (log) => log.summary },
+                  { label: "Time", render: (log) => formatAdminTime(log.createdAt) },
+                ]}
+              />
+
+              <DataTable<AdminActivityLog>
+                title="Platform Activity Logs"
+                subtitle="Existing user, seller, rider and order activity snapshots."
+                rows={data.activityLogs}
+                search={search}
+                onView={(log) => openRecord(log.action, log)}
+                columns={[
+                  { label: "Admin", render: (log) => log.admin },
+                  { label: "Action", render: (log) => log.action },
+                  { label: "Target", render: (log) => log.target },
+                  { label: "Time", render: (log) => log.time },
+                ]}
+              />
+            </div>
           ) : null}
 
           {activeTab === "settings" ? (
             <section className="admin-settings-grid">
+              <DataTable<AdminKycVerification>
+                title="Stage 3 Verification Reviews"
+                subtitle="Review manual/mock/Dojah KYC records for sellers and riders. Approved accounts sync back to their dashboard profile completion."
+                rows={kycRows}
+                search={search}
+                onView={(row) => openRecord(`${row.user.name} verification`, row as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Account", render: (row) => row.user.name },
+                  { label: "Role", render: (row) => row.role },
+                  { label: "Provider", render: (row) => row.provider },
+                  { label: "Status", render: (row) => <StatusBadge status={row.status} /> },
+                  { label: "Review", render: (row) => <StatusBadge status={row.adminReviewStatus} /> },
+                  { label: "Completion", render: (row) => `${row.completionPercent || 0}%` },
+                ]}
+                actions={(row) => (
+                  <>
+                    <ActionButton
+                      tone="success"
+                      disabled={row.status === "verified" || row.adminReviewStatus === "approved"}
+                      onClick={() => decideKycReview(row, "approve")}
+                    >
+                      {row.status === "verified" || row.adminReviewStatus === "approved" ? "Approved" : "Approve"}
+                    </ActionButton>
+                    <ActionButton tone="soft" onClick={() => decideKycReview(row, "request-resubmission")}>More Info</ActionButton>
+                    <ActionButton tone="danger" onClick={() => decideKycReview(row, "reject")}>Reject</ActionButton>
+                  </>
+                )}
+              />
+
+              <DataTable<AdminPriceRange>
+                title="Price Validation Ranges"
+                subtitle="Control category price ranges used to warn, review or block suspicious product pricing."
+                rows={priceRanges}
+                search={search}
+                onView={(range) => openRecord(`${range.category} price range`, range as unknown as Record<string, unknown>)}
+                columns={[
+                  { label: "Category", render: (range) => range.category },
+                  { label: "Seller type", render: (range) => range.sellerType },
+                  { label: "Scope", render: (range) => range.marketScope },
+                  { label: "Min", render: (range) => `₦${range.minPrice.toLocaleString()}` },
+                  { label: "Max", render: (range) => `₦${range.maxPrice.toLocaleString()}` },
+                  { label: "Action", render: (range) => <StatusBadge status={range.action} /> },
+                ]}
+                actions={(range) => (
+                  <>
+                    <ActionButton tone="success" onClick={() => void createPriceRangeFromPrompt()}>New Range</ActionButton>
+                    <ActionButton tone="soft" onClick={() => void togglePriceRange(range)}>{range.isActive ? "Disable" : "Enable"}</ActionButton>
+                    <ActionButton tone="danger" onClick={() => void removePriceRange(range)}>Delete</ActionButton>
+                  </>
+                )}
+              />
+
               <div className="admin-panel-card">
                 <div className="admin-panel-head">
                   <div>
@@ -1472,6 +1631,7 @@ function AdminDashboard() {
                   </div>
                 </div>
                 <div className="admin-settings-actions">
+                  <button type="button" onClick={() => void createPriceRangeFromPrompt()}><FaShieldAlt /> Add price range</button>
                   <button type="button" onClick={() => void refreshLiveData()}><FaUndo /> Refresh admin data</button>
                   <button type="button" onClick={() => setLogoutModalOpen(true)}><FaBan /> Logout admin session</button>
                 </div>

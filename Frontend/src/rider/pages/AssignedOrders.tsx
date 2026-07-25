@@ -7,6 +7,7 @@ import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import PageHeader from '../components/ui/PageHeader';
 import { shouldUseApi } from '../config/env';
+import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import type { RiderDispatchOffer } from '../services/riderApi';
 import { formatDateTime } from '../utils/format';
@@ -38,8 +39,12 @@ export default function AssignedOrders() {
       const payload = await riderApi.activeDispatches();
       setDispatches(payload.dispatches || []);
       setDispatchError('');
-    } catch {
-      setDispatchError('Could not load automated dispatch offers right now.');
+    } catch (requestError) {
+      if (requestError instanceof ApiClientError && requestError.status === 403) {
+        setDispatchError('Your rider account is not ready for dispatch yet.');
+      } else {
+        setDispatchError('Unable to load dispatch offers right now. Please try again.');
+      }
     } finally {
       setDispatchLoading(false);
     }

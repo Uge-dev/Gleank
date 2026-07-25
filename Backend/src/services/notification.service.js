@@ -1,6 +1,7 @@
 import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import { publishNotificationEvent } from "./realtime.service.js";
 
 const NOTIFICATION_TYPES = new Set([
   "order",
@@ -18,6 +19,25 @@ function clean(value, max = 500) {
 
 function typeOrFallback(value) {
   return NOTIFICATION_TYPES.has(value) ? value : "admin";
+}
+
+function notificationHasColumn(column) {
+  try {
+    return db
+      .prepare("PRAGMA table_info(notifications)")
+      .all()
+      .some((item) => item.name === column);
+  } catch {
+    return false;
+  }
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value || {});
+  } catch {
+    return "{}";
+  }
 }
 
 function serializeNotification(row) {
@@ -38,31 +58,60 @@ function serializeNotification(row) {
 export function createNotification(input) {
   const userId = clean(input?.userId, 140);
   const title = clean(input?.title, 160);
-  const body = clean(input?.body, 900);
+  const body = clean(input?.body ?? input?.message, 900);
 
   if (!userId || !title) return null;
 
   const now = new Date().toISOString();
   const id = createId("ntf");
 
-  db.prepare(`
-    INSERT INTO notifications (
-      id, user_id, type, title, body, action_label, action_path,
-      image_url, is_read, read_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
-  `).run(
-    id,
-    userId,
-    typeOrFallback(input?.type),
-    title,
-    body,
-    clean(input?.actionLabel || "Open", 80),
-    clean(input?.actionPath || "/", 240),
-    clean(input?.imageUrl || "", 500) || null,
-    now,
-  );
+  if (notificationHasColumn("metadata_json")) {
+    db.prepare(`
+      INSERT INTO notifications (
+        id, user_id, type, title, body, action_label, action_path,
+        image_url, is_read, read_at, role, message, action_url,
+        metadata_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?, ?)
+    `).run(
+      id,
+      userId,
+      typeOrFallback(input?.type),
+      title,
+      body,
+      clean(input?.actionLabel || "Open", 80),
+      clean(input?.actionPath || input?.actionUrl || "/", 240),
+      clean(input?.imageUrl || "", 500) || null,
+      clean(input?.role, 60),
+      body,
+      clean(input?.actionUrl || input?.actionPath || "/", 240),
+      safeJson(input?.metadata),
+      now,
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO notifications (
+        id, user_id, type, title, body, action_label, action_path,
+        image_url, is_read, read_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
+    `).run(
+      id,
+      userId,
+      typeOrFallback(input?.type),
+      title,
+      body,
+      clean(input?.actionLabel || "Open", 80),
+      clean(input?.actionPath || "/", 240),
+      clean(input?.imageUrl || "", 500) || null,
+      now,
+    );
+  }
 
-  return db.prepare("SELECT * FROM notifications WHERE id = ?").get(id);
+  const row = db.prepare("SELECT * FROM notifications WHERE id = ?").get(id);
+  publishNotificationEvent([userId], "notification", serializeNotification(row));
+  publishNotificationEvent([userId], "unread-count", {
+    unreadCount: getNotificationUnreadCount(userId),
+  });
+  return row;
 }
 
 export function createNotificationForUsers(userIds, input) {

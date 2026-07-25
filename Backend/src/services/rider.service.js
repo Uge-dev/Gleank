@@ -15,6 +15,7 @@ import {
   dispatchRemainingSeconds,
   resolveDispatchTimeoutPolicy,
 } from "./dispatch-timeout.service.js";
+import { generateOrderVerificationCode } from "./logistics.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -44,7 +45,7 @@ function safeJsonArray(value) {
 }
 
 function secret() {
-  return process.env.RIDER_OTP_SECRET || env.jwtSecret || "gleank-rider-otp-secret";
+  return process.env.RIDER_OTP_SECRET || env.jwtSecret || "gleenc-logistics-otp";
 }
 
 export function hashOtp(code) {
@@ -62,6 +63,63 @@ function verifyOtp(code, hash) {
 
 function generateOtp() {
   return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function shouldApplyDevelopmentRiderDispatchDefaults() {
+  return !env.isProduction && (
+    env.autoVerifyRidersInDev ||
+    env.autoSetRidersOnlineInDev ||
+    env.enableTestRiderDispatch
+  );
+}
+
+function applyDevelopmentRiderDispatchDefaults(userId, now = nowIso()) {
+  if (!shouldApplyDevelopmentRiderDispatchDefaults()) return;
+
+  const shouldVerify = env.autoVerifyRidersInDev || env.enableTestRiderDispatch;
+  const shouldSetOnline = env.autoSetRidersOnlineInDev || env.enableTestRiderDispatch;
+  const shouldVerifyEmail = env.enableTestRiderDispatch;
+
+  db.prepare(`
+    UPDATE users
+    SET is_active = 1,
+        email_verified = CASE WHEN ? THEN 1 ELSE email_verified END,
+        email_verified_at = CASE
+          WHEN ? THEN COALESCE(email_verified_at, ?)
+          ELSE email_verified_at
+        END,
+        updated_at = ?
+    WHERE id = ? AND role = 'rider'
+  `).run(
+    shouldVerifyEmail ? 1 : 0,
+    shouldVerifyEmail ? 1 : 0,
+    now,
+    now,
+    userId,
+  );
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET verification_status = CASE WHEN ? THEN 'verified' ELSE verification_status END,
+        availability = CASE WHEN ? THEN 'online' ELSE availability END,
+        availability_mode = CASE
+          WHEN ? AND gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+          WHEN ? THEN 'online_zone_only'
+          ELSE availability_mode
+        END,
+        safety_status = 'normal',
+        can_receive_auto_dispatch = 1,
+        capacity_locked = 0,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    shouldVerify ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    shouldSetOnline ? 1 : 0,
+    now,
+    userId,
+  );
 }
 
 function phoneForWhatsapp(value) {
@@ -215,6 +273,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     dispatchTimeoutPolicy: row.dispatch_timeout_policy || "campus",
     dispatchRemainingSeconds: dispatchRemainingSeconds(row.dispatch_expires_at),
     paymentStatus: row.payment_status,
+    paymentMethod: row.payment_method || (row.payment_status === "paid" ? "pay_now" : "pay_on_delivery"),
     marketSource: row.market_source || "",
     sellerType: row.seller_type || "",
     marketId: row.market_id || null,
@@ -235,11 +294,11 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
       lng: row.pickup_lng,
     },
     deliveryPoint: {
-      address: row.delivery_address,
-      lat: row.delivery_lat,
-      lng: row.delivery_lng,
+      address: reveal ? row.delivery_address : "",
+      lat: reveal ? row.delivery_lat : null,
+      lng: reveal ? row.delivery_lng : null,
     },
-    deliveryLocation: row.delivery_address,
+    deliveryLocation: reveal ? row.delivery_address : "Delivery details locked until seller pickup",
     sellerName: row.seller_name,
     sellerPhone: row.seller_phone,
     sellerWhatsApp: sellerAllowsWhatsApp ? phoneForWhatsapp(row.seller_whatsapp || row.seller_phone) : "",
@@ -247,7 +306,9 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     buyerName: reveal ? row.buyer_name : "Locked until pickup",
     buyerPhone: reveal ? row.buyer_phone : "",
     packageSummary: revealPackage ? row.package_summary : "Accept this delivery to see package summary.",
-    packageTagCode: revealPrivate && row.status === "delivered" ? row.package_tag_code || "" : "",
+    packageTagCode: revealPackage ? row.package_tag_code || "" : "",
+    sellerPickupCodeVerifiedAt: row.seller_pickup_code_verified_at || row.picked_up_at || null,
+    buyerDeliveryCodeVerifiedAt: row.buyer_delivery_code_verified_at || null,
     packageValueKobo: 0,
     packageValue: 0,
     deliveryFeeKobo: 0,
@@ -547,8 +608,11 @@ export async function registerRider(input, meta = {}) {
     );
   });
 
+  applyDevelopmentRiderDispatchDefaults(result.user.id, now);
+
   return {
     ...result,
+    user: serializeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(result.user.id) || result.user),
     riderProfile: serializeProfile(getRiderProfile(result.user.id)),
   };
 }
@@ -739,14 +803,14 @@ function loadOrderForAssignment(auth, orderType, orderId) {
   const order = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(orderId);
   if (!order) throw new HttpError(404, "Order was not found.");
   if (auth.role === "seller" && order.seller_id !== (auth.user_id || auth.id)) {
-    throw new HttpError(403, "You can only assign your own seller orders.");
+    throw new HttpError(403, "Only the seller assigned to this order can assign a rider.");
   }
   const payAtDeliveryAllowed =
     order.payment_method === "pay_on_delivery" &&
     order.payment_status === "unpaid" &&
     ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status);
   if (order.payment_status !== "paid" && !payAtDeliveryAllowed) {
-    throw new HttpError(422, "This order cannot be assigned until platform payment is confirmed.");
+    throw new HttpError(422, "Manual rider assignment is not available for this order yet.");
   }
   return order;
 }
@@ -778,8 +842,16 @@ export function createRiderAssignment(auth, input) {
     throw new HttpError(422, "This package value is above the rider's current verification limit.");
   }
 
-  const pickupCode = generateOtp();
-  const deliveryCode = generateOtp();
+  const linkedPickupTask = order.pickup_task_id
+    ? db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(order.pickup_task_id)
+    : null;
+  const linkedDeliveryTask = order.delivery_batch_id
+    ? db.prepare("SELECT * FROM delivery_tasks WHERE delivery_batch_id = ?").get(order.delivery_batch_id)
+    : null;
+  const pickupCode = generateOrderVerificationCode("seller-pickup", order.id) || generateOtp();
+  const deliveryCode = clean(order.verification_code, 12) || generateOrderVerificationCode("buyer-delivery", order.id) || generateOtp();
+  const pickupCodeHash = linkedPickupTask?.pickup_otp_hash || order.seller_pickup_code_hash || hashOtp(pickupCode);
+  const deliveryCodeHash = linkedDeliveryTask?.delivery_otp_hash || order.buyer_delivery_code_hash || hashOtp(deliveryCode);
   const now = nowIso();
   const id = createId("ras");
   const assignmentPaymentStatus = order.payment_status === "paid" ? "paid" : "unpaid";
@@ -806,8 +878,9 @@ export function createRiderAssignment(auth, input) {
         payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
         pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
-        package_tag_code, package_value_kobo, delivery_fee_kobo, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        package_tag_code, package_value_kobo, delivery_fee_kobo,
+        delivery_batch_id, pickup_task_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -829,8 +902,8 @@ export function createRiderAssignment(auth, input) {
       dispatchPolicy.policyKey,
       assignmentPaymentStatus,
       assignmentPaymentConfirmedAt,
-      hashOtp(pickupCode),
-      hashOtp(deliveryCode),
+      pickupCodeHash,
+      deliveryCodeHash,
       pickupPoint.address,
       pickupPoint.lat,
       pickupPoint.lng,
@@ -846,10 +919,52 @@ export function createRiderAssignment(auth, input) {
       order.package_tag_code || "",
       input.packageValueKobo || order.total_kobo || 0,
       input.deliveryFeeKobo || order.delivery_fee_kobo || 0,
+      order.delivery_batch_id || null,
+      order.pickup_task_id || null,
       now,
       now,
     );
     updateConnectedOrderAssignment(input.orderType, input.orderId, id, input.riderId, input.orderType === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
+    if (input.orderType === "store_order") {
+      db.prepare(`
+        UPDATE orders
+        SET assigned_rider_id = ?,
+            rider_assignment_id = ?,
+            auto_dispatch_status = 'manual_rider_assigned',
+            dispatch_status = 'manual_rider_assigned',
+            delivery_status = 'rider_assigned',
+            updated_at = ?
+        WHERE id = ?
+      `).run(input.riderId, id, now, input.orderId);
+    }
+    if (order.delivery_batch_id) {
+      db.prepare(`
+        UPDATE dispatch_attempts
+        SET status = CASE WHEN status = 'offered' THEN 'rejected' ELSE status END,
+            rejection_reason = CASE WHEN status = 'offered' THEN 'Seller manually assigned another rider' ELSE rejection_reason END,
+            updated_at = ?
+        WHERE delivery_batch_id = ?
+      `).run(now, order.delivery_batch_id);
+      db.prepare(`
+        UPDATE delivery_batches
+        SET assigned_rider_id = ?,
+            assigned_by_seller_id = ?,
+            assigned_manually_at = COALESCE(assigned_manually_at, ?),
+            status = 'rider_assigned',
+            dispatch_status = 'manual_rider_assigned',
+            manual_assignment_unlocked = 1,
+            updated_at = ?
+        WHERE id = ?
+      `).run(input.riderId, auth.user_id || auth.id || null, now, now, order.delivery_batch_id);
+      db.prepare(`
+        UPDATE pickup_tasks
+        SET status = 'pickup_in_progress',
+            updated_at = ?
+        WHERE delivery_batch_id = ?
+          AND status != 'seller_rejected'
+      `).run(now, order.delivery_batch_id);
+      db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, order.delivery_batch_id);
+    }
     createNotification({
       userId: input.riderId,
       type: "order",
@@ -860,6 +975,14 @@ export function createRiderAssignment(auth, input) {
           : `A Pay at Delivery Gleenc order has been assigned for pickup at ${pickupPoint.address}. Accept within ${dispatchPolicy.timeoutMinutes} minutes. Delivery code stays locked until Paystack confirms payment.`,
       actionLabel: "View delivery",
       actionPath: `/rider/assignments/${id}`,
+    });
+    createNotification({
+      userId: order.buyer_id,
+      type: "order",
+      title: "Rider assigned",
+      body: "The seller assigned a verified rider to your delivery.",
+      actionLabel: "Track order",
+      actionPath: input.orderType === "used_order" ? `/used-orders/${order.id}` : `/orders/${order.id}`,
     });
   });
 
@@ -891,8 +1014,33 @@ export function acceptRiderAssignment(auth, assignmentId) {
     throw new HttpError(422, "This package value is above your current rider verification limit.");
   }
   const now = nowIso();
-  db.prepare("UPDATE rider_assignments SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, assignmentId);
-  db.prepare("UPDATE rider_profiles SET availability = 'busy', updated_at = ? WHERE user_id = ?").run(now, riderId);
+  transaction(() => {
+    db.prepare("UPDATE rider_assignments SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, assignmentId);
+    db.prepare("UPDATE rider_profiles SET availability = 'busy', availability_mode = 'busy', updated_at = ? WHERE user_id = ?").run(now, riderId);
+    updateConnectedOrderAssignment(row.order_type, row.order_id, assignmentId, riderId, row.order_type === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
+    if (row.order_type === "store_order") {
+      db.prepare(`
+        UPDATE orders
+        SET auto_dispatch_status = 'rider_accepted',
+            dispatch_status = 'rider_accepted',
+            delivery_status = 'rider_assigned',
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, row.order_id);
+    }
+    if (row.delivery_batch_id) {
+      db.prepare(`
+        UPDATE delivery_batches
+        SET status = 'rider_accepted',
+            dispatch_status = 'rider_accepted',
+            rider_accepted_at = COALESCE(rider_accepted_at, ?),
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, row.delivery_batch_id);
+      db.prepare("UPDATE pickup_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ? AND status != 'seller_rejected'").run(now, row.delivery_batch_id);
+      db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, row.delivery_batch_id);
+    }
+  });
   return serializeAssignment(assignmentByIdForRider(riderId, assignmentId));
 }
 
@@ -993,7 +1141,16 @@ export function verifyPickup(auth, assignmentId, input) {
   if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
     throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
   }
-  if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) throw new HttpError(422, "Seller pickup OTP is incorrect.");
+  if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) {
+    db.prepare(`
+      UPDATE rider_assignments
+      SET code_attempt_count = code_attempt_count + 1,
+          last_code_attempt_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(nowIso(), nowIso(), row.id);
+    throw new HttpError(422, "Invalid pickup code. Please confirm the code with the seller.");
+  }
   requireProofEvidence(input, "Pickup");
   requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
 
@@ -1003,13 +1160,54 @@ export function verifyPickup(auth, assignmentId, input) {
       UPDATE rider_assignments
       SET status = 'picked_up', pickup_proof_url = ?, pickup_proof_note = ?,
           pickup_proof_lat = ?, pickup_proof_lng = ?, pickup_proof_accuracy_meters = ?,
-          pickup_proof_created_at = ?, picked_up_at = ?, updated_at = ?
+          pickup_proof_created_at = ?, picked_up_at = ?,
+          seller_pickup_code_verified_at = COALESCE(seller_pickup_code_verified_at, ?),
+          updated_at = ?
       WHERE id = ?
     `).run(
       proofUrlFromInput(input), clean(input.proofNote, 500), input.proofLocation.lat,
-      input.proofLocation.lng, input.proofLocation.accuracyMeters || 0, now, now, now, assignmentId,
+      input.proofLocation.lng, input.proofLocation.accuracyMeters || 0, now, now, now, now, assignmentId,
     );
     updateConnectedOrderAssignment(row.order_type, row.order_id, assignmentId, riderId, row.order_type === "used_order" ? "meetup_or_delivery" : "out_for_delivery");
+    if (row.order_type === "store_order") {
+      db.prepare(`
+        UPDATE orders
+        SET pickup_verified_at = COALESCE(pickup_verified_at, ?),
+            seller_pickup_code_verified_at = COALESCE(seller_pickup_code_verified_at, ?),
+            delivery_status = 'out_for_delivery',
+            dispatch_status = 'picked_up',
+            auto_dispatch_status = 'picked_up',
+            stage4_status = CASE
+              WHEN payment_method = 'pay_on_delivery' AND payment_status != 'paid' THEN 'awaiting_buyer_payment'
+              ELSE 'out_for_delivery'
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, now, row.order_id);
+    }
+    if (row.pickup_task_id) {
+      db.prepare(`
+        UPDATE pickup_tasks
+        SET status = 'picked_up',
+            picked_up_at = COALESCE(picked_up_at, ?),
+            seller_pickup_code_verified_at = COALESCE(seller_pickup_code_verified_at, ?),
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, now, row.pickup_task_id);
+    }
+    if (row.delivery_batch_id) {
+      const remaining = Number(db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM pickup_tasks
+        WHERE delivery_batch_id = ?
+          AND status != 'picked_up'
+          AND status != 'seller_rejected'
+      `).get(row.delivery_batch_id).count || 0);
+      if (remaining === 0) {
+        db.prepare("UPDATE delivery_batches SET status = 'out_for_delivery', dispatch_status = 'picked_up', updated_at = ? WHERE id = ?").run(now, row.delivery_batch_id);
+        db.prepare("UPDATE delivery_tasks SET status = 'out_for_delivery', updated_at = ? WHERE delivery_batch_id = ?").run(now, row.delivery_batch_id);
+      }
+    }
     createNotification({
       userId: row.seller_id,
       type: "order",
@@ -1018,9 +1216,106 @@ export function verifyPickup(auth, assignmentId, input) {
       actionLabel: "View order",
       actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
     });
+    createNotification({
+      userId: row.buyer_id,
+      type: "order",
+      title: row.payment_status === "paid" ? "Rider is on the way" : "Rider picked up your order",
+      body:
+        row.payment_status === "paid"
+          ? "The rider verified seller pickup. Keep your delivery code private until the item reaches you."
+          : "The rider verified seller pickup. Complete secure Gleenc/Paystack payment before sharing your delivery code.",
+      actionLabel: "View order",
+      actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+    });
   });
 
   return serializeAssignment(assignmentByIdForRider(riderId, assignmentId), { revealPrivate: true });
+}
+
+export function verifyPickupByOrder(auth, orderId, input) {
+  const riderId = requireRiderUser(auth);
+  const row = assignmentByOrderForRider(riderId, orderId);
+  if (!row) throw new HttpError(404, "Delivery assignment was not found for this order.");
+  return verifyPickup(auth, row.id, input);
+}
+
+export function verifyDeliveryCode(auth, orderId, input) {
+  const riderId = requireRiderUser(auth);
+  requireVerifiedRider(riderId);
+  const row = assignmentByOrderForRider(riderId, orderId);
+  if (!row) throw new HttpError(404, "Delivery assignment was not found for this order.");
+  if (!["picked_up", "out_for_delivery"].includes(row.status)) {
+    throw new HttpError(422, "Verify seller pickup before verifying the buyer delivery code.");
+  }
+
+  const order = connectedOrder(row);
+  if (!order || order.payment_status !== "paid" || row.payment_status !== "paid") {
+    throw new HttpError(422, "Waiting for buyer payment before delivery code can be verified.");
+  }
+
+  const now = nowIso();
+  if (!verifyOtp(input.customerDeliveryCode || input.code, row.delivery_code_hash)) {
+    db.prepare(`
+      UPDATE rider_assignments
+      SET code_attempt_count = code_attempt_count + 1,
+          last_code_attempt_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, now, row.id);
+    throw new HttpError(422, "Invalid delivery code. Please confirm the code with the buyer.");
+  }
+
+  transaction(() => {
+    db.prepare(`
+      UPDATE rider_assignments
+      SET status = CASE WHEN status = 'picked_up' THEN 'out_for_delivery' ELSE status END,
+          buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, now, row.id);
+
+    if (row.order_type === "store_order") {
+      db.prepare(`
+        UPDATE orders
+        SET delivery_verified_at = COALESCE(delivery_verified_at, ?),
+            buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+            delivery_status = 'delivery_code_verified',
+            dispatch_status = 'delivery_code_verified',
+            stage4_status = 'delivery_code_verified',
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, now, row.order_id);
+    }
+
+    if (row.delivery_batch_id) {
+      db.prepare(`
+        UPDATE delivery_tasks
+        SET status = 'delivery_code_verified',
+            buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+            updated_at = ?
+        WHERE delivery_batch_id = ?
+      `).run(now, now, row.delivery_batch_id);
+    }
+
+    createNotification({
+      userId: row.buyer_id,
+      type: "order",
+      title: "Delivery code verified",
+      body: "Your delivery code was verified. The rider can now hand over the package.",
+      actionLabel: "View order",
+      actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+    });
+    createNotification({
+      userId: row.seller_id,
+      type: "order",
+      title: "Buyer code verified",
+      body: "The rider verified the buyer delivery code. Delivery can now be completed.",
+      actionLabel: "View order",
+      actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+    });
+  });
+
+  return serializeAssignment(assignmentByOrderForRider(riderId, orderId), { revealPrivate: true });
 }
 
 export function completeDelivery(auth, orderId, input) {
@@ -1032,23 +1327,56 @@ export function completeDelivery(auth, orderId, input) {
   if (row.payment_status !== "paid") throw new HttpError(422, "Delivery is blocked until platform payment is confirmed.");
   const order = connectedOrder(row);
   if (!order || order.payment_status !== "paid") throw new HttpError(422, "Connected order is not fully paid on the platform.");
-  if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) throw new HttpError(422, "Buyer delivery OTP is incorrect.");
   requireProofEvidence(input, "Delivery");
   requireProofLocationNear(input.proofLocation, { lat: row.delivery_lat, lng: row.delivery_lng }, "Delivery proof");
 
   const now = nowIso();
+  const deliveryCodeAlreadyVerified = Boolean(row.buyer_delivery_code_verified_at);
+  if (!deliveryCodeAlreadyVerified) {
+    if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) {
+      db.prepare(`
+        UPDATE rider_assignments
+        SET code_attempt_count = code_attempt_count + 1,
+            last_code_attempt_at = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, row.id);
+      throw new HttpError(422, "Invalid delivery code. Please confirm the code with the buyer.");
+    }
+  }
   transaction(() => {
     db.prepare(`
       UPDATE rider_assignments
       SET status = 'delivered', delivery_proof_url = ?, delivery_proof_note = ?,
           delivery_proof_lat = ?, delivery_proof_lng = ?, delivery_proof_accuracy_meters = ?,
-          delivery_proof_created_at = ?, delivered_at = ?, updated_at = ?
+          delivery_proof_created_at = ?, delivered_at = ?,
+          buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+          updated_at = ?
       WHERE id = ?
     `).run(
       proofUrlFromInput(input), clean(input.proofNote, 500), input.proofLocation.lat,
-      input.proofLocation.lng, input.proofLocation.accuracyMeters || 0, now, now, now, row.id,
+      input.proofLocation.lng, input.proofLocation.accuracyMeters || 0, now, now, now, now, row.id,
     );
     updateConnectedOrderDelivered(row);
+    if (row.order_type === "store_order") {
+      db.prepare(`
+        UPDATE orders
+        SET status = 'delivered',
+            fulfillment_status = 'delivered',
+            stage4_status = 'delivered',
+            delivery_status = 'delivered',
+            dispatch_status = 'delivered',
+            delivery_verified_at = COALESCE(delivery_verified_at, ?),
+            buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+            delivered_at = COALESCE(delivered_at, ?),
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, now, now, row.order_id);
+    }
+    if (row.delivery_batch_id) {
+      db.prepare("UPDATE delivery_batches SET status = 'delivered', dispatch_status = 'completed', updated_at = ? WHERE id = ?").run(now, row.delivery_batch_id);
+      db.prepare("UPDATE delivery_tasks SET status = 'delivered', delivered_at = COALESCE(delivered_at, ?), updated_at = ? WHERE delivery_batch_id = ?").run(now, now, row.delivery_batch_id);
+    }
     db.prepare(`
       INSERT INTO rider_earnings (id, rider_id, assignment_id, order_id, order_type, amount_kobo, status, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?)

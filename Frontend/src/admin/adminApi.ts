@@ -357,3 +357,121 @@ export async function markAdminSupportConversationRead(conversationId: string) {
     },
   );
 }
+
+export type AdminKycVerification = {
+  id: string;
+  userId: string;
+  role: "seller" | "rider";
+  provider: "mock" | "manual" | "dojah";
+  providerReferenceId: string;
+  status: string;
+  level: number;
+  requiresAdminReview: boolean;
+  adminReviewStatus: string;
+  failureReason: string;
+  documentUrls: string[];
+  selfieUrl: string | null;
+  submittedPayload: Record<string, unknown>;
+  completionPercent: number;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    campus: string;
+    role: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminPriceRange = {
+  id: string;
+  marketScope: string;
+  campus: string;
+  sellerType: string;
+  category: string;
+  subcategory: string;
+  condition: string;
+  minPriceKobo: number;
+  maxPriceKobo: number;
+  minPrice: number;
+  maxPrice: number;
+  action: "allow" | "warn" | "review" | "block";
+  note: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminAuditLog = {
+  id: string;
+  adminId: string | null;
+  adminName: string;
+  adminEmail: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  ipAddress: string;
+  userAgent: string;
+  createdAt: string;
+};
+
+export async function fetchAdminKyc(filters: { role?: string; status?: string; reviewStatus?: string } = {}) {
+  const params = new URLSearchParams();
+  if (filters.role) params.set("role", filters.role);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.reviewStatus) params.set("reviewStatus", filters.reviewStatus);
+  const query = params.toString();
+
+  return request<{ success: boolean; verifications: AdminKycVerification[] }>(
+    `/admin/kyc${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function decideAdminKyc(
+  id: string,
+  action: "approve" | "reject" | "request-resubmission",
+  input: { reason?: string; note?: string } = {},
+) {
+  return request<{ success: boolean; kyc: AdminKycVerification }>(
+    `/admin/kyc/${encodeURIComponent(id)}/${action}`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function fetchAdminPriceRanges() {
+  return request<{ success: boolean; priceRanges: AdminPriceRange[] }>("/admin/price-ranges");
+}
+
+export async function createAdminPriceRange(input: Partial<AdminPriceRange>) {
+  return request<{ success: boolean; priceRange: AdminPriceRange }>("/admin/price-ranges", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateAdminPriceRange(id: string, input: Partial<AdminPriceRange>) {
+  return request<{ success: boolean; priceRange: AdminPriceRange }>(
+    `/admin/price-ranges/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteAdminPriceRange(id: string) {
+  return request<{ success: boolean }>(`/admin/price-ranges/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function fetchAdminAuditLogs() {
+  return request<{ success: boolean; logs: AdminAuditLog[] }>("/admin/audit-logs");
+}

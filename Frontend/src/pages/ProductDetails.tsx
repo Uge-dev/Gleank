@@ -202,6 +202,7 @@ function ProductDetails() {
       sellerId: product.store.slug,
       campus: product.store.campus,
       category: product.category,
+      deliveryReadinessLabel: product.deliveryReadiness?.label,
       stock: product.stock,
       quantity,
     });
@@ -230,6 +231,7 @@ function ProductDetails() {
       sellerId: relatedProduct.store.slug,
       campus: relatedProduct.store.campus,
       category: relatedProduct.category,
+      deliveryReadinessLabel: relatedProduct.deliveryReadiness?.label,
       stock: relatedProduct.stock,
       quantity: 1,
     });
@@ -340,6 +342,11 @@ function ProductDetails() {
               {product.category} • {product.store.campus} •{" "}
               {inStock ? `${product.stock} In stock` : "Out of stock"}
             </p>
+            {product.deliveryReadiness?.label && (
+              <p className="product-readiness-line">
+                {product.deliveryReadiness.label}
+              </p>
+            )}
 
             <div className="product-social-row">
               <button

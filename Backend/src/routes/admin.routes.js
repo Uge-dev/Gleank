@@ -44,6 +44,20 @@ import {
   adminDecideDispute,
   adminListDisputes,
 } from "../services/return-dispute.service.js";
+import {
+  adminApproveKyc,
+  adminGetKyc,
+  adminListKyc,
+  adminRejectKyc,
+  adminRequestKycResubmission,
+} from "../services/kyc.service.js";
+import {
+  adminCreatePriceRange,
+  adminDeletePriceRange,
+  adminListPriceRanges,
+  adminUpdatePriceRange,
+} from "../services/price-validation.service.js";
+import { listAdminAuditLogs } from "../services/audit-log.service.js";
 
 const router = Router();
 
@@ -97,6 +111,22 @@ function sendAdminError(res, error, fallback = "Admin request could not be compl
   }
   const message = safeErrorMessage(error, { status, fallback });
   res.status(status).json({ message });
+}
+
+function requestMeta(req) {
+  return {
+    ipAddress: req.ip || req.socket?.remoteAddress || "",
+    userAgent: req.get("user-agent") || "",
+  };
+}
+
+function adminAuthForRequest() {
+  const profile = ensureAdminProfile();
+  return {
+    role: "admin",
+    user_id: profile.id,
+    id: profile.id,
+  };
 }
 
 router.post("/login", (req, res) => {
@@ -405,7 +435,152 @@ router.patch("/riders/:riderId/capacity-unlock", requireAdmin, (req, res) => {
   }
 });
 
+router.get("/kyc", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      verifications: adminListKyc({
+        role: String(req.query.role || ""),
+        status: String(req.query.status || ""),
+        reviewStatus: String(req.query.reviewStatus || req.query.review_status || ""),
+      }),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not load verification reviews.");
+  }
+});
+
+router.get("/kyc/:id", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      verification: adminGetKyc(req.params.id),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not load verification details.");
+  }
+});
+
+router.post("/kyc/:id/approve", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminApproveKyc(adminAuthForRequest(), req.params.id, req.body || {}, requestMeta(req)),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not approve verification.");
+  }
+});
+
+router.post("/kyc/:id/reject", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminRejectKyc(adminAuthForRequest(), req.params.id, req.body || {}, requestMeta(req)),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not reject verification.");
+  }
+});
+
+router.post("/kyc/:id/request-resubmission", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminRequestKycResubmission(
+        adminAuthForRequest(),
+        req.params.id,
+        req.body || {},
+        requestMeta(req),
+      ),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not request verification update.");
+  }
+});
+
+router.get("/price-ranges", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      priceRanges: adminListPriceRanges({
+        category: String(req.query.category || ""),
+        sellerType: String(req.query.sellerType || req.query.seller_type || ""),
+      }),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not load price ranges.");
+  }
+});
+
+router.post("/price-ranges", requireAdmin, (req, res) => {
+  try {
+    res.status(201).json({
+      success: true,
+      priceRange: adminCreatePriceRange(adminAuthForRequest(), req.body || {}, requestMeta(req)),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not create price range.");
+  }
+});
+
+router.patch("/price-ranges/:rangeId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      priceRange: adminUpdatePriceRange(
+        adminAuthForRequest(),
+        req.params.rangeId,
+        req.body || {},
+        requestMeta(req),
+      ),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not update price range.");
+  }
+});
+
+router.delete("/price-ranges/:rangeId", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      ...adminDeletePriceRange(adminAuthForRequest(), req.params.rangeId, requestMeta(req)),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not delete price range.");
+  }
+});
+
+router.get("/audit-logs", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      logs: listAdminAuditLogs({
+        action: String(req.query.action || ""),
+        targetType: String(req.query.targetType || req.query.target_type || ""),
+        targetId: String(req.query.targetId || req.query.target_id || ""),
+      }),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not load audit logs.");
+  }
+});
+
 router.get("/products/moderation", requireAdmin, (req, res) => {
+  try {
+    res.json({
+      success: true,
+      products: listProductModeration({
+        status: String(req.query.status || ""),
+        query: String(req.query.q || ""),
+      }),
+    });
+  } catch (error) {
+    sendAdminError(res, error, "Could not load product moderation.");
+  }
+});
+
+router.get("/moderation/products", requireAdmin, (req, res) => {
   try {
     res.json({
       success: true,
@@ -433,6 +608,33 @@ router.patch("/products/:productId/moderation", requireAdmin, (req, res) => {
     sendAdminError(res, error, "Could not update product moderation.");
   }
 });
+
+for (const action of ["approve", "reject", "request-edit"]) {
+  router.post(`/moderation/products/:productId/${action}`, requireAdmin, (req, res) => {
+    try {
+      const status =
+        action === "approve"
+          ? "approved"
+          : action === "reject"
+            ? "rejected"
+            : "flagged";
+
+      res.json({
+        success: true,
+        product: adminReviewProduct(
+          adminAuthForRequest(),
+          req.params.productId,
+          {
+            ...(req.body || {}),
+            status,
+          },
+        ),
+      });
+    } catch (error) {
+      sendAdminError(res, error, "Could not update product moderation.");
+    }
+  });
+}
 
 router.get("/payouts", requireAdmin, (req, res) => {
   try {

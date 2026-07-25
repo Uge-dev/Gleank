@@ -80,6 +80,230 @@ function hasActiveSellerSubscription(userId) {
   return new Date(subscription.current_period_end).getTime() > Date.now();
 }
 
+const SELLER_ONBOARDING_STEPS = [
+  { key: "store_details", step: 1, label: "Seller Type & Store Details" },
+  { key: "contact_location", step: 2, label: "Contact & Location Details" },
+  { key: "face_verification", step: 3, label: "Face Verification" },
+  { key: "documents_business", step: 4, label: "Identity Document & Business Details" },
+  { key: "review_submit", step: 5, label: "Review & Submit for Admin Approval" },
+];
+
+function parseJsonObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseJsonArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueArray(values = []) {
+  return [...new Set(values.filter(Boolean).map(String))];
+}
+
+function clampStep(value, fallback = 1) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(SELLER_ONBOARDING_STEPS.length, Math.max(1, Math.round(parsed)));
+}
+
+function firstIncompleteStep(completedSteps) {
+  const completed = new Set(completedSteps);
+  const pending = SELLER_ONBOARDING_STEPS.find((item) => !completed.has(item.key));
+  return pending?.step || SELLER_ONBOARDING_STEPS.length;
+}
+
+function hasText(value, minLength = 1) {
+  return clean(value, 1500).length >= minLength;
+}
+
+function sellerStoreDetailsComplete(row, store) {
+  return Boolean(
+    row?.seller_type &&
+      hasText(store?.name, 2) &&
+      hasText(store?.category || row?.store_category || "General", 2),
+  );
+}
+
+function sellerLocationMissing(row) {
+  const sellerType = sellerTypeFromInput(row?.seller_type);
+  const marketRequest = parseJsonObject(row?.market_request_json);
+  const missing = [];
+
+  if (sellerType === "campus") {
+    if (!hasText(row?.campus)) missing.push("Campus");
+    if (!hasText(row?.pickup_location)) missing.push("Campus pickup point");
+    if (!hasText(row?.nearest_landmark)) missing.push("Nearest landmark");
+  }
+
+  if (sellerType === "local_market") {
+    if (!row?.market_id && !Object.keys(marketRequest).length) {
+      missing.push("Approved market or market approval request");
+    }
+    if (!hasText(row?.shop_stall_number)) missing.push("Shop/stall number");
+    if (!hasText(row?.shop_section)) missing.push("Line/section/block");
+    if (!hasText(row?.nearest_landmark)) missing.push("Market landmark");
+    if (!hasText(row?.pickup_location)) missing.push("Pickup point");
+    if (!hasText(row?.location_area)) missing.push("Area/location note");
+  }
+
+  if (sellerType === "nearby") {
+    if (!hasText(row?.location_area)) missing.push("Business area/location");
+    if (!hasText(row?.pickup_location)) missing.push("Business address / pickup location");
+    if (!hasText(row?.nearest_landmark)) missing.push("Nearest landmark");
+  }
+
+  if (sellerType === "used_market") {
+    if (!hasText(row?.location_area)) missing.push("Area/location");
+    if (!hasText(row?.pickup_location)) missing.push("Pickup preference");
+    if (!hasText(row?.nearest_landmark)) missing.push("Nearest landmark");
+  }
+
+  return missing;
+}
+
+function buildSellerVerificationProgress(row) {
+  const user = row?.user_id ? findUserById(row.user_id) : null;
+  const store = row?.user_id ? findStoreByOwnerId(row.user_id) : null;
+  const missingRequirements = [];
+  const completedSteps = [];
+  const savedCompletedSteps = parseJsonArray(row?.completed_steps_json);
+  const savedLockedSteps = parseJsonArray(row?.locked_steps_json);
+
+  if (!user?.email_verified) missingRequirements.push("Email verification");
+  if (!user?.phone_verified && !hasText(row?.phone) && !hasText(user?.phone)) {
+    missingRequirements.push("Phone/contact details");
+  }
+  if (!row?.seller_type) missingRequirements.push("Seller type");
+  if (!sellerStoreDetailsComplete(row, store)) {
+    missingRequirements.push("Store name and primary category");
+  } else {
+    completedSteps.push("store_details");
+  }
+
+  const locationMissing = sellerLocationMissing(row);
+  if (locationMissing.length) {
+    missingRequirements.push(...locationMissing);
+  }
+  if (
+    !locationMissing.length &&
+    (user?.phone_verified || hasText(row?.phone) || hasText(user?.phone))
+  ) {
+    completedSteps.push("contact_location");
+  }
+
+  if (!row?.face_verified) {
+    missingRequirements.push("Face verification");
+  } else {
+    completedSteps.push("face_verification");
+  }
+
+  if (!row?.identity_proof_url) missingRequirements.push("Identity document");
+  if (!hasText(row?.business_description, 20)) {
+    missingRequirements.push("Business description of at least 20 characters");
+  }
+  if (!row?.agreement_accepted) missingRequirements.push("Seller agreement");
+
+  if (
+    row?.identity_proof_url &&
+    hasText(row?.business_description, 20) &&
+    row?.agreement_accepted
+  ) {
+    completedSteps.push("documents_business");
+  }
+
+  const uniqueCompletedSteps = uniqueArray([...savedCompletedSteps, ...completedSteps]);
+  const canSubmit =
+    missingRequirements.length === 0 &&
+    !["pending_verification", "verified", "suspended"].includes(row?.status || "draft");
+
+  if (
+    canSubmit ||
+    ["pending_verification", "verified"].includes(row?.status || "") ||
+    row?.submitted_at
+  ) {
+    uniqueCompletedSteps.push("review_submit");
+  }
+
+  let lockedSteps = uniqueArray(savedLockedSteps);
+
+  if (row?.face_verified) {
+    lockedSteps.push("face_verification");
+  }
+
+  if (["pending_verification", "verified"].includes(row?.status || "")) {
+    lockedSteps = SELLER_ONBOARDING_STEPS.map((item) => item.key);
+  }
+
+  if (row?.admin_review_status === "resubmission_requested") {
+    const currentStepKey = SELLER_ONBOARDING_STEPS.find(
+      (item) => item.step === clampStep(row.current_step, firstIncompleteStep(uniqueCompletedSteps)),
+    )?.key;
+    lockedSteps = lockedSteps.filter((key) => key !== currentStepKey);
+  }
+
+  const currentStep = ["pending_verification", "verified"].includes(row?.status || "")
+    ? 5
+    : clampStep(row?.current_step, firstIncompleteStep(uniqueCompletedSteps));
+
+  return {
+    currentStep,
+    completedSteps: uniqueArray(uniqueCompletedSteps),
+    lockedSteps: uniqueArray(lockedSteps),
+    canSubmit,
+    missingRequirements: uniqueArray(missingRequirements),
+    adminReviewStatus:
+      row?.admin_review_status ||
+      (row?.status === "pending_verification" ? "pending" : "not_started"),
+  };
+}
+
+function syncSellerVerificationProgress(userId, preferredStep) {
+  const row = db
+    .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
+    .get(userId);
+
+  if (!row) return null;
+
+  const progress = buildSellerVerificationProgress(row);
+  const currentStep = ["pending_verification", "verified"].includes(row.status)
+    ? 5
+    : clampStep(preferredStep, progress.currentStep);
+  const adminReviewStatus =
+    row.admin_review_status ||
+    (row.status === "pending_verification" ? "pending" : "not_started");
+
+  db.prepare(`
+    UPDATE seller_verification_profiles
+    SET current_step = ?,
+        completed_steps_json = ?,
+        locked_steps_json = ?,
+        admin_review_status = ?,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    currentStep,
+    JSON.stringify(progress.completedSteps),
+    JSON.stringify(progress.lockedSteps),
+    adminReviewStatus,
+    new Date().toISOString(),
+    userId,
+  );
+
+  return getSellerVerification(userId);
+}
+
 export function ensureSellerStoreForUser(userId, input = {}) {
   const existingStore = findStoreByOwnerId(userId);
   const user = findUserById(userId);
@@ -142,6 +366,12 @@ export function serializeSellerVerification(row) {
       id: "",
       status: "draft",
       isComplete: false,
+      currentStep: 1,
+      completedSteps: [],
+      lockedSteps: [],
+      canSubmit: false,
+      missingRequirements: ["Seller setup has not started"],
+      adminReviewStatus: "not_started",
       fullName: "",
       phone: "",
       campus: "",
@@ -166,10 +396,13 @@ export function serializeSellerVerification(row) {
       agreementAccepted: false,
       note: "",
       submittedAt: null,
+      submittedForReviewAt: null,
+      resubmissionRequestedAt: null,
       verifiedAt: null,
     };
   }
 
+  const progress = buildSellerVerificationProgress(row);
   const isComplete = Boolean(
     row.full_name &&
       row.phone &&
@@ -216,6 +449,14 @@ export function serializeSellerVerification(row) {
     status: row.status,
     note: row.note || "",
     submittedAt: row.submitted_at || null,
+    currentStep: progress.currentStep,
+    completedSteps: progress.completedSteps,
+    lockedSteps: progress.lockedSteps,
+    canSubmit: progress.canSubmit,
+    missingRequirements: progress.missingRequirements,
+    adminReviewStatus: progress.adminReviewStatus,
+    submittedForReviewAt: row.submitted_for_review_at || row.submitted_at || null,
+    resubmissionRequestedAt: row.resubmission_requested_at || null,
     verifiedAt: row.verified_at || null,
     isComplete,
     createdAt: row.created_at,
@@ -235,11 +476,23 @@ function pickNext(inputValue, existingValue, fallback = "") {
   return value || existingValue || fallback;
 }
 
-export function updateSellerOnboardingDraft(userId, input = {}) {
-  const store = ensureSellerStoreForUser(userId, input);
+export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl = null) {
   const existing = db
     .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
     .get(userId);
+
+  if (
+    existing &&
+    ["pending_verification", "verified", "suspended"].includes(existing.status) &&
+    existing.admin_review_status !== "resubmission_requested"
+  ) {
+    throw new HttpError(
+      403,
+      "Your seller verification is locked while admin review is active.",
+    );
+  }
+
+  const store = ensureSellerStoreForUser(userId, input);
   const now = new Date().toISOString();
   const sellerType = sellerTypeFromInput(input.sellerType || existing?.seller_type || store.seller_type);
   const marketRequest = Object.keys(jsonFromMarketRequest(input)).length
@@ -272,7 +525,19 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
       existing ? existing.allow_rider_whatsapp_contact !== 0 : store.allow_rider_whatsapp_contact !== 0,
     ),
     operatingHours: pickNext(input.operatingHours, existing?.operating_hours, store.operating_hours),
+    studentId: pickNext(input.studentId, existing?.student_id, ""),
+    identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
+    faceVerified: booleanFromInput(
+      input.faceVerified,
+      existing ? existing.face_verified !== 0 : false,
+    ),
+    faceProvider: pickNext(input.faceProvider, existing?.face_provider, env.livenessProvider),
+    faceReference: pickNext(input.faceReference || input.livenessReference, existing?.face_reference, ""),
     businessDescription: pickNext(input.businessDescription, existing?.business_description, store.description),
+    agreementAccepted: booleanFromInput(
+      input.agreementAccepted,
+      existing ? existing.agreement_accepted !== 0 : false,
+    ),
   };
 
   transaction(() => {
@@ -283,9 +548,11 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
             location_area = ?, pickup_location = ?, nearest_landmark = ?,
             market_id = ?, market_request_json = ?, shop_stall_number = ?,
             shop_section = ?, whatsapp_phone = ?, allow_rider_whatsapp_contact = ?,
-            operating_hours = ?, business_description = ?,
+            operating_hours = ?, student_id = ?, identity_proof_url = ?,
+            face_verified = ?, face_provider = ?, face_reference = ?,
+            face_verified_at = ?, business_description = ?, agreement_accepted = ?,
             status = CASE
-              WHEN status IN ('verified', 'suspended', 'rejected') THEN status
+              WHEN status IN ('verified', 'suspended', 'pending_verification') THEN status
               ELSE 'draft'
             END,
             updated_at = ?
@@ -306,7 +573,14 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
         next.whatsappPhone,
         next.allowRiderWhatsAppContact ? 1 : 0,
         next.operatingHours,
+        next.studentId,
+        next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? existing?.face_verified_at || now : null,
         next.businessDescription,
+        next.agreementAccepted ? 1 : 0,
         now,
         userId,
       );
@@ -316,9 +590,11 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
           id, user_id, store_id, seller_type, full_name, phone, campus,
           location_area, pickup_location, nearest_landmark, market_id,
           market_request_json, shop_stall_number, shop_section, whatsapp_phone,
-          allow_rider_whatsapp_contact, operating_hours, business_description,
+          allow_rider_whatsapp_contact, operating_hours, student_id,
+          identity_proof_url, face_verified, face_provider, face_reference,
+          face_verified_at, business_description, agreement_accepted,
           status, note, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', '', ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', '', ?, ?)
       `).run(
         createId("svp"),
         userId,
@@ -337,7 +613,14 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
         next.whatsappPhone,
         next.allowRiderWhatsAppContact ? 1 : 0,
         next.operatingHours,
+        next.studentId,
+        next.identityProofUrl,
+        next.faceVerified ? 1 : 0,
+        next.faceProvider,
+        next.faceReference,
+        next.faceVerified ? now : null,
         next.businessDescription,
+        next.agreementAccepted ? 1 : 0,
         now,
         now,
       );
@@ -395,34 +678,46 @@ export function updateSellerOnboardingDraft(userId, input = {}) {
     }
   });
 
-  return getSellerVerification(userId);
+  return syncSellerVerificationProgress(
+    userId,
+    input.nextStep || input.currentStep || existing?.current_step || 1,
+  );
 }
 
 export function upsertSellerVerification(userId, input, identityProofUrl = null) {
   const store = ensureSellerStoreForUser(userId, input);
+  const user = findUserById(userId);
 
   const existing = db
     .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
     .get(userId);
+  const submittedMarketRequest = jsonFromMarketRequest(input);
+  const existingMarketRequest = parseJsonObject(existing?.market_request_json);
+  const marketRequest = Object.keys(submittedMarketRequest).length
+    ? submittedMarketRequest
+    : existingMarketRequest;
+  const sellerType = sellerTypeFromInput(
+    input.sellerType || existing?.seller_type || store.seller_type,
+  );
 
   const next = {
-    sellerType: sellerTypeFromInput(input.sellerType),
-    storeName: clean(input.storeName || input.businessName || store.name, 100),
+    sellerType,
+    storeName: clean(input.storeName || input.businessName || store.name || defaultStoreName(user), 100),
     storeCategory: clean(input.storeCategory || input.category || store.category || "General", 80),
-    fullName: clean(input.fullName || input.name, 120),
-    phone: clean(input.sellerPhone || input.phone, 40),
-    campus: clean(input.sellerCampus || input.campus, 100),
-    locationArea: clean(input.locationArea || input.areaLocation || input.campus, 160),
-    pickupLocation: clean(input.pickupLocation, 180),
-    nearestLandmark: clean(input.nearestLandmark || input.landmark, 160),
-    marketId: clean(input.marketId, 140),
-    marketRequest: jsonFromMarketRequest(input),
-    shopStallNumber: clean(input.shopStallNumber || input.stallNumber, 80),
-    shopSection: clean(input.shopSection, 120),
-    whatsappPhone: clean(input.whatsappPhone || input.sellerWhatsapp || input.phone, 40),
+    fullName: pickNext(input.fullName || input.name, existing?.full_name, user?.name || ""),
+    phone: pickNext(input.sellerPhone || input.phone, existing?.phone, store.phone || user?.phone || ""),
+    campus: pickNext(input.sellerCampus || input.campus, existing?.campus, store.campus || user?.campus || ""),
+    locationArea: pickNext(input.locationArea || input.areaLocation, existing?.location_area, store.location_area || store.campus || ""),
+    pickupLocation: pickNext(input.pickupLocation, existing?.pickup_location, store.pickup_location || ""),
+    nearestLandmark: pickNext(input.nearestLandmark || input.landmark, existing?.nearest_landmark, store.nearest_landmark || ""),
+    marketId: pickNext(input.marketId, existing?.market_id, store.market_id || ""),
+    marketRequest,
+    shopStallNumber: pickNext(input.shopStallNumber || input.stallNumber, existing?.shop_stall_number, store.shop_stall_number || ""),
+    shopSection: pickNext(input.shopSection, existing?.shop_section, store.shop_section || ""),
+    whatsappPhone: pickNext(input.whatsappPhone || input.sellerWhatsapp, existing?.whatsapp_phone, store.whatsapp_phone || input.phone || user?.phone || ""),
     allowRiderWhatsAppContact: booleanFromInput(input.allowRiderWhatsAppContact, true),
-    operatingHours: clean(input.operatingHours, 160),
-    studentId: clean(input.studentId, 100),
+    operatingHours: pickNext(input.operatingHours, existing?.operating_hours, store.operating_hours || ""),
+    studentId: pickNext(input.studentId, existing?.student_id, ""),
     identityProofUrl: identityProofUrl || existing?.identity_proof_url || null,
     faceVerified:
       input.faceVerified === true ||
@@ -434,32 +729,57 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     faceReference: clean(
       input.faceReference ||
         input.livenessReference ||
-        existing?.face_reference ||
-        `local-face-${Date.now()}`,
+      existing?.face_reference ||
+      `local-face-${Date.now()}`,
       160,
     ),
-    businessDescription: clean(input.businessDescription, 1200),
-    agreementAccepted:
-      input.agreementAccepted === true ||
-      input.agreementAccepted === "true" ||
-      input.agreementAccepted === "on" ||
-      input.agreementAccepted === "1",
+    businessDescription: pickNext(input.businessDescription, existing?.business_description, store.description || ""),
+    agreementAccepted: booleanFromInput(
+      input.agreementAccepted,
+      existing ? existing.agreement_accepted !== 0 : false,
+    ),
   };
+
+  if (!user?.email_verified) {
+    throw new HttpError(422, "Verify your email before submitting seller verification.");
+  }
+
+  if (!next.storeName || !next.storeCategory) {
+    throw new HttpError(422, "Complete seller type, store name, and primary category.");
+  }
 
   if (!next.fullName || !next.phone || !next.sellerType) {
     throw new HttpError(422, "Complete seller name, phone, and seller type.");
   }
 
-  if (next.sellerType === "campus" && !next.campus) {
-    throw new HttpError(422, "Campus sellers must select a campus.");
+  if (next.sellerType === "campus" && (!next.campus || !next.pickupLocation || !next.nearestLandmark)) {
+    throw new HttpError(422, "Campus sellers must complete campus, campus pickup point, and nearest landmark.");
   }
 
-  if (next.sellerType === "local_market" && !next.marketId && !Object.keys(next.marketRequest).length) {
-    throw new HttpError(422, "Select an approved local market or request market approval.");
+  if (
+    next.sellerType === "local_market" &&
+    ((!next.marketId && !Object.keys(next.marketRequest).length) ||
+      !next.shopStallNumber ||
+      !next.shopSection ||
+      !next.nearestLandmark ||
+      !next.pickupLocation ||
+      !next.locationArea)
+  ) {
+    throw new HttpError(422, "Complete market, stall, section, landmark, pickup point, and area details.");
   }
 
-  if ((next.sellerType === "nearby" || next.sellerType === "used_market") && !next.locationArea) {
-    throw new HttpError(422, "Enter your area/location for this seller type.");
+  if (
+    next.sellerType === "nearby" &&
+    (!next.locationArea || !next.pickupLocation || !next.nearestLandmark)
+  ) {
+    throw new HttpError(422, "Complete business area, pickup address, and nearest landmark.");
+  }
+
+  if (
+    next.sellerType === "used_market" &&
+    (!next.locationArea || !next.pickupLocation || !next.nearestLandmark)
+  ) {
+    throw new HttpError(422, "Complete used market location, pickup preference, and nearest landmark.");
   }
 
   if (!next.faceVerified) {
@@ -679,6 +999,26 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
         WHERE id = ?
       `).run(note, now, store.id);
     }
+
+    const allStepKeys = SELLER_ONBOARDING_STEPS.map((item) => item.key);
+
+    db.prepare(`
+      UPDATE seller_verification_profiles
+      SET current_step = 5,
+          completed_steps_json = ?,
+          locked_steps_json = ?,
+          submitted_for_review_at = COALESCE(submitted_for_review_at, ?),
+          admin_review_status = ?,
+          updated_at = ?
+      WHERE user_id = ?
+    `).run(
+      JSON.stringify(allStepKeys),
+      JSON.stringify(allStepKeys),
+      now,
+      status === "verified" ? "approved" : "pending",
+      now,
+      userId,
+    );
   });
 
   return getSellerVerification(userId);

@@ -1121,11 +1121,62 @@ function updateSeller(id, fields) {
 
     const store = db.prepare("SELECT owner_id FROM stores WHERE id = ?").get(id);
     if (store) {
+      const allSellerStepKeys = JSON.stringify([
+        "store_details",
+        "contact_location",
+        "face_verification",
+        "documents_business",
+        "review_submit",
+      ]);
+      const resubmissionLockedSteps = JSON.stringify([
+        "store_details",
+        "contact_location",
+        "face_verification",
+      ]);
+      const adminReviewStatus =
+        status === "verified"
+          ? "approved"
+          : status === "pending_verification"
+            ? "pending"
+            : status === "rejected"
+              ? "resubmission_requested"
+              : "not_started";
       db.prepare(`
         UPDATE seller_verification_profiles
-        SET status = ?, note = ?, verified_at = ?, updated_at = ?
+        SET status = ?,
+            note = ?,
+            verified_at = ?,
+            admin_review_status = ?,
+            current_step = ?,
+            locked_steps_json = ?,
+            submitted_for_review_at = CASE
+              WHEN ? IN ('verified', 'pending_verification') THEN COALESCE(submitted_for_review_at, ?)
+              ELSE submitted_for_review_at
+            END,
+            resubmission_requested_at = CASE
+              WHEN ? = 'rejected' THEN ?
+              ELSE resubmission_requested_at
+            END,
+            updated_at = ?
         WHERE user_id = ?
-      `).run(status, `Admin set seller verification to ${status}.`, status === "verified" ? now : null, now, store.owner_id);
+      `).run(
+        status,
+        `Admin set seller verification to ${status}.`,
+        status === "verified" ? now : null,
+        adminReviewStatus,
+        ["verified", "pending_verification"].includes(status) ? 5 : status === "rejected" ? 4 : 1,
+        ["verified", "pending_verification"].includes(status)
+          ? allSellerStepKeys
+          : status === "rejected"
+            ? resubmissionLockedSteps
+            : "[]",
+        status,
+        now,
+        status,
+        now,
+        now,
+        store.owner_id,
+      );
     }
     if (storeForNotice) {
       createNotification({

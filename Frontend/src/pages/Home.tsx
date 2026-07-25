@@ -412,9 +412,10 @@ async function handleProductViewed(productId: string) {
                       campus={productStore?.campus || ""}
                       storeLogoUrl={storeLogoUrl}
                       productName={product.name}
-                      price={formatPrice(product.price)}
-                      category={product.category}
-                      badgeText={
+	                      price={formatPrice(product.price)}
+	                      category={product.category}
+                        deliveryReadinessLabel={product.deliveryReadiness?.label}
+	                      badgeText={
                         product.status === "out_of_stock"
                           ? "Out of Stock"
                           : "Available"
@@ -445,6 +446,7 @@ viewCount={product.interaction.viewCount}
                       onComment={() => setActiveCommentProductId(product.id)}
                       onShare={() => void shareProduct(product.id, product.name)}
                       onViewed={() => void handleProductViewed(product.id)}
+                      onSwipeToStore={() => navigate(`/stores/${product.storeSlug}`)}
                     />
                   );
                 })

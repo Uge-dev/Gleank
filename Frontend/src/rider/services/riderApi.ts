@@ -74,6 +74,9 @@ type BackendAssignment = {
   buyerPhone?: string;
   marketName?: string;
   packageSummary?: string;
+  packageTagCode?: string;
+  sellerPickupCodeVerifiedAt?: string | null;
+  buyerDeliveryCodeVerifiedAt?: string | null;
   packageValue?: number;
   deliveryFee?: number;
   dispatchTimeoutSeconds?: number;
@@ -242,6 +245,9 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     requiresPickupOtp: true,
     requiresDeliveryOtp: true,
     sellerRating: 0,
+    packageTagCode: row.packageTagCode || '',
+    sellerPickupCodeVerifiedAt: row.sellerPickupCodeVerifiedAt || null,
+    buyerDeliveryCodeVerifiedAt: row.buyerDeliveryCodeVerifiedAt || null,
   };
 }
 
@@ -297,6 +303,9 @@ function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
     riderEarning: deliveryFee,
     deliveryAddress: row.deliveryLocation || row.deliveryPoint?.address || 'Delivery address unavailable',
     deliveryNotes: row.packageSummary || '',
+    packageTagCode: row.packageTagCode || '',
+    sellerPickupCodeVerifiedAt: row.sellerPickupCodeVerifiedAt || null,
+    buyerDeliveryCodeVerifiedAt: row.buyerDeliveryCodeVerifiedAt || null,
     status,
     completedAt: row.deliveredAt || undefined,
     cashReconciliationStatus: 'not_required',
@@ -573,12 +582,21 @@ export const riderApi = {
     return apiRequest<{ order: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/cash-collected', { method: 'POST' });
   },
   completeDelivery(orderId: string, payload: DeliveryCompletionPayload) {
-    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/complete', {
+    return apiRequest<{ assignment: BackendAssignment; order?: FullDeliveryOrder }>('/api/rider/orders/' + orderId + '/complete-delivery', {
       method: 'POST',
       body: buildProofBody(payload, 'customerDeliveryCode'),
     }).then((response) => ({
       assignment: normalizeAssignment(response.assignment),
       order: response.order || normalizeOrder(response.assignment),
+    }));
+  },
+  verifyDeliveryCode(orderId: string, customerDeliveryCode: string) {
+    return apiRequest<{ assignment: BackendAssignment }>('/api/rider/orders/' + orderId + '/verify-delivery-code', {
+      method: 'POST',
+      body: JSON.stringify({ customerDeliveryCode }),
+    }).then((response) => ({
+      assignment: normalizeAssignment(response.assignment),
+      order: normalizeOrder(response.assignment),
     }));
   },
   failDelivery(assignmentId: string, note?: string) {
@@ -593,6 +611,39 @@ export const riderApi = {
   },
   markNotificationRead(notificationId: string) {
     return apiRequest<{ notification: NotificationItem }>('/api/rider/notifications/' + notificationId + '/read', { method: 'PATCH' });
+  },
+  updateLocation(currentLocation: { lat: number; lng: number; accuracyMeters?: number }, assignmentId = '') {
+    return apiRequest<{
+      online: boolean;
+      availability: string;
+      availabilityMode: string;
+      gpsPermissionStatus: string;
+      location: {
+        id: string;
+        lat: number | null;
+        lng: number | null;
+        accuracyMeters: number | null;
+        address: string;
+        area: string;
+        zone: string;
+        source: string;
+        createdAt: string;
+      } | null;
+      lastLocationAt: string | null;
+    }>('/api/rider/location', {
+      method: 'POST',
+      body: JSON.stringify({ currentLocation, assignmentId }),
+    });
+  },
+  locationStatus() {
+    return apiRequest<{
+      online: boolean;
+      availability: string;
+      availabilityMode: string;
+      gpsPermissionStatus: string;
+      location: unknown;
+      lastLocationAt: string | null;
+    }>('/api/rider/location/status');
   },
   submitCashReconciliation(orderIds: string[], note?: string) {
     return apiRequest<{ orders: FullDeliveryOrder[] }>('/api/rider/cash-reconciliation', { method: 'POST', body: JSON.stringify({ orderIds, note }) });

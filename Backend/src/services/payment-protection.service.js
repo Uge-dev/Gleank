@@ -6,6 +6,10 @@ const NIGERIAN_PHONE_PATTERN =
   /(?:\+?234[\s.-]?|0)(?:70|80|81|90|91)[\s.-]?\d{4}[\s.-]?\d{4}\b/gi;
 const WHATSAPP_PATTERN =
   /\b(?:https?:\/\/)?(?:wa\.me|api\.whatsapp\.com|whatsapp\.com)\/\S+|\bwhats\s*app\b|\bwhatsapp\b|\bwatsapp\b|\bwa\.me\b|\bwa\s*link\b/gi;
+const EXTERNAL_URL_PATTERN =
+  /\b(?:https?:\/\/|www\.)(?!(?:gleenc\.com|gleank\.vercel\.app|gleank\.onrender\.com)\b)[^\s]+/gi;
+const SOCIAL_HANDLE_PATTERN =
+  /(?:\b(?:instagram|insta|ig|telegram|t\.me|snapchat|facebook|fb)\s*(?:handle|user|username|page|dm)?\s*[:@]\s*|(?<![A-Za-z0-9_])@)[A-Za-z0-9_.]{3,}/gi;
 const ACCOUNT_NUMBER_PATTERN = /\b\d{10}\b/g;
 const DIRECT_CONTACT_KEYWORD_PATTERN =
   /\b(?:dm\s*me|send\s*(?:me\s*)?(?:your\s*)?(?:number|contact)|drop\s*(?:your\s*)?(?:number|contact)|call\s*me|text\s*me|message\s*me\s*(?:direct|privately)?|private\s*chat|telegram|t\.me|instagram\s*dm|ig\s*dm|outside\s*chat)\b/i;
@@ -49,6 +53,8 @@ export function scanForCircumvention(text, options = {}) {
 
   const phoneMatches = sourceText.match(NIGERIAN_PHONE_PATTERN) || [];
   const whatsappMatches = sourceText.match(WHATSAPP_PATTERN) || [];
+  const urlMatches = sourceText.match(EXTERNAL_URL_PATTERN) || [];
+  const socialMatches = sourceText.match(SOCIAL_HANDLE_PATTERN) || [];
   const hasDirectContactKeyword = DIRECT_CONTACT_KEYWORD_PATTERN.test(sourceText);
   const hasPaymentKeyword =
     env.enablePaymentKeywordBlocking && PAYMENT_KEYWORD_PATTERN.test(sourceText);
@@ -67,6 +73,22 @@ export function scanForCircumvention(text, options = {}) {
     reasons.push({
       code: "whatsapp_contact",
       message: "WhatsApp/direct contact instruction was hidden before a protected order stage.",
+      score: 35,
+    });
+  }
+
+  if (urlMatches.length) {
+    reasons.push({
+      code: "external_url",
+      message: "External links were hidden to keep the transaction inside Gleenc.",
+      score: 35,
+    });
+  }
+
+  if (socialMatches.length) {
+    reasons.push({
+      code: "social_handle",
+      message: "Social media handles were hidden to keep the conversation protected on Gleenc.",
       score: 35,
     });
   }
@@ -108,6 +130,8 @@ export function scanForCircumvention(text, options = {}) {
   }
 
   sanitizedText = sanitizedText.replace(WHATSAPP_PATTERN, "[protected contact channel hidden]");
+  sanitizedText = sanitizedText.replace(EXTERNAL_URL_PATTERN, "[protected external link hidden]");
+  sanitizedText = sanitizedText.replace(SOCIAL_HANDLE_PATTERN, "[protected social handle hidden]");
   sanitizedText = sanitizedText.replace(DIRECT_CONTACT_SANITIZE_PATTERN, "[protected contact instruction hidden]");
 
   if (hasPaymentKeyword) {

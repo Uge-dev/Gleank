@@ -31,6 +31,8 @@ export type SellerPickupTask = {
   sellerName: string;
   orderCode: string;
   packageTagCode?: string;
+  sellerPickupCode?: string;
+  packageInstruction?: string;
   pickupZoneId: string | null;
   pickupLandmark: string;
   pickupSequence: number;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { TouchEvent } from "react";
 import { Link } from "react-router-dom";
 import {
   FiBookmark,
@@ -26,6 +27,7 @@ type FeedPostCardProps = {
   productName: string;
   price: string;
   category: string;
+  deliveryReadinessLabel?: string;
   images: string[];
   badgeText?: string;
   likeCount?: number;
@@ -44,6 +46,7 @@ type FeedPostCardProps = {
 onViewed?: () => void;
 maxQuantity?: number;
 isOwnProduct?: boolean;
+onSwipeToStore?: () => void;
 };
 
 function compactNumber(value: number) {
@@ -76,6 +79,27 @@ function getSellerInitials(name: string) {
     .toUpperCase();
 }
 
+function isInteractiveSwipeTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  return Boolean(
+    target.closest(
+      [
+        "button",
+        "a",
+        "input",
+        "textarea",
+        "select",
+        '[role="button"]',
+        ".feed-media-shell",
+        ".feed-media-slider",
+        ".image-arrow",
+        ".image-dots",
+      ].join(","),
+    ),
+  );
+}
+
 function FeedPostCard({
   id,
   storeName,
@@ -85,6 +109,7 @@ function FeedPostCard({
   productName,
   price,
   category,
+  deliveryReadinessLabel,
   images,
   badgeText,
   likeCount = 0,
@@ -103,6 +128,7 @@ onShare,
 onViewed,
 maxQuantity,
 isOwnProduct = false,
+onSwipeToStore,
 }: FeedPostCardProps) {
   const [activeImage, setActiveImage] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -111,6 +137,12 @@ isOwnProduct = false,
 const sliderRef = useRef<HTMLDivElement | null>(null);
 const viewRecordedRef = useRef(false);
 const viewTimerRef = useRef<number | null>(null);
+const cardSwipeStartRef = useRef<{
+  x: number;
+  y: number;
+  time: number;
+  disabled: boolean;
+} | null>(null);
 
 const { addToCart } = useCart();
 
@@ -177,6 +209,7 @@ const { addToCart } = useCart();
       sellerId: username,
       campus,
       category,
+      deliveryReadinessLabel,
       stock: stockLimit,
       quantity,
     });
@@ -191,6 +224,40 @@ const { addToCart } = useCart();
       if (currentQuantity <= 1) return 1;
       return currentQuantity - 1;
     });
+  }
+
+  function handleCardTouchStart(event: TouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    if (!touch) return;
+
+    cardSwipeStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now(),
+      disabled: !onSwipeToStore || isInteractiveSwipeTarget(event.target),
+    };
+  }
+
+  function handleCardTouchEnd(event: TouchEvent<HTMLElement>) {
+    const start = cardSwipeStartRef.current;
+    cardSwipeStartRef.current = null;
+
+    if (!start || start.disabled || !onSwipeToStore) return;
+
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const duration = Date.now() - start.time;
+
+    if (
+      deltaX < -70 &&
+      Math.abs(deltaX) > Math.abs(deltaY) * 1.4 &&
+      duration <= 1200
+    ) {
+      onSwipeToStore();
+    }
   }
 
   useEffect(() => {
@@ -249,7 +316,12 @@ const { addToCart } = useCart();
   }, [stockLimit]);
 
   return (
-    <article className="feed-card" ref={cardRef}>
+    <article
+      className="feed-card"
+      ref={cardRef}
+      onTouchStart={handleCardTouchStart}
+      onTouchEnd={handleCardTouchEnd}
+    >
       <div className="feed-card-header">
         <Link to={storePath} className="feed-store-link">
           <div className="feed-store-avatar">

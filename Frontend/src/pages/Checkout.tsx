@@ -575,6 +575,9 @@ window.location.href = paymentResponse.payment.authorizationUrl;
                   <span>
                     {item.sellerName} • Qty {item.quantity}
                   </span>
+                  {item.deliveryReadinessLabel && (
+                    <small>{item.deliveryReadinessLabel}</small>
+                  )}
                 </div>
                 <b>{formatNaira(item.numericPrice * item.quantity)}</b>
               </div>

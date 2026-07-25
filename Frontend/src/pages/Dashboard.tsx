@@ -20,6 +20,7 @@ import {
   FiPlus,
   FiRefreshCw,
   FiSave,
+  FiShield,
   FiShoppingBag,
   FiTrash2,
   FiTruck,
@@ -49,6 +50,14 @@ import {
   updateSellerStore,
 } from "../services/seller.service";
 import type { AvailableDeliveryRider, SellerPickupTask } from "../services/seller.service";
+import {
+  getKycStatus,
+  getSellerPickupLocation,
+  saveSellerPickupLocation,
+  startKyc,
+  type KycStatusResponse,
+  type SavedLocation,
+} from "../services/stage3.service";
 import type {
   SellerProduct,
   SellerService,
@@ -91,6 +100,9 @@ function Dashboard() {
   const [highlightImagePreview, setHighlightImagePreview] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [kycStatus, setKycStatus] = useState<KycStatusResponse | null>(null);
+  const [pickupLocation, setPickupLocation] = useState<SavedLocation | null>(null);
+  const [isSavingTrust, setIsSavingTrust] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
     setError("");
@@ -133,11 +145,27 @@ function Dashboard() {
     }
   }, []);
 
+  const loadStage3Trust = useCallback(async () => {
+    const [kycResult, pickupResult] = await Promise.allSettled([
+      getKycStatus(),
+      getSellerPickupLocation(),
+    ]);
+
+    if (kycResult.status === "fulfilled") {
+      setKycStatus(kycResult.value);
+    }
+
+    if (pickupResult.status === "fulfilled") {
+      setPickupLocation(pickupResult.value.location);
+    }
+  }, []);
+
   useEffect(() => {
     void loadWorkspace();
     void loadPickupTasks();
     void loadAvailableRiders();
-  }, [loadAvailableRiders, loadPickupTasks, loadWorkspace]);
+    void loadStage3Trust();
+  }, [loadAvailableRiders, loadPickupTasks, loadStage3Trust, loadWorkspace]);
 
   const categories = useMemo(() => {
     const productCategories = (workspace?.products || []).map(
@@ -470,6 +498,60 @@ function Dashboard() {
     }
   }
 
+  async function handleStartKyc() {
+    setIsSavingTrust(true);
+    setError("");
+    setNotice("");
+
+    try {
+      await startKyc((import.meta.env.VITE_KYC_PROVIDER || "manual") as "mock" | "manual" | "dojah");
+      await loadStage3Trust();
+      setNotice("Verification started. If manual review is required, admin will review your submitted details.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Verification could not start.");
+    } finally {
+      setIsSavingTrust(false);
+    }
+  }
+
+  async function handleSavePickupLocation() {
+    if (!workspace) return;
+
+    const { store } = workspace;
+    const address = store.pickupLocation || store.locationArea || store.campus;
+
+    if (!address) {
+      setError("Add your pickup location in Store profile first.");
+      setActiveTab("store");
+      return;
+    }
+
+    setIsSavingTrust(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await saveSellerPickupLocation({
+        label: "Default pickup",
+        address,
+        area: store.locationArea || store.campus,
+        campus: store.campus,
+        marketId: store.marketId || null,
+        shopNumber: store.shopNumber || store.shopStallNumber || "",
+        shopSection: store.marketSection || store.shopSection || "",
+        pickupInstruction: store.pickupInstruction || store.nearestLandmark || "",
+        lat: store.pickupLat ?? null,
+        lng: store.pickupLng ?? null,
+      });
+      setPickupLocation(response.location);
+      setNotice("Pickup location synced for delivery dispatch.");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Pickup location could not be saved.");
+    } finally {
+      setIsSavingTrust(false);
+    }
+  }
+
   if (isLoading) {
     return (
       <section className="seller-workspace-page">
@@ -657,6 +739,57 @@ function Dashboard() {
               <button type="button" onClick={() => setActiveTab("store")}>
                 Complete store profile
               </button>
+            </aside>
+
+            <aside className="seller-workspace-panel">
+              <div className="seller-workspace-panel-header">
+                <div>
+                  <span>Trust + pickup</span>
+                  <h2>Stage 3 readiness</h2>
+                </div>
+                <FiShield />
+              </div>
+
+              <div className="seller-workspace-compact-list">
+                <article>
+                  <div>
+                    <strong>Verification</strong>
+                    <span>
+                      {(kycStatus?.kyc.status || store.kycStatus || store.verificationStatus || "not_started").replace(/_/g, " ")}
+                    </span>
+                  </div>
+                  <small>{kycStatus?.completionPercent ?? store.profileCompletionPercent ?? 0}% complete</small>
+                </article>
+
+                <article>
+                  <div>
+                    <strong>Pickup point</strong>
+                    <span>{pickupLocation?.address || store.pickupLocation || store.locationArea || "Not synced yet"}</span>
+                  </div>
+                  <small>{pickupLocation?.source || "store profile"}</small>
+                </article>
+              </div>
+
+              <div className="seller-workspace-hero-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={isSavingTrust || kycStatus?.kyc.status === "verified" || store.kycStatus === "verified"}
+                  onClick={() => void handleStartKyc()}
+                >
+                  <FiShield />
+                  {kycStatus?.kyc.status === "verified" || store.kycStatus === "verified" ? "Verified" : "Start verification"}
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  disabled={isSavingTrust}
+                  onClick={() => void handleSavePickupLocation()}
+                >
+                  <FiMapPin />
+                  Save pickup
+                </button>
+              </div>
             </aside>
           </div>
         </>
@@ -1090,8 +1223,16 @@ function SellerOrderReadinessPanel({
                   <span><FiMapPin /> {task.pickupLandmark || task.pickupZoneId || "Pickup location from store profile"}</span>
                   <span><FiPackage /> {task.itemCount || task.orderItems.length} item(s)</span>
                   {task.packageTagCode ? <span><FiArchive /> Tag {task.packageTagCode}</span> : null}
+                  {task.sellerPickupCode ? <span><FiShield /> Pickup code {task.sellerPickupCode}</span> : null}
                   {profileText ? <span><FiTruck /> {profileText.replaceAll("_", " ")}</span> : null}
                 </div>
+
+                {task.packageInstruction ? (
+                  <div className="seller-order-package-instruction">
+                    <FiAlertCircle />
+                    <span>{task.packageInstruction}</span>
+                  </div>
+                ) : null}
 
                 <div className="seller-order-items">
                   {task.orderItems.length ? task.orderItems.map((item) => (

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import type { PrivateAssignment } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatDateTime } from '../../utils/format';
 import { useRiderData } from '../../context/RiderDataContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
@@ -34,7 +34,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
     await startDelivery(assignment.id);
     setSubmitting(false);
     setConfirmOpen(false);
-    navigate(`/rider/verify/${assignment.id}`);
+    navigate('/rider/verify-code');
   }
 
   return (
@@ -85,7 +85,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600 shadow-sm">Value: {formatCurrency(assignment.orderValue)}</div>
+          <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600 shadow-sm">Package: value hidden</div>
           <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600">Risk: <span className={assignment.riskLevel === 'high' ? 'text-rose-600' : assignment.riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'}>{assignment.riskLevel}</span></div>
           <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600">OTP: pickup + delivery</div>
         </div>

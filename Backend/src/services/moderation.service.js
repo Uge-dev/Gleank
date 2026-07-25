@@ -3,6 +3,7 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { serializeProduct, serializeService } from "../lib/serializers.js";
 import { createNotification } from "./notification.service.js";
+import { validateAndStoreProductPrice } from "./price-validation.service.js";
 import {
   logPaymentProtectionEvent,
   scanListingContent,
@@ -417,6 +418,180 @@ function ownerNotificationForProduct(productId, title, body) {
     actionLabel: "Open dashboard",
     actionPath: "/dashboard",
   });
+}
+
+function productWithOwner(productId) {
+  return db
+    .prepare(`
+      SELECT products.*, stores.owner_id, stores.seller_type, stores.campus
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+    `)
+    .get(productId);
+}
+
+function assertProductOwner(auth, product) {
+  if (!auth) throw new HttpError(401, "Please log in to continue.");
+  if (auth.role === "admin") return;
+  if (product.owner_id !== (auth.user_id || auth.id)) {
+    throw new HttpError(403, "Only the seller or admin can publish this product.");
+  }
+}
+
+function productPriceInput(product) {
+  return {
+    productId: product.id,
+    name: product.name,
+    category: product.category,
+    description: product.description,
+    priceKobo: product.buyer_price_kobo || product.price_kobo,
+    sellerType: product.seller_type || "campus",
+    campus: product.campus || "",
+  };
+}
+
+function upsertStage3ModerationReview(product, result) {
+  const now = nowIso();
+  db.prepare(`
+    INSERT INTO product_moderation_reviews (
+      id, product_id, item_type, status, risk_score, risk_level, reasons,
+      ocr_status, ocr_result_id, note, reviewed_by, reviewed_at, created_at, updated_at
+    ) VALUES (?, ?, 'product', ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?)
+    ON CONFLICT(product_id, item_type) DO UPDATE SET
+      status = excluded.status,
+      risk_score = excluded.risk_score,
+      risk_level = excluded.risk_level,
+      reasons = excluded.reasons,
+      ocr_status = excluded.ocr_status,
+      note = excluded.note,
+      updated_at = excluded.updated_at
+  `).run(
+    createId("pmr"),
+    product.id,
+    result.status,
+    Number(product.risk_score || 0),
+    product.risk_level || "low",
+    JSON.stringify(result.reasons || []),
+    result.ocrStatus || "not_run",
+    result.note || "",
+    now,
+    now,
+  );
+}
+
+export function validateProductForPublication(auth, productId) {
+  const product = productWithOwner(productId);
+  if (!product) throw new HttpError(404, "Product was not found.");
+  assertProductOwner(auth, product);
+
+  const imageUrls = safeJsonArray(product.image_urls);
+  const moderation = getProductModerationStatus(productId);
+  const price = validateAndStoreProductPrice(
+    productId,
+    "product",
+    productPriceInput(product),
+  );
+
+  const reasons = [];
+  if (imageUrls.length === 0) {
+    reasons.push({
+      code: "missing_images",
+      message: "Upload at least one clear image before publishing.",
+      action: "block",
+    });
+  }
+  if (["rejected", "hidden"].includes(moderation.moderationStatus)) {
+    reasons.push({
+      code: "moderation_blocked",
+      message: moderation.moderationNote || "This product needs changes before it can be published.",
+      action: "block",
+    });
+  }
+  if (price.status === "block") {
+    reasons.push({
+      code: "price_blocked",
+      message: price.reason,
+      action: "block",
+    });
+  }
+  if (price.requiresReview || ["pending_review", "flagged"].includes(moderation.moderationStatus)) {
+    reasons.push({
+      code: "admin_review",
+      message: price.reason || moderation.moderationNote || "This product needs admin review before it goes public.",
+      action: "review",
+    });
+  }
+
+  const blocked = reasons.some((reason) => reason.action === "block");
+  const requiresReview = !blocked && reasons.some((reason) => reason.action === "review");
+  const status = blocked ? "rejected" : requiresReview ? "pending_review" : "approved";
+
+  upsertStage3ModerationReview(product, {
+    status,
+    reasons,
+    note: reasons[0]?.message || "Product is ready to publish.",
+  });
+
+  return {
+    product: serializeProduct(product),
+    ready: !blocked && !requiresReview,
+    blocked,
+    requiresReview,
+    status,
+    reasons,
+    moderation,
+    price,
+  };
+}
+
+export function publishProductAfterValidation(auth, productId) {
+  const product = productWithOwner(productId);
+  if (!product) throw new HttpError(404, "Product was not found.");
+  assertProductOwner(auth, product);
+
+  const validation = validateProductForPublication(auth, productId);
+
+  if (validation.blocked) {
+    throw new HttpError(422, validation.reasons[0]?.message || "This product cannot be published yet.");
+  }
+
+  const now = nowIso();
+  const nextStatus =
+    validation.requiresReview
+      ? "draft"
+      : Number(product.stock || 0) <= 0
+        ? "out_of_stock"
+        : "active";
+  const moderationStatus = validation.requiresReview
+    ? "pending_review"
+    : product.moderation_status === "approved"
+      ? "approved"
+      : "auto_approved";
+
+  db.prepare(`
+    UPDATE products
+    SET status = ?,
+        moderation_status = ?,
+        requires_admin_review = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    nextStatus,
+    moderationStatus,
+    validation.requiresReview ? 1 : 0,
+    now,
+    productId,
+  );
+
+  const updated = serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  return {
+    product: updated,
+    validation: {
+      ...validation,
+      product: updated,
+    },
+  };
 }
 
 export function adminReviewProduct(auth, productId, input = {}) {

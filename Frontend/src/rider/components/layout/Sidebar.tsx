@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FiBell, FiCheckCircle, FiCreditCard, FiHome, FiLogOut, FiPackage, FiSettings, FiShield, FiTruck, FiUser } from 'react-icons/fi';
+import { FiBell, FiCheckCircle, FiCreditCard, FiHome, FiKey, FiLogOut, FiPackage, FiSettings, FiShield, FiTruck, FiUser } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import StatusBadge from '../ui/StatusBadge';
 
@@ -7,6 +7,7 @@ const navItems = [
   { label: 'Dashboard', path: '/rider', icon: FiHome, end: true },
   { label: 'Assigned Orders', path: '/rider/assigned', icon: FiPackage },
   { label: 'Active Deliveries', path: '/rider/active', icon: FiTruck },
+  { label: 'Verify Code', path: '/rider/verify-code', icon: FiKey },
   { label: 'Completed Deliveries', path: '/rider/completed', icon: FiCheckCircle },
   { label: 'Earnings', path: '/rider/earnings', icon: FiCreditCard },
   { label: 'Notifications', path: '/rider/notifications', icon: FiBell },

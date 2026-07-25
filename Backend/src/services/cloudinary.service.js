@@ -28,12 +28,12 @@ export function uploadCloudinaryBuffer(buffer, options = {}) {
       {
         folder: options.folder || env.cloudinaryFolder,
         public_id: options.publicId,
-        resource_type: "image",
+        resource_type: options.resourceType || "image",
         overwrite: false,
         use_filename: false,
         unique_filename: true,
         format: options.format,
-        tags: ["gleank", options.tag].filter(Boolean),
+        tags: ["gleenc", options.tag].filter(Boolean),
       },
       (error, result) => {
         if (error) {
