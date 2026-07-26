@@ -19,6 +19,7 @@ import {
   listInterventionQueue,
   listPackageRules,
   listReliabilityScores,
+  listRiderCandidatesForBatch,
   listRiderDispatches,
   listSellerReadinessTasks,
   listSubstitutionOptions,
@@ -33,6 +34,7 @@ import {
   saveZone,
   sellerConfirmAvailability,
   sellerRejectAvailability,
+  sendDeliveryOfferToRider,
   startDispatchForBatch,
   suggestPackageProfile,
   updateRiderCapacity,
@@ -52,24 +54,7 @@ function requireAdminAccess(req, res, next) {
     return;
   }
 
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const validToken =
-    process.env.ADMIN_TOKEN ||
-    process.env.ADMIN_DEMO_TOKEN ||
-    "gleank-admin-local-token";
-
-  if (!token || token !== validToken) {
-    res.status(401).json({ message: "Admin authorization is required" });
-    return;
-  }
-
-  req.auth = {
-    ...(req.auth || {}),
-    role: "admin",
-    user_id: req.auth?.user_id || "admin-token",
-  };
-  next();
+  res.status(401).json({ message: "Admin authorization is required" });
 }
 
 logisticsRouter.get("/zones", (_req, res) => {
@@ -162,7 +147,19 @@ logisticsRouter.post("/dispatch/batches/:batchId/start", requireAuth, requireEma
   res.json(startDispatchForBatch(req.auth, req.params.batchId));
 });
 
+logisticsRouter.get("/dispatch/batches/:batchId/rider-candidates", requireAuth, requireEmailVerified, requireRole("admin", "seller"), (req, res) => {
+  res.json(listRiderCandidatesForBatch(req.auth, req.params.batchId));
+});
+
+logisticsRouter.post("/dispatch/batches/:batchId/offers", requireAuth, requireEmailVerified, requireRole("admin", "seller"), (req, res) => {
+  res.status(201).json(sendDeliveryOfferToRider(req.auth, req.params.batchId, req.body || {}));
+});
+
 logisticsRouter.post("/dispatch/batches/:batchId/offer-next-rider", requireAuth, requireEmailVerified, requireRole("admin", "seller"), (req, res) => {
+  if (req.auth.role === "seller") {
+    res.json(startDispatchForBatch(req.auth, req.params.batchId));
+    return;
+  }
   res.json(offerNextRiderForBatch(req.params.batchId));
 });
 
@@ -215,7 +212,7 @@ logisticsRouter.post("/seller/order-items/:orderItemId/reject-availability", req
 });
 
 logisticsRouter.post("/seller/pickup-tasks/:pickupTaskId/mark-ready", requireAuth, requireEmailVerified, requireRole("seller", "admin"), (req, res) => {
-  res.json({ pickupTask: markPickupTaskReady(req.auth, req.params.pickupTaskId) });
+  res.json({ pickupTask: markPickupTaskReady(req.auth, req.params.pickupTaskId, req.body || {}) });
 });
 
 logisticsRouter.patch("/seller/products/:productId/stock-status", requireAuth, requireEmailVerified, requireRole("seller", "admin"), (req, res) => {

@@ -1,152 +1,415 @@
-import { useState } from 'react';
-import type { FormEvent } from 'react';
-import { FiAward, FiExternalLink, FiFileText, FiShield, FiUpload, FiUserCheck } from 'react-icons/fi';
+import { useEffect, useMemo, useState } from 'react';
+import type { ChangeEvent, FormEvent } from 'react';
+import { FiAlertTriangle, FiAward, FiCheckCircle, FiClock, FiFileText, FiRefreshCw, FiShield, FiUpload } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
 import StatusBadge from '../components/ui/StatusBadge';
 import Button from '../components/ui/Button';
-import { formatCurrency } from '../utils/format';
-import { riderApi } from '../services/riderApi';
+import { riderApi, type VerificationCenterResponse, type VerificationRequirement } from '../services/riderApi';
 import { apiUrl } from '../../lib/api';
 
-export default function VerificationCenter() {
-  const { rider, updateRiderLocally } = useAuth();
-  const [identityDocument, setIdentityDocument] = useState<File | null>(null);
-  const [selfie, setSelfie] = useState<File | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState('');
-  const [error, setError] = useState('');
+type RequirementDraft = {
+  payload: Record<string, string | boolean>;
+  files: Record<string, File | null>;
+};
 
-  if (!rider) return null;
-  const needsRequiredDocuments = rider.documents.some((doc) => doc.required && doc.status === 'not_submitted');
+function emptyDraft(): RequirementDraft {
+  return { payload: {}, files: {} };
+}
 
-  async function submitDocuments(event: FormEvent) {
-    event.preventDefault();
-    setNotice('');
-    setError('');
+function statusTone(status: string) {
+  if (status === 'approved') return 'border-emerald-100 bg-emerald-50';
+  if (status === 'submitted' || status === 'under_review') return 'border-amber-100 bg-amber-50';
+  if (status === 'needs_information' || status === 'rejected') return 'border-rose-100 bg-rose-50';
+  return 'border-slate-100 bg-white';
+}
 
-    if (!identityDocument || !selfie) {
-      setError('Upload both government ID and profile/selfie image before submitting.');
-      return;
-    }
+function nextAction(status: string) {
+  if (status === 'approved') return 'Replace';
+  if (status === 'needs_information' || status === 'rejected') return 'Try Again';
+  if (status === 'submitted' || status === 'under_review') return 'Edit / Replace';
+  return 'Submit';
+}
 
-    setSaving(true);
-    try {
-      const response = await riderApi.uploadVerificationDocuments(identityDocument, selfie);
-      updateRiderLocally(response.rider);
-      setIdentityDocument(null);
-      setSelfie(null);
-      setNotice('Rider verification documents submitted for admin review.');
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Documents could not be submitted.');
-    } finally {
-      setSaving(false);
-    }
+function formatTime(value?: string) {
+  if (!value) return 'Not submitted';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+}
+
+function fieldsForRequirement(requirement: VerificationRequirement) {
+  switch (requirement.code) {
+    case 'rider_personal_profile':
+    case 'rider_home_address':
+      return [
+        ['fullLegalName', 'Full legal name'],
+        ['homeAddress', 'Full home address'],
+        ['state', 'State'],
+        ['cityLga', 'City/LGA'],
+        ['nearestLandmark', 'Nearest landmark'],
+      ];
+    case 'rider_emergency_contact':
+      return [
+        ['fullName', 'Contact full name'],
+        ['relationship', 'Relationship'],
+        ['primaryPhone', 'Primary phone'],
+        ['alternativePhone', 'Alternative phone'],
+        ['address', 'Address'],
+      ];
+    case 'rider_guarantor':
+      return [
+        ['fullName', 'Guarantor full name'],
+        ['relationship', 'Relationship to rider'],
+        ['phone', 'Phone'],
+        ['email', 'Email'],
+        ['address', 'Address'],
+        ['occupation', 'Occupation'],
+      ];
+    case 'rider_government_id':
+      return [
+        ['idType', 'ID type'],
+        ['idNumberReference', 'ID number/reference'],
+        ['expiryDate', 'Expiry date'],
+      ];
+    case 'rider_vehicle_capacity':
+    case 'rider_vehicle_authorization':
+      return [
+        ['vehicleType', 'Vehicle type'],
+        ['plateInformation', 'Plate information'],
+        ['packageSizes', 'Package sizes supported'],
+        ['weightLimit', 'Weight limit'],
+        ['fragileCapability', 'Fragile-item capability'],
+      ];
+    case 'rider_service_zone':
+      return [
+        ['serviceZones', 'Service zones'],
+        ['locationPermissionState', 'Location permission state'],
+      ];
+    default:
+      return [['note', 'Submission note']];
+  }
+}
+
+function fileFieldsForRequirement(requirement: VerificationRequirement) {
+  switch (requirement.code) {
+    case 'rider_government_id':
+      return [
+        ['identityDocument', 'Government ID front image/PDF'],
+        ['documents', 'Back image or expiry proof'],
+      ];
+    case 'rider_identity_selfie':
+      return [['selfie', 'Identity selfie']];
+    case 'rider_guarantor':
+      return [['documents', 'Guarantor government ID or consent document']];
+    case 'rider_vehicle_authorization':
+      return [['vehicleDocument', 'Vehicle ownership/authorization proof']];
+    case 'rider_home_address':
+      return [['documents', 'Residential proof, if available']];
+    default:
+      return [];
+  }
+}
+
+function RequirementCard({
+  requirement,
+  draft,
+  onDraftChange,
+  onSubmit,
+  submitting,
+}: {
+  requirement: VerificationRequirement;
+  draft: RequirementDraft;
+  onDraftChange: (draft: RequirementDraft) => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  const fields = fieldsForRequirement(requirement);
+  const fileFields = fileFieldsForRequirement(requirement);
+  const isSystem = requirement.workflowType === 'system';
+  const isLiveFace = requirement.code === 'rider_live_face';
+
+  function updateField(key: string, value: string | boolean) {
+    onDraftChange({ ...draft, payload: { ...draft.payload, [key]: value } });
+  }
+
+  function updateFile(field: string, event: ChangeEvent<HTMLInputElement>) {
+    onDraftChange({
+      ...draft,
+      files: { ...draft.files, [field]: event.target.files?.[0] || null },
+    });
   }
 
   return (
-    <div>
-      <PageHeader title="Rider Verification" subtitle="Manage identity, guarantor, vehicle and document requirements for safer delivery operations." />
-      {notice && <div className="mb-4 rounded-3xl bg-emerald-50 px-5 py-4 text-sm font-extrabold text-emerald-700">{notice}</div>}
-      {error && <div className="mb-4 rounded-3xl bg-rose-50 px-5 py-4 text-sm font-extrabold text-rose-700">{error}</div>}
-
-      <div className="grid gap-5 xl:grid-cols-[0.8fr_1.2fr]">
-        <Card className="p-6">
-          <div className="flex items-start gap-4">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-cyan-50 text-gleenc-cyan"><FiUserCheck className="text-2xl" /></div>
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-950">{rider.fullName}</h2>
-              <p className="mt-1 text-sm text-slate-500">{rider.vehicleType} {rider.vehiclePlate ? `· ${rider.vehiclePlate}` : ''}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <StatusBadge value={rider.status} />
-                <StatusBadge value={rider.verificationStatus} />
-              </div>
-            </div>
+    <Card className={`border p-5 ${statusTone(requirement.status)}`}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-black text-slate-950">{requirement.title}</h3>
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">Level {requirement.requiredLevel}</span>
+            {requirement.blocking ? <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-600">Blocking</span> : null}
           </div>
-          <div className="mt-6 grid gap-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Verification Level</p>
-              <p className="mt-1 text-lg font-black capitalize text-slate-950">{rider.verificationLevel.replace(/_/g, ' ')}</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Package Value Limit</p>
-              <p className="mt-1 text-lg font-black text-slate-950">{formatCurrency(rider.maxPackageValue)}</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Active Zone</p>
-              <p className="mt-1 text-lg font-black text-slate-950">{rider.activeZone}</p>
-            </div>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{requirement.description}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <StatusBadge value={requirement.status} />
+            <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-slate-500">{requirement.workflowType}</span>
           </div>
-        </Card>
+        </div>
+        <div className="text-left sm:text-right">
+          <p className="text-xs font-black uppercase tracking-widest text-slate-400">Last submitted</p>
+          <p className="mt-1 text-sm font-bold text-slate-700">{formatTime(requirement.latestSubmission?.submittedAt)}</p>
+        </div>
+      </div>
 
-        <Card className="p-6">
-          <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-950"><FiFileText /> Required Documents</h2>
-          <div className="mt-5 space-y-3">
-            {rider.documents.map((doc) => (
-              <div key={doc.id} className="flex flex-col justify-between gap-3 rounded-2xl bg-slate-50 p-4 sm:flex-row sm:items-center">
-                <div>
-                  <p className="font-extrabold text-slate-950">{doc.label}</p>
-                  <p className="mt-1 text-sm text-slate-500">{doc.required ? 'Required' : 'Optional'} {doc.note ? `· ${doc.note}` : ''}</p>
-                  {doc.url && (
-                    <a href={apiUrl(doc.url)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-2 text-xs font-black text-emerald-700">
-                      <FiExternalLink /> View submitted file
-                    </a>
-                  )}
-                </div>
-                <StatusBadge value={doc.status} />
+      {requirement.adminFeedback ? (
+        <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-700">
+          Admin feedback: {requirement.adminFeedback}
+        </div>
+      ) : null}
+
+      {requirement.latestSubmission?.documentUrls?.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {requirement.latestSubmission.documentUrls.map((url, index) => (
+            <a
+              key={`${url}-${index}`}
+              href={apiUrl(url)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-2 text-xs font-black text-slate-700"
+            >
+              <FiFileText /> View version {requirement.latestSubmission?.version || 1}.{index + 1}
+            </a>
+          ))}
+        </div>
+      ) : null}
+
+      {isSystem ? (
+        <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
+          This requirement updates automatically from your account. If it is still incomplete, update the matching account detail first.
+        </div>
+      ) : isLiveFace ? (
+        <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
+          Live-face is separate from selfie upload. If Dojah/live-face is not configured, this requirement remains incomplete and admin cannot safely mark it passed from a static image.
+        </div>
+      ) : (
+        <form
+          className="mt-4 grid gap-3"
+          onSubmit={(event: FormEvent) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            {fields.map(([key, label]) => (
+              <label key={key} className="block text-sm font-bold text-slate-700">
+                {label}
+                <input
+                  value={String(draft.payload[key] || '')}
+                  onChange={(event) => updateField(key, event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-slate-950"
+                />
+              </label>
+            ))}
+          </div>
+          {requirement.code === 'rider_guarantor' ? (
+            <label className="flex items-center gap-3 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-700">
+              <input
+                type="checkbox"
+                checked={Boolean(draft.payload.consentConfirmed)}
+                onChange={(event) => updateField('consentConfirmed', event.target.checked)}
+                className="h-4 w-4"
+              />
+              Guarantor consent has been confirmed.
+            </label>
+          ) : null}
+          {fileFields.map(([field, label]) => (
+            <label key={field} className="block text-sm font-bold text-slate-700">
+              {label}
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(event) => updateFile(field, event)}
+                className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm"
+              />
+            </label>
+          ))}
+          <Button icon={FiUpload} disabled={submitting}>
+            {submitting ? 'Submitting...' : nextAction(requirement.status)}
+          </Button>
+        </form>
+      )}
+
+      {requirement.submissions?.length ? (
+        <details className="mt-4 rounded-2xl bg-white px-4 py-3">
+          <summary className="cursor-pointer text-sm font-black text-slate-800">View history</summary>
+          <div className="mt-3 space-y-2">
+            {requirement.submissions.map((submission) => (
+              <div key={submission.id} className="rounded-2xl bg-slate-50 p-3 text-xs font-bold text-slate-600">
+                Version {submission.version} · {submission.status} · {formatTime(submission.submittedAt)}
               </div>
             ))}
           </div>
-          <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-            <FiShield className="mr-2 inline" /> Higher-risk deliveries may require stronger identity checks, admin approval and additional safety review.
-          </div>
-        </Card>
-      </div>
+        </details>
+      ) : null}
+    </Card>
+  );
+}
 
-      <div className="mt-6 grid gap-5 lg:grid-cols-2">
+export default function VerificationCenter() {
+  const { rider } = useAuth();
+  const [center, setCenter] = useState<VerificationCenterResponse | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, RequirementDraft>>({});
+  const [loading, setLoading] = useState(true);
+  const [savingCode, setSavingCode] = useState('');
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const requirements = center?.case.requirements || [];
+  const levelGroups = useMemo(() => {
+    const groups = new Map<number, VerificationRequirement[]>();
+    requirements.forEach((requirement) => {
+      const level = requirement.requiredLevel || 1;
+      groups.set(level, [...(groups.get(level) || []), requirement]);
+    });
+    return Array.from(groups.entries()).sort(([a], [b]) => a - b);
+  }, [requirements]);
+
+  async function load() {
+    setLoading(true);
+    setError('');
+    try {
+      setCenter(await riderApi.verificationCenter());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Verification could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function submit(requirement: VerificationRequirement) {
+    setSavingCode(requirement.code);
+    setError('');
+    setNotice('');
+    try {
+      const draft = drafts[requirement.code] || emptyDraft();
+      const response = await riderApi.submitVerificationRequirement(requirement.code, draft.payload, draft.files);
+      setCenter(response);
+      setDrafts((current) => ({ ...current, [requirement.code]: emptyDraft() }));
+      setNotice(`${requirement.title} submitted for admin review.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Requirement could not be submitted.');
+    } finally {
+      setSavingCode('');
+    }
+  }
+
+  async function requestUpgrade() {
+    if (!center) return;
+    setSavingCode('upgrade');
+    setError('');
+    try {
+      setCenter(await riderApi.requestVerificationLevel(Math.max(2, center.case.currentVerifiedLevel + 1), 'Requesting the next rider verification level.'));
+      setNotice('Upgrade request sent to admin.');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Upgrade request could not be sent.');
+    } finally {
+      setSavingCode('');
+    }
+  }
+
+  if (!rider) return null;
+
+  return (
+    <div>
+      <PageHeader title="Rider Verification" subtitle="Submit, replace and track each rider requirement without losing previous versions." />
+
+      {notice ? <div className="mb-4 rounded-3xl bg-emerald-50 px-5 py-4 text-sm font-extrabold text-emerald-700">{notice}</div> : null}
+      {error ? <div className="mb-4 rounded-3xl bg-rose-50 px-5 py-4 text-sm font-extrabold text-rose-700">{error}</div> : null}
+
+      {loading ? (
         <Card className="p-6">
-          <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-950"><FiShield /> Guarantor / Referee</h2>
-          <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-            <p className="font-extrabold text-slate-950">{rider.guarantor.name}</p>
-            <p className="mt-1 text-sm text-slate-500">{rider.guarantor.phone} · {rider.guarantor.relationship}</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{rider.guarantor.address}</p>
-            <div className="mt-3"><StatusBadge value={rider.guarantor.status} /></div>
-          </div>
+          <div className="flex items-center gap-3 text-sm font-black text-slate-600"><FiRefreshCw className="animate-spin" /> Loading verification center...</div>
         </Card>
-        <Card className="p-6">
-          <h2 className="flex items-center gap-2 text-xl font-extrabold text-slate-950"><FiAward /> Upgrade Requirements</h2>
-          <div className="mt-4 space-y-3 text-sm font-semibold leading-6 text-slate-600">
-            <p className="rounded-2xl bg-slate-50 p-4">Level 1: phone/email/profile photo + vehicle details. Low-value deliveries only.</p>
-            <p className="rounded-2xl bg-slate-50 p-4">Level 2: valid ID + address + guarantor. Normal campus and market deliveries.</p>
-            <p className="rounded-2xl bg-slate-50 p-4">Level 3: trusted history + low complaints. Faster assignment priority.</p>
-            <p className="rounded-2xl bg-slate-50 p-4">Level 4: optional NIN/vendor KYC + admin approval. High-value used-market/electronics delivery.</p>
-          </div>
-          {needsRequiredDocuments ? (
-            <form onSubmit={submitDocuments} className="mt-5 space-y-4 rounded-3xl border border-slate-100 bg-white p-4">
-              <div>
-                <p className="text-sm font-black uppercase tracking-widest text-slate-400">Submit missing documents</p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">Upload a clear ID image and a current live profile/selfie image. Admin will review them before rider approval.</p>
+      ) : center ? (
+        <>
+          <div className="mb-6 grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <Card className="p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-slate-400">Requirement-based verification</p>
+                  <h2 className="mt-2 text-2xl font-black text-slate-950">{rider.fullName}</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Level {center.case.currentVerifiedLevel} approved · Level {center.case.requestedLevel} requested · {center.case.completionPercent}% complete
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <StatusBadge value={center.case.overallStatus} />
+                    <StatusBadge value={center.case.operationalStatus} />
+                  </div>
+                </div>
+                <Button icon={FiAward} disabled={savingCode === 'upgrade'} onClick={requestUpgrade}>
+                  {savingCode === 'upgrade' ? 'Requesting...' : 'Request next level'}
+                </Button>
               </div>
-              <label className="block">
-                <span className="text-sm font-bold text-slate-700">Government ID image</span>
-                <input type="file" accept="image/*" required onChange={(event) => setIdentityDocument(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
-              </label>
-              <label className="block">
-                <span className="text-sm font-bold text-slate-700">Live profile/selfie image</span>
-                <input type="file" accept="image/*" capture="user" required onChange={(event) => setSelfie(event.target.files?.[0] || null)} className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none focus:border-gleenc-cyan" />
-              </label>
-              <Button icon={FiUpload} disabled={saving || !identityDocument || !selfie} fullWidth>
-                {saving ? 'Submitting...' : 'Submit Documents'}
-              </Button>
-            </form>
-          ) : (
-            <div className="mt-5 rounded-3xl border border-emerald-100 bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-800">
-              Required onboarding documents have been submitted. Admin will complete the rider verification stages from the admin dashboard.
+              <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-slate-950" style={{ width: `${center.case.completionPercent}%` }} />
+              </div>
+            </Card>
+
+            <Card className="p-6">
+              <h3 className="flex items-center gap-2 text-lg font-black text-slate-950">
+                {center.case.eligibility?.eligible ? <FiCheckCircle /> : <FiAlertTriangle />} Dispatch eligibility
+              </h3>
+              {center.case.eligibility?.eligible ? (
+                <p className="mt-3 rounded-2xl bg-emerald-50 p-4 text-sm font-bold leading-6 text-emerald-700">
+                  Eligible for dispatch based on the same backend checks used by rider assignment.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {(center.case.eligibility?.blockingReasons || []).slice(0, 5).map((reason) => (
+                    <p key={reason.code} className="rounded-2xl bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800">
+                      {reason.message}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {!center.thirdParty?.dojahConfigured ? (
+            <div className="mb-6 rounded-3xl border border-amber-100 bg-amber-50 px-5 py-4 text-sm font-bold leading-6 text-amber-800">
+              <FiShield className="mr-2 inline" /> Live-face/NIN provider is not configured, so liveness stays incomplete until the production provider is connected.
             </div>
-          )}
-        </Card>
-      </div>
+          ) : null}
+
+          <div className="space-y-8">
+            {levelGroups.map(([level, rows]) => (
+              <section key={level}>
+                <div className="mb-3 flex items-center gap-2">
+                  <FiClock className="text-slate-400" />
+                  <h2 className="text-lg font-black text-slate-950">Level {level} requirements</h2>
+                </div>
+                <div className="grid gap-4">
+                  {rows.map((requirement) => (
+                    <RequirementCard
+                      key={requirement.id}
+                      requirement={requirement}
+                      draft={drafts[requirement.code] || emptyDraft()}
+                      onDraftChange={(draft) => setDrafts((current) => ({ ...current, [requirement.code]: draft }))}
+                      onSubmit={() => submit(requirement)}
+                      submitting={savingCode === requirement.code}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -18,7 +18,6 @@ const allowedImageTypes = new Set([
   "image/jpeg",
   "image/png",
   "image/webp",
-  "image/gif",
 ]);
 const allowedDocumentTypes = new Set([
   ...allowedImageTypes,
@@ -51,6 +50,76 @@ function normalizedCloudinaryFolder(req, file) {
 
 function isDocumentUpload(file) {
   return documentFieldNames.has(file.fieldname || "");
+}
+
+function detectFileType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
+
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { mimetype: "image/jpeg", extension: ".jpg", resourceType: "image" };
+  }
+
+  if (
+    buffer.length >= 8 &&
+    buffer[0] === 0x89 &&
+    buffer[1] === 0x50 &&
+    buffer[2] === 0x4e &&
+    buffer[3] === 0x47 &&
+    buffer[4] === 0x0d &&
+    buffer[5] === 0x0a &&
+    buffer[6] === 0x1a &&
+    buffer[7] === 0x0a
+  ) {
+    return { mimetype: "image/png", extension: ".png", resourceType: "image" };
+  }
+
+  if (
+    buffer.length >= 12 &&
+    buffer.slice(0, 4).toString("ascii") === "RIFF" &&
+    buffer.slice(8, 12).toString("ascii") === "WEBP"
+  ) {
+    return { mimetype: "image/webp", extension: ".webp", resourceType: "image" };
+  }
+
+  if (buffer.slice(0, 4).toString("ascii") === "%PDF") {
+    return { mimetype: "application/pdf", extension: ".pdf", resourceType: "raw" };
+  }
+
+  if (
+    buffer.slice(0, 6).toString("ascii") === "GIF87a" ||
+    buffer.slice(0, 6).toString("ascii") === "GIF89a"
+  ) {
+    return { mimetype: "image/gif", extension: ".gif", resourceType: "image" };
+  }
+
+  return null;
+}
+
+function assertSafeDetectedFile(file, buffer) {
+  const detected = detectFileType(buffer);
+  const allowedTypes = isDocumentUpload(file) ? allowedDocumentTypes : allowedImageTypes;
+
+  if (!detected || !allowedTypes.has(detected.mimetype)) {
+    throw new HttpError(
+      415,
+      isDocumentUpload(file)
+        ? "Only JPEG, PNG, WebP, and PDF files are allowed for verification documents."
+        : "Only JPEG, PNG, and WebP images are allowed.",
+    );
+  }
+
+  if (detected.mimetype === "image/gif") {
+    throw new HttpError(415, "GIF uploads are not accepted. Please upload a JPEG, PNG, or WebP image.");
+  }
+
+  if (detected.mimetype === "application/pdf") {
+    const preview = buffer.slice(0, Math.min(buffer.length, 500_000)).toString("latin1");
+    if (/\/(?:JavaScript|JS|OpenAction|AA)\b/i.test(preview)) {
+      throw new HttpError(415, "This PDF contains active content and cannot be uploaded.");
+    }
+  }
+
+  return detected;
 }
 
 function collectFileBuffer(file) {
@@ -123,7 +192,9 @@ class GleencImageStorage {
   async _handleFile(req, file, callback) {
     try {
       const originalBuffer = await collectFileBuffer(file);
-      const image = await compressImage(file, originalBuffer);
+      const detected = assertSafeDetectedFile(file, originalBuffer);
+      const safeFile = { ...file, mimetype: detected.mimetype };
+      const image = await compressImage(safeFile, originalBuffer);
       const filename = `${Date.now()}-${nanoid(10)}${image.extension}`;
 
       if (isCloudinaryEnabled()) {
@@ -208,8 +279,8 @@ export const upload = multer({
       callback(new HttpError(
         415,
         isDocumentUpload(file)
-          ? "Only JPEG, PNG, WebP, GIF, and PDF files are allowed for verification documents."
-          : "Only JPEG, PNG, WebP, and GIF images are allowed.",
+            ? "Only JPEG, PNG, WebP, and PDF files are allowed for verification documents."
+          : "Only JPEG, PNG, and WebP images are allowed.",
       ));
       return;
     }

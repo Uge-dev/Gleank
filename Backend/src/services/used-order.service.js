@@ -4,7 +4,6 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { createUsedOrderConversation } from "./message.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
-import { markPayoutDeliveryVerified } from "./payout.service.js";
 import {
   createDispute,
   createReturnRequest,
@@ -139,7 +138,10 @@ function serializeOrder(row, events = []) {
     deliveryAddress: row.delivery_address || "",
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
-    verificationCode: row.verification_code || "",
+    verificationCode:
+      row.payment_status === "paid" && row.viewer_id === row.buyer_id
+        ? row.verification_code || ""
+        : "",
     packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -162,7 +164,7 @@ function selectOrderBase() {
   `;
 }
 
-function hydrateOrder(row) {
+function hydrateOrder(row, viewerId = "") {
   const events = db
     .prepare(`
       SELECT * FROM used_market_order_events
@@ -172,7 +174,7 @@ function hydrateOrder(row) {
     .all(row.id)
     .map(serializeEvent);
 
-  return serializeOrder(row, events);
+  return serializeOrder({ ...row, viewer_id: viewerId }, events);
 }
 
 function getOrderRowForUser(userId, idOrCode) {
@@ -281,13 +283,13 @@ export function listUsedOrders(userId) {
       LIMIT 100
     `)
     .all(userId, userId)
-    .map(hydrateOrder);
+    .map((row) => hydrateOrder(row, userId));
 }
 
 export function getUsedOrder(userId, idOrCode) {
   const row = getOrderRowForUser(userId, idOrCode);
   if (!row) throw new HttpError(404, "Used Market order was not found.");
-  return hydrateOrder(row);
+  return hydrateOrder(row, userId);
 }
 
 export function createUsedOrder(userId, input) {
@@ -509,80 +511,17 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
 }
 
 
-export function verifyUsedOrderDelivery(user, orderId, code, note = "") {
-  const deliveryCode = clean(code, 20);
+export function verifyUsedOrderDelivery(user, orderId, _code, _note = "") {
+  const row = getOrderRowForUser(user.user_id, orderId);
 
-  if (!deliveryCode) {
-    throw new HttpError(422, "Enter the buyer delivery code.");
+  if (!row) {
+    throw new HttpError(404, "Used Market order was not found.");
   }
 
-  const deliveredOrder = transaction(() => {
-    const row = getOrderRowForUser(user.user_id, orderId);
-
-    if (!row) {
-      throw new HttpError(404, "Used Market order was not found.");
-    }
-
-    const isSeller = row.seller_id === user.user_id;
-    const isAdmin = user.role === "admin";
-
-    if (!isSeller && !isAdmin) {
-      throw new HttpError(403, "Only the seller can verify the delivery code.");
-    }
-
-    if (row.status !== "meetup_or_delivery") {
-      throw new HttpError(
-        422,
-        "Delivery code can only be verified when pickup or delivery is in progress.",
-      );
-    }
-
-    if (row.payment_status !== "paid") {
-      throw new HttpError(422, "Protected payment must be verified before the delivery code can be used.");
-    }
-
-    if (String(row.verification_code || "") !== deliveryCode) {
-      throw new HttpError(422, "The delivery code is incorrect.");
-    }
-
-    const now = new Date().toISOString();
-
-    db.prepare(`
-      UPDATE used_market_orders
-      SET status = 'delivered',
-          stage4_status = 'delivered',
-          fulfillment_status = 'delivered',
-          updated_at = ?
-      WHERE id = ?
-    `).run(now, row.id);
-
-    insertEvent(
-      row.id,
-      "delivered",
-      note || "Seller verified the buyer delivery code and marked the item delivered.",
-    );
-
-    createNotification({
-      userId: row.buyer_id,
-      type: "used_market",
-      title: "Used item delivered",
-      body: `${row.listing_name} has been marked delivered.`,
-      actionLabel: "View order",
-      actionPath: `/used-orders/${row.id}`,
-      imageUrl: parseImages(row.listing_image_urls)[0] || "",
-    });
-
-    return getUsedOrder(user.user_id, row.id);
-  });
-
-  markPayoutDeliveryVerified({
-    sourceType: "used_order",
-    orderId: deliveredOrder.id,
-    actorId: user.user_id,
-    note: "Used Market delivery code verified.",
-  });
-
-  return deliveredOrder;
+  throw new HttpError(
+    403,
+    "Final delivery code verification must be completed by the assigned rider on the rider delivery page.",
+  );
 }
 
 export function openUsedOrderReturn(user, orderId, input = {}) {

@@ -764,12 +764,57 @@
   gap: 14px;
 }
 
+.admin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
 .admin-record-card {
   border: 1px solid var(--admin-border);
   border-radius: 20px;
   background: #ffffff;
   overflow: hidden;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
+}
+
+.admin-card-grid .admin-record-card {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-record-card h3 {
+  margin: 10px 0 4px;
+  color: var(--admin-text);
+  font-size: 1rem;
+}
+
+.admin-record-card p,
+.admin-muted-text {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  font-weight: 700;
+}
+
+.admin-record-card-status,
+.admin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-empty-card {
+  border: 1px dashed var(--admin-border);
+  border-radius: 20px;
+  background: #f8fafc;
+  padding: 18px;
+  color: #64748b;
+  font-weight: 900;
 }
 
 .admin-record-card-main {

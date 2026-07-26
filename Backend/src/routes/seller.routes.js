@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
-import { requireAuth, requireRole, requireVerifiedSellerAccess } from "../middleware/auth.js";
+import { requireRole, requireVerifiedSellerAccess } from "../middleware/auth.js";
 import {
   deleteUploadedFiles,
   upload,
@@ -70,18 +70,18 @@ function sellerOnboardingPayload(req, verification) {
   };
 }
 
-sellerRouter.get("/onboarding/options", requireAuth, (req, res) => {
+sellerRouter.get("/onboarding/options", requireRole("seller"), (req, res) => {
   res.json(getSellerOnboardingOptions(req.auth.user_id));
 });
 
-sellerRouter.post("/onboarding/start", requireAuth, (req, res) => {
+sellerRouter.post("/onboarding/start", requireRole("seller"), (req, res) => {
   const verification = updateSellerOnboardingDraft(req.auth.user_id, req.body || {});
   ensureSellerSubscription(req.auth.user_id);
   res.status(201).json(sellerOnboardingPayload(req, verification));
 });
 
 for (const section of ["type", "store", "location", "contact"]) {
-  sellerRouter.patch(`/onboarding/${section}`, requireAuth, (req, res) => {
+  sellerRouter.patch(`/onboarding/${section}`, requireRole("seller"), (req, res) => {
     const verification = updateSellerOnboardingDraft(req.auth.user_id, req.body || {});
     ensureSellerSubscription(req.auth.user_id);
     res.json(sellerOnboardingPayload(req, verification));
@@ -90,7 +90,7 @@ for (const section of ["type", "store", "location", "contact"]) {
 
 sellerRouter.post(
   "/onboarding/submit",
-  requireAuth,
+  requireRole("seller"),
   upload.single("identityProof"),
   (req, res) => {
     const identityProofUrl = req.file ? fileUrl(req, req.file) : null;
@@ -100,7 +100,7 @@ sellerRouter.post(
   },
 );
 
-sellerRouter.get("/markets/available", requireAuth, (req, res) => {
+sellerRouter.get("/markets/available", requireRole("seller"), (req, res) => {
   res.json({
     markets: listApprovedMarketsForSeller({
       query: String(req.query.q || ""),
@@ -108,13 +108,13 @@ sellerRouter.get("/markets/available", requireAuth, (req, res) => {
   });
 });
 
-sellerRouter.post("/markets/join", requireAuth, (req, res) => {
+sellerRouter.post("/markets/join", requireRole("seller"), (req, res) => {
   res.status(201).json(applySellerToLocalMarket(req.auth.user_id, req.body || {}));
 });
 
 sellerRouter.post(
   "/markets/request",
-  requireAuth,
+  requireRole("seller"),
   upload.single("marketPhoto"),
   (req, res) => {
     const request = createMarketRequestForSeller(req.auth.user_id, {
@@ -125,7 +125,7 @@ sellerRouter.post(
   },
 );
 
-sellerRouter.get("/markets/status", requireAuth, (req, res) => {
+sellerRouter.get("/markets/status", requireRole("seller"), (req, res) => {
   res.json(getSellerMarketStatus(req.auth.user_id));
 });
 

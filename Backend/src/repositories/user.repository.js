@@ -1,4 +1,5 @@
 import { db } from "../db/database.js";
+import { assertKnownRole } from "../lib/roles.js";
 
 export function findUserByEmail(email) {
   return db
@@ -11,6 +12,8 @@ export function findUserById(id) {
 }
 
 export function createUser(user) {
+  const role = assertKnownRole(user.role);
+
   db.prepare(`
     INSERT INTO users (
       id, name, email, password_hash, role, campus, phone,
@@ -23,7 +26,7 @@ export function createUser(user) {
     user.name,
     user.email,
     user.passwordHash,
-    user.role,
+    role,
     user.campus,
     user.phone,
     user.emailVerified ? 1 : 0,
@@ -57,11 +60,13 @@ export function updateUserAvatar(id, avatarUrl, updatedAt) {
 }
 
 export function updateUserRole(id, role, updatedAt) {
+  const nextRole = assertKnownRole(role);
+
   db.prepare(`
     UPDATE users
     SET role = ?, updated_at = ?
     WHERE id = ?
-  `).run(role, updatedAt, id);
+  `).run(nextRole, updatedAt, id);
 
   return findUserById(id);
 }

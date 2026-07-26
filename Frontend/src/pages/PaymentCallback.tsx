@@ -7,7 +7,7 @@ import {
   FiClock,
   FiLoader,
 } from "react-icons/fi";
-import { verifyPayment, type GleencPayment } from "../services/payment.service";
+import { verifyPublicPayment, type GleencPayment } from "../services/payment.service";
 import { useCart } from "../context/CartContext";
 import "./PaymentCallback.css";
 
@@ -23,7 +23,7 @@ function getPaymentRedirectPath(payment: GleencPayment) {
   }
 
   if (payment.purpose === "store_order" && payment.orderId) {
-    return `/orders/${payment.orderId}`;
+    return payment.successPath || `/order-success?paymentRef=${encodeURIComponent(payment.reference)}`;
   }
 
   return "/orders";
@@ -65,8 +65,9 @@ function PaymentCallback() {
 
     setState("loading");
     setMessage("Confirming your payment status...");
+    sessionStorage.setItem("gleank_pending_payment_reference", reference);
 
-    void verifyPayment(reference)
+    void verifyPublicPayment(reference)
       .then((response) => {
         if (!active) return;
 
@@ -77,14 +78,16 @@ function PaymentCallback() {
         setRedirectPath(nextRedirectPath);
 
         if (paymentStatus === "paid") {
-          clearCartRef.current();
+          if (payment.purpose === "store_order") {
+            clearCartRef.current();
+          }
           sessionStorage.removeItem("gleank_pending_payment_reference");
 
           setState("success");
           setMessage("Payment confirmed successfully. Redirecting you now...");
 
           timeoutId = window.setTimeout(() => {
-            navigate(nextRedirectPath, { replace: true });
+            navigate(payment.successPath || nextRedirectPath, { replace: true });
           }, 1300);
 
           return;

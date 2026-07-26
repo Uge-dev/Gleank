@@ -7,6 +7,7 @@ import {
   FiCheckCircle,
   FiCreditCard,
   FiExternalLink,
+  FiFileText,
   FiLock,
   FiShield,
   FiShoppingBag,
@@ -22,6 +23,7 @@ import {
 import { savePayoutAccount } from "../services/trust.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 import { getLocalMarkets, type LocalMarket } from "../services/market.service";
+import { getMyVerificationCenter, type VerificationCase } from "../services/verification.service";
 import { apiUrl } from "../lib/api";
 
 type SellerType = "used_market" | "campus" | "local_market" | "nearby";
@@ -158,6 +160,7 @@ function formToDraftPayload(form: HTMLFormElement, nextStep: number) {
 function SellerOnboarding() {
   const { user, store, refreshSession } = useAuth();
   const [state, setState] = useState<SellerVerificationResponse | null>(null);
+  const [requirementCase, setRequirementCase] = useState<VerificationCase | null>(null);
   const [faceVerified, setFaceVerified] = useState(false);
   const [faceReference, setFaceReference] = useState("");
   const [sellerType, setSellerType] = useState<SellerType>("campus");
@@ -174,6 +177,9 @@ function SellerOnboarding() {
     try {
       const result = await getSellerVerification();
       setState(result);
+      void getMyVerificationCenter("seller", true)
+        .then((response) => setRequirementCase(response.case))
+        .catch(() => setRequirementCase(null));
       setFaceVerified(Boolean(result.verification?.faceVerified));
       setFaceReference(result.verification?.faceReference || "");
       setSellerType((result.verification?.sellerType as SellerType) || "campus");
@@ -361,6 +367,9 @@ function SellerOnboarding() {
 
         const result = await saveSellerVerificationDraft(draftPayload);
         setState(result);
+        void getMyVerificationCenter("seller", true)
+          .then((response) => setRequirementCase(response.case))
+          .catch(() => setRequirementCase(null));
         setFaceVerified(Boolean(result.verification?.faceVerified));
         setFaceReference(result.verification?.faceReference || faceReference);
         setSellerType((result.verification?.sellerType as SellerType) || sellerType);
@@ -377,6 +386,9 @@ function SellerOnboarding() {
 
       const result = await submitSellerVerification(formData);
       setState(result);
+      void getMyVerificationCenter("seller", true)
+        .then((response) => setRequirementCase(response.case))
+        .catch(() => setRequirementCase(null));
       await refreshSession();
       setCurrentStep(safeStep(result.verification?.currentStep, 5));
       setMessage(
@@ -1154,6 +1166,36 @@ function SellerOnboarding() {
               <small>Admin review: {verification.adminReviewStatus.replaceAll("_", " ")}</small>
             )}
           </div>
+
+          {requirementCase ? (
+            <div className="seller-status-card seller-requirement-card">
+              <FiFileText />
+              <span>Requirement reviews</span>
+              <h3>{requirementCase.completionPercent}% complete</h3>
+              <p>
+                Level {requirementCase.currentVerifiedLevel} approved · {requirementCase.operationalStatus.replaceAll("_", " ")}
+              </p>
+              <div className="seller-requirement-list">
+                {requirementCase.requirements.slice(0, 7).map((requirement) => (
+                  <button
+                    key={requirement.id}
+                    type="button"
+                    className={requirement.status === "approved" ? "done" : requirement.status}
+                    onClick={() => {
+                      if (requirement.code.includes("phone")) handleReadinessClick("seller-phone-section");
+                      else if (requirement.code.includes("payout")) handleReadinessClick("seller-payout-section");
+                      else if (requirement.code.includes("pickup") || requirement.code.includes("market")) handleReadinessClick("seller-location-section");
+                      else if (requirement.code.includes("identity") || requirement.code.includes("campus")) handleReadinessClick("seller-document-section");
+                      else handleReadinessClick("seller-review-section");
+                    }}
+                  >
+                    <span>{requirement.title}</span>
+                    <strong>{requirement.status.replaceAll("_", " ")}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="seller-status-card subscription" id="seller-subscription-section">
             <FiCreditCard />

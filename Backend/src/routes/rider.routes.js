@@ -1,6 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
-import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
+import { requireAuth, requireEmailVerified, requireRole } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { fileUrl, upload } from "../middleware/upload.js";
 import { sessionCookieName, sessionCookieOptions } from "../lib/session.js";
@@ -52,6 +52,7 @@ import {
   getRiderLocationStatus,
   upsertRiderLocation,
 } from "../services/location.service.js";
+import { evaluateRiderEligibility } from "../services/verification.service.js";
 
 export const riderRouter = Router();
 
@@ -160,7 +161,7 @@ riderRouter.post("/logout", (req, res) => {
   res.status(204).end();
 });
 
-riderRouter.get("/session", requireAuth, (req, res) => {
+riderRouter.get("/session", requireAuth, requireRole("rider"), (req, res) => {
   const session = getRiderSession(req.auth);
   res.json({
     success: true,
@@ -172,12 +173,17 @@ riderRouter.get("/session", requireAuth, (req, res) => {
 
 riderRouter.use(requireAuth, requireEmailVerified);
 
-riderRouter.get("/dashboard", (req, res) => {
+riderRouter.get("/dashboard", requireRole("rider"), (req, res) => {
   res.json(riderDashboard(req.auth));
+});
+
+riderRouter.get("/eligibility", requireRole("rider"), (req, res) => {
+  res.json(evaluateRiderEligibility(req.auth.user_id || req.auth.id, req.query || {}));
 });
 
 riderRouter.post(
   "/verification-documents",
+  requireRole("rider"),
   riderVerificationUpload,
   attachRiderVerificationUploads,
   validate(riderDocumentUploadSchema),
@@ -187,45 +193,47 @@ riderRouter.post(
   },
 );
 
-riderRouter.patch("/availability", validate(riderAvailabilitySchema), (req, res) => {
+riderRouter.patch("/availability", requireRole("rider"), validate(riderAvailabilitySchema), (req, res) => {
   updateRiderAvailability(req.auth, req.body);
   res.json(getRiderSession(req.auth));
 });
 
-riderRouter.get("/location/status", (req, res) => {
+riderRouter.get("/location/status", requireRole("rider"), (req, res) => {
   res.json(getRiderLocationStatus(req.auth));
 });
 
-riderRouter.post("/location", locationLimiter, validate(riderLocationSchema), (req, res) => {
+riderRouter.post("/location", requireRole("rider"), locationLimiter, validate(riderLocationSchema), (req, res) => {
   res.json(upsertRiderLocation(req.auth, req.body));
 });
 
-riderRouter.patch("/location", locationLimiter, validate(riderLocationSchema), (req, res) => {
+riderRouter.patch("/location", requireRole("rider"), locationLimiter, validate(riderLocationSchema), (req, res) => {
   res.json({ riderProfile: updateRiderLocation(req.auth, req.body) });
 });
 
-riderRouter.get("/assignments", (req, res) => {
+riderRouter.get("/assignments", requireRole("rider"), (req, res) => {
   res.json({ assignments: listRiderAssignments(req.auth, String(req.query?.status || "")) });
 });
 
-riderRouter.get("/assignments/:assignmentId", (req, res) => {
+riderRouter.get("/assignments/:assignmentId", requireRole("rider"), (req, res) => {
   res.json({ assignment: getRiderAssignment(req.auth, req.params.assignmentId) });
 });
 
 riderRouter.get(
   "/assignments/:assignmentId/route-estimate",
+  requireRole("rider"),
   validate(routeEstimateQuerySchema, "query"),
   asyncRoute(async (req, res) => {
     res.json(await getRouteEstimate(req.auth, req.params.assignmentId, req.query));
   }),
 );
 
-riderRouter.post("/assignments/:assignmentId/accept", (req, res) => {
+riderRouter.post("/assignments/:assignmentId/accept", requireRole("rider"), (req, res) => {
   res.json({ assignment: acceptRiderAssignment(req.auth, req.params.assignmentId) });
 });
 
 riderRouter.post(
   "/assignments/:assignmentId/pickup",
+  requireRole("rider"),
   upload.single("proofPhoto"),
   attachProofUpload,
   validate(riderPickupSchema),
@@ -236,6 +244,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/verify-pickup-code",
+  requireRole("rider"),
   upload.single("proofPhoto"),
   attachProofUpload,
   validate(riderPickupSchema),
@@ -256,6 +265,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/verify-delivery-code",
+  requireRole("rider"),
   validate(riderVerifyDeliveryCodeSchema),
   (req, res) => {
     const assignment = verifyDeliveryCode(req.auth, req.params.orderId, req.body);
@@ -275,6 +285,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/complete",
+  requireRole("rider"),
   upload.single("proofPhoto"),
   attachProofUpload,
   validate(riderCompleteDeliverySchema),
@@ -285,6 +296,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/complete-delivery",
+  requireRole("rider"),
   upload.single("proofPhoto"),
   attachProofUpload,
   validate(riderCompleteDeliverySchema),
@@ -300,6 +312,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/orders/:orderId/payment-link",
+  requireRole("rider"),
   asyncRoute(async (req, res) => {
     res.status(201).json(await generateRiderPaymentLink(req.auth, req.params.orderId));
   }),
@@ -307,6 +320,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/assignments/:assignmentId/fail",
+  requireRole("rider"),
   validate(riderFailSchema),
   (req, res) => {
     res.json({ assignment: failAssignment(req.auth, req.params.assignmentId, req.body) });
@@ -315,6 +329,7 @@ riderRouter.post(
 
 riderRouter.post(
   "/assignments/:assignmentId/contact-audit",
+  requireRole("rider"),
   validate(riderContactAuditSchema),
   (req, res) => {
     res.json(auditRiderContact(req.auth, req.params.assignmentId, req.body));
@@ -323,24 +338,26 @@ riderRouter.post(
 
 riderRouter.post(
   "/security-reports",
+  requireRole("rider"),
   validate(riderSecurityReportSchema),
   (req, res) => {
     res.status(201).json({ report: createRiderSafetyReport(req.auth, req.body) });
   },
 );
 
-riderRouter.patch("/notifications/:notificationId/read", (req, res) => {
+riderRouter.patch("/notifications/:notificationId/read", requireRole("rider"), (req, res) => {
   res.json(markRiderNotificationRead(req.auth, req.params.notificationId));
 });
 
 
 
-riderRouter.get("/admin/riders", (req, res) => {
+riderRouter.get("/admin/riders", requireRole("admin"), (req, res) => {
   res.json({ riders: adminListRiders(req.auth, String(req.query?.status || "")) });
 });
 
 riderRouter.patch(
   "/admin/riders/:riderId/verification",
+  requireRole("admin"),
   validate(riderAdminVerificationSchema),
   (req, res) => {
     res.json({ riderProfile: adminUpdateRiderVerification(req.auth, req.params.riderId, req.body) });
@@ -349,12 +366,13 @@ riderRouter.patch(
 
 // Seller/admin delivery-assignment support. This keeps rider assignment under one backend module,
 // while still allowing the seller dashboard to assign paid orders to verified online riders.
-riderRouter.get("/available", (req, res) => {
+riderRouter.get("/available", requireRole("seller", "admin"), (req, res) => {
   res.json({ riders: listAvailableRiders(req.auth) });
 });
 
 riderRouter.post(
   "/assignments",
+  requireRole("seller", "admin"),
   validate(createRiderAssignmentSchema),
   (req, res) => {
     res.status(201).json(createRiderAssignment(req.auth, req.body));

@@ -926,6 +926,8 @@ ensureColumn("users", "failed_login_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "locked_until", "TEXT");
 ensureColumn("users", "last_login_at", "TEXT");
 ensureColumn("users", "last_password_change_at", "TEXT");
+ensureColumn("password_reset_tokens", "attempt_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("password_reset_tokens", "last_attempt_at", "TEXT");
 
 ensureColumn("seller_subscriptions", "grace_period_ends_at", "TEXT");
 ensureColumn("seller_subscriptions", "last_payment_at", "TEXT");
@@ -1218,6 +1220,19 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS payment_events_reference_idx
     ON payment_events(reference, created_at);
+
+  CREATE TABLE IF NOT EXISTS processed_webhook_events (
+    id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    reference TEXT NOT NULL DEFAULT '',
+    payload_hash TEXT NOT NULL DEFAULT '',
+    processed_at TEXT NOT NULL,
+    UNIQUE(provider, event_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS processed_webhook_events_reference_idx
+    ON processed_webhook_events(provider, reference, processed_at);
 
   CREATE TABLE IF NOT EXISTS payouts (
     id TEXT PRIMARY KEY,
@@ -1516,6 +1531,202 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS payment_transactions_purpose_idx
     ON payment_transactions(purpose);
+`);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS verification_cases (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('seller', 'rider')),
+    seller_type TEXT NOT NULL DEFAULT '',
+    current_verified_level INTEGER NOT NULL DEFAULT 0 CHECK (current_verified_level >= 0),
+    requested_level INTEGER NOT NULL DEFAULT 1 CHECK (requested_level >= 1),
+    overall_status TEXT NOT NULL DEFAULT 'not_started'
+      CHECK (overall_status IN (
+        'not_started',
+        'in_progress',
+        'under_review',
+        'approved',
+        'needs_information',
+        'rejected',
+        'expired',
+        'suspended',
+        'restricted'
+      )),
+    operational_status TEXT NOT NULL DEFAULT 'restricted'
+      CHECK (operational_status IN ('active', 'restricted', 'suspended', 'deactivated')),
+    operational_reason TEXT NOT NULL DEFAULT '',
+    suspension_reason TEXT NOT NULL DEFAULT '',
+    restriction_reason TEXT NOT NULL DEFAULT '',
+    last_reviewed_by TEXT,
+    last_reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (last_reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+    UNIQUE(user_id, role)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_cases_role_status_idx
+    ON verification_cases(role, overall_status, operational_status);
+  CREATE INDEX IF NOT EXISTS verification_cases_user_idx
+    ON verification_cases(user_id, role);
+
+  CREATE TABLE IF NOT EXISTS verification_requirements (
+    id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('seller', 'rider')),
+    seller_type TEXT NOT NULL DEFAULT '',
+    required_level INTEGER NOT NULL DEFAULT 1 CHECK (required_level >= 1),
+    blocking INTEGER NOT NULL DEFAULT 1,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    workflow_type TEXT NOT NULL DEFAULT 'form'
+      CHECK (workflow_type IN ('form', 'document', 'provider', 'system')),
+    status TEXT NOT NULL DEFAULT 'not_submitted'
+      CHECK (status IN (
+        'not_submitted',
+        'submitted',
+        'under_review',
+        'approved',
+        'needs_information',
+        'rejected',
+        'expired',
+        'superseded'
+      )),
+    latest_submission_id TEXT,
+    latest_review_id TEXT,
+    review_result TEXT NOT NULL DEFAULT '',
+    admin_feedback TEXT NOT NULL DEFAULT '',
+    expires_at TEXT,
+    definition_version INTEGER NOT NULL DEFAULT 1,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    UNIQUE(case_id, code)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_requirements_case_idx
+    ON verification_requirements(case_id, status, required_level);
+  CREATE INDEX IF NOT EXISTS verification_requirements_code_idx
+    ON verification_requirements(code, status);
+
+  CREATE TABLE IF NOT EXISTS verification_submissions (
+    id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+    submitted_by TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    document_urls TEXT NOT NULL DEFAULT '[]',
+    provider TEXT NOT NULL DEFAULT 'manual',
+    provider_reference TEXT NOT NULL DEFAULT '',
+    provider_status TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'submitted'
+      CHECK (status IN (
+        'not_submitted',
+        'submitted',
+        'under_review',
+        'approved',
+        'needs_information',
+        'rejected',
+        'expired',
+        'superseded'
+      )),
+    is_current INTEGER NOT NULL DEFAULT 1,
+    submitted_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (requirement_id) REFERENCES verification_requirements(id) ON DELETE CASCADE,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (submitted_by) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(requirement_id, version)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_submissions_requirement_idx
+    ON verification_submissions(requirement_id, version);
+  CREATE INDEX IF NOT EXISTS verification_submissions_case_idx
+    ON verification_submissions(case_id, submitted_at);
+
+  CREATE TABLE IF NOT EXISTS verification_reviews (
+    id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    submission_id TEXT,
+    case_id TEXT NOT NULL,
+    admin_id TEXT NOT NULL,
+    action TEXT NOT NULL
+      CHECK (action IN (
+        'mark_under_review',
+        'approve',
+        'needs_information',
+        'reject',
+        'expire',
+        'supersede',
+        'restore'
+      )),
+    previous_status TEXT NOT NULL DEFAULT '',
+    new_status TEXT NOT NULL,
+    feedback TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (requirement_id) REFERENCES verification_requirements(id) ON DELETE CASCADE,
+    FOREIGN KEY (submission_id) REFERENCES verification_submissions(id) ON DELETE SET NULL,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_reviews_requirement_idx
+    ON verification_reviews(requirement_id, created_at);
+  CREATE INDEX IF NOT EXISTS verification_reviews_admin_idx
+    ON verification_reviews(admin_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS verification_level_requests (
+    id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('seller', 'rider')),
+    requested_level INTEGER NOT NULL DEFAULT 1 CHECK (requested_level >= 1),
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled', 'kept_existing')),
+    reason TEXT NOT NULL DEFAULT '',
+    admin_feedback TEXT NOT NULL DEFAULT '',
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_level_requests_case_idx
+    ON verification_level_requests(case_id, status, created_at);
+  CREATE INDEX IF NOT EXISTS verification_level_requests_role_idx
+    ON verification_level_requests(role, status, created_at);
+
+  CREATE TABLE IF NOT EXISTS verification_audit_events (
+    id TEXT PRIMARY KEY,
+    case_id TEXT,
+    actor_id TEXT,
+    actor_role TEXT NOT NULL DEFAULT '',
+    event_type TEXT NOT NULL,
+    requirement_code TEXT NOT NULL DEFAULT '',
+    previous_status TEXT NOT NULL DEFAULT '',
+    new_status TEXT NOT NULL DEFAULT '',
+    summary TEXT NOT NULL DEFAULT '',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_audit_events_case_idx
+    ON verification_audit_events(case_id, created_at);
+  CREATE INDEX IF NOT EXISTS verification_audit_events_actor_idx
+    ON verification_audit_events(actor_id, created_at);
 `);
 
 export function transaction(callback) {

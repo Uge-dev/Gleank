@@ -1,4 +1,6 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import bcrypt from "bcryptjs";
 import { db } from "../db/database.js";
 import {
   deleteRecord,
@@ -11,7 +13,7 @@ import {
 } from "../data/adminStore.js";
 import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { createId } from "../lib/ids.js";
+import { createSession, sessionCookieName, sessionCookieOptions } from "../lib/session.js";
 import { safeErrorMessage, shouldLogTechnicalError } from "../lib/safe-error-message.js";
 import {
   adminCreateMarket,
@@ -61,8 +63,15 @@ import { listAdminAuditLogs } from "../services/audit-log.service.js";
 
 const router = Router();
 
+const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
 function getConfiguredAdminEmail() {
-  return process.env.ADMIN_EMAIL || "admin@gleank.com";
+  return process.env.ADMIN_EMAIL || "";
 }
 
 function serializeAdminProfile(row) {
@@ -74,34 +83,16 @@ function serializeAdminProfile(row) {
   };
 }
 
-function ensureAdminProfile() {
-  const adminEmail = getConfiguredAdminEmail();
-  const emailLookup = adminEmail.toLowerCase().trim();
-
-  const existing = db
+function findAdminByEmail(email) {
+  return db
     .prepare("SELECT * FROM users WHERE role = 'admin' AND LOWER(email) = ? LIMIT 1")
-    .get(emailLookup);
+    .get(String(email || "").toLowerCase().trim());
+}
 
-  if (existing) return existing;
-
-  const now = new Date().toISOString();
-  const id = createId("adm");
-
-  db.prepare(`
-    INSERT INTO users (
-      id, name, email, password_hash, role, campus, phone,
-      avatar_url, is_active, email_verified, email_verified_at,
-      phone_verified, phone_verified_at, failed_login_count, locked_until,
-      last_login_at, last_password_change_at, created_at, updated_at
-    )
-    VALUES (
-      ?, 'Gleenc Admin', ?, 'admin-console-account',
-      'admin', 'Gleenc HQ', '', NULL, 1, 1, ?, 0, NULL, 0, NULL,
-      NULL, ?, ?, ?
-    )
-  `).run(id, adminEmail, now, now, now, now);
-
-  return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+function getAdminProfile(userId) {
+  const row = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'admin'").get(userId);
+  if (!row) throw new Error("Admin profile was not found.");
+  return row;
 }
 
 function sendAdminError(res, error, fallback = "Admin request could not be completed.") {
@@ -120,32 +111,31 @@ function requestMeta(req) {
   };
 }
 
-function adminAuthForRequest() {
-  const profile = ensureAdminProfile();
+function adminAuthForRequest(req) {
   return {
     role: "admin",
-    user_id: profile.id,
-    id: profile.id,
+    user_id: req.auth.user_id,
+    id: req.auth.user_id,
   };
 }
 
-router.post("/login", (req, res) => {
+router.post("/login", adminLoginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
-  const adminEmail = process.env.ADMIN_EMAIL || "admin@gleank.com";
-  const adminPassword = process.env.ADMIN_PASSWORD || "admin12345";
-  const token =
-    process.env.ADMIN_TOKEN ||
-    process.env.ADMIN_DEMO_TOKEN ||
-    "gleank-admin-local-token";
+  const adminProfile = findAdminByEmail(email);
 
-  if (String(email).toLowerCase().trim() !== adminEmail || String(password).trim() !== adminPassword) {
+  if (
+    !adminProfile ||
+    !adminProfile.is_active ||
+    !(await bcrypt.compare(String(password || ""), adminProfile.password_hash || ""))
+  ) {
     return res.status(401).json({ message: "Invalid admin login details" });
   }
 
-  const adminProfile = ensureAdminProfile();
+  const session = createSession(adminProfile.id, requestMeta(req));
+  res.cookie(sessionCookieName, session.token, sessionCookieOptions());
 
   res.json({
-    token,
+    token: "session",
     admin: serializeAdminProfile(adminProfile),
   });
 });
@@ -155,7 +145,7 @@ router.get("/overview", requireAdmin, (_req, res) => {
 });
 
 router.get("/profile", requireAdmin, (_req, res) => {
-  res.json({ admin: serializeAdminProfile(ensureAdminProfile()) });
+  res.json({ admin: serializeAdminProfile(getAdminProfile(_req.auth.user_id)) });
 });
 
 router.post("/profile/avatar", requireAdmin, upload.single("avatar"), (req, res) => {
@@ -164,7 +154,7 @@ router.post("/profile/avatar", requireAdmin, upload.single("avatar"), (req, res)
       return res.status(400).json({ message: "Choose an admin profile image to upload." });
     }
 
-    const existing = ensureAdminProfile();
+    const existing = getAdminProfile(req.auth.user_id);
     const avatarUrl = fileUrl(req, req.file);
     const now = new Date().toISOString();
 
@@ -465,7 +455,7 @@ router.post("/kyc/:id/approve", requireAdmin, (req, res) => {
   try {
     res.json({
       success: true,
-      ...adminApproveKyc(adminAuthForRequest(), req.params.id, req.body || {}, requestMeta(req)),
+      ...adminApproveKyc(adminAuthForRequest(req), req.params.id, req.body || {}, requestMeta(req)),
     });
   } catch (error) {
     sendAdminError(res, error, "Could not approve verification.");
@@ -476,7 +466,7 @@ router.post("/kyc/:id/reject", requireAdmin, (req, res) => {
   try {
     res.json({
       success: true,
-      ...adminRejectKyc(adminAuthForRequest(), req.params.id, req.body || {}, requestMeta(req)),
+      ...adminRejectKyc(adminAuthForRequest(req), req.params.id, req.body || {}, requestMeta(req)),
     });
   } catch (error) {
     sendAdminError(res, error, "Could not reject verification.");
@@ -488,7 +478,7 @@ router.post("/kyc/:id/request-resubmission", requireAdmin, (req, res) => {
     res.json({
       success: true,
       ...adminRequestKycResubmission(
-        adminAuthForRequest(),
+        adminAuthForRequest(req),
         req.params.id,
         req.body || {},
         requestMeta(req),
@@ -517,7 +507,7 @@ router.post("/price-ranges", requireAdmin, (req, res) => {
   try {
     res.status(201).json({
       success: true,
-      priceRange: adminCreatePriceRange(adminAuthForRequest(), req.body || {}, requestMeta(req)),
+      priceRange: adminCreatePriceRange(adminAuthForRequest(req), req.body || {}, requestMeta(req)),
     });
   } catch (error) {
     sendAdminError(res, error, "Could not create price range.");
@@ -529,7 +519,7 @@ router.patch("/price-ranges/:rangeId", requireAdmin, (req, res) => {
     res.json({
       success: true,
       priceRange: adminUpdatePriceRange(
-        adminAuthForRequest(),
+        adminAuthForRequest(req),
         req.params.rangeId,
         req.body || {},
         requestMeta(req),
@@ -544,7 +534,7 @@ router.delete("/price-ranges/:rangeId", requireAdmin, (req, res) => {
   try {
     res.json({
       success: true,
-      ...adminDeletePriceRange(adminAuthForRequest(), req.params.rangeId, requestMeta(req)),
+      ...adminDeletePriceRange(adminAuthForRequest(req), req.params.rangeId, requestMeta(req)),
     });
   } catch (error) {
     sendAdminError(res, error, "Could not delete price range.");
@@ -622,7 +612,7 @@ for (const action of ["approve", "reject", "request-edit"]) {
       res.json({
         success: true,
         product: adminReviewProduct(
-          adminAuthForRequest(),
+          adminAuthForRequest(req),
           req.params.productId,
           {
             ...(req.body || {}),

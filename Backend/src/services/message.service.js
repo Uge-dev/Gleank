@@ -136,7 +136,9 @@ function conversationDedupeKey(conversation) {
   if (
     conversation.contextType === "store" &&
     !conversation.orderId &&
-    !String(conversation.contextId || "").startsWith("order:")
+    !String(conversation.contextId || "").startsWith("order:") &&
+    !String(conversation.contextId || "").startsWith("delivery_assignment:") &&
+    !String(conversation.contextId || "").startsWith("delivery_buyer:")
   ) {
     return `store:${conversation.buyerId}:${conversation.sellerId}`;
   }
@@ -387,6 +389,77 @@ export function createStoreOrderConversation(userId, orderId) {
   `).run(id, contextId, order.id, order.buyer_id, order.seller_id, now, now);
 
   return getConversation(userId, id);
+}
+
+export function createDeliveryAssignmentConversation(userId, assignmentId) {
+  const assignment = db
+    .prepare(`
+      SELECT rider_assignments.*, rider.name AS rider_name, seller.name AS seller_name, buyer.name AS buyer_name
+      FROM rider_assignments
+      JOIN users rider ON rider.id = rider_assignments.rider_id
+      JOIN users seller ON seller.id = rider_assignments.seller_id
+      JOIN users buyer ON buyer.id = rider_assignments.buyer_id
+      WHERE rider_assignments.id = ?
+    `)
+    .get(assignmentId);
+
+  if (!assignment) throw new HttpError(404, "Delivery assignment was not found.");
+
+  const userRole = db.prepare("SELECT role FROM users WHERE id = ?").get(userId)?.role || "";
+  const isSellerRiderChat = userId === assignment.seller_id || userId === assignment.rider_id || userRole === "admin";
+  const isBuyerRiderChat = userId === assignment.buyer_id;
+
+  if (!isSellerRiderChat && !isBuyerRiderChat) {
+    throw new HttpError(403, "You cannot open this delivery conversation.");
+  }
+
+  const contextId = isBuyerRiderChat
+    ? `delivery_buyer:${assignment.id}`
+    : `delivery_assignment:${assignment.id}`;
+  const buyerId = isBuyerRiderChat ? assignment.buyer_id : assignment.rider_id;
+  const sellerId = isBuyerRiderChat ? assignment.rider_id : assignment.seller_id;
+
+  const existing = db
+    .prepare(`
+      SELECT id FROM conversations
+      WHERE context_type = 'store'
+        AND context_id = ?
+        AND buyer_id = ?
+        AND seller_id = ?
+    `)
+    .get(contextId, buyerId, sellerId);
+
+  if (existing) {
+    if (userRole === "admin") recordAdminConversationAccess(userId, existing.id, "Delivery assignment review", assignment.delivery_batch_id);
+    return getConversation(userRole === "admin" ? buyerId : userId, existing.id);
+  }
+
+  const now = new Date().toISOString();
+  const id = createId("cnv");
+
+  db.prepare(`
+    INSERT INTO conversations (
+      id, context_type, context_id, order_id, buyer_id, seller_id,
+      last_message_body, last_message_at, created_at, updated_at
+    ) VALUES (?, 'store', ?, ?, ?, ?, 'Delivery chat opened.', ?, ?, ?)
+  `).run(id, contextId, assignment.order_id || assignment.id, buyerId, sellerId, now, now, now);
+
+  if (userRole === "admin") recordAdminConversationAccess(userId, id, "Delivery assignment review", assignment.delivery_batch_id);
+
+  return getConversation(userRole === "admin" ? buyerId : userId, id);
+}
+
+export function recordAdminConversationAccess(adminId, conversationId, reason = "", relatedDeliveryBatchId = null) {
+  const admin = db.prepare("SELECT id, role FROM users WHERE id = ?").get(adminId);
+  if (!admin || admin.role !== "admin") return null;
+  const now = new Date().toISOString();
+  const id = createId("acl");
+  db.prepare(`
+    INSERT INTO admin_conversation_access_logs (
+      id, admin_id, conversation_id, reason, related_delivery_batch_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, adminId, conversationId, clean(reason, 300), relatedDeliveryBatchId || null, now);
+  return { id, adminId, conversationId, relatedDeliveryBatchId, createdAt: now };
 }
 
 export function createSupportConversation(userId) {

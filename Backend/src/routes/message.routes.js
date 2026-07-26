@@ -1,7 +1,9 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import { fileUrl, upload } from "../middleware/upload.js";
 import {
+  createDeliveryAssignmentConversation,
   createStoreConversation,
   createStoreOrderConversation,
   createSupportConversation,
@@ -15,6 +17,13 @@ import {
 } from "../services/message.service.js";
 
 export const messageRouter = Router();
+
+const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
 
 messageRouter.use(requireAuth, requireEmailVerified);
 
@@ -34,6 +43,8 @@ messageRouter.post("/conversations", (req, res) => {
 
   if (contextType === "used_order") {
     conversation = createUsedOrderConversation(req.auth.user_id, contextId);
+  } else if (contextType === "delivery_assignment") {
+    conversation = createDeliveryAssignmentConversation(req.auth.user_id, contextId);
   } else if (contextType === "store") {
     conversation = createStoreConversation(req.auth.user_id, contextId);
   } else if (contextType === "order") {
@@ -57,6 +68,7 @@ messageRouter.get("/conversations/:id/messages", (req, res) => {
 
 messageRouter.post(
   "/conversations/:id/messages",
+  messageSendLimiter,
   upload.single("attachment"),
   (req, res) => {
     res.status(201).json({

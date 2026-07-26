@@ -541,8 +541,35 @@ export function runLogisticsMigrations() {
   ensureColumn("delivery_batches", "rider_declined_at", "TEXT");
   ensureColumn("delivery_batches", "pickup_task_id", "TEXT");
   ensureColumn("delivery_batches", "delivery_task_id", "TEXT");
+  ensureColumn("delivery_batches", "seller_preparation_status", "TEXT NOT NULL DEFAULT 'not_ready'");
+  ensureColumn("delivery_batches", "rider_assignment_status", "TEXT NOT NULL DEFAULT 'not_started'");
+  ensureColumn("delivery_batches", "delivery_workflow_status", "TEXT NOT NULL DEFAULT 'not_started'");
+  ensureColumn("delivery_batches", "payout_workflow_status", "TEXT NOT NULL DEFAULT 'on_hold'");
+  ensureColumn("delivery_batches", "blocking_step", "TEXT NOT NULL DEFAULT 'seller_preparation'");
+  ensureColumn("delivery_batches", "assignment_mode", "TEXT NOT NULL DEFAULT 'automatic'");
+  ensureColumn("delivery_batches", "current_dispatch_attempt_id", "TEXT");
+  ensureColumn("delivery_batches", "offer_window_seconds", "INTEGER NOT NULL DEFAULT 90");
+  ensureColumn("delivery_batches", "candidate_snapshot_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("delivery_batches", "excluded_candidate_snapshot_json", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("pickup_tasks", "package_size", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("pickup_tasks", "package_weight_class", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("pickup_tasks", "handling_class", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("pickup_tasks", "pickup_point_confirmed", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("pickup_tasks", "package_ready_note", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("pickup_tasks", "seller_pickup_code_verified_at", "TEXT");
   ensureColumn("delivery_tasks", "buyer_delivery_code_verified_at", "TEXT");
+  ensureColumn("pickup_tasks", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("pickup_tasks", "last_code_attempt_at", "TEXT");
+  ensureColumn("delivery_tasks", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("delivery_tasks", "last_code_attempt_at", "TEXT");
+  ensureColumn("dispatch_attempts", "assignment_mode", "TEXT NOT NULL DEFAULT 'automatic'");
+  ensureColumn("dispatch_attempts", "offer_window_seconds", "INTEGER NOT NULL DEFAULT 90");
+  ensureColumn("dispatch_attempts", "safe_rider_snapshot_json", "TEXT NOT NULL DEFAULT '{}'");
+  ensureColumn("dispatch_events", "actor_id", "TEXT");
+  ensureColumn("dispatch_events", "actor_role", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("dispatch_events", "status_before", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("dispatch_events", "status_after", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("dispatch_events", "metadata_json", "TEXT NOT NULL DEFAULT '{}'");
   ensureColumn("rider_assignments", "seller_pickup_code_verified_at", "TEXT");
   ensureColumn("rider_assignments", "buyer_delivery_code_verified_at", "TEXT");
   ensureColumn("rider_assignments", "code_attempt_count", "INTEGER NOT NULL DEFAULT 0");
@@ -582,6 +609,22 @@ export function runLogisticsMigrations() {
 
   ensureColumn("rider_assignments", "delivery_batch_id", "TEXT");
   ensureColumn("rider_assignments", "pickup_task_id", "TEXT");
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_conversation_access_logs (
+      id TEXT PRIMARY KEY,
+      admin_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      related_delivery_batch_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+    ) STRICT;
+
+    CREATE INDEX IF NOT EXISTS admin_conversation_access_logs_conversation_idx
+      ON admin_conversation_access_logs(conversation_id, created_at);
+  `);
 
   const defaultZones = [
     { id: "zone_fupre", name: "FUPRE Campus", zoneType: "campus", baseDeliveryFeeKobo: 70000 },

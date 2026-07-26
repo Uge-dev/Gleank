@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
+import crypto from "node:crypto";
 import path from "node:path";
 import { env } from "./config/env.js";
 import { cleanExpiredSessions } from "./db/database.js";
@@ -38,6 +39,7 @@ import { kycRouter } from "./routes/kyc.routes.js";
 import { locationRouter } from "./routes/location.routes.js";
 import { buyerRouter } from "./routes/buyer.routes.js";
 import { webhookRouter } from "./routes/webhook.routes.js";
+import { verificationRouter } from "./routes/verification.routes.js";
 
 export const app = express();
 
@@ -75,6 +77,17 @@ const corsOptions = {
 };
 
 app.set("trust proxy", 1);
+app.use((req, res, next) => {
+  const existingId = req.get("x-request-id");
+  const requestId =
+    existingId && /^[A-Za-z0-9._:-]{8,100}$/.test(existingId)
+      ? existingId
+      : crypto.randomUUID();
+
+  req.requestId = requestId;
+  res.setHeader("X-Request-Id", requestId);
+  next();
+});
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
@@ -127,6 +140,7 @@ app.use("/api/trust", trustRouter);
 app.use("/api/kyc", kycRouter);
 app.use("/api/location", locationRouter);
 app.use("/api/webhooks", webhookRouter);
+app.use("/api/verification", verificationRouter);
 app.use("/api/security", securityRouter);
 app.use("/api/subscriptions", subscriptionRouter);
 app.use("/api/seller-verification", sellerVerificationRouter);

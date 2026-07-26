@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import {
   FiArrowRight,
   FiCheckCircle,
+  FiClock,
   FiHome,
   FiMessageCircle,
   FiPackage,
@@ -11,82 +12,110 @@ import {
 } from "react-icons/fi";
 
 import EmptyState from "../components/EmptyState";
-import { getOrder } from "../services/order.service";
-import type { GleencOrder } from "../types/domain";
+import {
+  verifyPublicPayment,
+  type GleencPayment,
+  type PaymentSummary,
+} from "../services/payment.service";
 import { formatNaira } from "../utils/price";
-
-function readSessionOrders() {
-  try {
-    const saved = sessionStorage.getItem("gleank_last_orders");
-    if (!saved) return [];
-    const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) ? (parsed as GleencOrder[]) : [];
-  } catch {
-    return [];
-  }
-}
 
 function OrderSuccess() {
   const [searchParams] = useSearchParams();
-  const referenceFromUrl = searchParams.get("ref") || "";
-  const [orders, setOrders] = useState<GleencOrder[]>(() => readSessionOrders());
-
-  const references = useMemo(
+  const reference = useMemo(
     () =>
-      referenceFromUrl
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean),
-    [referenceFromUrl],
+      (
+        searchParams.get("paymentRef") ||
+        searchParams.get("reference") ||
+        searchParams.get("trxref") ||
+        searchParams.get("ref") ||
+        ""
+      ).trim(),
+    [searchParams],
   );
 
+  const [payment, setPayment] = useState<GleencPayment | null>(null);
+  const [isLoading, setIsLoading] = useState(Boolean(reference));
+  const [error, setError] = useState("");
+
   useEffect(() => {
-    if (orders.length > 0 || references.length === 0) return;
+    if (!reference) {
+      setIsLoading(false);
+      setError("Open this page from a confirmed Gleenc payment link.");
+      return;
+    }
 
     let active = true;
+    setIsLoading(true);
+    setError("");
 
-    void Promise.all(
-      references.map((reference) =>
-        getOrder(reference).then((response) => response.order),
-      ),
-    )
-      .then((result) => {
-        if (active) setOrders(result);
+    void verifyPublicPayment(reference)
+      .then((response) => {
+        if (!active) return;
+
+        setPayment(response.payment);
+        setError(
+          response.payment.status === "paid"
+            ? ""
+            : "This payment has not been confirmed yet. Please check again shortly.",
+        );
       })
-      .catch(() => {
-        if (active) setOrders([]);
+      .catch((requestError) => {
+        if (!active) return;
+
+        setPayment(null);
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "We could not confirm this payment yet.",
+        );
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [orders.length, references]);
+  }, [reference]);
 
-  const firstOrder = orders[0];
-  const orderReference =
-    references.join(", ") || orders.map((order) => order.orderCode).join(", ");
-
-  const formattedDate = firstOrder?.createdAt
+  const summary = payment?.summary as PaymentSummary | null | undefined;
+  const items = summary?.items || [];
+  const orderReference = summary?.orderCode || payment?.reference || reference;
+  const formattedDate = summary?.createdAt
     ? new Intl.DateTimeFormat("en-NG", {
         dateStyle: "medium",
         timeStyle: "short",
-      }).format(new Date(firstOrder.createdAt))
+      }).format(new Date(summary.createdAt))
     : "Just now";
 
-  const grandTotal = orders.reduce((total, order) => total + order.total, 0);
-  const itemCount = orders.reduce((total, order) => total + order.items.length, 0);
+  if (isLoading) {
+    return (
+      <section className="order-success-page">
+        <EmptyState
+          icon={<FiClock />}
+          eyebrow="Confirming payment"
+          title="Loading your confirmed order"
+          message="Gleenc is checking the payment reference securely with the server."
+        />
+      </section>
+    );
+  }
 
-  if (orders.length === 0) {
+  if (!payment || payment.status !== "paid" || !summary) {
     return (
       <section className="order-success-page">
         <EmptyState
           icon={<FiShoppingCart />}
-          eyebrow="No order found"
-          title="We could not find this order"
-          message="This can happen if you opened the success page directly or your session expired."
-          actionLabel="Continue Shopping"
+          eyebrow="Payment not confirmed"
+          title="We could not load this confirmed order yet"
+          message={error || "Please return to checkout or check the payment again."}
+          actionLabel="Check Payment Again"
           onAction={() => {
-            window.location.href = "/search";
+            if (reference) {
+              window.location.href = `/payment/callback?reference=${encodeURIComponent(reference)}`;
+            } else {
+              window.location.href = "/search";
+            }
           }}
         />
 
@@ -105,6 +134,23 @@ function OrderSuccess() {
     );
   }
 
+  const orderCount = summary.type === "seller_subscription" ? 1 : 1;
+  const itemCount = items.reduce((total, item) => total + item.quantity, 0) || 1;
+  const primaryLabel =
+    summary.type === "seller_subscription"
+      ? "Seller Subscription"
+      : summary.type === "used_order"
+        ? summary.listingName || "Used Market order"
+        : summary.storeName || "Store order";
+  const primaryHref =
+    summary.type === "seller_subscription"
+      ? "/seller/onboarding"
+      : summary.type === "used_order" && summary.orderId
+        ? `/used-orders/${summary.orderId}`
+        : summary.orderId
+          ? `/orders/${summary.orderId}`
+          : "/orders";
+
   return (
     <section className="order-success-page">
       <div className="success-hero-card">
@@ -112,9 +158,9 @@ function OrderSuccess() {
           <FiCheckCircle />
         </div>
 
-        <span>Order Created</span>
+        <span>Payment Confirmed</span>
 
-        <h1>Your order request has been saved</h1>
+        <h1>Your Gleenc payment is successful</h1>
 
         <p>
           Reference: <strong>{orderReference}</strong>
@@ -126,52 +172,62 @@ function OrderSuccess() {
       <div className="success-summary-grid">
         <div className="success-summary-card">
           <FiPackage />
-          <span>Orders</span>
-          <strong>{orders.length}</strong>
+          <span>Record</span>
+          <strong>{orderCount}</strong>
         </div>
 
         <div className="success-summary-card">
           <FiShoppingBag />
-          <span>Items</span>
+          <span>{summary.type === "seller_subscription" ? "Plan" : "Items"}</span>
           <strong>{itemCount}</strong>
         </div>
 
         <div className="success-summary-card">
           <FiCheckCircle />
           <span>Total</span>
-          <strong>{formatNaira(grandTotal)}</strong>
+          <strong>{formatNaira(summary.total)}</strong>
         </div>
       </div>
 
       <div className="success-order-card">
         <div className="success-order-header">
           <div>
-            <span>Order Breakdown</span>
-            <h2>Created backend orders</h2>
+            <span>{primaryLabel}</span>
+            <h2>Backend-confirmed payment details</h2>
           </div>
 
           <FiShoppingCart />
         </div>
 
         <div className="success-items-list">
-          {orders.map((order) => (
-            <div className="success-item-row" key={order.id}>
+          {items.length > 0 ? (
+            items.map((item, index) => (
+              <div className="success-item-row" key={`${item.name}-${index}`}>
+                <div>
+                  <strong>{item.name}</strong>
+                  <span>
+                    Quantity {item.quantity} • {payment.purpose.replace("_", " ")}
+                  </span>
+                </div>
+
+                <b>{formatNaira(item.total)}</b>
+              </div>
+            ))
+          ) : (
+            <div className="success-item-row">
               <div>
-                <strong>{order.orderCode}</strong>
-                <span>
-                  {order.storeName} • {order.items.length} item(s) •{" "}
-                  {order.statusLabel}
-                </span>
+                <strong>{primaryLabel}</strong>
+                <span>{payment.purpose.replace("_", " ")}</span>
               </div>
 
-              <b>{formatNaira(order.total)}</b>
+              <b>{formatNaira(summary.total)}</b>
             </div>
-          ))}
+          )}
         </div>
 
         <div className="success-total-row">
           <span>Total</span>
-          <strong>{formatNaira(grandTotal)}</strong>
+          <strong>{formatNaira(summary.total)}</strong>
         </div>
       </div>
 
@@ -181,8 +237,8 @@ function OrderSuccess() {
           Back Home
         </Link>
 
-        <Link to="/orders" className="success-primary-link">
-          My Orders
+        <Link to={primaryHref} className="success-primary-link">
+          View Details
           <FiArrowRight />
         </Link>
 

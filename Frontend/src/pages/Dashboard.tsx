@@ -35,7 +35,6 @@ import { formatNaira } from "../utils/price";
 import { resolveMediaUrl } from "../utils/media";
 import {
   createSellerHighlight,
-  assignDeliveryRiderToOrder,
   deleteSellerHighlight,
   deleteSellerProduct,
   deleteSellerService,
@@ -46,6 +45,8 @@ import {
   getSellerWorkspace,
   rejectSellerOrderItemAvailability,
   reorderSellerHighlights,
+  sendDeliveryOfferToRider,
+  startAutomaticDispatchForBatch,
   updateSellerHighlight,
   updateSellerStore,
 } from "../services/seller.service";
@@ -89,7 +90,7 @@ function Dashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
-  const [availableRiders, setAvailableRiders] = useState<AvailableDeliveryRider[]>([]);
+  const [availableRidersByBatch, setAvailableRidersByBatch] = useState<Record<string, AvailableDeliveryRider[]>>({});
   const [isLoadingRiders, setIsLoadingRiders] = useState(false);
   const [taskActionId, setTaskActionId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -133,13 +134,17 @@ function Dashboard() {
     }
   }, []);
 
-  const loadAvailableRiders = useCallback(async () => {
+  const loadAvailableRiders = useCallback(async (batchId: string) => {
+    if (!batchId) return;
     setIsLoadingRiders(true);
     try {
-      const response = await getAvailableDeliveryRiders();
-      setAvailableRiders(response.riders || []);
+      const response = await getAvailableDeliveryRiders(batchId);
+      setAvailableRidersByBatch((current) => ({
+        ...current,
+        [batchId]: response.riders || [],
+      }));
     } catch {
-      setAvailableRiders([]);
+      setAvailableRidersByBatch((current) => ({ ...current, [batchId]: [] }));
     } finally {
       setIsLoadingRiders(false);
     }
@@ -163,9 +168,8 @@ function Dashboard() {
   useEffect(() => {
     void loadWorkspace();
     void loadPickupTasks();
-    void loadAvailableRiders();
     void loadStage3Trust();
-  }, [loadAvailableRiders, loadPickupTasks, loadStage3Trust, loadWorkspace]);
+  }, [loadPickupTasks, loadStage3Trust, loadWorkspace]);
 
   const categories = useMemo(() => {
     const productCategories = (workspace?.products || []).map(
@@ -446,8 +450,14 @@ function Dashboard() {
     setTaskActionId(`ready-${task.id}`);
 
     try {
-      await markSellerPickupTaskReady(task.id);
-      setNotice("Package marked ready. Gleenc will dispatch a compatible rider automatically.");
+      await markSellerPickupTaskReady(task.id, {
+        packageSize: String(task.packageProfileSnapshot?.packageSize || task.packageSize || ""),
+        packageWeightClass: String(task.packageProfileSnapshot?.packageWeightClass || task.packageWeightClass || ""),
+        handlingClass: String(task.packageProfileSnapshot?.fragilityLevel || task.handlingClass || "normal_handling"),
+        pickupPointConfirmed: true,
+        note: "Seller marked package ready from dashboard.",
+      });
+      setNotice("Package marked ready. You can now find a rider or let Gleenc assign automatically.");
       await loadPickupTasks();
     } catch (requestError) {
       setError(
@@ -471,27 +481,43 @@ function Dashboard() {
     setTaskActionId(`assign-${task.id}-${riderId}`);
 
     try {
-      await assignDeliveryRiderToOrder({
-        orderId: task.orderId,
+      await sendDeliveryOfferToRider({
+        batchId: task.deliveryBatchId,
         riderId,
-        packageSummary:
-          task.orderItems.map((item) => `${item.name} x${item.quantity}`).join(", ") ||
-          `Gleenc package ${task.orderCode}`,
-        category: String(task.packageProfileSnapshot?.category || ""),
-        packageTags: [
-          String(task.packageProfileSnapshot?.packageSize || ""),
-          String(task.packageProfileSnapshot?.packageWeightClass || ""),
-          String(task.packageProfileSnapshot?.fragilityLevel || ""),
-        ].filter(Boolean),
       });
-      setNotice("Rider assigned. Buyer and rider have been notified.");
+      setNotice("Delivery offer sent. The rider must accept before assignment is confirmed.");
       await loadPickupTasks();
-      await loadAvailableRiders();
+      await loadAvailableRiders(task.deliveryBatchId);
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Rider could not be assigned.",
+          : "Delivery offer could not be sent.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
+  async function handleStartAutomaticDispatch(task: SellerPickupTask) {
+    setError("");
+    setNotice("");
+    setTaskActionId(`auto-${task.id}`);
+
+    try {
+      const response = await startAutomaticDispatchForBatch(task.deliveryBatchId);
+      setNotice(
+        response.sellerManualAssignmentRequired
+          ? "No compatible rider accepted automatically. Refresh riders and send a seller offer."
+          : "Gleenc is offering this delivery to the best compatible rider.",
+      );
+      await loadPickupTasks();
+      await loadAvailableRiders(task.deliveryBatchId);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Automatic dispatch could not start.",
       );
     } finally {
       setTaskActionId("");
@@ -800,13 +826,14 @@ function Dashboard() {
           tasks={pickupTasks}
           loading={isLoadingTasks}
           actionId={taskActionId}
-          availableRiders={availableRiders}
+          availableRidersByBatch={availableRidersByBatch}
           ridersLoading={isLoadingRiders}
           onRefresh={loadPickupTasks}
-          onRefreshRiders={loadAvailableRiders}
+          onRefreshRiders={(task) => loadAvailableRiders(task.deliveryBatchId)}
           onConfirm={handleConfirmPickupTask}
           onReject={handleRejectPickupTask}
           onMarkReady={handleMarkPickupReady}
+          onStartAutoDispatch={handleStartAutomaticDispatch}
           onAssignRider={handleAssignManualRider}
         />
       )}
@@ -1146,25 +1173,27 @@ function SellerOrderReadinessPanel({
   tasks,
   loading,
   actionId,
-  availableRiders,
+  availableRidersByBatch,
   ridersLoading,
   onRefresh,
   onRefreshRiders,
   onConfirm,
   onReject,
   onMarkReady,
+  onStartAutoDispatch,
   onAssignRider,
 }: {
   tasks: SellerPickupTask[];
   loading: boolean;
   actionId: string;
-  availableRiders: AvailableDeliveryRider[];
+  availableRidersByBatch: Record<string, AvailableDeliveryRider[]>;
   ridersLoading: boolean;
   onRefresh: () => Promise<void>;
-  onRefreshRiders: () => Promise<void>;
+  onRefreshRiders: (task: SellerPickupTask) => Promise<void>;
   onConfirm: (task: SellerPickupTask) => Promise<void>;
   onReject: (task: SellerPickupTask) => Promise<void>;
   onMarkReady: (task: SellerPickupTask) => Promise<void>;
+  onStartAutoDispatch: (task: SellerPickupTask) => Promise<void>;
   onAssignRider: (task: SellerPickupTask, riderId: string) => Promise<void>;
 }) {
   const activeTasks = tasks.filter((task) => !["picked_up", "cancelled"].includes(task.status));
@@ -1193,7 +1222,9 @@ function SellerOrderReadinessPanel({
             const confirmBusy = actionId === `confirm-${task.id}`;
             const rejectBusy = actionId === `reject-${task.id}`;
             const readyBusy = actionId === `ready-${task.id}`;
+            const autoBusy = actionId === `auto-${task.id}`;
             const assigningBusy = actionId.startsWith(`assign-${task.id}-`);
+            const availableRiders = availableRidersByBatch[task.deliveryBatchId] || [];
             const profile = task.packageProfileSnapshot || {};
             const profileText = [
               profile.packageSize,
@@ -1262,11 +1293,11 @@ function SellerOrderReadinessPanel({
                     <strong>Rider assigned</strong>
                     <span>This package is now connected to a rider assignment.</span>
                   </div>
-                ) : task.manualAssignmentAllowed ? (
+                ) : task.sellerMarkedReady ? (
                   <div className="seller-order-manual-dispatch">
                     <div>
-                      <strong>Manual rider assignment required</strong>
-                      <span>Automatic dispatch could not secure a rider. Choose a verified online rider below.</span>
+                      <strong>{task.manualAssignmentAllowed ? "Seller rider selection ready" : "Find a rider for this package"}</strong>
+                      <span>Choose a compatible verified rider and send an offer, or let Gleenc offer this batch automatically.</span>
                     </div>
                     <div className="seller-order-rider-list">
                       {availableRiders.length ? availableRiders.slice(0, 6).map((rider) => {
@@ -1278,33 +1309,37 @@ function SellerOrderReadinessPanel({
                             disabled={assigningBusy || busy}
                             onClick={() => void onAssignRider(task, rider.id)}
                           >
-                            <span>{rider.name || "Verified rider"}</span>
+                            <span>{rider.displayName || rider.name || "Verified rider"}</span>
                             <small>
-                              {[rider.profile?.transportType, rider.profile?.coverageArea]
+                              {rider.matchSummary || [rider.profile?.transportType, rider.profile?.coverageArea]
                                 .filter(Boolean)
                                 .join(" · ") || "Online rider"}
                             </small>
-                            <em>{busy ? "Assigning..." : "Assign"}</em>
+                            <em>{busy ? "Sending..." : "Send offer"}</em>
                           </button>
                         );
                       }) : (
-                        <p>{ridersLoading ? "Loading available riders..." : "No verified online riders are available right now."}</p>
+                        <p>{ridersLoading ? "Loading available riders..." : "No compatible verified rider is loaded yet. Refresh riders to check this batch."}</p>
                       )}
                     </div>
                     <button
                       type="button"
                       className="seller-order-rider-refresh"
                       disabled={ridersLoading}
-                      onClick={() => void onRefreshRiders()}
+                      onClick={() => void onRefreshRiders(task)}
                     >
                       <FiRefreshCw />
                       {ridersLoading ? "Refreshing..." : "Refresh riders"}
                     </button>
-                  </div>
-                ) : task.sellerMarkedReady ? (
-                  <div className="seller-order-manual-dispatch muted">
-                    <strong>Automatic dispatch running</strong>
-                    <span>Manual assignment unlocks only if rider offers time out or no compatible rider is online.</span>
+                    <button
+                      type="button"
+                      className="seller-order-rider-refresh"
+                      disabled={autoBusy || assigningBusy}
+                      onClick={() => void onStartAutoDispatch(task)}
+                    >
+                      <FiTruck />
+                      {autoBusy ? "Starting..." : "Let Gleenc assign automatically"}
+                    </button>
                   </div>
                 ) : null}
 

@@ -3,7 +3,7 @@ import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 
 export function isDojahConfigured() {
-  return Boolean(env.dojahAppId && env.dojahSecretKey);
+  return Boolean(env.dojahAppId && env.dojahSecretKey && env.dojahWebhookSecret);
 }
 
 export function createDojahVerificationSession({ user, role }) {
@@ -27,22 +27,41 @@ export function createDojahVerificationSession({ user, role }) {
   };
 }
 
-export function verifyDojahWebhookSignature(rawBody, signature) {
-  if (!env.dojahWebhookSecret) return true;
-  if (!signature) return false;
+export function verifyDojahWebhookSignature(rawBody, signature, timestamp) {
+  if (!env.dojahWebhookSecret) return false;
+  if (!signature || !timestamp) return false;
 
-  const expected = crypto
-    .createHmac("sha256", env.dojahWebhookSecret)
-    .update(rawBody || "")
-    .digest("hex");
+  const timestampMs = /^\d+$/.test(String(timestamp))
+    ? Number(timestamp) * (String(timestamp).length <= 10 ? 1000 : 1)
+    : new Date(timestamp).getTime();
+
+  if (!Number.isFinite(timestampMs)) return false;
+
+  const maxSkewMs = 5 * 60 * 1000;
+  if (Math.abs(Date.now() - timestampMs) > maxSkewMs) return false;
+
+  const body = Buffer.isBuffer(rawBody)
+    ? rawBody
+    : Buffer.from(String(rawBody || ""), "utf8");
+  const candidates = [
+    body,
+    Buffer.concat([Buffer.from(`${timestamp}.`, "utf8"), body]),
+  ];
   const provided = String(signature).replace(/^sha256=/i, "");
 
-  if (provided.length !== expected.length) return false;
+  return candidates.some((candidate) => {
+    const expected = crypto
+      .createHmac("sha256", env.dojahWebhookSecret)
+      .update(candidate)
+      .digest("hex");
 
-  return crypto.timingSafeEqual(
-    Buffer.from(provided),
-    Buffer.from(expected),
-  );
+    if (provided.length !== expected.length) return false;
+
+    return crypto.timingSafeEqual(
+      Buffer.from(provided),
+      Buffer.from(expected),
+    );
+  });
 }
 
 export function normalizeDojahWebhook(payload = {}) {
@@ -69,6 +88,9 @@ export function normalizeDojahWebhook(payload = {}) {
   }
 
   return {
+    eventId: data.event_id || data.eventId || data.id || payload.event_id || payload.id || "",
+    appId: data.app_id || data.appId || payload.app_id || payload.appId || "",
+    timestamp: data.timestamp || payload.timestamp || "",
     reference,
     status,
     failureReason: data.failure_reason || data.reason || payload.reason || "",

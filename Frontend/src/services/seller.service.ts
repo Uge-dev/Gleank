@@ -42,6 +42,11 @@ export type SellerPickupTask = {
   status: string;
   sellerConfirmedAvailability: boolean;
   sellerMarkedReady: boolean;
+  packageSize?: string;
+  packageWeightClass?: string;
+  handlingClass?: string;
+  pickupPointConfirmed?: boolean;
+  packageReadyNote?: string;
   batchStatus?: string;
   dispatchStatus?: string;
   assignedRiderId?: string | null;
@@ -60,7 +65,11 @@ export type SellerPickupTask = {
 export type AvailableDeliveryRider = {
   id: string;
   name: string;
-  phone: string;
+  displayName?: string;
+  dispatchScore?: number;
+  matchSummary?: string;
+  availabilityMode?: string;
+  privacyNote?: string;
   profile?: {
     availability?: string;
     coverageArea?: string;
@@ -96,37 +105,53 @@ export function rejectSellerOrderItemAvailability(orderItemId: string, note = ""
   );
 }
 
-export function markSellerPickupTaskReady(pickupTaskId: string) {
+export function markSellerPickupTaskReady(
+  pickupTaskId: string,
+  input: {
+    packageSize?: string;
+    packageWeightClass?: string;
+    handlingClass?: string;
+    pickupPointConfirmed?: boolean;
+    note?: string;
+  } = {},
+) {
   return apiRequest<{ pickupTask: SellerPickupTask }>(
     `/seller/pickup-tasks/${encodeURIComponent(pickupTaskId)}/mark-ready`,
     {
       method: "POST",
+      body: JSON.stringify(input),
     },
   );
 }
 
-export function getAvailableDeliveryRiders() {
-  return apiRequest<{ riders: AvailableDeliveryRider[] }>("/rider/available");
+export function getAvailableDeliveryRiders(batchId: string) {
+  return apiRequest<{ riders: AvailableDeliveryRider[] }>(
+    `/dispatch/batches/${encodeURIComponent(batchId)}/rider-candidates`,
+  );
 }
 
-export function assignDeliveryRiderToOrder(input: {
-  orderId: string;
+export function sendDeliveryOfferToRider(input: {
+  batchId: string;
   riderId: string;
-  packageSummary?: string;
-  category?: string;
-  packageTags?: string[];
 }) {
-  return apiRequest<{ assignment: unknown }>("/rider/assignments", {
-    method: "POST",
-    body: JSON.stringify({
-      orderType: "store_order",
-      orderId: input.orderId,
-      riderId: input.riderId,
-      packageSummary: input.packageSummary || "",
-      category: input.category || "",
-      packageTags: input.packageTags || [],
-    }),
-  });
+  return apiRequest<{ batch: unknown; attempt: unknown }>(
+    `/dispatch/batches/${encodeURIComponent(input.batchId)}/offers`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        riderId: input.riderId,
+      }),
+    },
+  );
+}
+
+export function startAutomaticDispatchForBatch(batchId: string) {
+  return apiRequest<{ batch: unknown; attempt: unknown; sellerManualAssignmentRequired?: boolean }>(
+    `/dispatch/batches/${encodeURIComponent(batchId)}/start`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function updateSellerStore(formData: FormData) {

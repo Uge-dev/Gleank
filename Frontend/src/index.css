@@ -29293,6 +29293,60 @@ html[data-theme="dark"] .notification-card {
   color: #ffffff;
 }
 
+.seller-requirement-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.seller-requirement-list button {
+  width: 100%;
+  border: 0;
+  border-radius: 16px;
+  background: #f8fafc;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.seller-requirement-list button span {
+  margin: 0;
+  color: #0f172a;
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.seller-requirement-list button strong {
+  white-space: nowrap;
+  font-size: 11px;
+  text-transform: capitalize;
+  color: #64748b;
+}
+
+.seller-requirement-list button.done {
+  background: #fff8e1;
+}
+
+.seller-requirement-list button.done strong {
+  color: #b45309;
+}
+
+.seller-requirement-list button.needs_information,
+.seller-requirement-list button.rejected {
+  background: #fff1f2;
+}
+
+.seller-requirement-list button.needs_information strong,
+.seller-requirement-list button.rejected strong {
+  color: #be123c;
+}
+
 .seller-status-list span {
   display: flex;
   align-items: center;

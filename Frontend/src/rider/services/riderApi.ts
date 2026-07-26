@@ -425,6 +425,64 @@ export interface RiderDashboardPayload {
   notifications: NotificationItem[];
 }
 
+export type VerificationRequirement = {
+  id: string;
+  code: string;
+  title: string;
+  description: string;
+  workflowType: 'form' | 'document' | 'provider' | 'system';
+  status: string;
+  requiredLevel: number;
+  blocking: boolean;
+  adminFeedback?: string;
+  latestSubmission?: {
+    id: string;
+    version: number;
+    documentUrls: string[];
+    submittedAt: string;
+    status: string;
+  } | null;
+  submissions?: Array<{
+    id: string;
+    version: number;
+    documentUrls: string[];
+    submittedAt: string;
+    status: string;
+  }>;
+  reviews?: Array<{
+    id: string;
+    action: string;
+    feedback: string;
+    newStatus: string;
+    createdAt: string;
+  }>;
+};
+
+export type VerificationCase = {
+  id: string;
+  role: 'seller' | 'rider';
+  currentVerifiedLevel: number;
+  requestedLevel: number;
+  overallStatus: string;
+  operationalStatus: string;
+  operationalReason?: string;
+  completionPercent: number;
+  requirements: VerificationRequirement[];
+  eligibility?: {
+    eligible: boolean;
+    blockingReasons: Array<{ code: string; message: string }>;
+    checks: Record<string, boolean>;
+  } | null;
+};
+
+export type VerificationCenterResponse = {
+  case: VerificationCase;
+  thirdParty?: {
+    dojahConfigured?: boolean;
+    liveFaceStatus?: string;
+  };
+};
+
 type ProofLocation = {
   lat: number;
   lng: number;
@@ -644,6 +702,31 @@ export const riderApi = {
       location: unknown;
       lastLocationAt: string | null;
     }>('/api/rider/location/status');
+  },
+  eligibility() {
+    return apiRequest<NonNullable<VerificationCase['eligibility']>>('/api/rider/eligibility');
+  },
+  verificationCenter() {
+    return apiRequest<VerificationCenterResponse>('/api/verification/me?role=rider&history=true');
+  },
+  submitVerificationRequirement(code: string, payload: Record<string, unknown>, files: Record<string, File | null> = {}) {
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify(payload));
+    Object.entries(files).forEach(([field, file]) => {
+      if (file) formData.append(field, file);
+    });
+
+    return apiRequest<VerificationCenterResponse>('/api/verification/requirements/' + encodeURIComponent(code) + '/submissions', {
+      method: 'POST',
+      body: formData,
+      timeoutMs: 90000,
+    });
+  },
+  requestVerificationLevel(level: number, reason = '') {
+    return apiRequest<VerificationCenterResponse>('/api/verification/level-requests', {
+      method: 'POST',
+      body: JSON.stringify({ level, reason }),
+    });
   },
   submitCashReconciliation(orderIds: string[], note?: string) {
     return apiRequest<{ orders: FullDeliveryOrder[] }>('/api/rider/cash-reconciliation', { method: 'POST', body: JSON.stringify({ orderIds, note }) });

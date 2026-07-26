@@ -31,3 +31,12 @@ export function markPasswordResetUsed(id, usedAt) {
     WHERE id = ?
   `).run(usedAt, id);
 }
+
+export function recordPasswordResetAttempt(id, attemptedAt) {
+  db.prepare(`
+    UPDATE password_reset_tokens
+    SET attempt_count = attempt_count + 1,
+        last_attempt_at = ?
+    WHERE id = ?
+  `).run(attemptedAt, id);
+}

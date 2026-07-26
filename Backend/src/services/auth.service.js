@@ -22,6 +22,7 @@ import {
   deletePasswordResetsForUser,
   findPasswordResetByTokenHash,
   markPasswordResetUsed,
+  recordPasswordResetAttempt,
 } from "../repositories/password-reset.repository.js";
 import {
   createUser,
@@ -60,7 +61,7 @@ function createRiderProfileFromAuth(userId, input, now) {
       delivery_bag_type, service_zone_ids, gps_permission_status,
       can_receive_auto_dispatch, capacity_locked, live_face_verified,
       verification_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'pending_review', ?, ?)
     ON CONFLICT(user_id) DO UPDATE SET
       full_name = excluded.full_name,
       phone = excluded.phone,
@@ -116,6 +117,8 @@ function passwordResetExpiry() {
 
 const resetRequestMessage =
   "If an active account matches that email, password reset instructions are being prepared.";
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
+const PASSWORD_RESET_COOLDOWN_MS = 15 * 60 * 1000;
 
 async function deliverAuthEmail(label, send, options = {}) {
   try {
@@ -153,6 +156,28 @@ function assertPasswordPolicy(password) {
   }
 }
 
+function assertPasswordResetAttemptAllowed(reset) {
+  const attempts = Number(reset?.attempt_count || 0);
+  const lastAttemptAt = reset?.last_attempt_at
+    ? new Date(reset.last_attempt_at).getTime()
+    : 0;
+
+  if (
+    attempts >= PASSWORD_RESET_MAX_ATTEMPTS &&
+    lastAttemptAt > 0 &&
+    Date.now() - lastAttemptAt < PASSWORD_RESET_COOLDOWN_MS
+  ) {
+    const waitMinutes = Math.max(
+      1,
+      Math.ceil((lastAttemptAt + PASSWORD_RESET_COOLDOWN_MS - Date.now()) / 60_000),
+    );
+    throw new HttpError(
+      429,
+      `This password reset link is temporarily locked. Please wait about ${waitMinutes} minute(s) before trying again.`,
+    );
+  }
+}
+
 function shouldApplyDevelopmentRiderDispatchDefaults() {
   return !env.isProduction && (
     env.autoVerifyRidersInDev ||
@@ -165,7 +190,7 @@ function applyDevelopmentRiderDispatchDefaults(userId, now) {
   if (!shouldApplyDevelopmentRiderDispatchDefaults()) return;
 
   const shouldVerify = env.autoVerifyRidersInDev || env.enableTestRiderDispatch;
-  const shouldSetOnline = env.autoSetRidersOnlineInDev || env.enableTestRiderDispatch;
+  const shouldSetOnline = env.autoSetRidersOnlineInDev;
   const shouldVerifyEmail = env.enableTestRiderDispatch;
 
   db.prepare(`
@@ -505,12 +530,15 @@ export async function resetPassword(input, meta = {}) {
       throw new HttpError(400, "This password reset link is invalid or has expired.");
     }
 
+    assertPasswordResetAttemptAllowed(reset);
+
     const user = findUserById(reset.user_id);
     if (!user) {
       throw new HttpError(404, "Account was not found.");
     }
 
     if (input.role && user.role !== input.role) {
+      recordPasswordResetAttempt(reset.id, now);
       throw new HttpError(403, `This password reset link is not for a ${input.role} account.`);
     }
 

@@ -13,6 +13,7 @@ import {
   logout as logoutRequest,
   register as registerRequest,
 } from "../services/auth.service";
+import { ApiError } from "../lib/api";
 import type { RegisterInput } from "../services/auth.service";
 import type { AuthUser, SellerStore, UserRole } from "../types/domain";
 
@@ -35,9 +36,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const legacyUserKey = "gleank_user";
 const clientAuthStorageKeys = [
   legacyUserKey,
-  "gleank_pending_payment_reference",
-  "gleank_last_orders",
-  "gleank_last_order",
   "gleenc-rider-dashboard-state-v4",
 ];
 
@@ -93,8 +91,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
       setSession(session.user, session.store);
-    } catch {
-      setSession(null, null);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        setSession(null, null);
+        return;
+      }
+
+      setState((current) => ({
+        user: current.user,
+        store: current.store,
+        isLoading: false,
+      }));
     }
   }, [setSession]);
 

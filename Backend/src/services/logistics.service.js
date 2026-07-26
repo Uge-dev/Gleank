@@ -11,11 +11,22 @@ import {
   dispatchRemainingSeconds,
   resolveDispatchTimeoutPolicy,
 } from "./dispatch-timeout.service.js";
+import { evaluateRiderEligibility } from "./verification.service.js";
+import { createDeliveryAssignmentConversation } from "./message.service.js";
 
 const SIZE_ORDER = ["small", "medium", "large", "extra_large"];
 const WEIGHT_ORDER = ["very_light", "light", "medium", "heavy", "very_heavy"];
 const VEHICLE_ORDER = ["walking_ok", "bicycle_or_above", "motorcycle_or_above", "tricycle_or_above", "car_or_van_required"];
 const RISK_ORDER = ["low", "medium", "high", "critical"];
+const MANUAL_ASSIGNMENT_DISPATCH_STATUSES = new Set([
+  "seller_manual_assignment_required",
+  "manual_assignment_required",
+  "no_rider_available",
+  "assignment_failed",
+  "offer_declined",
+  "offer_expired",
+  "ready_for_dispatch",
+]);
 
 const DEFAULT_PROFILE = {
   packageSize: "small",
@@ -222,6 +233,146 @@ function notificationEvent({ userId = null, role = "", eventKey, title = "", bod
   );
 }
 
+function offerWindowSeconds() {
+  const seconds = Number(env.riderDispatchOfferSeconds || 90);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 90;
+  return Math.max(30, Math.min(180, Math.round(seconds)));
+}
+
+function batchSafePaymentReady(order) {
+  if (!order) return false;
+  if (order.payment_status === "paid") return true;
+  return order.payment_method === "pay_on_delivery" && ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status || "");
+}
+
+function deriveBatchBlockingStep(batchId) {
+  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+  if (!batch) return "missing_batch";
+  const tasks = db.prepare(`
+    SELECT pickup_tasks.*, orders.payment_status, orders.payment_method, orders.status AS order_status
+    FROM pickup_tasks
+    LEFT JOIN orders ON orders.id = pickup_tasks.order_id
+    WHERE pickup_tasks.delivery_batch_id = ?
+      AND pickup_tasks.status != 'seller_rejected'
+  `).all(batchId);
+
+  if (!tasks.length) return "cancelled_or_no_active_pickups";
+  if (tasks.some((task) => !batchSafePaymentReady({
+    payment_status: task.payment_status,
+    payment_method: task.payment_method,
+    status: task.order_status,
+  }))) {
+    return "payment_not_ready";
+  }
+  if (tasks.some((task) => !task.seller_confirmed_availability)) return "seller_stock_confirmation";
+  if (tasks.some((task) => !task.seller_marked_ready)) return "seller_package_preparation";
+  if (batch.assigned_rider_id) return "rider_assigned";
+  if (batch.dispatch_status === "offer_pending" || batch.dispatch_status === "rider_offered") return "rider_offer_pending";
+  if (batch.manual_assignment_unlocked) return "seller_manual_assignment";
+  return "ready_to_find_rider";
+}
+
+function syncBatchWorkflowState(batchId, updates = {}) {
+  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+  if (!batch) return null;
+  const blockingStep = updates.blockingStep || deriveBatchBlockingStep(batchId);
+  const patch = {
+    sellerPreparationStatus: updates.sellerPreparationStatus || (
+      blockingStep === "seller_package_preparation" || blockingStep === "seller_stock_confirmation"
+        ? "not_ready"
+        : "ready"
+    ),
+    riderAssignmentStatus: updates.riderAssignmentStatus || (
+      batch.assigned_rider_id
+        ? "assigned"
+        : blockingStep === "rider_offer_pending"
+          ? "offer_pending"
+          : blockingStep === "ready_to_find_rider" || blockingStep === "seller_manual_assignment"
+            ? "ready"
+            : "not_started"
+    ),
+    deliveryWorkflowStatus: updates.deliveryWorkflowStatus || batch.delivery_workflow_status || "not_started",
+    payoutWorkflowStatus: updates.payoutWorkflowStatus || batch.payout_workflow_status || "on_hold",
+  };
+  const now = nowIso();
+  db.prepare(`
+    UPDATE delivery_batches
+    SET seller_preparation_status = ?,
+        rider_assignment_status = ?,
+        delivery_workflow_status = ?,
+        payout_workflow_status = ?,
+        blocking_step = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    patch.sellerPreparationStatus,
+    patch.riderAssignmentStatus,
+    patch.deliveryWorkflowStatus,
+    patch.payoutWorkflowStatus,
+    blockingStep,
+    now,
+    batchId,
+  );
+  return db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+}
+
+function recordDispatchEvent({
+  batchId,
+  attemptId = null,
+  riderId = null,
+  actorId = null,
+  actorRole = "",
+  eventType,
+  note = "",
+  statusBefore = "",
+  statusAfter = "",
+  metadata = {},
+}) {
+  if (!batchId || !eventType) return null;
+  const id = createId("dev");
+  db.prepare(`
+    INSERT INTO dispatch_events (
+      id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note,
+      actor_id, actor_role, status_before, status_after, metadata_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    batchId,
+    attemptId,
+    riderId,
+    eventType,
+    clean(note, 900),
+    actorId,
+    clean(actorRole, 60),
+    clean(statusBefore, 80),
+    clean(statusAfter, 80),
+    JSON.stringify(metadata || {}),
+    nowIso(),
+  );
+  return id;
+}
+
+function assertOtpAttemptAllowed(table, idColumn, task, taskLabel) {
+  const attempts = Number(task.code_attempt_count || 0);
+  const lastAttemptMs = Date.parse(task.last_code_attempt_at || "");
+  if (attempts >= 5) {
+    if (Number.isFinite(lastAttemptMs) && Date.now() - lastAttemptMs < 15 * 60 * 1000) {
+      throw new HttpError(429, `Too many ${taskLabel} code attempts. Please wait before trying again.`);
+    }
+    db.prepare(`UPDATE ${table} SET code_attempt_count = 0, last_code_attempt_at = NULL WHERE ${idColumn} = ?`).run(task.id);
+  }
+}
+
+function recordFailedOtpAttempt(table, idColumn, task) {
+  db.prepare(`
+    UPDATE ${table}
+    SET code_attempt_count = code_attempt_count + 1,
+        last_code_attempt_at = ?,
+        updated_at = ?
+    WHERE ${idColumn} = ?
+  `).run(nowIso(), nowIso(), task.id);
+}
+
 function queueIntervention(input) {
   const existing = db.prepare(`
     SELECT * FROM intervention_queue
@@ -382,6 +533,16 @@ function serializeBatch(row, { pickupTasks = [], deliveryTask = null, attempts =
     riskLevel: row.risk_level || "low",
     status: row.status,
     dispatchStatus: row.dispatch_status,
+    sellerPreparationStatus: row.seller_preparation_status || "not_ready",
+    riderAssignmentStatus: row.rider_assignment_status || "not_started",
+    deliveryWorkflowStatus: row.delivery_workflow_status || "not_started",
+    payoutWorkflowStatus: row.payout_workflow_status || "on_hold",
+    blockingStep: row.blocking_step || "",
+    assignmentMode: row.assignment_mode || "automatic",
+    currentDispatchAttemptId: row.current_dispatch_attempt_id || null,
+    offerWindowSeconds: Number(row.offer_window_seconds || offerWindowSeconds()),
+    candidateSnapshot: safeJsonArray(row.candidate_snapshot_json),
+    excludedCandidateSnapshot: safeJsonArray(row.excluded_candidate_snapshot_json),
     assignedRiderId: row.assigned_rider_id || null,
     dispatchAttemptCount: Number(row.dispatch_attempt_count || 0),
     pickupTasks,
@@ -424,11 +585,16 @@ function serializePickupTask(row) {
     status: row.status,
     sellerConfirmedAvailability: Boolean(row.seller_confirmed_availability),
     sellerMarkedReady: Boolean(row.seller_marked_ready),
+    packageSize: row.package_size || safeJsonObject(row.package_profile_snapshot).packageSize || "",
+    packageWeightClass: row.package_weight_class || safeJsonObject(row.package_profile_snapshot).packageWeightClass || "",
+    handlingClass: row.handling_class || safeJsonObject(row.package_profile_snapshot).fragilityLevel || "",
+    pickupPointConfirmed: Boolean(row.pickup_point_confirmed),
+    packageReadyNote: row.package_ready_note || "",
     batchStatus: row.batch_status || "",
     dispatchStatus: row.dispatch_status || "",
     assignedRiderId: row.assigned_rider_id || null,
     dispatchAttemptCount: Number(row.dispatch_attempt_count || 0),
-    manualAssignmentAllowed: ["seller_manual_assignment_required", "no_rider_available"].includes(row.dispatch_status || ""),
+    manualAssignmentAllowed: MANUAL_ASSIGNMENT_DISPATCH_STATUSES.has(row.dispatch_status || ""),
     confirmationDeadlineAt: row.confirmation_deadline_at || null,
     sellerConfirmedAt: row.seller_confirmed_at || null,
     sellerRejectedAt: row.seller_rejected_at || null,
@@ -455,6 +621,9 @@ function serializeAttempt(row) {
     timedOutAt: row.timed_out_at || null,
     rejectionReason: row.rejection_reason || "",
     attemptNumber: Number(row.attempt_number || 1),
+    assignmentMode: row.assignment_mode || "automatic",
+    offerWindowSeconds: Number(row.offer_window_seconds || offerWindowSeconds()),
+    safeRiderSnapshot: safeJsonObject(row.safe_rider_snapshot_json),
     remainingSeconds: dispatchRemainingSeconds(row.expires_at),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1347,6 +1516,10 @@ export function sellerConfirmAvailability(auth, orderItemId, note = "") {
     INSERT INTO seller_readiness_events (id, pickup_task_id, seller_id, event_type, note, created_at)
     VALUES (?, ?, ?, 'seller_confirmed_availability', ?, ?)
   `).run(createId("sre"), task.id, task.seller_id, clean(note, 500), now);
+  syncBatchWorkflowState(task.delivery_batch_id, {
+    sellerPreparationStatus: "not_ready",
+    riderAssignmentStatus: "not_started",
+  });
   createNotification({
     userId: task.buyer_id,
     type: "order",
@@ -1406,21 +1579,66 @@ export function sellerRejectAvailability(auth, orderItemId, note = "") {
   return serializePickupTask(db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(task.id));
 }
 
-export function markPickupTaskReady(auth, pickupTaskId) {
-  const task = db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(pickupTaskId);
+export function markPickupTaskReady(auth, pickupTaskId, input = {}) {
+  const task = db.prepare(`
+    SELECT pickup_tasks.*, orders.payment_status, orders.payment_method, orders.status AS order_status
+    FROM pickup_tasks
+    LEFT JOIN orders ON orders.id = pickup_tasks.order_id
+    WHERE pickup_tasks.id = ?
+  `).get(pickupTaskId);
   if (!task) throw new HttpError(404, "Pickup task was not found.");
   if (auth.role !== "admin" && task.seller_id !== auth.user_id) {
     throw new HttpError(403, "Only this seller or admin can mark the package ready.");
   }
+  if (!batchSafePaymentReady({
+    payment_status: task.payment_status,
+    payment_method: task.payment_method,
+    status: task.order_status,
+  })) {
+    throw new HttpError(422, "This order is not payment-ready for dispatch yet.");
+  }
   if (!task.seller_confirmed_availability) {
     throw new HttpError(422, "Confirm availability before marking package ready.");
   }
+  const profile = safeJsonObject(task.package_profile_snapshot);
+  const packageSize = clean(input.packageSize || profile.packageSize || task.package_size || "", 80);
+  const packageWeightClass = clean(input.packageWeightClass || profile.packageWeightClass || task.package_weight_class || "", 80);
+  const handlingClass = clean(input.handlingClass || input.fragilityLevel || profile.fragilityLevel || task.handling_class || "normal_handling", 120);
+  const pickupPointConfirmed =
+    input.pickupPointConfirmed === true ||
+    input.pickupPointConfirmed === 1 ||
+    input.pickupPointConfirmed === "true" ||
+    Boolean(task.pickup_landmark || task.pickup_zone_id);
+
+  if (!packageSize || !packageWeightClass || !handlingClass) {
+    throw new HttpError(422, "Confirm package size, weight class, and handling before dispatch.");
+  }
+  if (!pickupPointConfirmed) {
+    throw new HttpError(422, "Confirm the pickup point before marking the package ready.");
+  }
+
   const now = nowIso();
   db.prepare(`
     UPDATE pickup_tasks
-    SET seller_marked_ready = 1, ready_at = ?, status = 'package_ready', updated_at = ?
+    SET seller_marked_ready = 1,
+        ready_at = ?,
+        status = 'package_ready',
+        package_size = ?,
+        package_weight_class = ?,
+        handling_class = ?,
+        pickup_point_confirmed = 1,
+        package_ready_note = ?,
+        updated_at = ?
     WHERE id = ?
-  `).run(now, now, pickupTaskId);
+  `).run(
+    now,
+    packageSize,
+    packageWeightClass,
+    handlingClass,
+    clean(input.note || input.packageReadyNote || "", 500),
+    now,
+    pickupTaskId,
+  );
   db.prepare(`
     UPDATE orders
     SET status = CASE WHEN payment_status = 'paid' THEN 'ready_for_delivery' ELSE status END,
@@ -1436,6 +1654,7 @@ export function markPickupTaskReady(auth, pickupTaskId) {
     VALUES (?, ?, ?, 'seller_marked_ready', '', ?)
   `).run(createId("sre"), task.id, task.seller_id, now);
   maybeMarkBatchReady(task.delivery_batch_id);
+  syncBatchWorkflowState(task.delivery_batch_id);
   updateReliabilityScore(task.seller_id, "seller");
   return serializePickupTask(db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(pickupTaskId));
 }
@@ -1453,7 +1672,10 @@ function maybeMarkBatchReady(batchId) {
   db.prepare(`
     UPDATE delivery_batches
     SET status = 'ready_for_dispatch',
-        dispatch_status = 'pending',
+        dispatch_status = 'ready_for_dispatch',
+        seller_preparation_status = 'ready',
+        rider_assignment_status = 'ready',
+        blocking_step = 'ready_to_find_rider',
         auto_dispatch_started_at = COALESCE(auto_dispatch_started_at, ?),
         updated_at = ?
     WHERE id = ?
@@ -1467,9 +1689,12 @@ function maybeMarkBatchReady(batchId) {
         updated_at = ?
     WHERE delivery_batch_id = ?
   `).run(now, batchId);
-  if (env.enableAutomatedDispatch) {
-    offerNextRiderForBatch(batchId, { internal: true });
-  }
+  recordDispatchEvent({
+    batchId,
+    eventType: "package_ready_for_dispatch",
+    note: "All active sellers marked their package ready for dispatch.",
+    statusAfter: "ready_for_dispatch",
+  });
 }
 
 export function syncOrderReadinessForDispatch(orderId) {
@@ -1570,9 +1795,12 @@ function recalculateBatch(batchId) {
 
 function unlockManualAssignmentForBatch(batchId, reason) {
   const now = nowIso();
+  const before = db.prepare("SELECT dispatch_status FROM delivery_batches WHERE id = ?").get(batchId)?.dispatch_status || "";
   db.prepare(`
     UPDATE delivery_batches
-    SET dispatch_status = 'seller_manual_assignment_required',
+    SET dispatch_status = 'assignment_failed',
+        rider_assignment_status = 'seller_manual_assignment_required',
+        blocking_step = 'seller_manual_assignment',
         manual_assignment_unlocked = 1,
         manual_assignment_unlocked_at = COALESCE(manual_assignment_unlocked_at, ?),
         updated_at = ?
@@ -1589,6 +1817,13 @@ function unlockManualAssignmentForBatch(batchId, reason) {
         updated_at = ?
     WHERE delivery_batch_id = ?
   `).run(now, batchId);
+  recordDispatchEvent({
+    batchId,
+    eventType: "seller_manual_assignment_unlocked",
+    note: reason,
+    statusBefore: before,
+    statusAfter: "assignment_failed",
+  });
   notifyBatchSellersManualAssignment(batchId, reason);
 }
 
@@ -1607,9 +1842,21 @@ export function advanceExpiredDispatchAttempts() {
   for (const attempt of expired) {
     db.prepare("UPDATE dispatch_attempts SET status = 'timed_out', timed_out_at = ?, updated_at = ? WHERE id = ?").run(now, now, attempt.id);
     db.prepare(`
-      INSERT INTO dispatch_events (id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note, created_at)
-      VALUES (?, ?, ?, ?, 'rider_timed_out', 'Dispatch offer expired automatically.', ?)
-    `).run(createId("dev"), attempt.delivery_batch_id, attempt.id, attempt.rider_id, now);
+      UPDATE delivery_batches
+      SET dispatch_status = 'offer_expired',
+          rider_assignment_status = 'offer_expired',
+          blocking_step = 'ready_to_find_rider',
+          updated_at = ?
+      WHERE id = ? AND current_dispatch_attempt_id = ?
+    `).run(now, attempt.delivery_batch_id, attempt.id);
+    recordDispatchEvent({
+      batchId: attempt.delivery_batch_id,
+      attemptId: attempt.id,
+      riderId: attempt.rider_id,
+      eventType: "rider_timed_out",
+      note: "Dispatch offer expired automatically.",
+      statusAfter: "offer_expired",
+    });
     updateReliabilityScore(attempt.rider_id, "rider");
     offerNextRiderForBatch(attempt.delivery_batch_id, { internal: true });
   }
@@ -1719,6 +1966,12 @@ function riderVehicleCapability(transportType = "motorcycle") {
 }
 
 function riderCanHandle(rider, batch) {
+  const eligibility = evaluateRiderEligibility(rider.rider_id || rider.user_id, {
+    packageValueKobo: batch.package_value_kobo,
+    highValue: batch.risk_level === "high" || batch.risk_level === "critical",
+    maxActiveAssignments: 1,
+  });
+  if (!eligibility.eligible) return false;
   const capacity = serializeCapacity(rider);
   if (!capacity?.canReceiveAutoDispatch) return false;
   if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") return false;
@@ -1753,47 +2006,318 @@ function dispatchScore(rider, batch) {
   return Number(score.toFixed(2));
 }
 
-function eligibleRidersForBatch(batchId) {
+function publicRiderSnapshot(rider, batch, score = null) {
+  const capacity = serializeCapacity(rider);
+  const safeName = clean(rider.name || "Verified rider", 80);
+  return {
+    id: rider.rider_id || rider.user_id,
+    name: safeName,
+    displayName: safeName,
+    dispatchScore: score == null ? dispatchScore(rider, batch) : score,
+    availabilityMode: capacity.availabilityMode,
+    currentZoneId: capacity.currentZoneId,
+    transportType: capacity.transportType,
+    maxPackageSize: capacity.maxPackageSize,
+    maxWeightClass: capacity.maxWeightClass,
+    fragileHandlingAbility: capacity.fragileHandlingAbility,
+    deliveryBagType: capacity.deliveryBagType,
+    currentActiveBatchCount: capacity.currentActiveBatchCount,
+    acceptanceRate: capacity.acceptanceRate,
+    responseSpeedScore: capacity.responseSpeedScore,
+    reliabilityScore: capacity.reliabilityScore,
+    matchSummary: [
+      capacity.transportType,
+      capacity.currentZoneId && capacity.currentZoneId === batch.source_zone_id ? "near pickup zone" : "",
+      capacity.gpsPermissionStatus === "gps_enabled" ? "GPS enabled" : "zone dispatch",
+    ].filter(Boolean).join(" · "),
+    privacyNote: "Private phone, KYC, face/NIN and payout data stay hidden until the delivery workflow allows contact.",
+  };
+}
+
+function riderBatchDiagnostics(rider, batch, attemptedRiderIds = new Set()) {
+  const reasons = [];
+  const riderId = rider.rider_id || rider.user_id;
+  const capacity = serializeCapacity(rider);
+  const verification = evaluateRiderEligibility(riderId, {
+    packageValueKobo: batch.package_value_kobo,
+    highValue: batch.risk_level === "high" || batch.risk_level === "critical",
+    maxActiveAssignments: 1,
+  });
+
+  if (attemptedRiderIds.has(riderId)) reasons.push("already_contacted_for_this_batch");
+  if (!verification.eligible) {
+    reasons.push(...(verification.blockingReasons || []).map((reason) => reason.code || "rider_not_eligible"));
+    if (!verification.blockingReasons?.length) reasons.push("rider_not_eligible");
+  }
+  if (!capacity?.canReceiveAutoDispatch) reasons.push("auto_dispatch_disabled");
+  if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") {
+    reasons.push("rider_offline");
+  }
+  if (Number(capacity.currentActiveBatchCount || 0) > 0 || rider.availability === "busy") reasons.push("rider_busy");
+  if (rank(riderCapacityValue(capacity.maxPackageSize, "size"), SIZE_ORDER) < rank(batch.package_size_summary, SIZE_ORDER)) {
+    reasons.push("package_size_too_large");
+  }
+  if (rank(riderCapacityValue(capacity.maxWeightClass, "weight"), WEIGHT_ORDER) < rank(batch.weight_class_summary, WEIGHT_ORDER)) {
+    reasons.push("package_too_heavy");
+  }
+  if (batch.fragility_summary === "very_fragile" && capacity.fragileHandlingAbility !== "can_handle_very_fragile") {
+    reasons.push("very_fragile_not_supported");
+  }
+  if (batch.fragility_summary === "fragile" && capacity.fragileHandlingAbility === "cannot_handle_fragile") {
+    reasons.push("fragile_not_supported");
+  }
+  if (rank(riderVehicleCapability(capacity.transportType), VEHICLE_ORDER) < rank(batch.required_vehicle_type, VEHICLE_ORDER)) {
+    if (!(capacity.transportType === "car" || capacity.transportType === "van")) reasons.push("vehicle_not_supported");
+  }
+  if (batch.requires_gps && capacity.gpsPermissionStatus !== "gps_enabled" && !String(capacity.availabilityMode).includes("gps")) {
+    reasons.push("gps_required");
+  }
+  const zones = new Set(capacity.serviceZoneIds);
+  if (zones.size && batch.source_zone_id && !zones.has(batch.source_zone_id)) reasons.push("outside_service_zone");
+  if (!zones.size && !env.allowZoneOnlyRiderDispatch) reasons.push("no_service_zone");
+
+  return {
+    rider,
+    riderId,
+    score: dispatchScore(rider, batch),
+    eligible: reasons.length === 0,
+    reasons: Array.from(new Set(reasons)),
+    verification,
+  };
+}
+
+function listRiderCandidatesForBatchInternal(batchId, { includeExcluded = false } = {}) {
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
   if (!batch) throw new HttpError(404, "Delivery batch was not found.");
   const attempted = new Set(
     db.prepare("SELECT rider_id FROM dispatch_attempts WHERE delivery_batch_id = ?").all(batchId).map((row) => row.rider_id),
   );
   const riders = db.prepare(`
-    SELECT users.id AS rider_id, users.name, users.phone, rider_profiles.*
+    SELECT users.id AS rider_id, users.name, users.phone, users.avatar_url, rider_profiles.*
     FROM rider_profiles
     JOIN users ON users.id = rider_profiles.user_id
     WHERE users.role = 'rider'
       AND users.is_active = 1
-      AND rider_profiles.verification_status = 'verified'
       AND rider_profiles.safety_status = 'normal'
   `).all();
-
-  return riders
-    .filter((rider) => !attempted.has(rider.rider_id || rider.user_id))
-    .filter((rider) => riderCanHandle(rider, batch))
-    .map((rider) => ({
-      rider,
-      score: dispatchScore(rider, batch),
-    }))
+  const diagnostics = riders.map((rider) => riderBatchDiagnostics(rider, batch, attempted));
+  const candidates = diagnostics
+    .filter((item) => item.eligible)
     .sort((a, b) => b.score - a.score);
+  const excluded = includeExcluded
+    ? diagnostics
+        .filter((item) => !item.eligible)
+        .sort((a, b) => b.score - a.score)
+    : [];
+  return { batch, candidates, excluded };
+}
+
+function eligibleRidersForBatch(batchId) {
+  return listRiderCandidatesForBatchInternal(batchId).candidates;
+}
+
+function assertSellerOrAdminCanDispatch(auth, batchId) {
+  if (!auth || !["admin", "seller"].includes(auth.role)) throw new HttpError(403, "Seller or admin access is required.");
+  if (auth.role === "admin") return;
+  const sellerTask = db.prepare("SELECT id FROM pickup_tasks WHERE delivery_batch_id = ? AND seller_id = ?").get(batchId, auth.user_id);
+  if (!sellerTask) throw new HttpError(403, "Only a seller in this delivery batch can manage rider dispatch.");
+}
+
+function assertBatchReadyForRiderOffer(batchId) {
+  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+  if (!batch) throw new HttpError(404, "Delivery batch was not found.");
+  if (batch.assigned_rider_id) throw new HttpError(422, "A rider is already assigned to this delivery batch.");
+  const tasks = db.prepare(`
+    SELECT pickup_tasks.*, orders.payment_status, orders.payment_method, orders.status AS order_status
+    FROM pickup_tasks
+    LEFT JOIN orders ON orders.id = pickup_tasks.order_id
+    WHERE pickup_tasks.delivery_batch_id = ?
+      AND pickup_tasks.status != 'seller_rejected'
+  `).all(batchId);
+  if (!tasks.length) throw new HttpError(422, "This delivery batch has no active seller package.");
+  if (tasks.some((task) => !batchSafePaymentReady({
+    payment_status: task.payment_status,
+    payment_method: task.payment_method,
+    status: task.order_status,
+  }))) {
+    throw new HttpError(422, "Payment must be confirmed or in the protected pay-on-delivery flow before rider dispatch starts.");
+  }
+  if (tasks.some((task) => !task.seller_confirmed_availability)) {
+    throw new HttpError(422, "Every seller in this batch must confirm stock availability first.");
+  }
+  if (tasks.some((task) => !task.seller_marked_ready)) {
+    throw new HttpError(422, "Every seller in this batch must mark their package ready before rider dispatch.");
+  }
+  return { batch, tasks };
+}
+
+export function listRiderCandidatesForBatch(auth, batchId) {
+  assertSellerOrAdminCanDispatch(auth, batchId);
+  advanceDueReadinessAndDispatch();
+  advanceExpiredDispatchAttempts();
+  assertBatchReadyForRiderOffer(batchId);
+  const { batch, candidates, excluded } = listRiderCandidatesForBatchInternal(batchId, { includeExcluded: auth.role === "admin" });
+  const safeCandidates = candidates.map((candidate) => publicRiderSnapshot(candidate.rider, batch, candidate.score));
+  const safeExcluded = auth.role === "admin"
+    ? excluded.map((candidate) => ({
+        ...publicRiderSnapshot(candidate.rider, batch, candidate.score),
+        exclusionReasons: candidate.reasons,
+      }))
+    : [];
+  const now = nowIso();
+  db.prepare(`
+    UPDATE delivery_batches
+    SET candidate_snapshot_json = ?,
+        excluded_candidate_snapshot_json = ?,
+        blocking_step = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify(safeCandidates),
+    JSON.stringify(safeExcluded),
+    deriveBatchBlockingStep(batchId),
+    now,
+    batchId,
+  );
+  return {
+    batch: getDeliveryBatchById(batchId),
+    riders: safeCandidates,
+    excludedRiders: safeExcluded,
+  };
 }
 
 export function startDispatchForBatch(auth, batchId) {
   if (auth && !["admin", "seller"].includes(auth.role)) throw new HttpError(403, "Only admin or seller automation can start dispatch.");
+  if (auth?.role === "seller") assertSellerOrAdminCanDispatch(auth, batchId);
   advanceDueReadinessAndDispatch();
   advanceExpiredDispatchAttempts();
-  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
-  if (!batch) throw new HttpError(404, "Delivery batch was not found.");
-  if (batch.status !== "ready_for_dispatch" && auth?.role !== "admin") {
-    throw new HttpError(422, "Batch is not ready for dispatch yet.");
-  }
+  assertBatchReadyForRiderOffer(batchId);
   return offerNextRiderForBatch(batchId, { internal: true });
+}
+
+function createDispatchOfferForCandidate(batch, candidate, { internal = false, assignmentMode = "automatic", actor = null } = {}) {
+  const batchId = batch.id;
+  const existingOpen = db.prepare(`
+    SELECT * FROM dispatch_attempts
+    WHERE delivery_batch_id = ? AND status = 'offered'
+    ORDER BY offered_at DESC
+    LIMIT 1
+  `).get(batchId);
+  if (existingOpen && dispatchRemainingSeconds(existingOpen.expires_at) > 0) {
+    return { batch: getDeliveryBatchById(batchId), attempt: serializeAttempt(existingOpen), internal };
+  }
+
+  const now = nowIso();
+  const policy = resolveDispatchTimeoutPolicy({
+    sellerType: batch.batch_type === "local_market" ? "local_market" : "campus",
+    marketSource: batch.batch_type,
+    packageSummary: `${batch.package_size_summary} ${batch.weight_class_summary} ${batch.fragility_summary}`,
+    isHeavyFragile: ["heavy", "very_heavy"].includes(batch.weight_class_summary) || batch.fragility_summary !== "not_fragile",
+  });
+  const windowSeconds = offerWindowSeconds();
+  const attemptId = createId("dsp");
+  const attemptNumber = Number(batch.dispatch_attempt_count || 0) + 1;
+  const riderId = candidate.rider.rider_id || candidate.rider.user_id;
+  const riderSnapshot = publicRiderSnapshot(candidate.rider, batch, candidate.score);
+  const expiresAt = buildDispatchExpiresAt(now, windowSeconds);
+
+  db.prepare(`
+    INSERT INTO dispatch_attempts (
+      id, delivery_batch_id, rider_id, dispatch_score, status, offered_at,
+      expires_at, attempt_number, assignment_mode, offer_window_seconds,
+      safe_rider_snapshot_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 'offered', ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    attemptId,
+    batchId,
+    riderId,
+    candidate.score,
+    now,
+    expiresAt,
+    attemptNumber,
+    assignmentMode,
+    windowSeconds,
+    JSON.stringify(riderSnapshot),
+    now,
+    now,
+  );
+  db.prepare(`
+    UPDATE delivery_batches
+    SET dispatch_status = 'offer_pending',
+        rider_assignment_status = 'offer_pending',
+        blocking_step = 'rider_offer_pending',
+        assignment_mode = ?,
+        current_dispatch_attempt_id = ?,
+        offer_window_seconds = ?,
+        dispatch_attempt_count = ?,
+        auto_dispatch_started_at = COALESCE(auto_dispatch_started_at, ?),
+        auto_dispatch_expires_at = ?,
+        assigned_by_seller_id = CASE WHEN ? = 'manual' THEN ? ELSE assigned_by_seller_id END,
+        assigned_manually_at = CASE WHEN ? = 'manual' THEN ? ELSE assigned_manually_at END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    assignmentMode,
+    attemptId,
+    windowSeconds,
+    attemptNumber,
+    now,
+    expiresAt,
+    assignmentMode,
+    actor?.user_id || null,
+    assignmentMode,
+    now,
+    now,
+    batchId,
+  );
+  db.prepare(`
+    UPDATE orders
+    SET auto_dispatch_status = 'offer_sent',
+        dispatch_status = 'offer_pending',
+        delivery_status = 'rider_offer_sent',
+        updated_at = ?
+    WHERE delivery_batch_id = ?
+  `).run(now, batchId);
+  recordDispatchEvent({
+    batchId,
+    attemptId,
+    riderId,
+    actorId: actor?.user_id || null,
+    actorRole: actor?.role || "",
+    eventType: assignmentMode === "manual" ? "seller_sent_rider_offer" : "rider_offered",
+    note: `Offer expires in ${windowSeconds} seconds.`,
+    statusBefore: batch.dispatch_status || "",
+    statusAfter: "offer_pending",
+    metadata: {
+      assignmentMode,
+      offerWindowSeconds: windowSeconds,
+      dispatchTimeoutPolicy: policy.policyKey,
+    },
+  });
+
+  createNotification({
+    userId: riderId,
+    type: "order",
+    title: assignmentMode === "manual" ? "Seller sent a delivery offer" : "New delivery batch",
+    body: "You have a delivery batch offer. Open Gleenc Rider to accept or reject it.",
+    actionLabel: "View dispatch",
+    actionPath: `/rider/assignments`,
+  });
+  notificationEvent({
+    userId: riderId,
+    role: "rider",
+    eventKey: "new_dispatch_offer",
+    title: "New delivery batch",
+    relatedBatchId: batchId,
+  });
+
+  return { batch: getDeliveryBatchById(batchId), attempt: serializeAttempt(db.prepare("SELECT * FROM dispatch_attempts WHERE id = ?").get(attemptId)), internal };
 }
 
 export function offerNextRiderForBatch(batchId, { internal = false } = {}) {
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
   if (!batch) throw new HttpError(404, "Delivery batch was not found.");
+  assertBatchReadyForRiderOffer(batchId);
   const existingOpen = db.prepare(`
     SELECT * FROM dispatch_attempts
     WHERE delivery_batch_id = ? AND status = 'offered'
@@ -1816,70 +2340,30 @@ export function offerNextRiderForBatch(batchId, { internal = false } = {}) {
     return { batch: getDeliveryBatchById(batchId), attempt: null, sellerManualAssignmentRequired: true };
   }
 
-  const now = nowIso();
-  const policy = resolveDispatchTimeoutPolicy({
-    sellerType: batch.batch_type === "local_market" ? "local_market" : "campus",
-    marketSource: batch.batch_type,
-    packageSummary: `${batch.package_size_summary} ${batch.weight_class_summary} ${batch.fragility_summary}`,
-    isHeavyFragile: ["heavy", "very_heavy"].includes(batch.weight_class_summary) || batch.fragility_summary !== "not_fragile",
-  });
-  const attemptId = createId("dsp");
-  const attemptNumber = attempts + 1;
-  db.prepare(`
-    INSERT INTO dispatch_attempts (
-      id, delivery_batch_id, rider_id, dispatch_score, status, offered_at,
-      expires_at, attempt_number, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, 'offered', ?, ?, ?, ?, ?)
-  `).run(
-    attemptId,
-    batchId,
-    candidate.rider.rider_id || candidate.rider.user_id,
-    candidate.score,
-    now,
-    buildDispatchExpiresAt(now, policy.timeoutSeconds),
-    attemptNumber,
-    now,
-    now,
-  );
-  db.prepare(`
-    UPDATE delivery_batches
-    SET dispatch_status = 'rider_offered',
-        dispatch_attempt_count = ?,
-        auto_dispatch_started_at = COALESCE(auto_dispatch_started_at, ?),
-        auto_dispatch_expires_at = ?,
-        updated_at = ?
-    WHERE id = ?
-  `).run(attemptNumber, now, buildDispatchExpiresAt(now, policy.timeoutSeconds), now, batchId);
-  db.prepare(`
-    UPDATE orders
-    SET auto_dispatch_status = 'offer_sent',
-        dispatch_status = 'offer_sent',
-        delivery_status = 'rider_offer_sent',
-        updated_at = ?
-    WHERE delivery_batch_id = ?
-  `).run(now, batchId);
-  db.prepare(`
-    INSERT INTO dispatch_events (id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note, created_at)
-    VALUES (?, ?, ?, ?, 'rider_offered', ?, ?)
-  `).run(createId("dev"), batchId, attemptId, candidate.rider.rider_id || candidate.rider.user_id, `Offer expires in ${policy.timeoutMinutes} minutes.`, now);
+  return createDispatchOfferForCandidate(batch, candidate, { internal, assignmentMode: "automatic" });
+}
 
-  createNotification({
-    userId: candidate.rider.rider_id || candidate.rider.user_id,
-    type: "order",
-    title: "New delivery batch",
-    body: "You have a new delivery batch offer. Open Gleenc Rider to accept or reject it.",
-    actionLabel: "View dispatch",
-    actionPath: `/rider/assignments`,
-  });
-  notificationEvent({
-    userId: candidate.rider.rider_id || candidate.rider.user_id,
-    role: "rider",
-    eventKey: "new_dispatch_offer",
-    title: "New delivery batch",
-    relatedBatchId: batchId,
-  });
+export function sendDeliveryOfferToRider(auth, batchId, input = {}) {
+  assertSellerOrAdminCanDispatch(auth, batchId);
+  advanceDueReadinessAndDispatch();
+  advanceExpiredDispatchAttempts();
+  const { batch } = assertBatchReadyForRiderOffer(batchId);
+  const existingOpen = db.prepare(`
+    SELECT * FROM dispatch_attempts
+    WHERE delivery_batch_id = ? AND status = 'offered'
+    ORDER BY offered_at DESC
+    LIMIT 1
+  `).get(batchId);
+  if (existingOpen && dispatchRemainingSeconds(existingOpen.expires_at) > 0) {
+    throw new HttpError(409, "A rider offer is already pending for this batch.");
+  }
 
-  return { batch: getDeliveryBatchById(batchId), attempt: serializeAttempt(db.prepare("SELECT * FROM dispatch_attempts WHERE id = ?").get(attemptId)), internal };
+  const riderId = clean(input.riderId, 140);
+  if (!riderId) throw new HttpError(422, "Select a rider before sending a delivery offer.");
+  const { candidates } = listRiderCandidatesForBatchInternal(batchId);
+  const candidate = candidates.find((item) => item.riderId === riderId);
+  if (!candidate) throw new HttpError(422, "This rider is no longer eligible for this delivery batch.");
+  return createDispatchOfferForCandidate(batch, candidate, { assignmentMode: "manual", actor: auth });
 }
 
 function requireRider(auth) {
@@ -1928,7 +2412,7 @@ function createAssignmentsForBatch(batchId, riderId) {
         buyer_phone, package_summary, package_tag_code, package_value_kobo, delivery_fee_kobo,
         accepted_at,
         delivery_batch_id, pickup_task_id, created_at, updated_at
-      ) VALUES (?, ?, 'store_order', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'store_order', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assignmentId,
       task.order_id,
@@ -1977,7 +2461,7 @@ function createAssignmentsForBatch(batchId, riderId) {
           rider_assignment_id = ?,
           status = CASE WHEN payment_status = 'paid' THEN 'ready_for_delivery' ELSE status END,
           auto_dispatch_status = 'rider_accepted',
-          dispatch_status = 'rider_accepted',
+          dispatch_status = 'rider_assigned',
           delivery_status = 'rider_assigned',
           updated_at = ?
       WHERE id = ?
@@ -1999,16 +2483,36 @@ export function riderAcceptDispatch(auth, dispatchId) {
   }
   const now = nowIso();
   return transaction(() => {
-    db.prepare("UPDATE dispatch_attempts SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, dispatchId);
-    db.prepare(`
+    const batchBefore = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(attempt.delivery_batch_id);
+    if (!batchBefore) throw new HttpError(404, "Delivery batch was not found.");
+    if (batchBefore.assigned_rider_id && batchBefore.assigned_rider_id !== riderId) {
+      throw new HttpError(409, "Another rider has already accepted this delivery batch.");
+    }
+    const attemptUpdate = db.prepare(`
+      UPDATE dispatch_attempts
+      SET status = 'accepted', accepted_at = ?, updated_at = ?
+      WHERE id = ? AND status = 'offered'
+    `).run(now, now, dispatchId);
+    if (!attemptUpdate.changes) throw new HttpError(409, "This dispatch offer is no longer active.");
+    const batchUpdate = db.prepare(`
       UPDATE delivery_batches
-      SET status = 'rider_accepted',
-          dispatch_status = 'rider_accepted',
+      SET status = 'rider_assigned',
+          dispatch_status = 'rider_assigned',
+          rider_assignment_status = 'assigned',
+          blocking_step = 'rider_assigned',
           assigned_rider_id = ?,
+          current_dispatch_attempt_id = ?,
           rider_accepted_at = ?,
           updated_at = ?
       WHERE id = ?
-    `).run(riderId, now, now, attempt.delivery_batch_id);
+        AND (assigned_rider_id IS NULL OR assigned_rider_id = ?)
+    `).run(riderId, dispatchId, now, now, attempt.delivery_batch_id, riderId);
+    if (!batchUpdate.changes) throw new HttpError(409, "Another rider has already accepted this delivery batch.");
+    db.prepare(`
+      UPDATE dispatch_attempts
+      SET status = 'superseded', rejection_reason = 'Another rider accepted this batch.', updated_at = ?
+      WHERE delivery_batch_id = ? AND id != ? AND status = 'offered'
+    `).run(now, attempt.delivery_batch_id, dispatchId);
     db.prepare("UPDATE pickup_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ? AND status != 'seller_rejected'").run(now, attempt.delivery_batch_id);
     db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, attempt.delivery_batch_id);
     db.prepare(`
@@ -2022,15 +2526,28 @@ export function riderAcceptDispatch(auth, dispatchId) {
     db.prepare(`
       UPDATE orders
       SET auto_dispatch_status = 'rider_accepted',
-          dispatch_status = 'rider_accepted',
+          dispatch_status = 'rider_assigned',
           delivery_status = 'rider_assigned',
           updated_at = ?
       WHERE delivery_batch_id = ?
     `).run(now, attempt.delivery_batch_id);
-    db.prepare(`
-      INSERT INTO dispatch_events (id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note, created_at)
-      VALUES (?, ?, ?, ?, 'rider_accepted', '', ?)
-    `).run(createId("dev"), attempt.delivery_batch_id, dispatchId, riderId, now);
+    recordDispatchEvent({
+      batchId: attempt.delivery_batch_id,
+      attemptId: dispatchId,
+      riderId,
+      actorId: riderId,
+      actorRole: "rider",
+      eventType: "rider_accepted",
+      statusBefore: batchBefore.dispatch_status || "",
+      statusAfter: "rider_assigned",
+    });
+    assignments.forEach((assignment) => {
+      try {
+        createDeliveryAssignmentConversation(riderId, assignment.id);
+      } catch {
+        // The assignment remains valid even if chat hydration is retried from the UI.
+      }
+    });
     updateReliabilityScore(riderId, "rider");
     notifyBatchParties(attempt.delivery_batch_id, "Rider assigned", "A rider accepted the delivery batch. Open Gleenc to track progress.", "rider_assigned");
     return { batch: getDeliveryBatchById(attempt.delivery_batch_id), assignments };
@@ -2045,10 +2562,29 @@ export function riderRejectDispatch(auth, dispatchId, reason = "") {
   const now = nowIso();
   db.prepare("UPDATE dispatch_attempts SET status = 'rejected', rejected_at = ?, rejection_reason = ?, updated_at = ? WHERE id = ?").run(now, clean(reason, 300), now, dispatchId);
   db.prepare(`
-    INSERT INTO dispatch_events (id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note, created_at)
-    VALUES (?, ?, ?, ?, 'rider_rejected', ?, ?)
-  `).run(createId("dev"), attempt.delivery_batch_id, dispatchId, riderId, clean(reason, 300), now);
+    UPDATE delivery_batches
+    SET dispatch_status = 'offer_declined',
+        rider_assignment_status = 'offer_declined',
+        blocking_step = 'ready_to_find_rider',
+        rider_declined_at = ?,
+        updated_at = ?
+    WHERE id = ? AND current_dispatch_attempt_id = ?
+  `).run(now, now, attempt.delivery_batch_id, dispatchId);
+  recordDispatchEvent({
+    batchId: attempt.delivery_batch_id,
+    attemptId: dispatchId,
+    riderId,
+    actorId: riderId,
+    actorRole: "rider",
+    eventType: "rider_rejected",
+    note: clean(reason, 300),
+    statusAfter: "offer_declined",
+  });
   updateReliabilityScore(riderId, "rider");
+  if (attempt.assignment_mode === "manual") {
+    syncBatchWorkflowState(attempt.delivery_batch_id, { riderAssignmentStatus: "ready" });
+    return { batch: getDeliveryBatchById(attempt.delivery_batch_id), attempt: null, manualSelectionRequired: true };
+  }
   return offerNextRiderForBatch(attempt.delivery_batch_id, { internal: true });
 }
 
@@ -2060,10 +2596,27 @@ export function riderTimeoutDispatch(auth, dispatchId) {
   const now = nowIso();
   db.prepare("UPDATE dispatch_attempts SET status = 'timed_out', timed_out_at = ?, updated_at = ? WHERE id = ?").run(now, now, dispatchId);
   db.prepare(`
-    INSERT INTO dispatch_events (id, delivery_batch_id, dispatch_attempt_id, rider_id, event_type, note, created_at)
-    VALUES (?, ?, ?, ?, 'rider_timed_out', '', ?)
-  `).run(createId("dev"), attempt.delivery_batch_id, dispatchId, riderId, now);
+    UPDATE delivery_batches
+    SET dispatch_status = 'offer_expired',
+        rider_assignment_status = 'offer_expired',
+        blocking_step = 'ready_to_find_rider',
+        updated_at = ?
+    WHERE id = ? AND current_dispatch_attempt_id = ?
+  `).run(now, attempt.delivery_batch_id, dispatchId);
+  recordDispatchEvent({
+    batchId: attempt.delivery_batch_id,
+    attemptId: dispatchId,
+    riderId,
+    actorId: riderId,
+    actorRole: "rider",
+    eventType: "rider_timed_out",
+    statusAfter: "offer_expired",
+  });
   updateReliabilityScore(riderId, "rider");
+  if (attempt.assignment_mode === "manual") {
+    syncBatchWorkflowState(attempt.delivery_batch_id, { riderAssignmentStatus: "ready" });
+    return { batch: getDeliveryBatchById(attempt.delivery_batch_id), attempt: null, manualSelectionRequired: true };
+  }
   return offerNextRiderForBatch(attempt.delivery_batch_id, { internal: true });
 }
 
@@ -2072,13 +2625,9 @@ export function listRiderDispatches(auth) {
   advanceDueReadinessAndDispatch();
   advanceExpiredDispatchAttempts();
   const profile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
-  if (
-    !profile ||
-    profile.verification_status !== "verified" ||
-    profile.safety_status !== "normal" ||
-    profile.can_receive_auto_dispatch === 0
-  ) {
-    throw new HttpError(403, "Your rider account is not ready for dispatch yet.");
+  const eligibility = evaluateRiderEligibility(riderId, { maxActiveAssignments: 2 });
+  if (!profile || !eligibility.eligible) {
+    throw new HttpError(403, "Your rider account is not ready for dispatch yet.", eligibility.blockingReasons);
   }
 
   return db.prepare(`
@@ -2089,11 +2638,33 @@ export function listRiderDispatches(auth) {
     LIMIT 40
   `).all(riderId).map((attempt) => {
     const batch = getDeliveryBatchById(attempt.delivery_batch_id);
+    const offeredOnly = attempt.status === "offered";
+    const safeBatch = batch && offeredOnly
+      ? {
+          ...batch,
+          pickupTasks: (batch.pickupTasks || []).map((task) => ({
+            ...task,
+            orderId: null,
+            orderCode: "",
+            packageTagCode: "",
+            pickupLandmark: "Pickup details unlock after acceptance",
+            sellerPickupCode: undefined,
+            packageInstruction: "",
+            orderItems: [],
+          })),
+          deliveryTask: batch.deliveryTask
+            ? {
+                ...batch.deliveryTask,
+                deliveryLandmark: "Delivery details unlock after pickup verification",
+              }
+            : null,
+        }
+      : batch;
     return {
       ...serializeAttempt(attempt),
-      batch: batch
+      batch: safeBatch
         ? {
-            ...batch,
+            ...safeBatch,
             deliveryFeeKobo: 0,
             deliveryFee: 0,
             packageValueKobo: 0,
@@ -2348,10 +2919,10 @@ export function listAdminDispatches() {
   return {
     dispatches: batches,
     stats: {
-      pending: batches.filter((batch) => batch.dispatchStatus === "pending").length,
-      offered: batches.filter((batch) => batch.dispatchStatus === "rider_offered").length,
-      accepted: batches.filter((batch) => batch.dispatchStatus === "rider_accepted").length,
-      noRider: batches.filter((batch) => batch.dispatchStatus === "no_rider_available").length,
+      pending: batches.filter((batch) => ["pending", "ready_for_dispatch"].includes(batch.dispatchStatus)).length,
+      offered: batches.filter((batch) => ["rider_offered", "offer_pending"].includes(batch.dispatchStatus)).length,
+      accepted: batches.filter((batch) => ["rider_accepted", "rider_assigned"].includes(batch.dispatchStatus)).length,
+      noRider: batches.filter((batch) => ["no_rider_available", "assignment_failed"].includes(batch.dispatchStatus)).length,
       highRisk: batches.filter((batch) => batch.riskLevel === "high" || batch.riskLevel === "critical").length,
     },
   };
@@ -2370,25 +2941,9 @@ export function listInterventionQueue({ status = "open" } = {}) {
 export function adminReassignBatch(_auth, batchId, input = {}) {
   const riderId = clean(input.riderId, 140);
   if (!riderId) return offerNextRiderForBatch(batchId, { internal: true });
-  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
-  if (!batch) throw new HttpError(404, "Delivery batch was not found.");
   const now = nowIso();
   db.prepare("UPDATE dispatch_attempts SET status = 'rejected', rejection_reason = 'Admin manual reassignment', updated_at = ? WHERE delivery_batch_id = ? AND status = 'offered'").run(now, batchId);
-  const attemptId = createId("dsp");
-  const attemptNumber = Number(batch.dispatch_attempt_count || 0) + 1;
-  const policy = resolveDispatchTimeoutPolicy({
-    sellerType: batch.batch_type === "local_market" ? "local_market" : "campus",
-    packageSummary: `${batch.package_size_summary} ${batch.weight_class_summary} ${batch.fragility_summary}`,
-    isHeavyFragile: ["heavy", "very_heavy"].includes(batch.weight_class_summary) || batch.fragility_summary !== "not_fragile",
-  });
-  db.prepare(`
-    INSERT INTO dispatch_attempts (
-      id, delivery_batch_id, rider_id, dispatch_score, status, offered_at, expires_at,
-      attempt_number, created_at, updated_at
-    ) VALUES (?, ?, ?, 999, 'offered', ?, ?, ?, ?, ?)
-  `).run(attemptId, batchId, riderId, now, buildDispatchExpiresAt(now, policy.timeoutSeconds), attemptNumber, now, now);
-  db.prepare("UPDATE delivery_batches SET dispatch_status = 'rider_offered', dispatch_attempt_count = ?, updated_at = ? WHERE id = ?").run(attemptNumber, now, batchId);
-  return { batch: getDeliveryBatchById(batchId), attempt: serializeAttempt(db.prepare("SELECT * FROM dispatch_attempts WHERE id = ?").get(attemptId)) };
+  return sendDeliveryOfferToRider(_auth, batchId, { riderId });
 }
 
 export function adminHoldBatch(_auth, batchId, reason = "") {
@@ -2728,7 +3283,11 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
   if (!task) throw new HttpError(404, "Pickup task was not found.");
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(task.delivery_batch_id);
   if (batch?.assigned_rider_id !== riderId) throw new HttpError(403, "This pickup is not assigned to you.");
+  const proofUrl = clean(input.proofUrl || input.fileUrl || "", 500);
+  if (!proofUrl) throw new HttpError(422, "Upload a pickup proof photo before verifying seller pickup.");
+  assertOtpAttemptAllowed("pickup_tasks", "id", task, "seller pickup");
   if (hashOtp(input.sellerPickupCode || input.otp) !== task.pickup_otp_hash) {
+    recordFailedOtpAttempt("pickup_tasks", "id", task);
     queueIntervention({
       type: "failed_pickup_otp",
       priority: "high",
@@ -2741,8 +3300,25 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
     throw new HttpError(422, "Seller pickup OTP is not correct.");
   }
   const now = nowIso();
-  db.prepare("UPDATE pickup_tasks SET status = 'picked_up', picked_up_at = ?, updated_at = ? WHERE id = ?").run(now, now, pickupTaskId);
-  db.prepare("UPDATE orders SET status = 'out_for_delivery', fulfillment_status = 'picked_up_from_seller', updated_at = ? WHERE id = ?").run(now, task.order_id);
+  db.prepare(`
+    UPDATE pickup_tasks
+    SET status = 'picked_up',
+        picked_up_at = ?,
+        seller_pickup_code_verified_at = ?,
+        code_attempt_count = 0,
+        last_code_attempt_at = NULL,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, now, now, pickupTaskId);
+  db.prepare(`
+    UPDATE orders
+    SET status = 'out_for_delivery',
+        fulfillment_status = 'picked_up_from_seller',
+        seller_pickup_code_verified_at = ?,
+        pickup_verified_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, now, now, task.order_id);
   db.prepare(`
     INSERT INTO delivery_proofs (
       id, delivery_batch_id, pickup_task_id, rider_id, proof_type, proof_url,
@@ -2753,7 +3329,7 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
     task.delivery_batch_id,
     pickupTaskId,
     riderId,
-    clean(input.proofUrl || "", 500) || null,
+    proofUrl,
     clean(input.note || "", 500),
     input.latitude ?? null,
     input.longitude ?? null,
@@ -2762,9 +3338,34 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
   );
   const remaining = db.prepare("SELECT COUNT(*) AS count FROM pickup_tasks WHERE delivery_batch_id = ? AND status != 'picked_up' AND status != 'seller_rejected'").get(task.delivery_batch_id).count;
   if (!remaining) {
-    db.prepare("UPDATE delivery_batches SET status = 'out_for_delivery', updated_at = ? WHERE id = ?").run(now, task.delivery_batch_id);
+    db.prepare(`
+      UPDATE delivery_batches
+      SET status = 'out_for_delivery',
+          dispatch_status = 'in_transit',
+          delivery_workflow_status = 'in_transit',
+          blocking_step = 'buyer_delivery_verification',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, task.delivery_batch_id);
     db.prepare("UPDATE delivery_tasks SET status = 'out_for_delivery', updated_at = ? WHERE delivery_batch_id = ?").run(now, task.delivery_batch_id);
+    recordDispatchEvent({
+      batchId: task.delivery_batch_id,
+      riderId,
+      actorId: riderId,
+      actorRole: "rider",
+      eventType: "pickup_confirmed",
+      statusAfter: "in_transit",
+    });
     notifyBatchParties(task.delivery_batch_id, "Rider picked up your package", "The rider has completed pickup and is moving to delivery.", "rider_picked_up_package");
+  } else {
+    recordDispatchEvent({
+      batchId: task.delivery_batch_id,
+      riderId,
+      actorId: riderId,
+      actorRole: "rider",
+      eventType: "seller_pickup_verified",
+      statusAfter: "pickup_confirmed",
+    });
   }
   return { pickupTask: serializePickupTask(db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(pickupTaskId)), batch: getDeliveryBatchById(task.delivery_batch_id) };
 }
@@ -2775,7 +3376,11 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
   if (!task) throw new HttpError(404, "Delivery task was not found.");
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(task.delivery_batch_id);
   if (batch?.assigned_rider_id !== riderId) throw new HttpError(403, "This delivery is not assigned to you.");
+  const proofUrl = clean(input.proofUrl || input.fileUrl || "", 500);
+  if (!proofUrl) throw new HttpError(422, "Upload a delivery proof photo before verifying buyer delivery.");
+  assertOtpAttemptAllowed("delivery_tasks", "id", task, "buyer delivery");
   if (hashOtp(input.customerDeliveryCode || input.deliveryOtp || input.otp) !== task.delivery_otp_hash) {
+    recordFailedOtpAttempt("delivery_tasks", "id", task);
     queueIntervention({
       type: "failed_delivery_otp",
       priority: "high",
@@ -2787,9 +3392,36 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
     throw new HttpError(422, "Buyer delivery OTP is not correct.");
   }
   const now = nowIso();
-  db.prepare("UPDATE delivery_tasks SET status = 'delivered', delivered_at = ?, updated_at = ? WHERE id = ?").run(now, now, deliveryTaskId);
-  db.prepare("UPDATE delivery_batches SET status = 'delivered', dispatch_status = 'completed', updated_at = ? WHERE id = ?").run(now, task.delivery_batch_id);
-  db.prepare("UPDATE orders SET status = 'delivered', fulfillment_status = 'delivered', updated_at = ? WHERE delivery_batch_id = ?").run(now, task.delivery_batch_id);
+  db.prepare(`
+    UPDATE delivery_tasks
+    SET status = 'delivered',
+        delivered_at = ?,
+        buyer_delivery_code_verified_at = ?,
+        code_attempt_count = 0,
+        last_code_attempt_at = NULL,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, now, now, deliveryTaskId);
+  db.prepare(`
+    UPDATE delivery_batches
+    SET status = 'delivered',
+        dispatch_status = 'completed',
+        delivery_workflow_status = 'completed',
+        payout_workflow_status = 'ready_for_payout',
+        blocking_step = 'completed',
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, task.delivery_batch_id);
+  db.prepare(`
+    UPDATE orders
+    SET status = 'delivered',
+        fulfillment_status = 'delivered',
+        buyer_delivery_code_verified_at = ?,
+        delivery_verified_at = ?,
+        delivered_at = ?,
+        updated_at = ?
+    WHERE delivery_batch_id = ?
+  `).run(now, now, now, now, task.delivery_batch_id);
   const activeBatchCount = Number(
     db.prepare("SELECT current_active_batch_count FROM rider_profiles WHERE user_id = ?").get(riderId)?.current_active_batch_count || 0,
   );
@@ -2814,13 +3446,21 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
     task.delivery_batch_id,
     deliveryTaskId,
     riderId,
-    clean(input.proofUrl || "", 500) || null,
+    proofUrl,
     clean(input.note || "", 500),
     input.latitude ?? null,
     input.longitude ?? null,
     input.accuracyMeters ?? null,
     now,
   );
+  recordDispatchEvent({
+    batchId: task.delivery_batch_id,
+    riderId,
+    actorId: riderId,
+    actorRole: "rider",
+    eventType: "delivery_completed",
+    statusAfter: "completed",
+  });
   notifyBatchParties(task.delivery_batch_id, "Delivery completed", "Your Gleenc delivery batch has been marked delivered.", "delivery_completed");
   updateReliabilityScore(riderId, "rider");
   return { deliveryTask: task, batch: getDeliveryBatchById(task.delivery_batch_id) };

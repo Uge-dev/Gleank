@@ -1,5 +1,6 @@
 const messageClients = new Map();
 const notificationClients = new Map();
+const MAX_STREAMS_PER_USER = Number(process.env.MAX_SSE_STREAMS_PER_USER || 5);
 
 function writeEvent(response, event, payload) {
   response.write(`event: ${event}\n`);
@@ -11,6 +12,9 @@ function addClient(userId, client) {
   if (!key) return;
 
   const clients = messageClients.get(key) || new Set();
+  if (clients.size >= MAX_STREAMS_PER_USER) {
+    throw new Error("Too many active realtime connections.");
+  }
   clients.add(client);
   messageClients.set(key, clients);
 }
@@ -20,8 +24,17 @@ function addNotificationClient(userId, client) {
   if (!key) return;
 
   const clients = notificationClients.get(key) || new Set();
+  if (clients.size >= MAX_STREAMS_PER_USER) {
+    throw new Error("Too many active realtime connections.");
+  }
   clients.add(client);
   notificationClients.set(key, clients);
+}
+
+function rejectStream(res) {
+  res.status(429);
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify({ message: "Too many active realtime connections." }));
 }
 
 function removeClient(userId, client) {
@@ -51,19 +64,24 @@ function removeNotificationClient(userId, client) {
 }
 
 export function subscribeMessageStream(userId, req, res) {
+  const client = {
+    id: `${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    res,
+  };
+
+  try {
+    addClient(userId, client);
+  } catch {
+    rejectStream(res);
+    return;
+  }
+
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
-
-  const client = {
-    id: `${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    res,
-  };
-
-  addClient(userId, client);
 
   writeEvent(res, "connected", {
     ok: true,
@@ -106,19 +124,24 @@ export function publishMessageEvent(userIds, event, payload) {
 }
 
 export function subscribeNotificationStream(userId, req, res) {
+  const client = {
+    id: `${userId}-notification-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    res,
+  };
+
+  try {
+    addNotificationClient(userId, client);
+  } catch {
+    rejectStream(res);
+    return;
+  }
+
   res.status(200);
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
   res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
-
-  const client = {
-    id: `${userId}-notification-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    res,
-  };
-
-  addNotificationClient(userId, client);
 
   writeEvent(res, "connected", {
     ok: true,

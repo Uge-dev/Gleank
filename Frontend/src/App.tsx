@@ -195,11 +195,7 @@ function App() {
 
           <Route
             path="/order-success"
-            element={
-              <ProtectedPage>
-                <OrderSuccess />
-              </ProtectedPage>
-            }
+            element={<OrderSuccess />}
           />
 
           <Route
@@ -248,11 +244,7 @@ function App() {
           />
           <Route
   path="/payment/callback"
-  element={
-    <ProtectedPage>
-      <PaymentCallback />
-    </ProtectedPage>
-  }
+  element={<PaymentCallback />}
 />
 
           <Route path="/login" element={<Login />} />

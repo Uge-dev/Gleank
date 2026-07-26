@@ -54,6 +54,7 @@ import {
   decideAdminKyc,
   fetchAdminAuditLogs,
   fetchAdminDataset,
+  fetchAdminVerificationQueues,
   fetchAdminKyc,
   fetchAdminProfile,
   fetchAdminPriceRanges,
@@ -65,6 +66,10 @@ import {
   type AdminKycVerification,
   type AdminPriceRange,
   type AdminProfile,
+  type AdminVerificationCase,
+  type AdminVerificationQueues,
+  approveAdminVerificationLevel,
+  reviewAdminVerificationRequirement,
   unlockAdminRiderCapacity,
   updateAdminPriceRange,
   updateAdminRecordFields,
@@ -514,6 +519,7 @@ function AdminDashboard() {
   const [kycRows, setKycRows] = useState<AdminKycVerification[]>([]);
   const [priceRanges, setPriceRanges] = useState<AdminPriceRange[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
+  const [verificationQueues, setVerificationQueues] = useState<AdminVerificationQueues>({ cases: [], queues: {} });
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -547,13 +553,14 @@ function AdminDashboard() {
       const nextData = await fetchAdminDataset();
       setData({ ...emptyAdminDataset, ...nextData });
 
-      const [profileResult, riderRowsResult, kycResult, priceRangeResult, auditLogResult] =
+      const [profileResult, riderRowsResult, kycResult, priceRangeResult, auditLogResult, verificationQueueResult] =
         await Promise.allSettled([
           fetchAdminProfile(),
           fetchAdminRiders(),
           fetchAdminKyc(),
           fetchAdminPriceRanges(),
           fetchAdminAuditLogs(),
+          fetchAdminVerificationQueues(),
         ]);
 
       if (profileResult.status === "fulfilled") {
@@ -574,6 +581,10 @@ function AdminDashboard() {
 
       if (auditLogResult.status === "fulfilled") {
         setAuditLogs(auditLogResult.value.logs);
+      }
+
+      if (verificationQueueResult.status === "fulfilled") {
+        setVerificationQueues(verificationQueueResult.value);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
@@ -603,6 +614,16 @@ function AdminDashboard() {
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
+  const verificationCaseRows = useMemo(
+    () => verificationQueues.cases.slice(0, 8),
+    [verificationQueues.cases],
+  );
+  const verificationQueueCounts = useMemo(
+    () => Object.fromEntries(
+      Object.entries(verificationQueues.queues || {}).map(([key, value]) => [key, value.length]),
+    ) as Record<string, number>,
+    [verificationQueues.queues],
+  );
   const riderRows = useMemo(() => {
     if (riderFilter === "online") return riders.filter((rider) => rider.availability === "online");
     if (riderFilter === "offline") return riders.filter((rider) => rider.availability === "offline");
@@ -699,6 +720,48 @@ function AdminDashboard() {
         note: "Admin unlocked rider delivery capacity for profile correction after support review.",
       });
       await refreshRiderRows();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function refreshVerificationQueues() {
+    const queues = await fetchAdminVerificationQueues();
+    setVerificationQueues(queues);
+  }
+
+  async function reviewVerificationRequirement(
+    requirementId: string,
+    action: "approve" | "needs_information" | "reject" | "mark_under_review",
+    defaultFeedback: string,
+  ) {
+    const feedback =
+      action === "approve" || action === "mark_under_review"
+        ? defaultFeedback
+        : window.prompt("Enter feedback for this verification decision:", defaultFeedback) || "";
+
+    if ((action === "needs_information" || action === "reject") && feedback.trim().length < 8) return;
+
+    setLoadError("");
+    try {
+      await reviewAdminVerificationRequirement(requirementId, { action, feedback });
+      await refreshVerificationQueues();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function approveVerificationLevel(row: AdminVerificationCase) {
+    setLoadError("");
+    try {
+      await approveAdminVerificationLevel(
+        row.id,
+        row.requestedLevel || Math.max(1, row.currentVerifiedLevel || 1),
+        "Admin approved the current requirement-based verification level.",
+      );
+      await refreshVerificationQueues();
       await loadAdminData(false);
     } catch {
       showAdminConnectionNotice();
@@ -1011,6 +1074,9 @@ function AdminDashboard() {
                   </div>
                   <div className="admin-mini-grid">
                     <MiniQueue title="Seller verification" value={data.sellers.filter((seller) => seller.verificationStatus === "pending").length} helper="Approve or reject store onboarding" tone="orange" />
+                    <MiniQueue title="Requirement reviews" value={(verificationQueueCounts.newSubmissions || 0) + (verificationQueueCounts.resubmitted || 0)} helper="New/resubmitted seller and rider requirements" tone="orange" />
+                    <MiniQueue title="Needs correction" value={verificationQueueCounts.needsInformation || 0} helper="Requirement-specific correction requests" tone="red" />
+                    <MiniQueue title="Upgrade requests" value={verificationQueueCounts.upgradeRequests || 0} helper="Higher verification levels" tone="blue" />
                     <MiniQueue title="Market requests" value={data.marketRequests.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Approve missing local markets" tone="orange" />
                     <MiniQueue title="Category approvals" value={data.categoryApprovals.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Control local/nearby seller categories" tone="blue" />
                     <MiniQueue title="Used market approvals" value={data.usedItems.filter((item) => item.status === "pending").length} helper="Review campus used-item uploads" tone="blue" />
@@ -1280,7 +1346,7 @@ function AdminDashboard() {
                   <ActionButton tone="success" onClick={() => changeStatus("orders", order.id, "completed", "orderStatus")}>Complete</ActionButton>
                   <ActionButton tone="soft" onClick={() => changeStatus("orders", order.id, "preparing", "orderStatus")}>Preparing</ActionButton>
                   <ActionButton tone="soft" onClick={() => changeStatus("orders", order.id, "out_for_delivery", "deliveryStatus")}>Out Delivery</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeFields("orders", order.id, { orderStatus: "refunded", paymentStatus: "refunded" })}>Refund</ActionButton>
+                  <ActionButton tone="danger" onClick={() => openRecord(`${order.id} refund review`, { order: order.id, paymentStatus: order.paymentStatus, note: "Refunds must be reconciled through the payment provider workflow." })}>Refund Review</ActionButton>
                   <ActionButton tone="danger" onClick={() => changeStatus("orders", order.id, "cancelled", "orderStatus")}>Cancel</ActionButton>
                 </>
               )}
@@ -1307,12 +1373,9 @@ function AdminDashboard() {
                 { label: "Date", render: (payment) => payment.createdAt },
               ]}
               actions={(payment) => (
-                <>
-                  <ActionButton tone="success" onClick={() => changeStatus("payments", payment.id, "successful", "status")}>Successful</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("payments", payment.id, "pending", "status")}>Pending</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("payments", payment.id, "refunded", "status")}>Refund</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeStatus("payments", payment.id, "failed", "status")}>Failed</ActionButton>
-                </>
+                <ActionButton tone="soft" onClick={() => openRecord(payment.id, payment)}>
+                  View provider record
+                </ActionButton>
               )}
             />
           ) : null}
@@ -1382,6 +1445,59 @@ function AdminDashboard() {
                 ))}
               </div>
 
+              <div className="admin-panel-card">
+                <div className="admin-panel-head">
+                  <div>
+                    <h2>Requirement-based verification queue</h2>
+                    <p>Review individual seller and rider requirements, request corrections, and approve levels without changing rider online availability.</p>
+                  </div>
+                </div>
+                <div className="admin-mini-grid">
+                  <MiniQueue title="New" value={verificationQueueCounts.newSubmissions || 0} helper="First-time submissions" tone="orange" />
+                  <MiniQueue title="Resubmitted" value={verificationQueueCounts.resubmitted || 0} helper="Replacement versions" tone="blue" />
+                  <MiniQueue title="Under review" value={verificationQueueCounts.underReview || 0} helper="Currently being checked" tone="blue" />
+                  <MiniQueue title="Approved" value={verificationQueueCounts.completedApproved || 0} helper="Completed cases" tone="green" />
+                </div>
+                <div className="admin-card-grid">
+                  {verificationCaseRows.map((row) => {
+                    const reviewable = row.requirements.find((requirement) => ["submitted", "under_review", "needs_information", "rejected"].includes(requirement.status));
+                    return (
+                      <article key={row.id} className="admin-record-card">
+                        <div>
+                          <span className="admin-pill">{row.role}{row.sellerType ? ` · ${row.sellerType}` : ""}</span>
+                          <h3>{row.user?.name || row.user?.email || row.userId}</h3>
+                          <p>{row.completionPercent}% complete · Level {row.currentVerifiedLevel}/{row.requestedLevel}</p>
+                        </div>
+                        <div className="admin-record-card-status">
+                          <StatusBadge status={row.overallStatus} />
+                          <StatusBadge status={row.operationalStatus} />
+                        </div>
+                        {row.eligibility?.blockingReasons?.length ? (
+                          <p className="admin-muted-text">{row.eligibility.blockingReasons.slice(0, 2).map((reason) => reason.message).join(" ")}</p>
+                        ) : null}
+                        {reviewable ? (
+                          <div className="admin-card-actions">
+                            <ActionButton tone="soft" onClick={() => openRecord(`${row.user?.name || row.userId} verification`, row as unknown as Record<string, unknown>)}>Details</ActionButton>
+                            <ActionButton tone="soft" onClick={() => reviewVerificationRequirement(reviewable.id, "mark_under_review", "Admin started reviewing this requirement.")}>Review</ActionButton>
+                            <ActionButton tone="success" onClick={() => reviewVerificationRequirement(reviewable.id, "approve", "Requirement approved.")}>Approve item</ActionButton>
+                            <ActionButton tone="soft" onClick={() => reviewVerificationRequirement(reviewable.id, "needs_information", "Please replace this requirement with clearer information.")}>Correction</ActionButton>
+                            <ActionButton tone="danger" onClick={() => reviewVerificationRequirement(reviewable.id, "reject", "Requirement rejected after admin review.")}>Reject</ActionButton>
+                          </div>
+                        ) : (
+                          <div className="admin-card-actions">
+                            <ActionButton tone="soft" onClick={() => openRecord(`${row.user?.name || row.userId} verification`, row as unknown as Record<string, unknown>)}>Details</ActionButton>
+                            <ActionButton tone="success" onClick={() => approveVerificationLevel(row)}>Approve level</ActionButton>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                  {!verificationCaseRows.length ? (
+                    <div className="admin-empty-card">No requirement-based verification cases yet.</div>
+                  ) : null}
+                </div>
+              </div>
+
               <DataTable<AdminRider>
                 title="Rider Management"
                 subtitle="Review rider accounts by location/coverage, online status, verification, safety state and delivery history before riders can handle assignments."
@@ -1410,7 +1526,9 @@ function AdminDashboard() {
                   { label: "Completed", render: (rider) => rider.completedDeliveries },
                   { label: "Last updated", render: (rider) => rider.updatedAt ? formatAdminTime(rider.updatedAt) : "Not available" },
                 ]}
-                actions={(rider) => (
+                actions={(rider) => {
+                  const riderCase = verificationQueues.cases.find((item) => item.role === "rider" && item.userId === rider.userId);
+                  return (
                   <>
                     <ActionButton
                       tone="soft"
@@ -1420,10 +1538,10 @@ function AdminDashboard() {
                     </ActionButton>
                     <ActionButton
                       tone="success"
-                      disabled={rider.verificationStatus === "verified"}
-                      onClick={() => changeRiderVerification(rider, "verified", "Admin verified rider profile. Rider may receive delivery assignments.", "normal")}
+                      disabled={!riderCase || riderCase.overallStatus === "approved"}
+                      onClick={() => riderCase ? approveVerificationLevel(riderCase) : undefined}
                     >
-                      {rider.verificationStatus === "verified" ? "Verified" : "Verify"}
+                      {riderCase?.overallStatus === "approved" ? "Level approved" : "Approve level"}
                     </ActionButton>
                     <ActionButton
                       tone="soft"
@@ -1454,7 +1572,8 @@ function AdminDashboard() {
                       Suspend
                     </ActionButton>
                   </>
-                )}
+                  );
+                }}
               />
             </section>
           ) : null}

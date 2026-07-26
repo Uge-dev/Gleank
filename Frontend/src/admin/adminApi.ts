@@ -53,16 +53,11 @@ export function clearAdminToken() {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = getAdminToken();
   const isFormData = options.body instanceof FormData;
   const headers = new Headers(options.headers);
 
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
-  }
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
   }
 
   let response: Response;
@@ -94,7 +89,7 @@ export async function adminLogin(payload: AdminLoginPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  setAdminToken(result.token);
+  setAdminToken("session");
   return result;
 }
 
@@ -419,6 +414,55 @@ export type AdminAuditLog = {
   createdAt: string;
 };
 
+export type AdminVerificationRequirement = {
+  id: string;
+  code: string;
+  title: string;
+  status: string;
+  requiredLevel: number;
+  blocking: boolean;
+  adminFeedback?: string;
+  latestSubmission?: {
+    id: string;
+    version: number;
+    documentUrls: string[];
+    submittedAt: string;
+    status: string;
+  } | null;
+};
+
+export type AdminVerificationCase = {
+  id: string;
+  userId: string;
+  role: "seller" | "rider";
+  sellerType?: string;
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    role: string;
+  } | null;
+  currentVerifiedLevel: number;
+  requestedLevel: number;
+  overallStatus: string;
+  operationalStatus: string;
+  completionPercent: number;
+  requirements: AdminVerificationRequirement[];
+  eligibility?: {
+    eligible: boolean;
+    blockingReasons: Array<{ code: string; message: string }>;
+    checks: Record<string, boolean>;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminVerificationQueues = {
+  cases: AdminVerificationCase[];
+  queues: Record<string, AdminVerificationCase[]>;
+};
+
 export async function fetchAdminKyc(filters: { role?: string; status?: string; reviewStatus?: string } = {}) {
   const params = new URLSearchParams();
   if (filters.role) params.set("role", filters.role);
@@ -474,4 +518,45 @@ export async function deleteAdminPriceRange(id: string) {
 
 export async function fetchAdminAuditLogs() {
   return request<{ success: boolean; logs: AdminAuditLog[] }>("/admin/audit-logs");
+}
+
+export async function fetchAdminVerificationQueues(role?: "seller" | "rider") {
+  const query = role ? `?role=${role}` : "";
+  return request<AdminVerificationQueues>(`/verification/admin/queues${query}`);
+}
+
+export async function reviewAdminVerificationRequirement(
+  requirementId: string,
+  input: { action: "mark_under_review" | "approve" | "needs_information" | "reject" | "expire"; feedback?: string },
+) {
+  return request<{ case: AdminVerificationCase }>(
+    `/verification/admin/requirements/${encodeURIComponent(requirementId)}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function approveAdminVerificationLevel(caseId: string, level: number, reason = "") {
+  return request<{ case: AdminVerificationCase }>(
+    `/verification/admin/cases/${encodeURIComponent(caseId)}/level`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ level, reason }),
+    },
+  );
+}
+
+export async function updateAdminVerificationOperationalStatus(
+  caseId: string,
+  input: { status: "active" | "restricted" | "suspended" | "deactivated"; reason?: string },
+) {
+  return request<{ case: AdminVerificationCase }>(
+    `/verification/admin/cases/${encodeURIComponent(caseId)}/operational-status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
 }

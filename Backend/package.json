@@ -11,7 +11,11 @@
     "seed": "node src/scripts/seed.js",
     "migrate:neon": "node src/scripts/migrate-sqlite-to-postgres.js",
     "neon:check": "node src/scripts/neon-check.js",
-    "production:check": "node src/scripts/production-check.js"
+    "production:check": "node src/scripts/production-check.js",
+    "admin:bootstrap": "node src/scripts/bootstrap-admin.js",
+    "accounts:reconcile": "node src/scripts/reconcile-accounts.js",
+    "verification:backfill:dry-run": "node src/scripts/backfill-verification.js",
+    "verification:backfill:apply": "node src/scripts/backfill-verification.js --apply"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -32,6 +36,7 @@
     "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "sharp": "^0.35.3",
+    "tesseract.js": "^7.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

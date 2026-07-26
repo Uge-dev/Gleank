@@ -1286,10 +1286,13 @@ function updateOrder(id, fields) {
   const nextStatus = normalizeOrderStatus(fields.orderStatus || fields.deliveryStatus || fields.status || "");
   const payment = fields.paymentStatus || "";
 
+  if (payment) {
+    throw new HttpError(403, "Payment status can only change through Paystack verification.");
+  }
+
   const normal = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM orders WHERE id = ? OR order_code = ?").get(id, id);
   if (normal) {
     if (nextStatus) db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, normal.id);
-    if (payment) db.prepare("UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ?").run(payment === "successful" ? "paid" : payment === "pending" ? "unpaid" : payment, now, normal.id);
     createNotificationForUsers([normal.buyer_id, normal.seller_id], {
       type: "admin",
       title: "Order updated by admin",
@@ -1303,7 +1306,6 @@ function updateOrder(id, fields) {
   const used = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM used_market_orders WHERE id = ? OR order_code = ?").get(id, id);
   if (used) {
     if (nextStatus) db.prepare("UPDATE used_market_orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, used.id);
-    if (payment) db.prepare("UPDATE used_market_orders SET payment_status = ?, updated_at = ? WHERE id = ?").run(payment === "successful" ? "paid" : payment === "pending" ? "unpaid" : payment, now, used.id);
     createNotificationForUsers([used.buyer_id, used.seller_id], {
       type: "admin",
       title: "Used Market order updated by admin",
@@ -1315,10 +1317,14 @@ function updateOrder(id, fields) {
 }
 
 function updatePayment(id, fields) {
-  const now = new Date().toISOString();
   const status = fields.status === "successful" ? "paid" : fields.status === "pending" ? "initialized" : fields.status === "refunded" ? "cancelled" : fields.status;
+
+  if (status === "paid") {
+    throw new HttpError(403, "Transactions can only be marked paid through Paystack verification.");
+  }
+
   if (status) {
-    db.prepare("UPDATE payment_transactions SET status = ?, updated_at = ? WHERE reference = ? OR id = ?").run(status, now, id, id);
+    throw new HttpError(403, "Payment transaction status is read-only in admin. Use provider reconciliation/refund workflow.");
   }
 }
 

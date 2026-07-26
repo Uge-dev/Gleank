@@ -49,9 +49,30 @@ const loginLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+const emailVerificationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: 12,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+const passwordResetLimiter = rateLimit({
+  windowMs: 60 * 60 * 1_000,
+  limit: 8,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
 authRouter.use(authLimiter);
 
-authRouter.post("/register", validate(registerSchema), async (req, res) => {
+authRouter.post("/register", registerLimiter, validate(registerSchema), async (req, res) => {
   const result = await registerUser(req.body, requestMeta(req));
   res.cookie(
     sessionCookieName,
@@ -88,17 +109,18 @@ authRouter.post("/login", loginLimiter, validate(loginSchema), async (req, res) 
   });
 });
 
-authRouter.post("/verify-email", validate(verifyEmailSchema), (req, res) => {
+authRouter.post("/verify-email", emailVerificationLimiter, validate(verifyEmailSchema), (req, res) => {
   const result = verifyEmail(req.body, requestMeta(req));
   res.json(result);
 });
 
-authRouter.post("/resend-verification", requireAuth, async (req, res) => {
+authRouter.post("/resend-verification", emailVerificationLimiter, requireAuth, async (req, res) => {
   res.json(await resendEmailVerification(req.auth.user_id, requestMeta(req)));
 });
 
 authRouter.post(
   "/forgot-password",
+  passwordResetLimiter,
   validate(forgotPasswordSchema),
   async (req, res) => {
     res.json(await requestPasswordReset(req.body, requestMeta(req)));
@@ -107,6 +129,7 @@ authRouter.post(
 
 authRouter.post(
   "/reset-password",
+  passwordResetLimiter,
   validate(resetPasswordSchema),
   async (req, res) => {
     res.json(await resetPassword(req.body, requestMeta(req)));

@@ -7,12 +7,13 @@ import {
   findStoreByOwnerId,
   findStoreBySlug,
 } from "../repositories/store.repository.js";
-import { findUserById, updateUserRole } from "../repositories/user.repository.js";
+import { findUserById } from "../repositories/user.repository.js";
 import { getPayoutAccount } from "./trust.service.js";
 import {
   createMarketRequestForSeller,
   ensureSellerCategoryRequest,
 } from "./market.service.js";
+import { submitRequirementForUser } from "./verification.service.js";
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
@@ -310,12 +311,14 @@ export function ensureSellerStoreForUser(userId, input = {}) {
   const now = new Date().toISOString();
 
   if (!user) throw new HttpError(404, "Account was not found.");
+  if (user.role !== "seller") {
+    throw new HttpError(
+      403,
+      "Seller onboarding requires a seller account. Gleenc will not convert buyer or rider accounts into sellers automatically.",
+    );
+  }
 
   if (existingStore) {
-    if (user.role !== "seller" && user.role !== "admin") {
-      updateUserRole(userId, "seller", now);
-    }
-
     return existingStore;
   }
 
@@ -354,8 +357,6 @@ export function ensureSellerStoreForUser(userId, input = {}) {
     createdAt: now,
     updatedAt: now,
   });
-
-  updateUserRole(userId, "seller", now);
 
   return store;
 }
@@ -1020,6 +1021,73 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       userId,
     );
   });
+
+  const sharedPayload = {
+    sellerType: next.sellerType,
+    storeName: next.storeName,
+    storeCategory: next.storeCategory,
+    fullName: next.fullName,
+    phone: next.phone,
+    campus: next.campus,
+    locationArea: next.locationArea,
+    pickupLocation: next.pickupLocation,
+    nearestLandmark: next.nearestLandmark,
+    marketId: next.marketId,
+    shopStallNumber: next.shopStallNumber,
+    shopSection: next.shopSection,
+    whatsappPhone: next.whatsappPhone,
+    operatingHours: next.operatingHours,
+    businessDescription: next.businessDescription,
+    agreementAccepted: next.agreementAccepted,
+  };
+
+  submitRequirementForUser(userId, "seller", "seller_identity_selfie", {
+    payload: {
+      faceVerified: next.faceVerified,
+      faceProvider: next.faceProvider,
+      faceReference: next.faceReference,
+    },
+    documentUrls: [next.identityProofUrl].filter(Boolean),
+    provider: next.faceProvider || "seller_onboarding",
+    providerReference: next.faceReference,
+    providerStatus: next.faceVerified ? "verified" : "submitted",
+  });
+  submitRequirementForUser(userId, "seller", "seller_store_identity", {
+    payload: sharedPayload,
+    provider: "seller_onboarding",
+  });
+  submitRequirementForUser(userId, "seller", "seller_pickup_information", {
+    payload: sharedPayload,
+    provider: "seller_onboarding",
+  });
+
+  if (next.sellerType === "campus") {
+    submitRequirementForUser(userId, "seller", "seller_campus_identity", {
+      payload: {
+        campus: next.campus,
+        studentId: next.studentId,
+      },
+      provider: "seller_onboarding",
+    });
+  }
+
+  if (["local_market", "nearby"].includes(next.sellerType)) {
+    submitRequirementForUser(userId, "seller", "seller_market_selection", {
+      payload: sharedPayload,
+      provider: "seller_onboarding",
+    });
+    submitRequirementForUser(userId, "seller", "seller_shop_identity", {
+      payload: sharedPayload,
+      provider: "seller_onboarding",
+    });
+  }
+
+  if (next.sellerType === "used_market") {
+    submitRequirementForUser(userId, "seller", "seller_used_item_authenticity", {
+      payload: sharedPayload,
+      provider: "seller_onboarding",
+    });
+  }
 
   return getSellerVerification(userId);
 }

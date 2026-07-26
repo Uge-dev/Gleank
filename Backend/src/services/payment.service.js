@@ -64,12 +64,139 @@ function getPaymentRedirectPath(row) {
   return "/orders";
 }
 
-function serializePayment(row) {
+function getPaymentSuccessPath(row) {
+  if (!row) return "/orders";
+
+  const referenceParam = encodeURIComponent(row.reference || "");
+
+  if (row.purpose === "store_order") {
+    return `/order-success?paymentRef=${referenceParam}`;
+  }
+
+  if (row.purpose === "used_order" && row.used_order_id) {
+    return `/used-orders/${row.used_order_id}?paymentRef=${referenceParam}`;
+  }
+
+  if (row.purpose === "seller_subscription") {
+    return `/seller/onboarding?paymentRef=${referenceParam}`;
+  }
+
+  return getPaymentRedirectPath(row);
+}
+
+function getStoreOrderPaymentSummary(row) {
+  if (!row?.order_id) return null;
+
+  const order = db
+    .prepare(`
+      SELECT orders.id, orders.order_code, orders.status, orders.payment_status,
+             orders.total_kobo, orders.created_at, stores.name AS store_name
+      FROM orders
+      JOIN stores ON stores.id = orders.store_id
+      WHERE orders.id = ? AND orders.buyer_id = ?
+    `)
+    .get(row.order_id, row.user_id);
+
+  if (!order) return null;
+
+  const items = db
+    .prepare(`
+      SELECT product_name, product_image_url, quantity, total_kobo
+      FROM order_items
+      WHERE order_id = ?
+      ORDER BY created_at ASC
+    `)
+    .all(order.id)
+    .map((item) => ({
+      name: item.product_name || "",
+      imageUrl: item.product_image_url || null,
+      quantity: Number(item.quantity || 0),
+      totalKobo: Number(item.total_kobo || 0),
+      total: Number(item.total_kobo || 0) / 100,
+    }));
+
+  return {
+    type: "store_order",
+    orderId: order.id,
+    orderCode: order.order_code,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    storeName: order.store_name || "",
+    totalKobo: Number(order.total_kobo || 0),
+    total: Number(order.total_kobo || 0) / 100,
+    createdAt: order.created_at,
+    items,
+  };
+}
+
+function getUsedOrderPaymentSummary(row) {
+  if (!row?.used_order_id) return null;
+
+  const order = db
+    .prepare(`
+      SELECT used_market_orders.id, used_market_orders.order_code,
+             used_market_orders.status, used_market_orders.payment_status,
+             used_market_orders.total_kobo, used_market_orders.created_at,
+             used_listings.name AS listing_name,
+             used_listings.image_urls AS listing_image_urls
+      FROM used_market_orders
+      JOIN used_listings ON used_listings.id = used_market_orders.listing_id
+      WHERE used_market_orders.id = ? AND used_market_orders.buyer_id = ?
+    `)
+    .get(row.used_order_id, row.user_id);
+
+  if (!order) return null;
+
+  let imageUrl = null;
+  try {
+    const images = JSON.parse(order.listing_image_urls || "[]");
+    imageUrl = Array.isArray(images) ? images[0] || null : null;
+  } catch {
+    imageUrl = null;
+  }
+
+  return {
+    type: "used_order",
+    orderId: order.id,
+    orderCode: order.order_code,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    listingName: order.listing_name || "",
+    totalKobo: Number(order.total_kobo || 0),
+    total: Number(order.total_kobo || 0) / 100,
+    createdAt: order.created_at,
+    items: [
+      {
+        name: order.listing_name || "",
+        imageUrl,
+        quantity: 1,
+        totalKobo: Number(order.total_kobo || 0),
+        total: Number(order.total_kobo || 0) / 100,
+      },
+    ],
+  };
+}
+
+function getPaymentSummary(row) {
+  if (row?.purpose === "store_order") return getStoreOrderPaymentSummary(row);
+  if (row?.purpose === "used_order") return getUsedOrderPaymentSummary(row);
+  if (row?.purpose === "seller_subscription") {
+    return {
+      type: "seller_subscription",
+      status: row.status,
+      totalKobo: Number(row.amount_kobo || 0),
+      total: Number(row.amount_kobo || 0) / 100,
+      createdAt: row.created_at,
+    };
+  }
+  return null;
+}
+
+function serializePayment(row, options = {}) {
   if (!row) return null;
 
   const metadata = parseMetadata(row.metadata);
-
-  return {
+  const payment = {
     id: row.id,
     reference: row.reference,
     provider: row.provider,
@@ -77,18 +204,25 @@ function serializePayment(row) {
     orderId: row.order_id || null,
     usedOrderId: row.used_order_id || null,
     subscriptionId: row.subscription_id || null,
-    userId: row.user_id,
     amountKobo: row.amount_kobo,
     amount: row.amount_kobo / 100,
     currency: row.currency,
     status: row.status,
-    authorizationUrl: row.authorization_url,
-    providerReference: row.provider_reference || "",
+    authorizationUrl: options.publicView ? "" : row.authorization_url,
+    providerReference: options.publicView ? "" : row.provider_reference || "",
     providerStatus: metadata.providerStatus || "",
     redirectPath: getPaymentRedirectPath(row),
+    successPath: getPaymentSuccessPath(row),
+    summary: options.includeSummary ? getPaymentSummary(row) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+
+  if (!options.publicView) {
+    payment.userId = row.user_id;
+  }
+
+  return payment;
 }
 
 function findPaymentByReference(paymentReference) {
@@ -149,6 +283,12 @@ function requirePaystackConfig() {
       throw new HttpError(
         500,
         "PAYSTACK_MODE=test requires a Paystack test secret key that starts with sk_test_.",
+      );
+    }
+    if (env.isProduction && !env.allowPaystackTestKeysInProduction) {
+      throw new HttpError(
+        500,
+        "Production Paystack test mode requires ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION=true.",
       );
     }
     return;
@@ -576,6 +716,43 @@ function recordPaymentEvent({ row = null, reference = "", eventType, providerSta
   );
 }
 
+function rawPayloadHash(rawBody, payload) {
+  const body = Buffer.isBuffer(rawBody)
+    ? rawBody
+    : Buffer.from(
+        typeof rawBody === "string" && rawBody
+          ? rawBody
+          : JSON.stringify(payload || {}),
+        "utf8",
+      );
+
+  return crypto.createHash("sha256").update(body).digest("hex");
+}
+
+function reserveWebhookEvent({ provider, eventId, reference = "", rawBody = null, payload = {} }) {
+  const cleanEventId = clean(eventId, 240);
+
+  if (!cleanEventId) {
+    throw new HttpError(422, "Webhook event ID is required.");
+  }
+
+  const result = db.prepare(`
+    INSERT INTO processed_webhook_events (
+      id, provider, event_id, reference, payload_hash, processed_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, event_id) DO NOTHING
+  `).run(
+    createId("whk"),
+    provider,
+    cleanEventId,
+    clean(reference, 240),
+    rawPayloadHash(rawBody, payload),
+    nowIso(),
+  );
+
+  return result.changes === 0;
+}
+
 function verifyPaystackWebhookSignature(rawBody, signature) {
   if (!env.paystackSecretKey) return false;
   const body = Buffer.isBuffer(rawBody)
@@ -591,6 +768,88 @@ function verifyPaystackWebhookSignature(rawBody, signature) {
   } catch {
     return false;
   }
+}
+
+async function verifyPaymentRow(row) {
+  if (row.status === "paid") {
+    return findPaymentByReference(row.reference);
+  }
+
+  if (row.provider === "local") {
+    if (env.isProduction) {
+      throw new HttpError(403, "Local payment verification is disabled in production.");
+    }
+
+    transaction(() => {
+      applySuccessfulPayment(row, {
+        data: {
+          status: "success",
+          paid_at: nowIso(),
+        },
+      });
+
+      db.prepare(`
+        UPDATE payment_transactions
+        SET status = 'paid',
+            provider_reference = ?,
+            metadata = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        `local-verified-${Date.now()}`,
+        stringifyMetadata(row, {
+          providerStatus: "success",
+          verifiedAt: nowIso(),
+        }),
+        nowIso(),
+        row.id,
+      );
+    });
+
+    return findPaymentByReference(row.reference);
+  }
+
+  if (row.provider !== "paystack") {
+    throw new HttpError(422, "Unsupported payment provider.");
+  }
+
+  const providerResponse = await paystackRequest(
+    `/transaction/verify/${encodeURIComponent(row.reference)}`,
+    { method: "GET" },
+  );
+
+  const data = providerResponse?.data || {};
+  const providerStatus = String(data.status || "");
+  const paidAmountKobo = Number(data.amount || 0);
+  const currency = String(data.currency || "NGN").toUpperCase();
+  const internalStatus = internalStatusFromPaystackStatus(providerStatus);
+
+  if (providerStatus === "success") {
+    if (String(data.reference || "") !== String(row.reference)) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment reference mismatch. Please contact support.");
+    }
+
+    if (paidAmountKobo !== Number(row.amount_kobo)) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment amount mismatch. Please contact support.");
+    }
+
+    if (currency !== String(row.currency || "NGN").toUpperCase()) {
+      updatePaymentFromProvider(row, providerResponse, "failed");
+      throw new HttpError(422, "Payment currency mismatch. Please contact support.");
+    }
+
+    transaction(() => {
+      applySuccessfulPayment(row, providerResponse);
+      updatePaymentFromProvider(row, providerResponse, "paid");
+    });
+
+    return findPaymentByReference(row.reference);
+  }
+
+  updatePaymentFromProvider(row, providerResponse, internalStatus);
+  return findPaymentByReference(row.reference);
 }
 
 export async function initializePayment(userId, input) {
@@ -738,85 +997,22 @@ export async function verifyPayment(userId, paymentReference) {
     }
   }
 
-  if (row.status === "paid") {
-    return serializePayment(row);
+  return serializePayment(await verifyPaymentRow(row), { includeSummary: true });
+}
+
+export async function verifyPublicPayment(paymentReference) {
+  const row = findPaymentByReference(clean(paymentReference, 200));
+
+  if (!row) {
+    throw new HttpError(404, "Payment reference was not found.");
   }
 
-  if (row.provider === "local") {
-    if (env.isProduction) {
-      throw new HttpError(403, "Local payment verification is disabled in production.");
-    }
+  const payment = await verifyPaymentRow(row);
 
-    transaction(() => {
-      applySuccessfulPayment(row, {
-        data: {
-          status: "success",
-          paid_at: nowIso(),
-        },
-      });
-
-      db.prepare(`
-        UPDATE payment_transactions
-        SET status = 'paid',
-            provider_reference = ?,
-            metadata = ?,
-            updated_at = ?
-        WHERE id = ?
-      `).run(
-        `local-verified-${Date.now()}`,
-        stringifyMetadata(row, {
-          providerStatus: "success",
-          verifiedAt: nowIso(),
-        }),
-        nowIso(),
-        row.id,
-      );
-    });
-
-    return serializePayment(findPaymentByReference(row.reference));
-  }
-
-  if (row.provider !== "paystack") {
-    throw new HttpError(422, "Unsupported payment provider.");
-  }
-
-  const providerResponse = await paystackRequest(
-    `/transaction/verify/${encodeURIComponent(row.reference)}`,
-    { method: "GET" },
-  );
-
-  const data = providerResponse?.data || {};
-  const providerStatus = String(data.status || "");
-  const paidAmountKobo = Number(data.amount || 0);
-  const currency = String(data.currency || "NGN").toUpperCase();
-  const internalStatus = internalStatusFromPaystackStatus(providerStatus);
-
-  if (providerStatus === "success") {
-    if (String(data.reference || "") !== String(row.reference)) {
-      updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment reference mismatch. Please contact support.");
-    }
-
-    if (paidAmountKobo !== Number(row.amount_kobo)) {
-      updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment amount mismatch. Please contact support.");
-    }
-
-    if (currency !== String(row.currency || "NGN").toUpperCase()) {
-      updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment currency mismatch. Please contact support.");
-    }
-
-    transaction(() => {
-      applySuccessfulPayment(row, providerResponse);
-      updatePaymentFromProvider(row, providerResponse, "paid");
-    });
-
-    return serializePayment(findPaymentByReference(row.reference));
-  }
-
-  updatePaymentFromProvider(row, providerResponse, internalStatus);
-  return serializePayment(findPaymentByReference(row.reference));
+  return serializePayment(payment, {
+    publicView: true,
+    includeSummary: payment.status === "paid",
+  });
 }
 
 export async function handlePaystackWebhook({ rawBody, body, signature }) {
@@ -824,11 +1020,9 @@ export async function handlePaystackWebhook({ rawBody, body, signature }) {
     ? body
     : JSON.parse(Buffer.isBuffer(rawBody) ? rawBody.toString("utf8") : String(rawBody || "{}"));
 
-  if (env.paymentProvider === "paystack") {
-    const raw = rawBody || JSON.stringify(payload);
-    if (!verifyPaystackWebhookSignature(raw, signature)) {
-      throw new HttpError(401, "Invalid Paystack webhook signature.");
-    }
+  const raw = rawBody || JSON.stringify(payload);
+  if (!verifyPaystackWebhookSignature(raw, signature)) {
+    throw new HttpError(401, "Invalid Paystack webhook signature.");
   }
 
   const eventType = String(payload?.event || "");
@@ -836,6 +1030,29 @@ export async function handlePaystackWebhook({ rawBody, body, signature }) {
   const paymentReference = clean(data.reference || payload?.reference || "", 200);
   const row = paymentReference ? findPaymentByReference(paymentReference) : null;
   const providerStatus = String(data.status || "");
+  const eventId = clean(
+    payload?.id ||
+      payload?.event_id ||
+      data?.id ||
+      `${eventType || "paystack"}:${paymentReference}:${providerStatus}`,
+    240,
+  );
+
+  const duplicate = reserveWebhookEvent({
+    provider: "paystack",
+    eventId,
+    reference: paymentReference,
+    rawBody,
+    payload,
+  });
+
+  if (duplicate) {
+    return {
+      received: true,
+      duplicate: true,
+      payment: row ? serializePayment(row) : null,
+    };
+  }
 
   recordPaymentEvent({
     row,

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/auth.js";
 import { fileUrl, upload } from "../middleware/upload.js";
 import {
@@ -9,6 +10,20 @@ import {
 } from "../services/kyc.service.js";
 
 export const kycRouter = Router();
+
+const kycActionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
+const kycUploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 12,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
 
 const asyncRoute = (handler) => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
@@ -37,7 +52,7 @@ function attachManualKycUploads(req, _res, next) {
 
 kycRouter.use(requireAuth);
 
-kycRouter.post("/start", (req, res) => {
+kycRouter.post("/start", kycActionLimiter, (req, res) => {
   res.json(startKyc(req.auth, req.body || {}));
 });
 
@@ -51,6 +66,7 @@ kycRouter.get("/status/:userId", (req, res) => {
 
 kycRouter.post(
   "/manual/submit",
+  kycUploadLimiter,
   upload.fields([
     { name: "identityDocument", maxCount: 1 },
     { name: "businessDocument", maxCount: 1 },

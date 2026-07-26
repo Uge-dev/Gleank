@@ -394,26 +394,11 @@ export function runRiderMigrations() {
   db.prepare(`
     UPDATE rider_profiles
     SET max_package_value_kobo = 2000000,
-        availability = CASE WHEN availability = 'offline' THEN 'online' ELSE availability END,
-        availability_mode = CASE
-          WHEN availability_mode = 'offline' THEN 'online_zone_only'
-          ELSE availability_mode
-        END
+        availability = availability,
+        availability_mode = availability_mode
     WHERE verification_status = 'verified'
       AND safety_status = 'normal'
       AND COALESCE(max_package_value_kobo, 0) <= 0
-  `).run();
-
-  db.prepare(`
-    UPDATE rider_profiles
-    SET availability = 'online',
-        availability_mode = CASE
-          WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
-          ELSE 'online_zone_only'
-        END
-    WHERE verification_status = 'verified'
-      AND safety_status = 'normal'
-      AND availability = 'offline'
   `).run();
 }
 

@@ -19,7 +19,7 @@ export type GleencPayment = {
   orderId: string | null;
   usedOrderId: string | null;
   subscriptionId: string | null;
-  userId: string;
+  userId?: string;
   amountKobo: number;
   amount: number;
   currency: "NGN";
@@ -28,12 +28,36 @@ export type GleencPayment = {
   providerReference: string;
   providerStatus?: string;
   redirectPath?: string;
+  successPath?: string;
+  summary?: PaymentSummary | null;
   createdAt: string;
   updatedAt: string;
 };
 
 export type InitializedPayment = GleencPayment;
 export type VerifyPaymentResult = GleencPayment;
+
+export type PaymentSummaryItem = {
+  name: string;
+  imageUrl?: string | null;
+  quantity: number;
+  totalKobo: number;
+  total: number;
+};
+
+export type PaymentSummary = {
+  type: "store_order" | "used_order" | "seller_subscription";
+  orderId?: string;
+  orderCode?: string;
+  status: string;
+  paymentStatus?: string;
+  storeName?: string;
+  listingName?: string;
+  totalKobo: number;
+  total: number;
+  createdAt: string;
+  items?: PaymentSummaryItem[];
+};
 
 export function initializePayment(input: {
   purpose: PaymentPurpose;
@@ -47,6 +71,13 @@ export function initializePayment(input: {
 
 export function verifyPayment(reference: string) {
   return apiRequest<{ payment: GleencPayment }>("/payments/verify", {
+    method: "POST",
+    body: JSON.stringify({ reference }),
+  });
+}
+
+export function verifyPublicPayment(reference: string) {
+  return apiRequest<{ payment: GleencPayment }>("/payments/public/verify", {
     method: "POST",
     body: JSON.stringify({ reference }),
   });

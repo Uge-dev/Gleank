@@ -3,7 +3,6 @@ import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
-import { markPayoutDeliveryVerified } from "./payout.service.js";
 import { evaluatePayAtDeliveryEligibility } from "./payment-protection.service.js";
 import {
   createDispute,
@@ -216,7 +215,10 @@ function serializeOrder(row, items = [], events = []) {
     deliveryAddress: row.delivery_address || "",
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
-    verificationCode: row.payment_status === "paid" ? row.verification_code || "" : "",
+    verificationCode:
+      row.payment_status === "paid" && row.viewer_id === row.buyer_id
+        ? row.verification_code || ""
+        : "",
     packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -294,7 +296,7 @@ function getOrderRowByCodeForUser(userId, orderCode) {
     .get(orderCode, userId, userId);
 }
 
-function hydrateOrder(row) {
+function hydrateOrder(row, viewerId = "") {
   const items = db
     .prepare("SELECT * FROM order_items WHERE order_id = ? ORDER BY created_at ASC")
     .all(row.id)
@@ -305,7 +307,7 @@ function hydrateOrder(row) {
     .all(row.id)
     .map(serializeOrderEvent);
 
-  return serializeOrder(row, items, events);
+  return serializeOrder({ ...row, viewer_id: viewerId }, items, events);
 }
 
 function insertOrderEvent(orderId, status, note = "") {
@@ -343,7 +345,7 @@ function insertStatusHistory({
 }
 
 export function listOrders(userId) {
-  return getOrderRowsForUser(userId).map(hydrateOrder);
+  return getOrderRowsForUser(userId).map((row) => hydrateOrder(row, userId));
 }
 
 export function getOrder(userId, idOrCode) {
@@ -355,7 +357,7 @@ export function getOrder(userId, idOrCode) {
     throw new HttpError(404, "Order was not found.");
   }
 
-  return hydrateOrder(row);
+  return hydrateOrder(row, userId);
 }
 
 export function createOrders(userId, input) {
@@ -634,10 +636,10 @@ export function createOrders(userId, input) {
         imageUrl: firstImage(group.products[0]?.product?.image_urls),
       });
 
-      output.push(hydrateOrder(getOrderRowByIdForUser(userId, orderId)));
+      output.push(hydrateOrder(getOrderRowByIdForUser(userId, orderId), userId));
     }
 
-    return output.map((order) => hydrateOrder(getOrderRowByIdForUser(userId, order.id)));
+    return output.map((order) => hydrateOrder(getOrderRowByIdForUser(userId, order.id), userId));
   });
 
   const createdOrderIds = createdOrders.map((order) => order.id);
@@ -656,7 +658,7 @@ export function createOrders(userId, input) {
   return createdOrderIds
     .map((orderId) => getOrderRowByIdForUser(userId, orderId))
     .filter(Boolean)
-    .map(hydrateOrder);
+    .map((row) => hydrateOrder(row, userId));
 }
 
 export function sellerConfirmOrder(user, orderId, note = "") {
@@ -880,65 +882,17 @@ export function updateOrderStatus(user, orderId, status, note = "") {
   });
 }
 
-export function verifyOrderDelivery(user, orderId, verificationCode, note = "") {
+export function verifyOrderDelivery(user, orderId, _verificationCode, _note = "") {
   const row = getOrderRowByIdForUser(user.user_id, orderId);
 
   if (!row) {
     throw new HttpError(404, "Order was not found.");
   }
 
-  if (row.seller_id !== user.user_id && user.role !== "admin") {
-    throw new HttpError(403, "Only the seller or admin can verify delivery.");
-  }
-
-  if (row.status !== "out_for_delivery" && row.status !== "ready_for_delivery") {
-    throw new HttpError(422, "Delivery can only be verified after the order is ready or out for delivery.");
-  }
-
-  if (row.payment_status !== "paid") {
-    throw new HttpError(422, "Payment must be verified before the delivery code can be used.");
-  }
-
-  if (String(verificationCode || "").trim() !== row.verification_code) {
-    throw new HttpError(422, "The delivery verification code is not correct.");
-  }
-
-  const now = new Date().toISOString();
-  db.prepare(`
-    UPDATE orders
-    SET status = 'delivered',
-        stage4_status = 'delivered',
-        fulfillment_status = 'delivered',
-        updated_at = ?
-    WHERE id = ?
-  `).run(
-    now,
-    row.id,
+  throw new HttpError(
+    403,
+    "Final delivery code verification must be completed by the assigned rider on the rider delivery page.",
   );
-
-  insertOrderEvent(
-    row.id,
-    "delivered",
-    note || "Seller verified the buyer delivery code and marked the order delivered.",
-  );
-
-  createNotification({
-    userId: row.buyer_id,
-    type: "order",
-    title: "Order delivered",
-    body: `Your order ${row.order_code} has been marked delivered.`,
-    actionLabel: "View order",
-    actionPath: `/orders/${row.id}`,
-  });
-
-  markPayoutDeliveryVerified({
-    sourceType: "store_order",
-    orderId: row.id,
-    actorId: user.user_id,
-    note: "Seller/admin verified buyer delivery code.",
-  });
-
-  return getOrder(user.user_id, row.id);
 }
 
 export function markOrderPaidLocally(userId, orderId, paymentReference = "") {

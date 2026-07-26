@@ -1,12 +1,5 @@
 export function requireAdmin(req, res, next) {
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const validToken =
-    process.env.ADMIN_TOKEN ||
-    process.env.ADMIN_DEMO_TOKEN ||
-    "gleank-admin-local-token";
-
-  if (!token || token !== validToken) {
+  if (!req.auth || req.auth.role !== "admin") {
     return res.status(401).json({ message: "Admin authorization is required" });
   }
 

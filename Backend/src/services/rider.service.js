@@ -7,7 +7,12 @@ import { HttpError } from "../lib/http-error.js";
 import { createSession, deleteSession, sessionCookieOptions, sessionCookieName } from "../lib/session.js";
 import { serializeUser } from "../lib/serializers.js";
 import { loginUser, registerUser } from "./auth.service.js";
-import { createNotification, listNotifications, markNotificationRead } from "./notification.service.js";
+import {
+  createNotification,
+  createNotificationForUsers,
+  listNotifications,
+  markNotificationRead,
+} from "./notification.service.js";
 import { markPayoutDeliveryVerified } from "./payout.service.js";
 import { initializePayment } from "./payment.service.js";
 import {
@@ -16,14 +21,80 @@ import {
   resolveDispatchTimeoutPolicy,
 } from "./dispatch-timeout.service.js";
 import { generateOrderVerificationCode } from "./logistics.service.js";
+import { evaluateRiderEligibility, submitRequirementForUser } from "./verification.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
 const COMPLETE_ALLOWED_STATUSES = new Set(["picked_up", "out_for_delivery"]);
 const MAX_PROOF_DISTANCE_METERS = Number(process.env.RIDER_PROOF_RADIUS_METERS || 500);
+const OTP_MAX_ATTEMPTS = 5;
+const OTP_COOLDOWN_MS = 15 * 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function minutesUntilNextCodeAttempt(timestamp) {
+  const remainingMs = new Date(timestamp).getTime() + OTP_COOLDOWN_MS - Date.now();
+  return Math.max(1, Math.ceil(remainingMs / 60_000));
+}
+
+function assertCodeAttemptAllowed(row, label) {
+  const attemptCount = Number(row?.code_attempt_count || 0);
+  const lastAttemptAt = row?.last_code_attempt_at
+    ? new Date(row.last_code_attempt_at).getTime()
+    : 0;
+
+  if (
+    attemptCount >= OTP_MAX_ATTEMPTS &&
+    lastAttemptAt > 0 &&
+    Date.now() - lastAttemptAt < OTP_COOLDOWN_MS
+  ) {
+    throw new HttpError(
+      429,
+      `${label} code verification is temporarily locked. Please wait about ${minutesUntilNextCodeAttempt(row.last_code_attempt_at)} minute(s) before trying again.`,
+    );
+  }
+}
+
+function adminIds() {
+  return db
+    .prepare("SELECT id FROM users WHERE role = 'admin' AND is_active = 1")
+    .all()
+    .map((row) => row.id);
+}
+
+function recordCodeFailure(row, label) {
+  const now = nowIso();
+  const nextAttempts = Number(row?.code_attempt_count || 0) + 1;
+
+  db.prepare(`
+    UPDATE rider_assignments
+    SET code_attempt_count = code_attempt_count + 1,
+        last_code_attempt_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, now, row.id);
+
+  if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+    createNotificationForUsers(adminIds(), {
+      type: "admin",
+      title: `${label} code failures detected`,
+      body: `Assignment ${row.id} reached ${nextAttempts} failed code attempt(s).`,
+      actionLabel: "Review delivery",
+      actionPath: "/admin",
+    });
+  }
+}
+
+function resetCodeAttempts(row) {
+  db.prepare(`
+    UPDATE rider_assignments
+    SET code_attempt_count = 0,
+        last_code_attempt_at = NULL,
+        updated_at = ?
+    WHERE id = ?
+  `).run(nowIso(), row.id);
 }
 
 function clean(value, max = 500) {
@@ -77,7 +148,7 @@ function applyDevelopmentRiderDispatchDefaults(userId, now = nowIso()) {
   if (!shouldApplyDevelopmentRiderDispatchDefaults()) return;
 
   const shouldVerify = env.autoVerifyRidersInDev || env.enableTestRiderDispatch;
-  const shouldSetOnline = env.autoSetRidersOnlineInDev || env.enableTestRiderDispatch;
+  const shouldSetOnline = env.autoSetRidersOnlineInDev;
   const shouldVerifyEmail = env.enableTestRiderDispatch;
 
   db.prepare(`
@@ -156,7 +227,7 @@ function riderCompletion(row) {
     ["Government ID", row.identity_document_url],
     ["Profile/selfie image", row.selfie_url],
     ["Delivery capacity", row.transport_type && row.max_package_size && row.max_weight_class && row.delivery_bag_type],
-    ["Live face verification", Number(row.live_face_verified || 0) === 1 || Boolean(row.selfie_url)],
+    ["Live face verification", Number(row.live_face_verified || 0) === 1],
   ];
 
   const completed = checks.filter(([, value]) => Boolean(value)).length;
@@ -169,7 +240,7 @@ function riderCompletion(row) {
     completionMissingFields: checks.filter(([, value]) => !value).map(([label]) => label),
     verificationStages: {
       onboardingDocuments: Boolean(row.identity_document_url && row.selfie_url),
-      liveFaceVerification: Number(row.live_face_verified || 0) === 1 || Boolean(row.selfie_url),
+      liveFaceVerification: Number(row.live_face_verified || 0) === 1,
       profileDetails,
       adminVerified: row.verification_status === "verified",
     },
@@ -229,7 +300,7 @@ function serializeProfile(row) {
     guarantorPhone: row.guarantor_phone || "",
     identityDocumentUrl: row.identity_document_url || null,
     selfieUrl: row.selfie_url || null,
-    liveFaceVerified: row.live_face_verified === 1 || Boolean(row.selfie_url),
+    liveFaceVerified: row.live_face_verified === 1,
     ninLast4: row.nin_last4 || "",
     verificationStatus: row.verification_status,
     verificationNote: row.verification_note,
@@ -551,7 +622,7 @@ export async function registerRider(input, meta = {}) {
         delivery_bag_type, service_zone_ids, gps_permission_status,
         can_receive_auto_dispatch, capacity_locked, live_face_verified,
         verification_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 'pending_review', ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 'pending_review', ?, ?)
       ON CONFLICT(user_id) DO UPDATE SET
         full_name = excluded.full_name,
         phone = excluded.phone,
@@ -610,6 +681,64 @@ export async function registerRider(input, meta = {}) {
 
   applyDevelopmentRiderDispatchDefaults(result.user.id, now);
 
+  submitRequirementForUser(result.user.id, "rider", "rider_government_id", {
+    payload: { ninLast4: input.ninLast4 || "" },
+    documentUrls: [input.identityDocumentUrl].filter(Boolean),
+    provider: "rider_onboarding",
+  });
+  submitRequirementForUser(result.user.id, "rider", "rider_identity_selfie", {
+    payload: { source: "onboarding_selfie" },
+    documentUrls: [input.selfieUrl].filter(Boolean),
+    provider: "rider_onboarding",
+  });
+  submitRequirementForUser(result.user.id, "rider", "rider_personal_profile", {
+    payload: {
+      fullLegalName: input.name,
+      phone: input.phone,
+      homeAddress: input.homeAddress || "",
+      coverageArea: input.coverageArea || "",
+    },
+    provider: "rider_onboarding",
+  });
+  submitRequirementForUser(result.user.id, "rider", "rider_vehicle_capacity", {
+    payload: {
+      vehicleType: input.vehicleType || "",
+      vehiclePlate: input.vehiclePlate || "",
+      transportType: input.transportType || input.vehicleType || "motorcycle",
+      maxPackageSize: input.maxPackageSize || "small_medium",
+      maxWeightClass: input.maxWeightClass || "up_to_medium",
+      fragileHandlingAbility: input.fragileHandlingAbility || "can_handle_fragile",
+      deliveryBagType: input.deliveryBagType || "medium_delivery_bag",
+    },
+    provider: "rider_onboarding",
+  });
+  submitRequirementForUser(result.user.id, "rider", "rider_service_zone", {
+    payload: {
+      coverageArea: input.coverageArea || "",
+      serviceZoneIds: Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : [],
+      gpsPermissionStatus: input.gpsPermissionStatus || "gps_disabled",
+    },
+    provider: "rider_onboarding",
+  });
+  if (input.emergencyContactName || input.emergencyContactPhone) {
+    submitRequirementForUser(result.user.id, "rider", "rider_emergency_contact", {
+      payload: {
+        fullName: input.emergencyContactName || "",
+        primaryPhone: input.emergencyContactPhone || "",
+      },
+      provider: "rider_onboarding",
+    });
+  }
+  if (input.guarantorName || input.guarantorPhone) {
+    submitRequirementForUser(result.user.id, "rider", "rider_guarantor", {
+      payload: {
+        fullName: input.guarantorName || "",
+        phone: input.guarantorPhone || "",
+      },
+      provider: "rider_onboarding",
+    });
+  }
+
   return {
     ...result,
     user: serializeUser(db.prepare("SELECT * FROM users WHERE id = ?").get(result.user.id) || result.user),
@@ -666,6 +795,17 @@ export function updateRiderVerificationDocuments(auth, input) {
     body: "Your rider ID and profile/selfie image have been sent to admin for review.",
     actionLabel: "Open verification",
     actionPath: "/rider/verification",
+  });
+
+  submitRequirementForUser(riderId, "rider", "rider_government_id", {
+    payload: { source: "verification_documents_update" },
+    documentUrls: [input.identityDocumentUrl].filter(Boolean),
+    provider: "rider_dashboard",
+  });
+  submitRequirementForUser(riderId, "rider", "rider_identity_selfie", {
+    payload: { source: "verification_documents_update" },
+    documentUrls: [input.selfieUrl].filter(Boolean),
+    provider: "rider_dashboard",
   });
 
   return serializeProfile(getRiderProfile(riderId));
@@ -790,12 +930,15 @@ export function listAvailableRiders(auth) {
       AND rider_profiles.safety_status = 'normal'
     ORDER BY rider_profiles.rating_average DESC, rider_profiles.completed_deliveries DESC
     LIMIT 100
-  `).all().map((row) => ({
-    id: row.user_id,
-    name: row.name || row.full_name,
-    phone: row.phone,
-    profile: serializeProfile(row),
-  }));
+  `).all()
+    .filter((row) => evaluateRiderEligibility(row.user_id, { maxActiveAssignments: 2 }).eligible)
+    .map((row) => ({
+      id: row.user_id,
+      name: row.name || row.full_name,
+      phone: row.phone,
+      profile: serializeProfile(row),
+      eligibility: evaluateRiderEligibility(row.user_id, { maxActiveAssignments: 2 }),
+    }));
 }
 
 function loadOrderForAssignment(auth, orderType, orderId) {
@@ -1141,16 +1284,12 @@ export function verifyPickup(auth, assignmentId, input) {
   if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
     throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
   }
+  assertCodeAttemptAllowed(row, "Pickup");
   if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) {
-    db.prepare(`
-      UPDATE rider_assignments
-      SET code_attempt_count = code_attempt_count + 1,
-          last_code_attempt_at = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(nowIso(), nowIso(), row.id);
+    recordCodeFailure(row, "Pickup");
     throw new HttpError(422, "Invalid pickup code. Please confirm the code with the seller.");
   }
+  resetCodeAttempts(row);
   requireProofEvidence(input, "Pickup");
   requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
 
@@ -1254,16 +1393,12 @@ export function verifyDeliveryCode(auth, orderId, input) {
   }
 
   const now = nowIso();
+  assertCodeAttemptAllowed(row, "Delivery");
   if (!verifyOtp(input.customerDeliveryCode || input.code, row.delivery_code_hash)) {
-    db.prepare(`
-      UPDATE rider_assignments
-      SET code_attempt_count = code_attempt_count + 1,
-          last_code_attempt_at = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(now, now, row.id);
+    recordCodeFailure(row, "Delivery");
     throw new HttpError(422, "Invalid delivery code. Please confirm the code with the buyer.");
   }
+  resetCodeAttempts(row);
 
   transaction(() => {
     db.prepare(`
@@ -1333,16 +1468,12 @@ export function completeDelivery(auth, orderId, input) {
   const now = nowIso();
   const deliveryCodeAlreadyVerified = Boolean(row.buyer_delivery_code_verified_at);
   if (!deliveryCodeAlreadyVerified) {
+    assertCodeAttemptAllowed(row, "Delivery");
     if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) {
-      db.prepare(`
-        UPDATE rider_assignments
-        SET code_attempt_count = code_attempt_count + 1,
-            last_code_attempt_at = ?,
-            updated_at = ?
-        WHERE id = ?
-      `).run(now, now, row.id);
+      recordCodeFailure(row, "Delivery");
       throw new HttpError(422, "Invalid delivery code. Please confirm the code with the buyer.");
     }
+    resetCodeAttempts(row);
   }
   transaction(() => {
     db.prepare(`

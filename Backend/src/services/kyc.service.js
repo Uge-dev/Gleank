@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
@@ -6,6 +7,7 @@ import { createNotification, createNotificationForUsers } from "./notification.s
 import { logAdminAudit } from "./audit-log.service.js";
 import {
   createDojahVerificationSession,
+  isDojahConfigured,
   normalizeDojahWebhook,
   verifyDojahWebhookSignature,
 } from "./dojah.service.js";
@@ -34,6 +36,42 @@ function jsonArray(value) {
   } catch {
     return "[]";
   }
+}
+
+function rawPayloadHash(rawBody, payload) {
+  const body = Buffer.isBuffer(rawBody)
+    ? rawBody
+    : Buffer.from(
+        typeof rawBody === "string" && rawBody
+          ? rawBody
+          : JSON.stringify(payload || {}),
+        "utf8",
+      );
+
+  return crypto.createHash("sha256").update(body).digest("hex");
+}
+
+function reserveKycWebhookEvent({ provider, eventId, reference = "", rawBody = null, payload = {} }) {
+  const cleanEventId = clean(eventId, 240);
+  if (!cleanEventId) {
+    throw new HttpError(422, "Verification webhook event ID is missing.");
+  }
+
+  const result = db.prepare(`
+    INSERT INTO processed_webhook_events (
+      id, provider, event_id, reference, payload_hash, processed_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider, event_id) DO NOTHING
+  `).run(
+    createId("whk"),
+    provider,
+    cleanEventId,
+    clean(reference, 240),
+    rawPayloadHash(rawBody, payload),
+    nowIso(),
+  );
+
+  return result.changes === 0;
 }
 
 function parseJson(value, fallback) {
@@ -334,7 +372,7 @@ export function startKyc(auth, input = {}) {
     ? clean(input.provider, 20)
     : env.kycProvider;
   const user = getUser(actor.userId);
-  const manualFallback = provider === "manual" || (provider === "dojah" && (!env.dojahAppId || !env.dojahSecretKey));
+  const manualFallback = provider === "manual" || (provider === "dojah" && !isDojahConfigured());
   const dojahSession =
     provider === "dojah"
       ? createDojahVerificationSession({ user, role: actor.role })
@@ -655,14 +693,36 @@ export function adminRequestKycResubmission(adminAuth, id, input, requestMeta) {
   return { kyc: updateKycDecision(adminAuth, id, "request-resubmission", input, requestMeta) };
 }
 
-export function handleDojahWebhook({ rawBody, signature, payload }) {
-  if (!verifyDojahWebhookSignature(rawBody, signature)) {
+export function handleDojahWebhook({ rawBody, signature, timestamp, eventId, payload }) {
+  if (!verifyDojahWebhookSignature(rawBody, signature, timestamp)) {
     throw new HttpError(401, "Invalid verification webhook signature.");
   }
 
   const event = normalizeDojahWebhook(payload);
+  const resolvedEventId = eventId || event.eventId;
+
+  if (!resolvedEventId) {
+    throw new HttpError(422, "Verification webhook event ID is missing.");
+  }
+
   if (!event.reference) {
     throw new HttpError(422, "Verification webhook reference is missing.");
+  }
+
+  if (event.appId && env.dojahAppId && event.appId !== env.dojahAppId) {
+    throw new HttpError(403, "Verification webhook application is not allowed.");
+  }
+
+  const duplicate = reserveKycWebhookEvent({
+    provider: "dojah",
+    eventId: resolvedEventId,
+    reference: event.reference,
+    rawBody,
+    payload,
+  });
+
+  if (duplicate) {
+    return { received: true, duplicate: true };
   }
 
   const row = db

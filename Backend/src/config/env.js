@@ -28,15 +28,31 @@ function listUrlsFromEnv(...values) {
     .filter(Boolean);
 }
 
-const frontendUrl = normalizeUrl(process.env.FRONTEND_URL || "http://localhost:5173");
+function isHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProduction = nodeEnv === "production";
+const frontendUrl = normalizeUrl(
+  process.env.FRONTEND_URL || (isProduction ? "" : "http://localhost:5173"),
+);
+const localCorsOrigins = isProduction
+  ? []
+  : [
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174",
+    ];
 const corsOrigins = Array.from(
   new Set([
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "https://gleank.vercel.app",
-    "https://beta.gleenc.com",
+    ...localCorsOrigins,
     frontendUrl,
     ...listUrlsFromEnv(
       process.env.CORS_ORIGINS,
@@ -63,9 +79,12 @@ const kycProvider = String(process.env.KYC_PROVIDER || "manual").toLowerCase();
 const mapProvider = String(process.env.MAP_PROVIDER || "manual").toLowerCase();
 const realtimeProvider = String(process.env.REALTIME_PROVIDER || "sse").toLowerCase();
 const ocrProvider = String(process.env.OCR_PROVIDER || "none").toLowerCase();
+const paystackCallbackUrl = normalizeUrl(
+  process.env.PAYSTACK_CALLBACK_URL || (frontendUrl ? `${frontendUrl}/payment/callback` : ""),
+);
 
 export const env = {
-  nodeEnv: process.env.NODE_ENV || "development",
+  nodeEnv,
   port: numberFromEnv(process.env.PORT, 4000),
   frontendUrl,
   corsOrigins,
@@ -109,9 +128,7 @@ export const env = {
     false,
   ),
   paystackBaseUrl: process.env.PAYSTACK_BASE_URL || "https://api.paystack.co",
-  paystackCallbackUrl:
-    process.env.PAYSTACK_CALLBACK_URL ||
-    `${process.env.FRONTEND_URL || "http://localhost:5173"}/payment/callback`,
+  paystackCallbackUrl,
   flutterwaveSecretKey: process.env.FLUTTERWAVE_SECRET_KEY || "",
   flutterwavePublicKey: process.env.FLUTTERWAVE_PUBLIC_KEY || "",
   
@@ -154,6 +171,7 @@ export const env = {
     process.env.RIDER_DISPATCH_TIMEOUT_HEAVY_FRAGILE_SECONDS,
     900,
   ),
+  riderDispatchOfferSeconds: numberFromEnv(process.env.RIDER_DISPATCH_OFFER_SECONDS, 90),
   maxDispatchAttempts: numberFromEnv(process.env.MAX_DISPATCH_ATTEMPTS, 6),
   sellerConfirmationWindowMinutes: numberFromEnv(
     process.env.SELLER_CONFIRMATION_WINDOW_MINUTES,
@@ -263,8 +281,34 @@ export const env = {
   firebaseProjectId: process.env.FIREBASE_PROJECT_ID || "",
   firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL || "",
   firebasePrivateKey: process.env.FIREBASE_PRIVATE_KEY || "",
-  isProduction: process.env.NODE_ENV === "production",
+  isProduction,
 };
+
+if (!["development", "test", "production"].includes(env.nodeEnv)) {
+  throw new Error("NODE_ENV must be one of development, test, or production.");
+}
+
+if (!env.frontendUrl || !isHttpUrl(env.frontendUrl)) {
+  throw new Error("FRONTEND_URL must be configured as an http(s) URL.");
+}
+
+if (env.isProduction && !env.frontendUrl.startsWith("https://")) {
+  throw new Error("FRONTEND_URL must use https in production.");
+}
+
+if (env.isProduction && env.corsOrigins.length === 0) {
+  throw new Error("At least one allowed frontend origin must be configured in production.");
+}
+
+for (const origin of env.corsOrigins) {
+  if (!isHttpUrl(origin)) {
+    throw new Error(`Invalid CORS origin configured: ${origin}`);
+  }
+
+  if (env.isProduction && !origin.startsWith("https://")) {
+    throw new Error(`Production CORS origins must use https: ${origin}`);
+  }
+}
 
 if (env.isProduction && env.jwtSecret.includes("local-development")) {
   throw new Error("JWT_SECRET must be configured in production.");
@@ -310,9 +354,7 @@ if (env.isProduction && env.storageProvider !== "cloudinary") {
 }
 
 if (env.isProduction && env.databaseProvider !== "postgres") {
-  console.warn(
-    "Production database is set to sqlite. Set DATABASE_PROVIDER=postgres and DATABASE_URL to use persistent Neon storage.",
-  );
+  throw new Error("DATABASE_PROVIDER=postgres and DATABASE_URL are required in production.");
 }
 
 if (env.isProduction && env.kycProvider === "mock") {
@@ -321,9 +363,9 @@ if (env.isProduction && env.kycProvider === "mock") {
   );
 }
 
-if (env.kycProvider === "dojah" && (!env.dojahAppId || !env.dojahSecretKey)) {
-  console.warn(
-    "KYC_PROVIDER=dojah is selected but DOJAH_APP_ID or DOJAH_SECRET_KEY is missing. KYC will fall back to manual review.",
+if (env.kycProvider === "dojah" && (!env.dojahAppId || !env.dojahSecretKey || !env.dojahWebhookSecret)) {
+  throw new Error(
+    "KYC_PROVIDER=dojah requires DOJAH_APP_ID, DOJAH_SECRET_KEY, and DOJAH_WEBHOOK_SECRET.",
   );
 }
 
@@ -337,7 +379,8 @@ if (
   env.isProduction &&
   env.paymentProvider === "paystack" &&
   env.paystackSecretKey.startsWith("sk_test_") &&
-  (env.paystackMode === "test" || env.allowPaystackTestKeysInProduction)
+  env.paystackMode === "test" &&
+  env.allowPaystackTestKeysInProduction
 ) {
   console.warn(
     "Paystack is running with test keys on a production deployment. Checkout is in test mode and will not collect real payments.",
@@ -347,13 +390,22 @@ if (
 if (
   env.isProduction &&
   env.paymentProvider === "paystack" &&
+  (!env.paystackCallbackUrl || !isHttpUrl(env.paystackCallbackUrl))
+) {
+  throw new Error("PAYSTACK_CALLBACK_URL must be configured as an http(s) URL in production.");
+}
+
+if (
+  env.isProduction &&
+  env.paymentProvider === "paystack" &&
   !env.paystackSecretKey.startsWith("sk_live_") &&
   !(
     env.paystackSecretKey.startsWith("sk_test_") &&
-    (env.paystackMode === "test" || env.allowPaystackTestKeysInProduction)
+    env.paystackMode === "test" &&
+    env.allowPaystackTestKeysInProduction
   )
 ) {
-  console.warn(
-    "PAYMENT_PROVIDER=paystack is enabled without an allowed PAYSTACK_SECRET_KEY. The API will start, but Paystack checkout will be blocked until a sk_live_ key is configured or PAYSTACK_MODE=test is set for test keys.",
+  throw new Error(
+    "PAYMENT_PROVIDER=paystack requires a live Paystack secret in production, or explicit PAYSTACK_MODE=test with ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION=true for real test-mode checks.",
   );
 }
