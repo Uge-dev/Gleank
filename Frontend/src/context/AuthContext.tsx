@@ -64,10 +64,6 @@ function syncLegacyUser(user: AuthUser | null) {
   window.dispatchEvent(new Event("gleank-auth-change"));
 }
 
-function riderAccountMainAppError() {
-  return new Error("This is a rider account. Please login from the rider dashboard.");
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -86,10 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshSession = useCallback(async () => {
     try {
       const session = await getCurrentSession();
-      if (session.user?.role === "rider") {
-        setSession(null, null);
-        return;
-      }
       setSession(session.user, session.store);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) {
@@ -115,20 +107,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: Boolean(state.user),
       async login(input) {
         const session = await loginRequest(input);
-        if (session.user.role === "rider") {
-          await logoutRequest().catch(() => undefined);
-          setSession(null, null);
-          throw riderAccountMainAppError();
-        }
         setSession(session.user, session.store);
         return session.user;
       },
       async register(input) {
         const session = await registerRequest(input);
-        if (session.user.role === "rider") {
-          setSession(null, null);
-          return session.user;
-        }
         setSession(session.user, session.store);
         return session.user;
       },

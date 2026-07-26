@@ -77,7 +77,8 @@ Minimum backend production variables:
 ```env
 NODE_ENV=production
 PORT=4000
-FRONTEND_URL=https://your-frontend-domain.com
+FRONTEND_URL=https://beta.gleenc.com
+CORS_ORIGINS=https://beta.gleenc.com
 JWT_SECRET=use-a-long-random-secret-at-least-48-characters
 SESSION_DAYS=7
 
@@ -107,7 +108,7 @@ PAYSTACK_MODE=live
 ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION=false
 PAYSTACK_SECRET_KEY=sk_live_...
 PAYSTACK_PUBLIC_KEY=pk_live_...
-PAYSTACK_CALLBACK_URL=https://your-frontend-domain.com/payment/callback
+PAYSTACK_CALLBACK_URL=https://beta.gleenc.com/payment/callback
 
 AUTO_VERIFY_AUTH=false
 AUTO_ACTIVATE_SELLER_SUBSCRIPTION=false

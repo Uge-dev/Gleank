@@ -13,6 +13,10 @@ export function getSellerWorkspace() {
   return apiRequest<SellerWorkspace>("/seller/workspace");
 }
 
+export function getSellerActionableOrderCount() {
+  return apiRequest<{ count: number }>("/seller/orders/actionable-count");
+}
+
 export type SellerPickupTaskItem = {
   id: string;
   productId: string;

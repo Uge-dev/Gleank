@@ -39,6 +39,7 @@ function isHttpUrl(value) {
 
 const nodeEnv = process.env.NODE_ENV || "development";
 const isProduction = nodeEnv === "production";
+const canonicalProductionFrontendUrl = "https://beta.gleenc.com";
 const frontendUrl = normalizeUrl(
   process.env.FRONTEND_URL || (isProduction ? "" : "http://localhost:5173"),
 );
@@ -58,7 +59,9 @@ const corsOrigins = Array.from(
       process.env.CORS_ORIGINS,
       process.env.FRONTEND_URL,
       process.env.FRONTEND_URLS,
-      process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+      !isProduction && process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : "",
     ),
   ].filter(Boolean)),
 );
@@ -296,6 +299,12 @@ if (env.isProduction && !env.frontendUrl.startsWith("https://")) {
   throw new Error("FRONTEND_URL must use https in production.");
 }
 
+if (env.isProduction && env.frontendUrl !== canonicalProductionFrontendUrl) {
+  throw new Error(
+    `FRONTEND_URL must be ${canonicalProductionFrontendUrl} in production.`,
+  );
+}
+
 if (env.isProduction && env.corsOrigins.length === 0) {
   throw new Error("At least one allowed frontend origin must be configured in production.");
 }
@@ -307,6 +316,12 @@ for (const origin of env.corsOrigins) {
 
   if (env.isProduction && !origin.startsWith("https://")) {
     throw new Error(`Production CORS origins must use https: ${origin}`);
+  }
+
+  if (env.isProduction && origin !== canonicalProductionFrontendUrl) {
+    throw new Error(
+      `Production CORS origins must contain only ${canonicalProductionFrontendUrl}. Remove ${origin}.`,
+    );
   }
 }
 
@@ -393,6 +408,16 @@ if (
   (!env.paystackCallbackUrl || !isHttpUrl(env.paystackCallbackUrl))
 ) {
   throw new Error("PAYSTACK_CALLBACK_URL must be configured as an http(s) URL in production.");
+}
+
+if (
+  env.isProduction &&
+  env.paymentProvider === "paystack" &&
+  env.paystackCallbackUrl !== `${canonicalProductionFrontendUrl}/payment/callback`
+) {
+  throw new Error(
+    `PAYSTACK_CALLBACK_URL must be ${canonicalProductionFrontendUrl}/payment/callback in production.`,
+  );
 }
 
 if (

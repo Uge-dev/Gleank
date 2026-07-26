@@ -74,6 +74,13 @@ function sslConfig(databaseUrl) {
   };
 }
 
+function normalizeDatabaseUrl(value) {
+  return String(value || "").replace(
+    /sslmode=(prefer|require|verify-ca)(?=&|$)/i,
+    "sslmode=verify-full",
+  );
+}
+
 function quoteIdentifier(value) {
   return `"${String(value).replaceAll('"', '""')}"`;
 }
@@ -180,7 +187,7 @@ async function main() {
 
   const sqlite = new Database(sqlitePath, { readonly: true });
   const postgres = new Client({
-    connectionString: databaseUrl,
+    connectionString: normalizeDatabaseUrl(databaseUrl),
     ssl: sslConfig(databaseUrl),
     connectionTimeoutMillis: Number(
       process.env.POSTGRES_CONNECTION_TIMEOUT_MS || 15000,

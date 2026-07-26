@@ -9,8 +9,15 @@ if (!databaseUrl) {
   process.exit(1);
 }
 
+function normalizeDatabaseUrl(value) {
+  return String(value || "").replace(
+    /sslmode=(prefer|require|verify-ca)(?=&|$)/i,
+    "sslmode=verify-full",
+  );
+}
+
 const pool = new Pool({
-  connectionString: databaseUrl.replace("sslmode=require", "sslmode=verify-full"),
+  connectionString: normalizeDatabaseUrl(databaseUrl),
   ssl: { rejectUnauthorized: true },
   max: 1,
   idleTimeoutMillis: 5_000,

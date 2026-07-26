@@ -20,6 +20,8 @@ import {
   IoChatbubbleEllipsesOutline,
   IoNotifications,
   IoNotificationsOutline,
+  IoReceipt,
+  IoReceiptOutline,
   IoLogOutOutline,
   IoStorefront,
   IoStorefrontOutline,
@@ -32,6 +34,7 @@ import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { getUnreadMessageCount } from "../services/message.service";
 import { getNotificationUnreadCount } from "../services/notification.service";
+import { getSellerActionableOrderCount } from "../services/seller.service";
 import { resolveMediaUrl } from "../utils/media";
 
 type NavItem = {
@@ -57,6 +60,7 @@ function GleencNav() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
+  const [sellerOrderCount, setSellerOrderCount] = useState(0);
 
   const { cartCount, openCartDrawer } = useCart();
 
@@ -72,17 +76,21 @@ function GleencNav() {
     if (!isLoggedIn) {
       setMessageUnreadCount(0);
       setNotificationUnreadCount(0);
+      setSellerOrderCount(0);
       return;
     }
 
     let active = true;
 
     async function loadCounts() {
-      const [messageResult, notificationResult] = await Promise.allSettled([
+      const [messageResult, notificationResult, sellerOrderResult] = await Promise.allSettled([
         user?.emailVerified
           ? getUnreadMessageCount()
           : Promise.resolve({ unreadCount: 0 }),
         getNotificationUnreadCount(),
+        isSellerExperience && user?.emailVerified
+          ? getSellerActionableOrderCount()
+          : Promise.resolve({ count: 0 }),
       ]);
 
       if (!active) return;
@@ -93,6 +101,10 @@ function GleencNav() {
 
       if (notificationResult.status === "fulfilled") {
         setNotificationUnreadCount(notificationResult.value.unreadCount);
+      }
+
+      if (sellerOrderResult.status === "fulfilled") {
+        setSellerOrderCount(Number(sellerOrderResult.value.count || 0));
       }
     }
 
@@ -113,7 +125,7 @@ function GleencNav() {
       window.clearInterval(timer);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isLoggedIn, user?.emailVerified]);
+  }, [isLoggedIn, isSellerExperience, user?.emailVerified]);
 
   function openAuthModal() {
     setAuthModalOpen(true);
@@ -203,6 +215,16 @@ function GleencNav() {
       sellerOnly: true,
     },
     {
+      label: "Orders",
+      mobileLabel: "Orders",
+      path: "/orders",
+      icon: <IoReceiptOutline />,
+      activeIcon: <IoReceipt />,
+      showOnDesktop: true,
+      showOnMobile: true,
+      sellerOnly: true,
+    },
+    {
       label: "Cart",
       mobileLabel: "Cart",
       path: "/cart",
@@ -244,6 +266,7 @@ function GleencNav() {
   function badgeCountFor(label: string) {
     if (label === "Messages") return messageUnreadCount;
     if (label === "Notifications") return notificationUnreadCount;
+    if (label === "Orders") return sellerOrderCount;
     return 0;
   }
 
@@ -252,7 +275,7 @@ function GleencNav() {
     navItems.find((item) => item.label === "Market"),
     navItems.find((item) => item.label === "Cart"),
     navItems.find((item) =>
-      isSellerExperience ? item.label === "Store" : item.label === "Notifications",
+      isSellerExperience ? item.label === "Orders" : item.label === "Notifications",
     ),
     navItems.find((item) => item.label === "Profile"),
   ].filter((item): item is NavItem => {
@@ -389,7 +412,13 @@ function GleencNav() {
 
                 <div>
                   <strong>{user?.name || "Gleenc User"}</strong>
-                  <small>{user?.role === "seller" ? "Seller" : "Buyer"}</small>
+                  <small>
+                    {user?.role === "seller"
+                      ? "Seller"
+                      : user?.role === "rider"
+                        ? "Rider"
+                        : "Buyer"}
+                  </small>
                 </div>
               </NavLink>
 
@@ -430,7 +459,13 @@ function GleencNav() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onLoginSuccess={(loggedInUser) => {
-          navigate(loggedInUser.role === "seller" ? "/dashboard" : "/profile");
+          navigate(
+            loggedInUser.role === "seller"
+              ? "/dashboard"
+              : loggedInUser.role === "rider"
+                ? "/rider"
+                : "/profile",
+          );
         }}
       />
 

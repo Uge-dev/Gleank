@@ -44,9 +44,9 @@ The script reports duplicate normalized emails, seller/rider profile conflicts, 
 
 Render/backend production should use one canonical frontend URL:
 
-- `FRONTEND_URL=https://your-frontend-domain`
-- `CORS_ORIGINS=https://your-frontend-domain`
-- `PAYSTACK_CALLBACK_URL=https://your-frontend-domain/payment/callback`
+- `FRONTEND_URL=https://beta.gleenc.com`
+- `CORS_ORIGINS=https://beta.gleenc.com`
+- `PAYSTACK_CALLBACK_URL=https://beta.gleenc.com/payment/callback`
 - `PAYMENT_PROVIDER=paystack`
 - `PAYSTACK_MODE=live` with `sk_live_...`, or explicit test mode with `ALLOW_PAYSTACK_TEST_KEYS_IN_PRODUCTION=true` while testing.
 
@@ -57,7 +57,7 @@ POST /api/payments/public/verify
 { "reference": "PAYSTACK_REFERENCE" }
 ```
 
-It verifies the reference server-side, returns a public-safe paid summary, and never marks payment paid from query parameters alone.
+It verifies the reference server-side, returns a public-safe status, returns order summary only to the authenticated payment owner, and never marks payment paid from query parameters alone.
 
 ## Required production placeholders
 
@@ -81,4 +81,3 @@ Set these in Render with real values:
 - `BREVO_API_KEY` or SMTP values
 - `KYC_PROVIDER=manual` or `dojah`
 - If `KYC_PROVIDER=dojah`: `DOJAH_APP_ID`, `DOJAH_SECRET_KEY`, `DOJAH_WEBHOOK_SECRET`
-

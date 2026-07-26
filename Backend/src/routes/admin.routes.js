@@ -13,7 +13,12 @@ import {
 } from "../data/adminStore.js";
 import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
-import { createSession, sessionCookieName, sessionCookieOptions } from "../lib/session.js";
+import {
+  createSession,
+  deleteSessionsForUser,
+  sessionCookieName,
+  sessionCookieOptions,
+} from "../lib/session.js";
 import { safeErrorMessage, shouldLogTechnicalError } from "../lib/safe-error-message.js";
 import {
   adminCreateMarket,
@@ -59,7 +64,7 @@ import {
   adminListPriceRanges,
   adminUpdatePriceRange,
 } from "../services/price-validation.service.js";
-import { listAdminAuditLogs } from "../services/audit-log.service.js";
+import { listAdminAuditLogs, logAdminAudit } from "../services/audit-log.service.js";
 
 const router = Router();
 
@@ -68,6 +73,16 @@ const adminLoginLimiter = rateLimit({
   limit: 8,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: "Too many admin login attempts. Please wait 15 minutes and try again.",
+      error: {
+        code: "ADMIN_RATE_LIMITED",
+        message: "Too many admin login attempts. Please wait 15 minutes and try again.",
+      },
+    });
+  },
 });
 
 function getConfiguredAdminEmail() {
@@ -101,7 +116,22 @@ function sendAdminError(res, error, fallback = "Admin request could not be compl
     console.error(error);
   }
   const message = safeErrorMessage(error, { status, fallback });
-  res.status(status).json({ message });
+  res.status(status).json({
+    success: false,
+    message,
+    error: {
+      code: status === 403 ? "ADMIN_FORBIDDEN" : "ADMIN_REQUEST_FAILED",
+      message,
+    },
+  });
+}
+
+function sendAdminLoginError(res, status, code, message) {
+  return res.status(status).json({
+    success: false,
+    message,
+    error: { code, message },
+  });
 }
 
 function requestMeta(req) {
@@ -121,20 +151,55 @@ function adminAuthForRequest(req) {
 
 router.post("/login", adminLoginLimiter, async (req, res) => {
   const { email, password } = req.body || {};
-  const adminProfile = findAdminByEmail(email);
+  const normalizedEmail = String(email || "").trim().toLowerCase();
 
-  if (
-    !adminProfile ||
-    !adminProfile.is_active ||
-    !(await bcrypt.compare(String(password || ""), adminProfile.password_hash || ""))
-  ) {
-    return res.status(401).json({ message: "Invalid admin login details" });
+  if (!normalizedEmail || !password) {
+    return sendAdminLoginError(
+      res,
+      422,
+      "ADMIN_LOGIN_REQUIRED",
+      "Enter the admin email and password.",
+    );
   }
 
+  const adminProfile = findAdminByEmail(email);
+  const passwordMatches = adminProfile
+    ? await bcrypt.compare(String(password || ""), adminProfile.password_hash || "")
+    : false;
+
+  if (!adminProfile || !passwordMatches) {
+    return sendAdminLoginError(
+      res,
+      401,
+      "INVALID_ADMIN_LOGIN",
+      "Invalid admin login details.",
+    );
+  }
+
+  if (!adminProfile.is_active) {
+    return sendAdminLoginError(
+      res,
+      403,
+      "ADMIN_ACCOUNT_DISABLED",
+      "This admin account is disabled.",
+    );
+  }
+
+  deleteSessionsForUser(adminProfile.id);
   const session = createSession(adminProfile.id, requestMeta(req));
   res.cookie(sessionCookieName, session.token, sessionCookieOptions());
+  logAdminAudit({
+    adminId: adminProfile.id,
+    action: "admin_login",
+    targetType: "admin",
+    targetId: adminProfile.id,
+    summary: "Admin logged in.",
+    metadata: { email: normalizedEmail },
+    ...requestMeta(req),
+  });
 
   res.json({
+    success: true,
     token: "session",
     admin: serializeAdminProfile(adminProfile),
   });

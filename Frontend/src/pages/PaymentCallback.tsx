@@ -7,11 +7,12 @@ import {
   FiClock,
   FiLoader,
 } from "react-icons/fi";
+import { ApiError } from "../lib/api";
 import { verifyPublicPayment, type GleencPayment } from "../services/payment.service";
 import { useCart } from "../context/CartContext";
 import "./PaymentCallback.css";
 
-type CallbackState = "loading" | "success" | "pending" | "failed";
+type CallbackState = "loading" | "success" | "pending" | "failed" | "unavailable";
 
 function getPaymentRedirectPath(payment: GleencPayment) {
   if (payment.purpose === "used_order" && payment.usedOrderId) {
@@ -32,13 +33,13 @@ function getPaymentRedirectPath(payment: GleencPayment) {
 function PaymentCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { clearCart } = useCart();
+  const { removeCartProducts } = useCart();
 
-  const clearCartRef = useRef(clearCart);
+  const removeCartProductsRef = useRef(removeCartProducts);
 
   useEffect(() => {
-    clearCartRef.current = clearCart;
-  }, [clearCart]);
+    removeCartProductsRef.current = removeCartProducts;
+  }, [removeCartProducts]);
 
   const [state, setState] = useState<CallbackState>("loading");
   const [message, setMessage] = useState("Confirming your payment status...");
@@ -79,7 +80,11 @@ function PaymentCallback() {
 
         if (paymentStatus === "paid") {
           if (payment.purpose === "store_order") {
-            clearCartRef.current();
+            const productIds =
+              payment.summary?.items
+                ?.map((item) => item.productId || "")
+                .filter(Boolean) || [];
+            removeCartProductsRef.current(productIds);
           }
           sessionStorage.removeItem("gleank_pending_payment_reference");
 
@@ -114,6 +119,14 @@ function PaymentCallback() {
       .catch((error) => {
         if (!active) return;
 
+        if (error instanceof ApiError && [0, 408, 502, 503, 504].includes(error.status)) {
+          setState("unavailable");
+          setMessage(
+            "We could not confirm the payment right now. Your reference is saved; please check again shortly.",
+          );
+          return;
+        }
+
         setState("failed");
         setMessage(
           error instanceof Error
@@ -136,7 +149,7 @@ function PaymentCallback() {
       <FiLoader />
     ) : state === "success" ? (
       <FiCheckCircle />
-    ) : state === "pending" ? (
+    ) : state === "pending" || state === "unavailable" ? (
       <FiClock />
     ) : (
       <FiAlertCircle />
@@ -154,7 +167,7 @@ function PaymentCallback() {
             ? "Confirming payment"
             : state === "success"
               ? "Payment successful"
-              : state === "pending"
+              : state === "pending" || state === "unavailable"
                 ? "Payment pending"
                 : "Payment issue"}
         </h1>

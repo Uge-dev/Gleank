@@ -27,6 +27,7 @@ import {
   createRiderAssignment,
   listAvailableRiders,
 } from "../services/rider.service.js";
+import { getSellerActionableOrderCount } from "../services/order.service.js";
 import {
   createProduct,
   createService,
@@ -204,6 +205,10 @@ sellerRouter.get("/workspace", (req, res) => {
     services: workspace.services,
     highlights,
   });
+});
+
+sellerRouter.get("/orders/actionable-count", (req, res) => {
+  res.json({ count: getSellerActionableOrderCount(req.auth) });
 });
 
 sellerRouter.get("/orders/:orderId/available-riders", (req, res) => {

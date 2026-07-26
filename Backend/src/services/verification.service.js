@@ -948,7 +948,7 @@ function notifyCaseUser(caseRow, title, body) {
     title,
     body,
     actionLabel: "Open verification",
-    actionPath: caseRow.role === "rider" ? "/rider/verification" : "/seller-onboarding",
+    actionPath: caseRow.role === "rider" ? "/rider/verification" : "/seller/onboarding",
   });
 }
 

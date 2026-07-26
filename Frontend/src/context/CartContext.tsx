@@ -39,6 +39,7 @@ type CartContextValue = {
   increaseQuantity: (id: string) => void;
   decreaseQuantity: (id: string) => void;
   removeFromCart: (id: string) => void;
+  removeCartProducts: (ids: string[]) => void;
   clearCart: () => void;
 };
 
@@ -272,6 +273,20 @@ export function CartProvider({ children }: CartProviderProps) {
     );
   }
 
+  function removeCartProducts(ids: string[]) {
+    if (!currentUserId) return;
+
+    const productIds = new Set(
+      ids.map((id) => String(id || "").trim()).filter(Boolean),
+    );
+
+    if (!productIds.size) return;
+
+    setCartItems((currentItems) =>
+      currentItems.filter((item) => !productIds.has(item.id)),
+    );
+  }
+
   function clearCart() {
     setCartItems([]);
 
@@ -294,6 +309,7 @@ export function CartProvider({ children }: CartProviderProps) {
       increaseQuantity,
       decreaseQuantity,
       removeFromCart,
+      removeCartProducts,
       clearCart,
     }),
     [cartDrawerOpen, cartCount, cartItems, cartSubtotal, currentUserId],

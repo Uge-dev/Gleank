@@ -38,6 +38,7 @@ export type InitializedPayment = GleencPayment;
 export type VerifyPaymentResult = GleencPayment;
 
 export type PaymentSummaryItem = {
+  productId?: string;
   name: string;
   imageUrl?: string | null;
   quantity: number;

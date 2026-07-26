@@ -23,7 +23,7 @@ function Login() {
         password: String(formData.get("password") || ""),
       });
       if (!user.emailVerified) {
-        navigate("/verify-email");
+        navigate(user.role === "rider" ? "/rider/verify-email" : "/verify-email");
         return;
       }
       if (user.role === "admin") {
@@ -31,7 +31,13 @@ function Login() {
         return;
       }
 
-      navigate(user.role === "seller" ? "/dashboard" : "/profile");
+      navigate(
+        user.role === "seller"
+          ? "/dashboard"
+          : user.role === "rider"
+            ? "/rider"
+            : "/profile",
+      );
     } catch (requestError) {
       setError(
         requestError instanceof Error

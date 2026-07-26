@@ -38,7 +38,7 @@ const fallbackZones: DeliveryZone[] = [
 ];
 
 function Checkout() {
-  const { cartItems, cartSubtotal, clearCart } = useCart();
+  const { cartItems, cartSubtotal } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -251,7 +251,6 @@ function Checkout() {
       );
 
       if (paymentMethod === "pay_on_delivery") {
-        clearCart();
         navigate(`/orders/${response.orders[0]?.id || ""}`);
         return;
       }
@@ -270,7 +269,6 @@ function Checkout() {
         );
       } catch (paymentError) {
         const orderId = createdOrders[0]?.id || "";
-        clearCart();
         navigate(`/orders/${orderId}`, {
           state: {
             paymentNotice:

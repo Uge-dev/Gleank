@@ -47,10 +47,9 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
         password: String(formData.get("password") || ""),
       });
       onClose();
-      onLoginSuccess?.(user);
 
       if (!user.emailVerified) {
-        navigate("/verify-email");
+        navigate(user.role === "rider" ? "/rider/verify-email" : "/verify-email");
         return;
       }
 
@@ -58,6 +57,8 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
         navigate("/admin");
         return;
       }
+
+      onLoginSuccess?.(user);
     } catch (requestError) {
       setError(
         requestError instanceof Error

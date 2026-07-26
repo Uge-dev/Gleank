@@ -274,7 +274,6 @@ riderRouter.post(
       message: "Delivery code verified successfully.",
       data: {
         orderStatus: "delivery_verified",
-        packageTagCode: assignment.packageTagCode || "",
         products: [],
         assignment,
       },

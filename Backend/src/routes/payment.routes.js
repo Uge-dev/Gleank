@@ -53,7 +53,10 @@ paymentRouter.post(
   "/public/verify",
   paymentVerifyLimiter,
   asyncRoute(async (req, res) => {
-    const payment = await verifyPublicPayment(String(req.body?.reference || ""));
+    const payment = await verifyPublicPayment(
+      String(req.body?.reference || ""),
+      req.auth?.user_id || "",
+    );
     res.json({
       success: true,
       message: payment.status === "paid" ? "Payment verified successfully." : "Payment verification checked.",
@@ -67,7 +70,10 @@ paymentRouter.get(
   "/public/:reference",
   paymentVerifyLimiter,
   asyncRoute(async (req, res) => {
-    const payment = await verifyPublicPayment(req.params.reference);
+    const payment = await verifyPublicPayment(
+      req.params.reference,
+      req.auth?.user_id || "",
+    );
     res.json({
       success: true,
       message: payment.status === "paid" ? "Payment verified successfully." : "Payment verification checked.",

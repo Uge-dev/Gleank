@@ -377,7 +377,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     buyerName: reveal ? row.buyer_name : "Locked until pickup",
     buyerPhone: reveal ? row.buyer_phone : "",
     packageSummary: revealPackage ? row.package_summary : "Accept this delivery to see package summary.",
-    packageTagCode: revealPackage ? row.package_tag_code || "" : "",
+    packageTagCode: "",
     sellerPickupCodeVerifiedAt: row.seller_pickup_code_verified_at || row.picked_up_at || null,
     buyerDeliveryCodeVerifiedAt: row.buyer_delivery_code_verified_at || null,
     packageValueKobo: 0,
@@ -921,7 +921,7 @@ export function getRiderAssignment(auth, assignmentId) {
 export function listAvailableRiders(auth) {
   if (!auth || !["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Only sellers or admins can view available riders.");
   return db.prepare(`
-    SELECT users.id, users.name, users.phone, rider_profiles.*
+    SELECT users.id, users.name, rider_profiles.*
     FROM rider_profiles
     JOIN users ON users.id = rider_profiles.user_id
     WHERE users.is_active = 1
@@ -935,9 +935,9 @@ export function listAvailableRiders(auth) {
     .map((row) => ({
       id: row.user_id,
       name: row.name || row.full_name,
-      phone: row.phone,
       profile: serializeProfile(row),
       eligibility: evaluateRiderEligibility(row.user_id, { maxActiveAssignments: 2 }),
+      privacyNote: "Private phone details unlock only after a delivery assignment is accepted.",
     }));
 }
 
@@ -1722,15 +1722,10 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
         safety_status = COALESCE(?, safety_status),
         availability = CASE
           WHEN ? IN ('rejected','suspended') THEN 'offline'
-          WHEN ? = 'verified' THEN 'online'
           ELSE availability
         END,
         availability_mode = CASE
           WHEN ? IN ('rejected','suspended') THEN 'offline'
-          WHEN ? = 'verified' THEN CASE
-            WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
-            ELSE 'online_zone_only'
-          END
           ELSE availability_mode
         END,
         updated_at = ?
@@ -1741,8 +1736,6 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
     input.verificationLevel ?? null,
     nextMaxPackageValueKobo,
     input.safetyStatus ?? null,
-    input.verificationStatus,
-    input.verificationStatus,
     input.verificationStatus,
     input.verificationStatus,
     now,

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shouldUseApi, shouldUseMock } from '../config/env';
+import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
 import type { Availability, Rider } from '../types';
@@ -26,9 +27,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     if (!shouldUseApi()) return;
-    const response = await riderApi.session();
-    setRider(response.rider);
-    setApiConnected(true);
+    try {
+      const response = await riderApi.session();
+      setRider(response.rider);
+      setApiConnected(true);
+    } catch (error) {
+      setApiConnected(false);
+      if (error instanceof ApiClientError && [401, 403].includes(Number(error.status || 0))) {
+        setRider(null);
+      }
+      throw error;
+    }
   }, []);
 
   useEffect(() => {
@@ -43,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch(() => {
         if (!mounted) return;
         setApiConnected(false);
-        setRider(null);
       })
       .finally(() => mounted && setLoading(false));
     return () => {

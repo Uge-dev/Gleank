@@ -635,7 +635,13 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.equal(publicVerifyResponse.body.payment.status, "paid");
   assert.equal(publicVerifyResponse.body.payment.userId, undefined);
   assert.match(publicVerifyResponse.body.payment.successPath, /^\/order-success\?paymentRef=/);
-  assert.equal(publicVerifyResponse.body.payment.summary.orderId, orderId);
+  assert.equal(publicVerifyResponse.body.payment.summary, null);
+
+  const ownerVerifyResponse = await buyerAgent
+    .post("/api/payments/public/verify")
+    .send({ reference });
+  assert.equal(ownerVerifyResponse.status, 200);
+  assert.equal(ownerVerifyResponse.body.payment.summary.orderId, orderId);
 
   const buyerOrderResponse = await buyerAgent.get(`/api/orders/${orderId}`);
   assert.equal(buyerOrderResponse.status, 200);

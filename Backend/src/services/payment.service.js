@@ -46,6 +46,74 @@ function stringifyMetadata(row, patch = {}) {
   });
 }
 
+function parseProviderMetadata(data = {}) {
+  const metadata = data?.metadata;
+
+  if (!metadata) return {};
+
+  if (typeof metadata === "string") {
+    return parseMetadata(metadata);
+  }
+
+  if (typeof metadata === "object" && !Array.isArray(metadata)) {
+    return metadata;
+  }
+
+  return {};
+}
+
+function expectedTargetIdForPayment(row) {
+  if (row.purpose === "store_order") return row.order_id || "";
+  if (row.purpose === "used_order") return row.used_order_id || "";
+  if (row.purpose === "seller_subscription") {
+    return row.subscription_id || row.user_id || "";
+  }
+  return "";
+}
+
+function assertPaystackTransactionMatches(row, data = {}) {
+  const metadata = parseProviderMetadata(data);
+  const paidAmountKobo = Number(data.amount || 0);
+  const currency = String(data.currency || "NGN").toUpperCase();
+  const expectedTargetId = expectedTargetIdForPayment(row);
+  const mismatches = [];
+
+  if (String(data.reference || "") !== String(row.reference)) {
+    mismatches.push("reference");
+  }
+
+  if (paidAmountKobo !== Number(row.amount_kobo)) {
+    mismatches.push("amount");
+  }
+
+  if (currency !== String(row.currency || "NGN").toUpperCase()) {
+    mismatches.push("currency");
+  }
+
+  if (String(metadata.app || "") !== "gleenc") {
+    mismatches.push("app metadata");
+  }
+
+  if (String(metadata.purpose || "") !== String(row.purpose || "")) {
+    mismatches.push("purpose metadata");
+  }
+
+  if (String(metadata.userId || "") !== String(row.user_id || "")) {
+    mismatches.push("user metadata");
+  }
+
+  if (expectedTargetId && String(metadata.targetId || "") !== String(expectedTargetId)) {
+    mismatches.push("target metadata");
+  }
+
+  if (mismatches.length) {
+    throw new HttpError(
+      422,
+      `Payment verification mismatch (${mismatches.join(", ")}). Please contact support.`,
+    );
+  }
+}
+
 function getPaymentRedirectPath(row) {
   if (!row) return "/orders";
 
@@ -101,13 +169,14 @@ function getStoreOrderPaymentSummary(row) {
 
   const items = db
     .prepare(`
-      SELECT product_name, product_image_url, quantity, total_kobo
+      SELECT product_id, product_name, product_image_url, quantity, total_kobo
       FROM order_items
       WHERE order_id = ?
       ORDER BY created_at ASC
     `)
     .all(order.id)
     .map((item) => ({
+      productId: item.product_id || "",
       name: item.product_name || "",
       imageUrl: item.product_image_url || null,
       quantity: Number(item.quantity || 0),
@@ -527,6 +596,26 @@ function insertOrderEvent(orderId, status, label, note = "") {
   `).run(createId("evt"), orderId, status, label, note, nowIso());
 }
 
+function clearPurchasedCartLines(row) {
+  if (!row?.order_id || !row?.user_id) return;
+
+  const productIds = db
+    .prepare("SELECT product_id FROM order_items WHERE order_id = ?")
+    .all(row.order_id)
+    .map((item) => item.product_id)
+    .filter(Boolean);
+
+  if (!productIds.length) return;
+
+  const placeholders = productIds.map(() => "?").join(", ");
+
+  db.prepare(`
+    DELETE FROM cart_items
+    WHERE user_id = ?
+      AND product_id IN (${placeholders})
+  `).run(row.user_id, ...productIds);
+}
+
 function insertUsedOrderEvent(orderId, status, label, note = "") {
   db.prepare(`
     INSERT INTO used_market_order_events (id, order_id, status, label, note, created_at)
@@ -585,6 +674,7 @@ function markStoreOrderPaid(row) {
     "Payment confirmed",
     `Paystack payment verified. Reference: ${row.reference}`,
   );
+  clearPurchasedCartLines(row);
   ensurePayoutForStoreOrder(order.id);
   syncOrderReadinessForDispatch(order.id);
 }
@@ -820,24 +910,14 @@ async function verifyPaymentRow(row) {
 
   const data = providerResponse?.data || {};
   const providerStatus = String(data.status || "");
-  const paidAmountKobo = Number(data.amount || 0);
-  const currency = String(data.currency || "NGN").toUpperCase();
   const internalStatus = internalStatusFromPaystackStatus(providerStatus);
 
   if (providerStatus === "success") {
-    if (String(data.reference || "") !== String(row.reference)) {
+    try {
+      assertPaystackTransactionMatches(row, data);
+    } catch (error) {
       updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment reference mismatch. Please contact support.");
-    }
-
-    if (paidAmountKobo !== Number(row.amount_kobo)) {
-      updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment amount mismatch. Please contact support.");
-    }
-
-    if (currency !== String(row.currency || "NGN").toUpperCase()) {
-      updatePaymentFromProvider(row, providerResponse, "failed");
-      throw new HttpError(422, "Payment currency mismatch. Please contact support.");
+      throw error;
     }
 
     transaction(() => {
@@ -893,7 +973,14 @@ export async function initializePayment(userId, input) {
     const subscription = assertSellerSubscriptionCanStartCheckout(userId);
     const existingPending = findRecentPendingSellerSubscriptionPayment(userId);
     if (existingPending) {
-      return serializePayment(existingPending);
+      if (existingPending.provider === "paystack") {
+        const checkedPayment = await verifyPaymentRow(existingPending);
+        if (checkedPayment?.status === "initialized") {
+          return serializePayment(checkedPayment);
+        }
+      } else if (!env.isProduction) {
+        return serializePayment(existingPending);
+      }
     }
 
     const store = findStoreForSeller(userId);
@@ -942,7 +1029,7 @@ export async function initializePayment(userId, input) {
     amountKobo,
     authorizationUrl,
     metadata: {
-      targetId,
+      targetId: targetId || subscriptionId || userId,
       sellerId: purpose === "seller_subscription" ? user.id : "",
       sellerEmail: purpose === "seller_subscription" ? user.email : "",
       storeId: purpose === "seller_subscription" ? findStoreForSeller(userId)?.id || "" : "",
@@ -1000,7 +1087,7 @@ export async function verifyPayment(userId, paymentReference) {
   return serializePayment(await verifyPaymentRow(row), { includeSummary: true });
 }
 
-export async function verifyPublicPayment(paymentReference) {
+export async function verifyPublicPayment(paymentReference, viewerUserId = "") {
   const row = findPaymentByReference(clean(paymentReference, 200));
 
   if (!row) {
@@ -1008,10 +1095,11 @@ export async function verifyPublicPayment(paymentReference) {
   }
 
   const payment = await verifyPaymentRow(row);
+  const isOwner = Boolean(viewerUserId && payment.user_id === viewerUserId);
 
   return serializePayment(payment, {
     publicView: true,
-    includeSummary: payment.status === "paid",
+    includeSummary: payment.status === "paid" && isOwner,
   });
 }
 
@@ -1076,17 +1164,11 @@ export async function handlePaystackWebhook({ rawBody, body, signature }) {
     return { received: true, payment: serializePayment(findPaymentByReference(row.reference)) };
   }
 
-  const paidAmountKobo = Number(data.amount || 0);
-  const currency = String(data.currency || "NGN").toUpperCase();
-
-  if (paidAmountKobo !== Number(row.amount_kobo)) {
+  try {
+    assertPaystackTransactionMatches(row, data);
+  } catch (error) {
     updatePaymentFromProvider(row, { data }, "failed");
-    throw new HttpError(422, "Webhook payment amount mismatch.");
-  }
-
-  if (currency !== String(row.currency || "NGN").toUpperCase()) {
-    updatePaymentFromProvider(row, { data }, "failed");
-    throw new HttpError(422, "Webhook payment currency mismatch.");
+    throw error;
   }
 
   transaction(() => {

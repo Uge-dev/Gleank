@@ -348,6 +348,45 @@ export function listOrders(userId) {
   return getOrderRowsForUser(userId).map((row) => hydrateOrder(row, userId));
 }
 
+export function getSellerActionableOrderCount(user) {
+  if (!user || !["seller", "admin"].includes(user.role)) {
+    throw new HttpError(403, "Only sellers can view seller order counts.");
+  }
+
+  const sellerId = user.role === "admin"
+    ? String(user.sellerId || user.user_id || "")
+    : user.user_id;
+
+  if (!sellerId) {
+    throw new HttpError(422, "Seller account is required.");
+  }
+
+  const row = db
+    .prepare(`
+      SELECT COUNT(*) AS count
+      FROM orders
+      WHERE seller_id = ?
+        AND status NOT IN ('completed', 'cancelled', 'delivered', 'refunded')
+        AND (
+          payment_status = 'paid'
+          OR payment_method = 'pay_on_delivery'
+          OR seller_confirmation_required = 1
+          OR stage4_status IN (
+            'pending_seller_confirmation',
+            'seller_confirmation_pending',
+            'seller_confirmed',
+            'ready_for_dispatch',
+            'dispatch_ready',
+            'rider_assignment_pending',
+            'rider_assigned'
+          )
+        )
+    `)
+    .get(sellerId);
+
+  return Number(row?.count || 0);
+}
+
 export function getOrder(userId, idOrCode) {
   const row = String(idOrCode || "").startsWith("GLK-")
     ? getOrderRowByCodeForUser(userId, idOrCode)

@@ -16,11 +16,18 @@ function sslConfig(databaseUrl) {
   };
 }
 
+function normalizeDatabaseUrl(databaseUrl) {
+  return String(databaseUrl || "").replace(
+    /sslmode=(prefer|require|verify-ca)(?=&|$)/i,
+    "sslmode=verify-full",
+  );
+}
+
 async function getClient() {
   if (client) return client;
 
   client = new Client({
-    connectionString: workerData.databaseUrl,
+    connectionString: normalizeDatabaseUrl(workerData.databaseUrl),
     ssl: sslConfig(workerData.databaseUrl),
     connectionTimeoutMillis: Number(
       process.env.POSTGRES_CONNECTION_TIMEOUT_MS || 15000,

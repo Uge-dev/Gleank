@@ -86,31 +86,35 @@ export function addCartItem(userId, input) {
   }
 
   const product = activeProduct(productId);
-  const safeQuantity = Math.min(quantity, product.stock);
   const now = new Date().toISOString();
 
   db.prepare(`
     INSERT INTO cart_items (id, user_id, product_id, quantity, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, product_id) DO UPDATE SET
-      quantity = MIN(cart_items.quantity + excluded.quantity, ?),
+      quantity = MIN(cart_items.quantity + excluded.quantity, 99),
       updated_at = excluded.updated_at
   `).run(
     createId("crt"),
     userId,
     productId,
-    safeQuantity,
+    quantity,
     now,
     now,
-    product.stock,
   );
 
   return listCart(userId);
 }
 
 export function setCartItemQuantity(userId, productId, quantity) {
-  const product = activeProduct(productId);
-  const nextQuantity = Math.max(1, Math.min(product.stock, Math.min(99, Number(quantity || 1))));
+  activeProduct(productId);
+  const requestedQuantity = Number(quantity || 1);
+
+  if (!Number.isFinite(requestedQuantity)) {
+    throw new HttpError(422, "A valid cart quantity is required.");
+  }
+
+  const nextQuantity = Math.max(1, Math.min(99, requestedQuantity));
 
   db.prepare(`
     UPDATE cart_items
