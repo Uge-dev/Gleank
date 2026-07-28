@@ -447,20 +447,7 @@ async function shareProduct(productId: string, productName: string) {
       tone: "blue",
       query: "Phones",
     },
-    {
-      title: "Academic materials",
-      subtitle: "Books, notes, handouts",
-      icon: <FiBookOpen />,
-      tone: "purple",
-      query: "Books",
-    },
-    {
-      title: "Student services",
-      subtitle: "Repairs, typing, design",
-      icon: <FiCpu />,
-      tone: "dark",
-      query: "Services",
-    },
+    
   ];
 
   const storeBySlug = useMemo(
