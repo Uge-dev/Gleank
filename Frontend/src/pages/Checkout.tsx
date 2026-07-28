@@ -38,7 +38,7 @@ const fallbackZones: DeliveryZone[] = [
 ];
 
 function Checkout() {
-  const { cartItems, cartSubtotal } = useCart();
+  const { cartItems } = useCart();
   const { user, isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
@@ -57,6 +57,18 @@ function Checkout() {
   const [stockNotice, setStockNotice] = useState("");
   const [stockNoticeSellerSlug, setStockNoticeSellerSlug] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const productCartItems = useMemo(
+    () => cartItems.filter((item) => item.itemType !== "used_listing"),
+    [cartItems],
+  );
+  const cartSubtotal = useMemo(
+    () =>
+      productCartItems.reduce(
+        (total, item) => total + item.numericPrice * item.quantity,
+        0,
+      ),
+    [productCartItems],
+  );
 
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
   const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
@@ -67,8 +79,8 @@ function Checkout() {
       : "";
 
   const sellerCount = useMemo(() => {
-    return new Set(cartItems.map((item) => item.sellerId)).size;
-  }, [cartItems]);
+    return new Set(productCartItems.map((item) => item.sellerId)).size;
+  }, [productCartItems]);
 
   useEffect(() => {
     if (!campus.trim()) return;
@@ -130,7 +142,7 @@ function Checkout() {
   }, [campus, deliveryOption, selectedLocation]);
 
   useEffect(() => {
-    if (!isAuthenticated || cartItems.length === 0) {
+    if (!isAuthenticated || productCartItems.length === 0) {
       setGroupingPreview(null);
       return;
     }
@@ -139,7 +151,7 @@ function Checkout() {
     setIsGrouping(true);
 
     void getCheckoutGroupingPreview({
-      items: cartItems.map((item) => ({
+      items: productCartItems.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
       })),
@@ -157,7 +169,7 @@ function Checkout() {
     return () => {
       active = false;
     };
-  }, [cartItems, isAuthenticated]);
+  }, [productCartItems, isAuthenticated]);
 
   function isInventoryError(message: string) {
     return /out of stock|stock|cart is no longer available|no longer available|only \d+ item/i.test(message);
@@ -166,7 +178,7 @@ function Checkout() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (cartItems.length === 0 || isSubmitting) return;
+    if (productCartItems.length === 0 || isSubmitting) return;
 
     if (!isAuthenticated) {
       navigate("/login?redirect=/checkout");
@@ -195,7 +207,7 @@ function Checkout() {
       return;
     }
 
-    const overstockItem = cartItems.find((item) => {
+    const overstockItem = productCartItems.find((item) => {
       return (
         item.stock !== undefined &&
         Number.isFinite(Number(item.stock)) &&
@@ -239,7 +251,7 @@ function Checkout() {
         pickupLocation: deliveryOption === "Pickup" ? selectedPickup : "",
         note,
         paymentMethod,
-        items: cartItems.map((item) => ({
+        items: productCartItems.map((item) => ({
           productId: item.id,
           quantity: item.quantity,
         })),
@@ -302,21 +314,21 @@ function Checkout() {
     }
   }
 
-  if (cartItems.length === 0) {
+  if (productCartItems.length === 0) {
     return (
       <section className="page-shell checkout-page">
         <EmptyState
           icon={<FiShoppingCart />}
           eyebrow="Empty checkout"
-          title="Your cart is empty"
-          message="Add products to your cart before proceeding to checkout."
-          actionLabel="Go to Search"
+          title="No store products are ready here"
+          message="Used Market items use their own protected checkout. Return to your cart and checkout each used item separately."
+          actionLabel="Return to Cart"
           onAction={() => {
-            navigate("/search");
+            navigate("/cart");
           }}
         />
-        <Link className="back-link" to="/search">
-          <FiArrowLeft /> Back to Feed
+        <Link className="back-link" to="/cart">
+          <FiArrowLeft /> Back to Cart
         </Link>
       </section>
     );
@@ -581,13 +593,13 @@ function Checkout() {
             <div>
               <h2>Order summary</h2>
               <p>
-                {cartItems.length} item(s) from {sellerCount} seller(s)
+                {productCartItems.length} item(s) from {sellerCount} seller(s)
               </p>
             </div>
           </div>
 
           <div className="checkout-items-list">
-            {cartItems.map((item) => (
+            {productCartItems.map((item) => (
               <div className="checkout-item-row" key={item.id}>
                 <img src={item.image} alt={item.name} />
                 <div>

@@ -163,6 +163,9 @@ export type AdminProduct = {
   stockStatus: AdminStatus;
   type: "product" | "service";
   status: AdminStatus;
+  moderationStatus: string;
+  moderationNote?: string;
+  moderationReasons?: Array<Record<string, unknown>>;
   flag: AdminStatus | "clean";
   dateUploaded: string;
 };

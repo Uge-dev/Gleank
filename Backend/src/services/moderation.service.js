@@ -119,7 +119,13 @@ function addReason(reasons, code, message, score = 0, action = "review") {
   reasons.push({ code, message, score, action });
 }
 
-export function evaluateListingModeration({ store, input, images = [], itemType = "product" }) {
+export function evaluateListingModeration({
+  store,
+  input,
+  images = [],
+  itemType = "product",
+  imageModeration = null,
+}) {
   const requestedStatus = clean(input?.status || "draft", 40);
   const stock = Number(input?.stock ?? 1);
   const availabilityStatus = availabilityFromInput(input, stock);
@@ -202,81 +208,53 @@ export function evaluateListingModeration({ store, input, images = [], itemType 
     });
   }
 
+  if (imageModeration?.flagged) {
+    addReason(
+      reasons,
+      "image_contact_or_link",
+      "A phone number, social handle, payment instruction, or external link was detected in a listing image.",
+      55,
+      "review",
+    );
+    score += 55;
+    reviewRequired = true;
+
+    logPaymentProtectionEvent({
+      actorId: store.owner_id,
+      contextType: itemType,
+      contextId: "",
+      source: "listing_image_ocr",
+      action: "review",
+      severity: 55,
+      reasons: imageModeration.reasons || [],
+      originalText: imageModeration.extractedText || "",
+      sanitizedText: "",
+    });
+  }
+
+  if (imageModeration?.reviewRequired && !imageModeration.flagged) {
+    addReason(
+      reasons,
+      "image_scan_incomplete",
+      "Image safety scanning did not complete, so this listing needs admin review before publishing.",
+      30,
+      "review",
+    );
+    score += 30;
+    reviewRequired = true;
+  }
+
   if (images.length === 0) {
     addReason(reasons, "missing_images", "Add clear product images to increase buyer trust.", 10, "info");
     score += 10;
   }
 
   const priceKobo = priceKoboFromInput(input);
-  const range = categoryPriceRange(input);
-
-  if (range && priceKobo > 0 && priceKobo < range.min && requestedStatus === "active") {
-    addReason(
-      reasons,
-      "below_category_price_range",
-      "This price looks unusually low for the selected category. The listing was saved for review instead of going public.",
-      25,
-      "review",
-    );
-    score += 25;
-    reviewRequired = true;
-  }
-
-  if (range && priceKobo > range.max && requestedStatus === "active") {
-    addReason(
-      reasons,
-      "above_category_price_range",
-      "This price is above the normal range for the selected category and needs admin review before publishing.",
-      25,
-      "review",
-    );
-    score += 25;
-    reviewRequired = true;
-  }
 
   if (priceKobo > 500_000_00) {
     addReason(reasons, "high_value", "High-value listings need admin review before going public.", 35, "review");
     score += 35;
     reviewRequired = true;
-  }
-
-  if (priceKobo > 150_000_00 && images.length < 2) {
-    addReason(reasons, "high_value_low_images", "High-value listings need multiple clear images.", 20, "review");
-    score += 20;
-    reviewRequired = true;
-  }
-
-  if (priceKobo > 0 && priceKobo < 50_00 && requestedStatus === "active") {
-    addReason(reasons, "suspicious_price", "Very low pricing was flagged for review.", 15, "review");
-    score += 15;
-    reviewRequired = true;
-  }
-
-  if ((store.seller_type || "campus") === "local_market") {
-    const localReviewKeys = new Set([
-      "fresh_food",
-      "fresh_foods",
-      "meat",
-      "fish",
-      "meat_fish",
-      "fuel",
-      "gas",
-      "fuel_gas",
-      "chemicals",
-      "electronics_high_value",
-      "jewelry",
-    ]);
-    if (localReviewKeys.has(categoryKey)) {
-      addReason(
-        reasons,
-        "local_market_early_review",
-        "This local-market category needs admin readiness review before it goes public.",
-        30,
-        "review",
-      );
-      score += 30;
-      reviewRequired = true;
-    }
   }
 
   const level = riskLevel(score);
@@ -305,6 +283,8 @@ export function evaluateListingModeration({ store, input, images = [], itemType 
     availabilityStatus,
     sellerConfirmationRequired: availabilityStatus === "confirm_before_payment",
     returnPolicy: returnPolicyFromInput(input),
+    ocrReviewStatus: imageModeration?.status || "not_run",
+    requiresAdminReview: reviewRequired || rejected,
     publicStatus,
   };
 }
@@ -351,6 +331,8 @@ export function moderationSqlPatch(moderation) {
     availabilityStatus: moderation.availabilityStatus || "available_now",
     sellerConfirmationRequired: moderation.sellerConfirmationRequired ? 1 : 0,
     returnPolicy: moderation.returnPolicy || "standard",
+    ocrReviewStatus: moderation.ocrReviewStatus || "not_run",
+    requiresAdminReview: moderation.requiresAdminReview ? 1 : 0,
     publicStatus: moderation.publicStatus || "draft",
   };
 }
@@ -362,6 +344,10 @@ export function listProductModeration({ status = "", query = "" } = {}) {
   if (status) {
     where += " AND products.moderation_status = ?";
     params.push(status);
+  }
+
+  if (!status) {
+    where += " AND products.moderation_status IN ('pending_review', 'flagged', 'rejected')";
   }
 
   if (query) {
@@ -508,14 +494,17 @@ export function validateProductForPublication(auth, productId) {
       action: "block",
     });
   }
-  if (price.status === "block") {
+  if (price.status === "block" && Number(price.priceKobo || 0) <= 0) {
     reasons.push({
       code: "price_blocked",
       message: price.reason,
       action: "block",
     });
   }
-  if (price.requiresReview || ["pending_review", "flagged"].includes(moderation.moderationStatus)) {
+  if (
+    Number(price.priceKobo || 0) > 500_000_00 ||
+    ["pending_review", "flagged"].includes(moderation.moderationStatus)
+  ) {
     reasons.push({
       code: "admin_review",
       message: price.reason || moderation.moderationNote || "This product needs admin review before it goes public.",

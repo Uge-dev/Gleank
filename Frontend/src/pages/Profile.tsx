@@ -261,7 +261,11 @@ function Profile() {
 
       <div className="profile-stats-grid">
         {profileStats.map((stat) => (
-          <Link to={stat.path} key={stat.label} className="profile-stat-card">
+          <Link
+            to={user?.role === "seller" && stat.path === "/orders" ? "/purchases" : stat.path}
+            key={stat.label}
+            className="profile-stat-card"
+          >
             <div>{stat.icon}</div>
             <strong>{stat.value}</strong>
             <span>{stat.label}</span>
@@ -281,7 +285,10 @@ function Profile() {
 
             <div className="profile-action-list">
               {quickActions.map((action) => (
-                <Link to={action.path} key={action.title}>
+                <Link
+                  to={user?.role === "seller" && action.path === "/orders" ? "/purchases" : action.path}
+                  key={action.title}
+                >
                   <div className="profile-action-icon">{action.icon}</div>
 
                   <div>

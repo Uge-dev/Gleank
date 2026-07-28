@@ -163,7 +163,8 @@ function SellerStore() {
       const matchesHighlight =
         activeHighlight === "All" ||
         activeHighlight === "Favorites" ||
-        product.category === activeHighlight;
+        product.category.trim().toLocaleLowerCase() ===
+          activeHighlight.trim().toLocaleLowerCase();
 
       const matchesFavorite =
         activeTab !== "Favorites" || product.isFeatured;
@@ -186,9 +187,15 @@ function SellerStore() {
       const matchesFavorite =
         activeTab !== "Favorites" || service.isFeatured;
 
-      return matchesSearch && matchesFavorite;
+      const matchesHighlight =
+        activeHighlight === "All" ||
+        activeHighlight === "Favorites" ||
+        service.category.trim().toLocaleLowerCase() ===
+          activeHighlight.trim().toLocaleLowerCase();
+
+      return matchesSearch && matchesFavorite && matchesHighlight;
     });
-  }, [activeTab, searchTerm, workspace]);
+  }, [activeHighlight, activeTab, searchTerm, workspace]);
 
   function requireAuth(action?: () => void) {
     if (!isAuthenticated) {
@@ -509,7 +516,7 @@ function SellerStore() {
                 )}
               </div>
 
-              <span>{highlight.title}</span>
+              <span>{highlight.title.trim().split(/\s+/)[0] || highlight.category}</span>
             </button>
           ))}
         </div>

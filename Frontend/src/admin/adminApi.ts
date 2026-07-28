@@ -448,6 +448,16 @@ export type AdminVerificationCase = {
   overallStatus: string;
   operationalStatus: string;
   completionPercent: number;
+  stageReadiness: Array<{
+    stage: 1 | 2 | 3;
+    title: string;
+    started: boolean;
+    approved: boolean;
+    submissionComplete: boolean;
+    previousStageApproved: boolean;
+    approvalReady: boolean;
+    missingRequirementCodes: string[];
+  }>;
   requirements: AdminVerificationRequirement[];
   eligibility?: {
     eligible: boolean;

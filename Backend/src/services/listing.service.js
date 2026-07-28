@@ -124,6 +124,15 @@ function storedImages(value) {
   }
 }
 
+function storedArray(value) {
+  try {
+    const parsed = JSON.parse(value || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function assertListingImages(images, itemType) {
   if (!Array.isArray(images) || images.length < 1) {
     throw new HttpError(422, `Add at least one ${itemType} image before publishing.`);
@@ -144,7 +153,7 @@ export function sellerWorkspace(userId) {
   return { store, products, services };
 }
 
-export function createProduct(userId, input, uploadedUrls) {
+export function createProduct(userId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
   assertCategoryAllowedForStore(store, input.category, { itemType: "product" });
   const now = new Date().toISOString();
@@ -157,6 +166,7 @@ export function createProduct(userId, input, uploadedUrls) {
     input: { ...input, stock },
     images,
     itemType: "product",
+    imageModeration,
   });
   const moderationPatch = moderationSqlPatch(moderation);
   const status = moderationPatch.publicStatus;
@@ -169,8 +179,8 @@ export function createProduct(userId, input, uploadedUrls) {
       stock, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
       availability_status, seller_confirmation_required, return_policy, delivery_readiness_type,
       delivery_readiness_value, delivery_ready_after_minutes, delivery_ready_at,
-      is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ocr_review_status, requires_admin_review, is_featured, image_urls, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -196,6 +206,8 @@ export function createProduct(userId, input, uploadedUrls) {
     readiness.value,
     readiness.readyAfterMinutes,
     readiness.readyAt,
+    moderationPatch.ocrReviewStatus,
+    moderationPatch.requiresAdminReview,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     now,
@@ -207,7 +219,7 @@ export function createProduct(userId, input, uploadedUrls) {
   return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(id));
 }
 
-export function updateProduct(userId, productId, input, uploadedUrls) {
+export function updateProduct(userId, productId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
   assertCategoryAllowedForStore(store, input.category, { itemType: "product" });
   const existing = db
@@ -218,11 +230,22 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   assertListingImages(images, "product");
+  const priorModerationReasons = storedArray(existing.moderation_reasons);
+  const effectiveImageModeration = imageModeration || {
+    status: existing.ocr_review_status || "not_run",
+    flagged: priorModerationReasons.some(
+      (reason) => reason?.code === "image_contact_or_link",
+    ),
+    reasons: priorModerationReasons
+      .filter((reason) => reason?.code === "image_contact_or_link")
+      .map((reason) => reason.message),
+  };
   const moderation = evaluateListingModeration({
     store,
     input: { ...input, stock: Number(input.stock || 0) },
     images,
     itemType: "product",
+    imageModeration: effectiveImageModeration,
   });
   const moderationPatch = moderationSqlPatch(moderation);
   const status = moderationPatch.publicStatus;
@@ -238,6 +261,7 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
         availability_status = ?, seller_confirmation_required = ?, return_policy = ?,
         delivery_readiness_type = ?, delivery_readiness_value = ?,
         delivery_ready_after_minutes = ?, delivery_ready_at = ?,
+        ocr_review_status = ?, requires_admin_review = ?,
         reviewed_by = NULL, reviewed_at = NULL,
         is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
@@ -264,6 +288,8 @@ export function updateProduct(userId, productId, input, uploadedUrls) {
     readiness.value,
     readiness.readyAfterMinutes,
     readiness.readyAt,
+    moderationPatch.ocrReviewStatus,
+    moderationPatch.requiresAdminReview,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     new Date().toISOString(),
@@ -292,7 +318,7 @@ export function deleteProduct(userId, productId) {
   deleteUploadedFiles(storedImages(existing.image_urls));
 }
 
-export function createService(userId, input, uploadedUrls) {
+export function createService(userId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
   assertCategoryAllowedForStore(store, input.category, { itemType: "service" });
   const now = new Date().toISOString();
@@ -306,6 +332,7 @@ export function createService(userId, input, uploadedUrls) {
     input,
     images,
     itemType: "service",
+    imageModeration,
   });
   const moderationPatch = moderationSqlPatch(moderation);
   const status =
@@ -320,8 +347,9 @@ export function createService(userId, input, uploadedUrls) {
       id, store_id, name, slug, category, service_type, location, description,
       price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo, min_price_kobo, max_price_kobo,
       duration_minutes, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
-      availability_status, seller_confirmation_required, return_policy, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      availability_status, seller_confirmation_required, return_policy, ocr_review_status,
+      requires_admin_review, is_featured, image_urls, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -347,6 +375,8 @@ export function createService(userId, input, uploadedUrls) {
     moderationPatch.availabilityStatus,
     moderationPatch.sellerConfirmationRequired,
     moderationPatch.returnPolicy,
+    moderationPatch.ocrReviewStatus,
+    moderationPatch.requiresAdminReview,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     now,
@@ -357,7 +387,7 @@ export function createService(userId, input, uploadedUrls) {
   return serializeService(db.prepare("SELECT * FROM services WHERE id = ?").get(id));
 }
 
-export function updateService(userId, serviceId, input, uploadedUrls) {
+export function updateService(userId, serviceId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
   assertCategoryAllowedForStore(store, input.category, { itemType: "service" });
   const existing = db
@@ -368,6 +398,16 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   assertListingImages(images, "service");
+  const priorModerationReasons = storedArray(existing.moderation_reasons);
+  const effectiveImageModeration = imageModeration || {
+    status: existing.ocr_review_status || "not_run",
+    flagged: priorModerationReasons.some(
+      (reason) => reason?.code === "image_contact_or_link",
+    ),
+    reasons: priorModerationReasons
+      .filter((reason) => reason?.code === "image_contact_or_link")
+      .map((reason) => reason.message),
+  };
   const price = computePlatformPrice(input.price);
   const range = serviceAmountRange(input);
   const moderation = evaluateListingModeration({
@@ -375,6 +415,7 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
     input,
     images,
     itemType: "service",
+    imageModeration: effectiveImageModeration,
   });
   const moderationPatch = moderationSqlPatch(moderation);
   const status =
@@ -392,6 +433,7 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
         moderation_status = ?, moderation_note = ?, moderation_reasons = ?,
         risk_score = ?, risk_level = ?, availability_status = ?,
         seller_confirmation_required = ?, return_policy = ?,
+        ocr_review_status = ?, requires_admin_review = ?,
         reviewed_by = NULL, reviewed_at = NULL,
         is_featured = ?, image_urls = ?, updated_at = ?
     WHERE id = ? AND store_id = ?
@@ -418,6 +460,8 @@ export function updateService(userId, serviceId, input, uploadedUrls) {
     moderationPatch.availabilityStatus,
     moderationPatch.sellerConfirmationRequired,
     moderationPatch.returnPolicy,
+    moderationPatch.ocrReviewStatus,
+    moderationPatch.requiresAdminReview,
     input.isFeatured ? 1 : 0,
     JSON.stringify(images),
     new Date().toISOString(),

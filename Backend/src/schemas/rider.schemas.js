@@ -172,7 +172,7 @@ export const riderContactAuditSchema = z.object({
 export const riderAdminVerificationSchema = z.object({
   verificationStatus: z.enum(["draft", "pending_review", "verified", "rejected", "suspended"]),
   verificationNote: z.string().trim().max(500).optional().default(""),
-  verificationLevel: z.coerce.number().int().min(1).max(5).optional(),
+  verificationLevel: z.coerce.number().int().min(1).max(3).optional(),
   maxPackageValueKobo: z.coerce.number().int().min(0).optional(),
   safetyStatus: z.enum(["normal", "flagged", "suspended"]).optional(),
 });

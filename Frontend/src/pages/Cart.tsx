@@ -40,6 +40,16 @@ function Cart() {
     decreaseQuantity,
     removeFromCart,
   } = useCart();
+  const productItems = cartItems.filter(
+    (item) => item.itemType !== "used_listing",
+  );
+  const usedItems = cartItems.filter(
+    (item) => item.itemType === "used_listing",
+  );
+  const productSubtotal = productItems.reduce(
+    (total, item) => total + item.numericPrice * item.quantity,
+    0,
+  );
 
   if (!isAuthenticated) {
     return (
@@ -102,13 +112,19 @@ function Cart() {
             const { stockLimit, overStock } = cartStockState(item);
 
             return (
-              <article className="cart-item-card" key={item.id}>
+              <article
+                className="cart-item-card"
+                key={`${item.itemType}:${item.id}`}
+              >
               <img src={item.image} alt={item.name} />
 
               <div className="cart-item-info">
                 <span>{item.campus || "Campus product"}</span>
                 <h2>{item.name}</h2>
                 <p>Sold by {item.sellerName}</p>
+                {item.itemType === "used_listing" ? (
+                  <small className="cart-market-kind">Used Market</small>
+                ) : null}
 	                {stockLimit !== undefined && (
 	                  <small className={overStock ? "cart-stock-note limit" : "cart-stock-note"}>
 	                    {stockLimit <= 0
@@ -148,6 +164,16 @@ function Cart() {
 
                 <strong>{formatPrice(item.numericPrice * item.quantity)}</strong>
 
+                {item.itemType === "used_listing" ? (
+                  <Link
+                    className="used-cart-checkout-link"
+                    to={`/used-market/${item.id}/checkout`}
+                  >
+                    Checkout this item
+                    <FiArrowRight />
+                  </Link>
+                ) : null}
+
                 <button
                   type="button"
                   className="remove-cart-item"
@@ -171,6 +197,13 @@ function Cart() {
             <strong>{formatPrice(cartSubtotal)}</strong>
           </div>
 
+          {usedItems.length > 0 ? (
+            <div className="summary-row">
+              <span>Used Market</span>
+              <strong>Checkout separately</strong>
+            </div>
+          ) : null}
+
           <div className="summary-row">
             <span>Delivery fee</span>
             <strong>Calculated at checkout</strong>
@@ -186,10 +219,17 @@ function Cart() {
             <strong>{formatPrice(total)}</strong>
           </div>
 
-          <Link to="/checkout" className="primary-button full-width">
-            Proceed to Checkout
-            <FiArrowRight />
-          </Link>
+          {productItems.length > 0 ? (
+            <Link to="/checkout" className="primary-button full-width">
+              Checkout store products ({formatPrice(productSubtotal)})
+              <FiArrowRight />
+            </Link>
+          ) : (
+            <p className="cart-summary-note">
+              Use the checkout button on each Used Market item. Used items stay
+              in their protected seller-specific payment and verification flow.
+            </p>
+          )}
 
           <p className="cart-summary-note">
             Delivery fee is calculated at checkout based on your selected campus

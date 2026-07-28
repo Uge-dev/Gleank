@@ -11,9 +11,14 @@ import {
 
 import {
   commentOnPublicProduct,
+  commentOnUsedListing,
+  deleteUsedListingComment,
   deleteProductComment,
   getPublicProduct,
+  getUsedListing,
   likeProductComment,
+  likeUsedListingComment,
+  unlikeUsedListingComment,
   unlikeProductComment,
 } from "../services/marketplace.service";
 import type { ProductComment } from "../types/domain";
@@ -22,6 +27,7 @@ type ProductCommentDrawerProps = {
   isOpen: boolean;
   productId: string | null;
   productName?: string;
+  targetType?: "product" | "used_listing";
   onClose: () => void;
   onRequireAuth: () => boolean;
   onCommentCreated?: () => void;
@@ -82,6 +88,7 @@ function ProductCommentDrawer({
   isOpen,
   productId,
   productName,
+  targetType = "product",
   onClose,
   onRequireAuth,
   onCommentCreated,
@@ -105,38 +112,45 @@ function ProductCommentDrawer({
     if (!isOpen || !productId) return;
 
     let active = true;
-
+    const activeProductId = productId;
+    setReplyTarget(null);
     setIsLoading(true);
     setError("");
-    setReplyTarget(null);
 
-    void getPublicProduct(productId)
-      .then((response) => {
+    async function loadComments(showLoading = false) {
+      if (showLoading) setIsLoading(true);
+
+      try {
+        const nextComments =
+          targetType === "used_listing"
+            ? (await getUsedListing(activeProductId)).listing.comments || []
+            : (await getPublicProduct(activeProductId)).comments || [];
+
         if (!active) return;
-
-        const responseWithComments = response as typeof response & {
-          comments?: ProductComment[];
-        };
-
-        setComments(responseWithComments.comments || []);
-      })
-      .catch((requestError) => {
+        setComments(nextComments);
+        setError("");
+      } catch (requestError) {
         if (!active) return;
-
         setError(
           requestError instanceof Error
             ? requestError.message
             : "Comments could not be loaded.",
         );
-      })
-      .finally(() => {
-        if (active) setIsLoading(false);
-      });
+      } finally {
+        if (active && showLoading) setIsLoading(false);
+      }
+    }
+
+    void loadComments(true);
+    const refreshTimer = window.setInterval(() => {
+      void loadComments(false);
+    }, 5_000);
 
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
     };
-  }, [isOpen, productId]);
+  }, [isOpen, productId, targetType]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -176,11 +190,18 @@ function ProductCommentDrawer({
     setError("");
 
     try {
-      const response = await commentOnPublicProduct(
-        productId,
-        body,
-        replyTarget?.id || null,
-      );
+      const response =
+        targetType === "used_listing"
+          ? await commentOnUsedListing(
+              productId,
+              body,
+              replyTarget?.id || null,
+            )
+          : await commentOnPublicProduct(
+              productId,
+              body,
+              replyTarget?.id || null,
+            );
 
       setComments((current) => [response.comment, ...current]);
       setCommentBody("");
@@ -205,9 +226,14 @@ function ProductCommentDrawer({
     setError("");
 
     try {
-      const response = comment.liked
-        ? await unlikeProductComment(productId, comment.id)
-        : await likeProductComment(productId, comment.id);
+      const response =
+        targetType === "used_listing"
+          ? comment.liked
+            ? await unlikeUsedListingComment(productId, comment.id)
+            : await likeUsedListingComment(productId, comment.id)
+          : comment.liked
+            ? await unlikeProductComment(productId, comment.id)
+            : await likeProductComment(productId, comment.id);
 
       replaceComment(response.comment);
     } catch (requestError) {
@@ -229,7 +255,10 @@ function ProductCommentDrawer({
     setError("");
 
     try {
-      const response = await deleteProductComment(productId, comment.id);
+      const response =
+        targetType === "used_listing"
+          ? await deleteUsedListingComment(productId, comment.id)
+          : await deleteProductComment(productId, comment.id);
       replaceComment(response.comment);
 
       if (replyTarget?.id === comment.id) {

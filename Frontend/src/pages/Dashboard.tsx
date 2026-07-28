@@ -38,15 +38,9 @@ import {
   deleteSellerHighlight,
   deleteSellerProduct,
   deleteSellerService,
-  confirmSellerOrderItemAvailability,
-  getAvailableDeliveryRiders,
   getSellerPickupTasks,
-  markSellerPickupTaskReady,
   getSellerWorkspace,
-  rejectSellerOrderItemAvailability,
   reorderSellerHighlights,
-  sendDeliveryOfferToRider,
-  startAutomaticDispatchForBatch,
   updateSellerHighlight,
   updateSellerStore,
 } from "../services/seller.service";
@@ -66,7 +60,7 @@ import type {
   StoreHighlight,
 } from "../types/domain";
 
-type DashboardTab = "overview" | "orders" | "products" | "services" | "highlights" | "store";
+type DashboardTab = "overview" | "products" | "services" | "highlights" | "store";
 
 type HighlightFormState = {
   id: string | null;
@@ -89,10 +83,6 @@ function Dashboard() {
   const [workspace, setWorkspace] = useState<SellerWorkspace | null>(null);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
-  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
-  const [availableRidersByBatch, setAvailableRidersByBatch] = useState<Record<string, AvailableDeliveryRider[]>>({});
-  const [isLoadingRiders, setIsLoadingRiders] = useState(false);
-  const [taskActionId, setTaskActionId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingStore, setIsSavingStore] = useState(false);
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
@@ -123,30 +113,11 @@ function Dashboard() {
   }, []);
 
   const loadPickupTasks = useCallback(async () => {
-    setIsLoadingTasks(true);
     try {
       const response = await getSellerPickupTasks();
       setPickupTasks(response.pickupTasks || []);
     } catch {
       setPickupTasks([]);
-    } finally {
-      setIsLoadingTasks(false);
-    }
-  }, []);
-
-  const loadAvailableRiders = useCallback(async (batchId: string) => {
-    if (!batchId) return;
-    setIsLoadingRiders(true);
-    try {
-      const response = await getAvailableDeliveryRiders(batchId);
-      setAvailableRidersByBatch((current) => ({
-        ...current,
-        [batchId]: response.riders || [],
-      }));
-    } catch {
-      setAvailableRidersByBatch((current) => ({ ...current, [batchId]: [] }));
-    } finally {
-      setIsLoadingRiders(false);
     }
   }, []);
 
@@ -383,147 +354,6 @@ function Dashboard() {
     }
   }
 
-  async function handleConfirmPickupTask(task: SellerPickupTask) {
-    if (!task.orderItems.length) {
-      setError("This pickup task has no order items to confirm.");
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setTaskActionId(`confirm-${task.id}`);
-
-    try {
-      for (const item of task.orderItems) {
-        await confirmSellerOrderItemAvailability(item.id, "Seller confirmed item availability from dashboard.");
-      }
-      setNotice("Availability confirmed. Mark the package ready once it is packed.");
-      await loadPickupTasks();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Availability could not be confirmed.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleRejectPickupTask(task: SellerPickupTask) {
-    if (!task.orderItems.length) {
-      setError("This pickup task has no order items to reject.");
-      return;
-    }
-
-    const reason = window.prompt(
-      "Why is this item unavailable? The buyer and admin will see this reason.",
-      task.sellerRejectionNote || "",
-    );
-
-    if (reason === null) return;
-
-    setError("");
-    setNotice("");
-    setTaskActionId(`reject-${task.id}`);
-
-    try {
-      for (const item of task.orderItems) {
-        await rejectSellerOrderItemAvailability(item.id, reason || "Seller marked item unavailable.");
-      }
-      setNotice("The buyer and admin have been notified that this item is unavailable.");
-      await loadPickupTasks();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "The item could not be rejected.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleMarkPickupReady(task: SellerPickupTask) {
-    setError("");
-    setNotice("");
-    setTaskActionId(`ready-${task.id}`);
-
-    try {
-      await markSellerPickupTaskReady(task.id, {
-        packageSize: String(task.packageProfileSnapshot?.packageSize || task.packageSize || ""),
-        packageWeightClass: String(task.packageProfileSnapshot?.packageWeightClass || task.packageWeightClass || ""),
-        handlingClass: String(task.packageProfileSnapshot?.fragilityLevel || task.handlingClass || "normal_handling"),
-        pickupPointConfirmed: true,
-        note: "Seller marked package ready from dashboard.",
-      });
-      setNotice("Package marked ready. You can now find a rider or let Gleenc assign automatically.");
-      await loadPickupTasks();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Package could not be marked ready.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleAssignManualRider(task: SellerPickupTask, riderId: string) {
-    if (!task.orderId) {
-      setError("This order is not ready for rider assignment yet.");
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setTaskActionId(`assign-${task.id}-${riderId}`);
-
-    try {
-      await sendDeliveryOfferToRider({
-        batchId: task.deliveryBatchId,
-        riderId,
-      });
-      setNotice("Delivery offer sent. The rider must accept before assignment is confirmed.");
-      await loadPickupTasks();
-      await loadAvailableRiders(task.deliveryBatchId);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Delivery offer could not be sent.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleStartAutomaticDispatch(task: SellerPickupTask) {
-    setError("");
-    setNotice("");
-    setTaskActionId(`auto-${task.id}`);
-
-    try {
-      const response = await startAutomaticDispatchForBatch(task.deliveryBatchId);
-      setNotice(
-        response.sellerManualAssignmentRequired
-          ? "No compatible rider accepted automatically. Refresh riders and send a seller offer."
-          : "Gleenc is offering this delivery to the best compatible rider.",
-      );
-      await loadPickupTasks();
-      await loadAvailableRiders(task.deliveryBatchId);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Automatic dispatch could not start.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
   async function handleStartKyc() {
     setIsSavingTrust(true);
     setError("");
@@ -627,6 +457,10 @@ function Dashboard() {
               <FiBox />
               Add service
             </Link>
+            <Link to="/orders" className="secondary">
+              <FiTruck />
+              Manage buyer orders
+            </Link>
             <button
               type="button"
               className="secondary manage-highlights-btn"
@@ -671,7 +505,6 @@ function Dashboard() {
         {(
           [
             ["overview", "Overview", <FiBarChart2 />],
-            ["orders", "Orders", <FiTruck />],
             ["products", "Products", <FiPackage />],
             ["services", "Services", <FiBox />],
             ["highlights", "Highlights", <FiGrid />],
@@ -819,23 +652,6 @@ function Dashboard() {
             </aside>
           </div>
         </>
-      )}
-
-      {activeTab === "orders" && (
-        <SellerOrderReadinessPanel
-          tasks={pickupTasks}
-          loading={isLoadingTasks}
-          actionId={taskActionId}
-          availableRidersByBatch={availableRidersByBatch}
-          ridersLoading={isLoadingRiders}
-          onRefresh={loadPickupTasks}
-          onRefreshRiders={(task) => loadAvailableRiders(task.deliveryBatchId)}
-          onConfirm={handleConfirmPickupTask}
-          onReject={handleRejectPickupTask}
-          onMarkReady={handleMarkPickupReady}
-          onStartAutoDispatch={handleStartAutomaticDispatch}
-          onAssignRider={handleAssignManualRider}
-        />
       )}
 
       {activeTab === "products" && (
@@ -1169,7 +985,7 @@ function formatDashboardDate(value?: string | null) {
   }).format(date);
 }
 
-function SellerOrderReadinessPanel({
+export function SellerOrderReadinessPanel({
   tasks,
   loading,
   actionId,
@@ -1199,22 +1015,7 @@ function SellerOrderReadinessPanel({
   const activeTasks = tasks.filter((task) => !["picked_up", "cancelled"].includes(task.status));
 
   return (
-    <section className="seller-order-readiness">
-      <div className="seller-workspace-panel-header">
-        <div>
-          <span>Order readiness</span>
-          <h2>Confirm, pack, and release orders to dispatch</h2>
-          <p>
-            Sellers confirm availability first, then mark packages ready. Once all sellers in a batch are ready,
-            Gleenc automatically offers the delivery to compatible riders.
-          </p>
-        </div>
-        <button type="button" onClick={() => void onRefresh()} disabled={loading}>
-          <FiRefreshCw />
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
+    <section className="seller-order-readiness" aria-busy={loading}>
       {activeTasks.length ? (
         <div className="seller-order-task-grid">
           {activeTasks.map((task) => {
@@ -1319,7 +1120,11 @@ function SellerOrderReadinessPanel({
                           </button>
                         );
                       }) : (
-                        <p>{ridersLoading ? "Loading available riders..." : "No compatible verified rider is loaded yet. Refresh riders to check this batch."}</p>
+                        <p>
+                          {ridersLoading
+                            ? "Loading available riders..."
+                            : "No rider currently matches this delivery. A rider appears here after Stage 1 approval, switching online, sharing a fresh GPS location, and matching the package capacity and service zone."}
+                        </p>
                       )}
                     </div>
                     <button

@@ -556,7 +556,8 @@ function serializeBatch(row, { pickupTasks = [], deliveryTask = null, attempts =
 function serializePickupTask(row) {
   if (!row) return null;
   const orderItems = row.order_id ? db.prepare(`
-    SELECT id, product_id, product_name, product_image_url, quantity
+    SELECT id, product_id, product_name, product_image_url,
+           unit_price_kobo, quantity, total_kobo
     FROM order_items
     WHERE order_id = ?
     ORDER BY created_at ASC
@@ -565,7 +566,9 @@ function serializePickupTask(row) {
     productId: item.product_id,
     name: item.product_name,
     imageUrl: item.product_image_url || "",
+    unitPrice: koboToNaira(item.unit_price_kobo),
     quantity: Number(item.quantity || 1),
+    total: koboToNaira(item.total_kobo),
   })) : [];
   return {
     id: row.id,

@@ -254,7 +254,7 @@ function serializeOrderEvent(row) {
   };
 }
 
-function getOrderRowsForUser(userId) {
+function getOrderRowsForBuyer(userId) {
   return db
     .prepare(`
       SELECT orders.*, stores.name AS store_name, stores.slug AS store_slug,
@@ -262,10 +262,28 @@ function getOrderRowsForUser(userId) {
       FROM orders
       JOIN stores ON stores.id = orders.store_id
       JOIN users ON users.id = orders.seller_id
-      WHERE orders.buyer_id = ? OR orders.seller_id = ?
+      WHERE orders.buyer_id = ?
       ORDER BY orders.created_at DESC
     `)
-    .all(userId, userId);
+    .all(userId);
+}
+
+function getOrderRowsForSeller(userId) {
+  return db
+    .prepare(`
+      SELECT orders.*, stores.name AS store_name, stores.slug AS store_slug,
+             stores.phone AS seller_phone, users.name AS seller_name
+      FROM orders
+      JOIN stores ON stores.id = orders.store_id
+      JOIN users ON users.id = orders.seller_id
+      WHERE orders.seller_id = ?
+        AND (
+          orders.payment_status = 'paid'
+          OR orders.payment_method = 'pay_on_delivery'
+        )
+      ORDER BY orders.created_at DESC
+    `)
+    .all(userId);
 }
 
 function getOrderRowByIdForUser(userId, orderId) {
@@ -345,7 +363,23 @@ function insertStatusHistory({
 }
 
 export function listOrders(userId) {
-  return getOrderRowsForUser(userId).map((row) => hydrateOrder(row, userId));
+  return getOrderRowsForBuyer(userId).map((row) => hydrateOrder(row, userId));
+}
+
+export function listSellerOrders(user) {
+  if (!user || !["seller", "admin"].includes(user.role)) {
+    throw new HttpError(403, "Only sellers can view incoming buyer orders.");
+  }
+
+  const sellerId = user.role === "admin"
+    ? String(user.sellerId || user.user_id || "")
+    : String(user.user_id || user.id || "");
+
+  if (!sellerId) {
+    throw new HttpError(422, "Seller account is required.");
+  }
+
+  return getOrderRowsForSeller(sellerId).map((row) => hydrateOrder(row, sellerId));
 }
 
 export function getSellerActionableOrderCount(user) {

@@ -11,6 +11,7 @@ import type { ReactNode } from "react";
 
 export type CartItem = {
   id: string;
+  itemType: "product" | "used_listing";
   name: string;
   price: string;
   numericPrice: number;
@@ -22,9 +23,11 @@ export type CartItem = {
   deliveryReadinessLabel?: string;
   stock?: number;
   quantity: number;
+  detailsPath?: string;
 };
 
-type AddToCartItem = Omit<CartItem, "quantity"> & {
+type AddToCartItem = Omit<CartItem, "quantity" | "itemType"> & {
+  itemType?: "product" | "used_listing";
   quantity?: number;
 };
 
@@ -78,6 +81,10 @@ function parseCart(value: string | null): CartItem[] {
       .filter((item) => item && typeof item === "object")
       .map((item) => ({
         id: String(item.id || ""),
+        itemType:
+          item.itemType === "used_listing"
+            ? ("used_listing" as const)
+            : ("product" as const),
         name: String(item.name || ""),
         price: String(item.price || ""),
         numericPrice: Number(item.numericPrice || 0),
@@ -94,6 +101,7 @@ function parseCart(value: string | null): CartItem[] {
             ? Number(item.stock)
             : undefined,
         quantity: Math.max(1, Number(item.quantity || 1)),
+        detailsPath: item.detailsPath ? String(item.detailsPath) : undefined,
       }))
       .filter((item) => item.id && item.name && item.sellerId);
   } catch {
@@ -192,6 +200,8 @@ export function CartProvider({ children }: CartProviderProps) {
     }
 
     setCartItems((currentItems) => {
+      const incomingItemType =
+        item.itemType === "used_listing" ? "used_listing" : "product";
       const incomingStock =
         item.stock !== undefined && Number.isFinite(Number(item.stock))
           ? Math.max(0, Number(item.stock))
@@ -203,12 +213,19 @@ export function CartProvider({ children }: CartProviderProps) {
       }
 
       const existingItem = currentItems.find(
-        (cartItem) => cartItem.id === item.id,
+        (cartItem) =>
+          cartItem.id === item.id &&
+          cartItem.itemType === incomingItemType,
       );
 
       if (existingItem) {
         return currentItems.map((cartItem) => {
-          if (cartItem.id !== item.id) return cartItem;
+          if (
+            cartItem.id !== item.id ||
+            cartItem.itemType !== incomingItemType
+          ) {
+            return cartItem;
+          }
 
           return {
             ...cartItem,
@@ -224,6 +241,7 @@ export function CartProvider({ children }: CartProviderProps) {
         ...currentItems,
         {
           ...item,
+          itemType: incomingItemType,
           stock: incomingStock,
           quantity: incomingQuantity,
         },

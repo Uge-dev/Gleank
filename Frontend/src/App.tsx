@@ -3,7 +3,7 @@ import { Routes, Route, useLocation } from "react-router-dom";
 
 import { applyTheme, getSavedTheme, watchSystemTheme } from "./utils/theme";
 
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import { SavedProvider } from "./context/SavedContext";
 import GleencNav from "./components/GleencNav";
@@ -34,6 +34,7 @@ import Messages from "./pages/Messages";
 import Notifications from "./pages/Notifications";
 import Create from "./pages/Create";
 import Orders from "./pages/Orders";
+import SellerOrders from "./pages/SellerOrders";
 import OrderDetails from "./pages/OrderDetails";
 import OrderSuccess from "./pages/OrderSuccess";
 import Dashboard from "./pages/Dashboard";
@@ -55,6 +56,14 @@ import NotFound from "./pages/NotFound";
 import AdminDashboard from "./admin/AdminDashboard";
 import PaymentCallback from "./pages/PaymentCallback";
 import RiderModule from "./rider/RiderModule";
+
+function AccountOrders() {
+  const { user } = useAuth();
+
+  return user?.role === "seller" || user?.role === "admin"
+    ? <SellerOrders />
+    : <Orders />;
+}
 
 function App() {
   useEffect(() => {
@@ -177,6 +186,15 @@ function App() {
 
           <Route
             path="/orders"
+            element={
+              <ProtectedPage>
+                <AccountOrders />
+              </ProtectedPage>
+            }
+          />
+
+          <Route
+            path="/purchases"
             element={
               <ProtectedPage>
                 <Orders />

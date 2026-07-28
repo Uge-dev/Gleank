@@ -21,7 +21,11 @@ import {
   resolveDispatchTimeoutPolicy,
 } from "./dispatch-timeout.service.js";
 import { generateOrderVerificationCode } from "./logistics.service.js";
-import { evaluateRiderEligibility, submitRequirementForUser } from "./verification.service.js";
+import {
+  ensureVerificationCase,
+  evaluateRiderEligibility,
+  submitRequirementForUser,
+} from "./verification.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -681,63 +685,11 @@ export async function registerRider(input, meta = {}) {
 
   applyDevelopmentRiderDispatchDefaults(result.user.id, now);
 
-  submitRequirementForUser(result.user.id, "rider", "rider_government_id", {
-    payload: { ninLast4: input.ninLast4 || "" },
-    documentUrls: [input.identityDocumentUrl].filter(Boolean),
-    provider: "rider_onboarding",
-  });
   submitRequirementForUser(result.user.id, "rider", "rider_identity_selfie", {
     payload: { source: "onboarding_selfie" },
     documentUrls: [input.selfieUrl].filter(Boolean),
     provider: "rider_onboarding",
   });
-  submitRequirementForUser(result.user.id, "rider", "rider_personal_profile", {
-    payload: {
-      fullLegalName: input.name,
-      phone: input.phone,
-      homeAddress: input.homeAddress || "",
-      coverageArea: input.coverageArea || "",
-    },
-    provider: "rider_onboarding",
-  });
-  submitRequirementForUser(result.user.id, "rider", "rider_vehicle_capacity", {
-    payload: {
-      vehicleType: input.vehicleType || "",
-      vehiclePlate: input.vehiclePlate || "",
-      transportType: input.transportType || input.vehicleType || "motorcycle",
-      maxPackageSize: input.maxPackageSize || "small_medium",
-      maxWeightClass: input.maxWeightClass || "up_to_medium",
-      fragileHandlingAbility: input.fragileHandlingAbility || "can_handle_fragile",
-      deliveryBagType: input.deliveryBagType || "medium_delivery_bag",
-    },
-    provider: "rider_onboarding",
-  });
-  submitRequirementForUser(result.user.id, "rider", "rider_service_zone", {
-    payload: {
-      coverageArea: input.coverageArea || "",
-      serviceZoneIds: Array.isArray(input.serviceZoneIds) ? input.serviceZoneIds : [],
-      gpsPermissionStatus: input.gpsPermissionStatus || "gps_disabled",
-    },
-    provider: "rider_onboarding",
-  });
-  if (input.emergencyContactName || input.emergencyContactPhone) {
-    submitRequirementForUser(result.user.id, "rider", "rider_emergency_contact", {
-      payload: {
-        fullName: input.emergencyContactName || "",
-        primaryPhone: input.emergencyContactPhone || "",
-      },
-      provider: "rider_onboarding",
-    });
-  }
-  if (input.guarantorName || input.guarantorPhone) {
-    submitRequirementForUser(result.user.id, "rider", "rider_guarantor", {
-      payload: {
-        fullName: input.guarantorName || "",
-        phone: input.guarantorPhone || "",
-      },
-      provider: "rider_onboarding",
-    });
-  }
 
   return {
     ...result,
@@ -797,11 +749,6 @@ export function updateRiderVerificationDocuments(auth, input) {
     actionPath: "/rider/verification",
   });
 
-  submitRequirementForUser(riderId, "rider", "rider_government_id", {
-    payload: { source: "verification_documents_update" },
-    documentUrls: [input.identityDocumentUrl].filter(Boolean),
-    provider: "rider_dashboard",
-  });
   submitRequirementForUser(riderId, "rider", "rider_identity_selfie", {
     payload: { source: "verification_documents_update" },
     documentUrls: [input.selfieUrl].filter(Boolean),
@@ -840,6 +787,10 @@ export function updateRiderAvailability(auth, input) {
         current_lng = COALESCE(?, current_lng),
         current_accuracy_meters = COALESCE(?, current_accuracy_meters),
         last_location_at = COALESCE(?, last_location_at),
+        gps_permission_status = CASE
+          WHEN ? IS NOT NULL THEN 'gps_enabled'
+          ELSE gps_permission_status
+        END,
         updated_at = ?
     WHERE user_id = ?
   `).run(
@@ -852,6 +803,7 @@ export function updateRiderAvailability(auth, input) {
     location?.lng ?? null,
     location?.accuracyMeters ?? null,
     location ? now : null,
+    location?.lat ?? null,
     now,
     userId,
   );
@@ -866,7 +818,16 @@ export function updateRiderLocation(auth, input) {
   const now = nowIso();
   db.prepare(`
     UPDATE rider_profiles
-    SET current_lat = ?, current_lng = ?, current_accuracy_meters = ?, last_location_at = ?, updated_at = ?
+    SET current_lat = ?,
+        current_lng = ?,
+        current_accuracy_meters = ?,
+        last_location_at = ?,
+        gps_permission_status = 'gps_enabled',
+        availability_mode = CASE
+          WHEN availability = 'online' THEN 'online_gps_active'
+          ELSE availability_mode
+        END,
+        updated_at = ?
     WHERE user_id = ?
   `).run(location.lat, location.lng, location.accuracyMeters || 0, now, now, userId);
   recordLocation(userId, location, input.assignmentId || "");
@@ -931,12 +892,20 @@ export function listAvailableRiders(auth) {
     ORDER BY rider_profiles.rating_average DESC, rider_profiles.completed_deliveries DESC
     LIMIT 100
   `).all()
-    .filter((row) => evaluateRiderEligibility(row.user_id, { maxActiveAssignments: 2 }).eligible)
+    .filter((row) =>
+      evaluateRiderEligibility(row.user_id, {
+        maxActiveAssignments: 2,
+        heartbeatSeconds: 300,
+      }).eligible,
+    )
     .map((row) => ({
       id: row.user_id,
       name: row.name || row.full_name,
       profile: serializeProfile(row),
-      eligibility: evaluateRiderEligibility(row.user_id, { maxActiveAssignments: 2 }),
+      eligibility: evaluateRiderEligibility(row.user_id, {
+        maxActiveAssignments: 2,
+        heartbeatSeconds: 300,
+      }),
       privacyNote: "Private phone details unlock only after a delivery assignment is accepted.",
     }));
 }
@@ -1705,6 +1674,15 @@ export function adminUpdateRiderVerification(auth, riderId, input) {
   if (!rider) throw new HttpError(404, "Rider account was not found.");
   const existing = getRiderProfile(riderId);
   if (!existing) throw new HttpError(404, "Rider profile was not found.");
+  if (input.verificationStatus === "verified") {
+    const verificationCase = ensureVerificationCase(riderId, "rider");
+    if (Number(verificationCase.current_verified_level || 0) < 1) {
+      throw new HttpError(
+        422,
+        "Complete and approve rider Stage 1 before marking the rider verified.",
+      );
+    }
+  }
   const now = nowIso();
   const requestedMaxPackageValueKobo = Number(input.maxPackageValueKobo ?? existing.max_package_value_kobo ?? 0);
   const nextMaxPackageValueKobo =

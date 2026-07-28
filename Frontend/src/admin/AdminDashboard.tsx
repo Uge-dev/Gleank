@@ -120,6 +120,12 @@ function slugStatus(status: string) {
   return status.toLowerCase().replace(/[^a-z0-9]+/g, "-");
 }
 
+function nextVerificationStage(row: AdminVerificationCase) {
+  return row.stageReadiness?.find(
+    (stage) => stage.stage === Math.min(3, row.currentVerifiedLevel + 1),
+  );
+}
+
 function prettyStatus(status: AdminStatus | string | boolean) {
   if (typeof status === "boolean") return status ? "Yes" : "No";
   return status.replace(/_/g, " ");
@@ -754,12 +760,15 @@ function AdminDashboard() {
   }
 
   async function approveVerificationLevel(row: AdminVerificationCase) {
+    const stage = nextVerificationStage(row);
+    if (!stage?.approvalReady) return;
+
     setLoadError("");
     try {
       await approveAdminVerificationLevel(
         row.id,
-        row.requestedLevel || Math.max(1, row.currentVerifiedLevel || 1),
-        "Admin approved the current requirement-based verification level.",
+        stage.stage,
+        `Admin approved rider verification Stage ${stage.stage}.`,
       );
       await refreshVerificationQueues();
       await loadAdminData(false);
@@ -1259,9 +1268,13 @@ function AdminDashboard() {
 
           {activeTab === "marketplace" ? (
             <DataTable<AdminProduct>
-              title="Product and Service Management"
-              subtitle="Control seller products/services, approval status, stock state and listing safety before buyers see them."
-              rows={data.products}
+              title="Product Moderation Queue"
+              subtitle="Only large-value, restricted, illegal, or contact/link-flagged listings require admin approval. Ordinary listings publish automatically."
+              rows={data.products.filter((product) =>
+                ["pending_review", "flagged", "rejected"].includes(
+                  product.moderationStatus,
+                ),
+              )}
               search={search}
               onView={(product) => openRecord(product.name, product)}
               columns={[
@@ -1449,7 +1462,7 @@ function AdminDashboard() {
                 <div className="admin-panel-head">
                   <div>
                     <h2>Requirement-based verification queue</h2>
-                    <p>Review individual seller and rider requirements, request corrections, and approve levels without changing rider online availability.</p>
+                    <p>Review each submission. A stage approval stays inactive until every requirement in that stage is complete.</p>
                   </div>
                 </div>
                 <div className="admin-mini-grid">
@@ -1461,12 +1474,13 @@ function AdminDashboard() {
                 <div className="admin-card-grid">
                   {verificationCaseRows.map((row) => {
                     const reviewable = row.requirements.find((requirement) => ["submitted", "under_review", "needs_information", "rejected"].includes(requirement.status));
+                    const nextStage = nextVerificationStage(row);
                     return (
                       <article key={row.id} className="admin-record-card">
                         <div>
                           <span className="admin-pill">{row.role}{row.sellerType ? ` · ${row.sellerType}` : ""}</span>
                           <h3>{row.user?.name || row.user?.email || row.userId}</h3>
-                          <p>{row.completionPercent}% complete · Level {row.currentVerifiedLevel}/{row.requestedLevel}</p>
+                          <p>{row.completionPercent}% complete · Stage {row.currentVerifiedLevel} of 3</p>
                         </div>
                         <div className="admin-record-card-status">
                           <StatusBadge status={row.overallStatus} />
@@ -1482,11 +1496,30 @@ function AdminDashboard() {
                             <ActionButton tone="success" onClick={() => reviewVerificationRequirement(reviewable.id, "approve", "Requirement approved.")}>Approve item</ActionButton>
                             <ActionButton tone="soft" onClick={() => reviewVerificationRequirement(reviewable.id, "needs_information", "Please replace this requirement with clearer information.")}>Correction</ActionButton>
                             <ActionButton tone="danger" onClick={() => reviewVerificationRequirement(reviewable.id, "reject", "Requirement rejected after admin review.")}>Reject</ActionButton>
+                            <ActionButton
+                              tone="success"
+                              disabled={!nextStage?.approvalReady}
+                              onClick={() => approveVerificationLevel(row)}
+                            >
+                              {nextStage?.approvalReady
+                                ? `Approve Stage ${nextStage.stage}`
+                                : `Stage ${nextStage?.stage || 3} incomplete`}
+                            </ActionButton>
                           </div>
                         ) : (
                           <div className="admin-card-actions">
                             <ActionButton tone="soft" onClick={() => openRecord(`${row.user?.name || row.userId} verification`, row as unknown as Record<string, unknown>)}>Details</ActionButton>
-                            <ActionButton tone="success" onClick={() => approveVerificationLevel(row)}>Approve level</ActionButton>
+                            <ActionButton
+                              tone="success"
+                              disabled={!nextStage?.approvalReady}
+                              onClick={() => approveVerificationLevel(row)}
+                            >
+                              {nextStage?.approvalReady
+                                ? `Approve Stage ${nextStage.stage}`
+                                : row.currentVerifiedLevel >= 3
+                                  ? "All stages approved"
+                                  : `Stage ${nextStage?.stage || 1} incomplete`}
+                            </ActionButton>
                           </div>
                         )}
                       </article>
@@ -1528,6 +1561,7 @@ function AdminDashboard() {
                 ]}
                 actions={(rider) => {
                   const riderCase = verificationQueues.cases.find((item) => item.role === "rider" && item.userId === rider.userId);
+                  const nextStage = riderCase ? nextVerificationStage(riderCase) : undefined;
                   return (
                   <>
                     <ActionButton
@@ -1538,10 +1572,14 @@ function AdminDashboard() {
                     </ActionButton>
                     <ActionButton
                       tone="success"
-                      disabled={!riderCase || riderCase.overallStatus === "approved"}
+                      disabled={!riderCase || !nextStage?.approvalReady}
                       onClick={() => riderCase ? approveVerificationLevel(riderCase) : undefined}
                     >
-                      {riderCase?.overallStatus === "approved" ? "Level approved" : "Approve level"}
+                      {riderCase?.currentVerifiedLevel === 3
+                        ? "All stages approved"
+                        : nextStage?.approvalReady
+                          ? `Approve Stage ${nextStage.stage}`
+                          : `Stage ${nextStage?.stage || 1} incomplete`}
                     </ActionButton>
                     <ActionButton
                       tone="soft"

@@ -16,6 +16,16 @@ import {
   upsertPayoutAccount,
   upsertTrustProfile,
 } from "../services/trust.service.js";
+import {
+  addUsedListingComment,
+  deleteUsedListingComment,
+  likeUsedListing,
+  likeUsedListingComment,
+  recordUsedListingShare,
+  recordUsedListingView,
+  unlikeUsedListing,
+  unlikeUsedListingComment,
+} from "../services/used-listing-interaction.service.js";
 
 export const usedMarketRouter = Router();
 
@@ -24,6 +34,7 @@ usedMarketRouter.get("/", (req, res) => {
     listings: listUsedListings({
       query: String(req.query.q || ""),
       category: String(req.query.category || ""),
+      viewerId: req.auth?.user_id || "",
     }),
   });
 });
@@ -93,8 +104,72 @@ usedMarketRouter.post("/:id/report", requireAuth, requireEmailVerified, (req, re
   res.status(201).json(reportUsedListing(req.auth.user_id, req.params.id, req.body));
 });
 
+usedMarketRouter.post("/:id/like", requireAuth, (req, res) => {
+  res.json({
+    interaction: likeUsedListing(req.auth.user_id, req.params.id),
+  });
+});
+
+usedMarketRouter.delete("/:id/like", requireAuth, (req, res) => {
+  res.json({
+    interaction: unlikeUsedListing(req.auth.user_id, req.params.id),
+  });
+});
+
+usedMarketRouter.post("/:id/share", requireAuth, (req, res) => {
+  res.json({
+    interaction: recordUsedListingShare(req.auth.user_id, req.params.id),
+  });
+});
+
+usedMarketRouter.post("/:id/view", requireAuth, (req, res) => {
+  res.json({
+    interaction: recordUsedListingView(req.auth.user_id, req.params.id),
+  });
+});
+
+usedMarketRouter.post("/:id/comments", requireAuth, (req, res) => {
+  res.status(201).json({
+    comment: addUsedListingComment(
+      req.auth.user_id,
+      req.params.id,
+      req.body,
+    ),
+  });
+});
+
+usedMarketRouter.post("/:id/comments/:commentId/like", requireAuth, (req, res) => {
+  res.json({
+    comment: likeUsedListingComment(
+      req.auth.user_id,
+      req.params.id,
+      req.params.commentId,
+    ),
+  });
+});
+
+usedMarketRouter.delete("/:id/comments/:commentId/like", requireAuth, (req, res) => {
+  res.json({
+    comment: unlikeUsedListingComment(
+      req.auth.user_id,
+      req.params.id,
+      req.params.commentId,
+    ),
+  });
+});
+
+usedMarketRouter.delete("/:id/comments/:commentId", requireAuth, (req, res) => {
+  res.json({
+    comment: deleteUsedListingComment(
+      req.auth,
+      req.params.id,
+      req.params.commentId,
+    ),
+  });
+});
+
 usedMarketRouter.get("/:id", (req, res) => {
   res.json({
-    listing: getUsedListing(req.params.id, req.auth?.user_id),
+    listing: getUsedListing(req.params.id, req.auth),
   });
 });

@@ -41,6 +41,24 @@ function CartDrawer() {
     decreaseQuantity,
     removeFromCart,
   } = useCart();
+  const productItems = cartItems.filter(
+    (item) => item.itemType !== "used_listing",
+  );
+  const usedItems = cartItems.filter(
+    (item) => item.itemType === "used_listing",
+  );
+  const checkoutPath =
+    productItems.length > 0
+      ? "/checkout"
+      : usedItems.length === 1
+        ? `/used-market/${usedItems[0].id}/checkout`
+        : "/cart";
+  const checkoutLabel =
+    productItems.length > 0 && usedItems.length === 0
+      ? "Proceed to Checkout"
+      : usedItems.length === 1 && productItems.length === 0
+        ? "Checkout Used Item"
+        : "Review Checkout Options";
 
   function handleProtectedCartAction(path: string) {
     if (!isAuthenticated) {
@@ -101,12 +119,20 @@ function CartDrawer() {
                   const { stockLimit, atMaxStock } = cartStockState(item);
 
                   return (
-                    <article className="cart-drawer-item" key={item.id}>
+                    <article
+                      className="cart-drawer-item"
+                      key={`${item.itemType}:${item.id}`}
+                    >
                     <img src={item.image} alt={item.name} />
 
                     <div className="cart-item-info">
                       <Link
-                        to={`/products/${item.id}`}
+                        to={
+                          item.detailsPath ||
+                          (item.itemType === "used_listing"
+                            ? `/used-market/${item.id}`
+                            : `/products/${item.id}`)
+                        }
                         onClick={closeCartDrawer}
                       >
                         {item.name}
@@ -115,6 +141,9 @@ function CartDrawer() {
                       <p>
                         {item.sellerName} • {item.campus}
                       </p>
+                      {item.itemType === "used_listing" ? (
+                        <small className="cart-market-kind">Used Market</small>
+                      ) : null}
 	                      {stockLimit !== undefined && (
 	                        <small className={atMaxStock ? "cart-stock-note limit" : "cart-stock-note"}>
 	                          {stockLimit <= 0
@@ -182,9 +211,9 @@ function CartDrawer() {
                 <button
                   type="button"
                   className="cart-checkout-btn"
-                  onClick={() => handleProtectedCartAction("/checkout")}
+                  onClick={() => handleProtectedCartAction(checkoutPath)}
                 >
-                  Proceed to Checkout
+                  {checkoutLabel}
                 </button>
 
                 <button

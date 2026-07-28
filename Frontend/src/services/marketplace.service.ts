@@ -105,6 +105,75 @@ export function getUsedListing(id: string) {
   );
 }
 
+export function likeUsedListing(id: string) {
+  return apiRequest<{ interaction: ProductInteraction }>(
+    `/used-market/${encodeURIComponent(id)}/like`,
+    { method: "POST" },
+  );
+}
+
+export function unlikeUsedListing(id: string) {
+  return apiRequest<{ interaction: ProductInteraction }>(
+    `/used-market/${encodeURIComponent(id)}/like`,
+    { method: "DELETE" },
+  );
+}
+
+export function shareUsedListingInteraction(id: string) {
+  return apiRequest<{ interaction: ProductInteraction }>(
+    `/used-market/${encodeURIComponent(id)}/share`,
+    { method: "POST" },
+  );
+}
+
+export function viewUsedListing(id: string) {
+  return apiRequest<{ interaction: ProductInteraction }>(
+    `/used-market/${encodeURIComponent(id)}/view`,
+    { method: "POST" },
+  );
+}
+
+export function commentOnUsedListing(
+  id: string,
+  body: string,
+  parentCommentId?: string | null,
+) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/used-market/${encodeURIComponent(id)}/comments`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body, parentCommentId }),
+    },
+  );
+}
+
+export function likeUsedListingComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/used-market/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}/like`,
+    { method: "POST" },
+  );
+}
+
+export function unlikeUsedListingComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/used-market/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}/like`,
+    { method: "DELETE" },
+  );
+}
+
+export function deleteUsedListingComment(id: string, commentId: string) {
+  return apiRequest<{ comment: ProductComment }>(
+    `/used-market/${encodeURIComponent(id)}/comments/${encodeURIComponent(
+      commentId,
+    )}`,
+    { method: "DELETE" },
+  );
+}
+
 export function getOwnUsedListings() {
   return apiRequest<{ listings: UsedListing[] }>("/used-market/mine");
 }

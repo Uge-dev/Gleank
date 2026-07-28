@@ -27,9 +27,19 @@ type FeedPostCardProps = {
   productName: string;
   price: string;
   category: string;
+  sourceTag?: string;
+  sourceDetail?: string;
   deliveryReadinessLabel?: string;
   images: string[];
   badgeText?: string;
+  detailsPath?: string;
+  profilePath?: string | null;
+  cartEnabled?: boolean;
+  cartItemType?: "product" | "used_listing";
+  stockLabelOverride?: string;
+  showFollowAction?: boolean;
+  showLikeAction?: boolean;
+  showCommentAction?: boolean;
   likeCount?: number;
   commentCount?: number;
   shareCount?: number;
@@ -109,9 +119,19 @@ function FeedPostCard({
   productName,
   price,
   category,
+  sourceTag,
+  sourceDetail,
   deliveryReadinessLabel,
   images,
   badgeText,
+  detailsPath,
+  profilePath,
+  cartEnabled = true,
+  cartItemType = "product",
+  stockLabelOverride,
+  showFollowAction = true,
+  showLikeAction = true,
+  showCommentAction = true,
   likeCount = 0,
   commentCount = 0,
   shareCount = 0,
@@ -144,21 +164,24 @@ const cardSwipeStartRef = useRef<{
   disabled: boolean;
 } | null>(null);
 
-const { addToCart } = useCart();
+  const { addToCart } = useCart();
 
   const safeImages = images.filter(Boolean);
   const storePath = getStorePath(username);
+  const resolvedProfilePath = profilePath === undefined ? storePath : profilePath;
+  const resolvedDetailsPath = detailsPath || `/products/${id}`;
   const sellerInitials = getSellerInitials(storeName);
   const stockLimit =
     maxQuantity !== undefined && Number.isFinite(Number(maxQuantity))
       ? Math.max(0, Number(maxQuantity))
       : undefined;
   const stockLabel =
-    stockLimit === undefined
+    stockLabelOverride ||
+    (stockLimit === undefined
       ? "Stock confirmed"
       : stockLimit <= 0
         ? "Out of stock"
-        : `${stockLimit} In stock`;
+        : `${stockLimit} In stock`);
 
   function scrollToImage(index: number) {
     if (!sliderRef.current) return;
@@ -197,10 +220,11 @@ const { addToCart } = useCart();
   }
 
   function handleAddToCart() {
-    if (stockLimit === 0 || isOwnProduct) return;
+    if (!cartEnabled || stockLimit === 0 || isOwnProduct) return;
 
     addToCart({
       id,
+      itemType: cartItemType,
       name: productName,
       price,
       numericPrice: parseNairaPrice(price),
@@ -212,11 +236,15 @@ const { addToCart } = useCart();
       deliveryReadinessLabel,
       stock: stockLimit,
       quantity,
+      detailsPath: resolvedDetailsPath,
     });
   }
 
   function increaseQuantity() {
-    setQuantity((currentQuantity) => currentQuantity + 1);
+    setQuantity((currentQuantity) => {
+      if (stockLimit === undefined) return currentQuantity + 1;
+      return Math.min(stockLimit, currentQuantity + 1);
+    });
   }
 
   function decreaseQuantity() {
@@ -313,7 +341,26 @@ const { addToCart } = useCart();
     setQuantity((currentQuantity) =>
       stockLimit <= 0 ? 1 : Math.min(currentQuantity, stockLimit),
     );
-  }, [stockLimit]);
+}, [stockLimit]);
+
+  const sellerHeader = (
+    <>
+      <div className="feed-store-avatar">
+        {storeLogoUrl ? (
+          <img src={storeLogoUrl} alt={storeName} />
+        ) : (
+          sellerInitials
+        )}
+      </div>
+
+      <div>
+        <h3>{storeName}</h3>
+        <p>
+          @{username} • {campus}
+        </p>
+      </div>
+    </>
+  );
 
   return (
     <article
@@ -323,30 +370,23 @@ const { addToCart } = useCart();
       onTouchEnd={handleCardTouchEnd}
     >
       <div className="feed-card-header">
-        <Link to={storePath} className="feed-store-link">
-          <div className="feed-store-avatar">
-            {storeLogoUrl ? (
-              <img src={storeLogoUrl} alt={storeName} />
-            ) : (
-              sellerInitials
-            )}
-          </div>
+        {resolvedProfilePath ? (
+          <Link to={resolvedProfilePath} className="feed-store-link">
+            {sellerHeader}
+          </Link>
+        ) : (
+          <div className="feed-store-link">{sellerHeader}</div>
+        )}
 
-          <div>
-            <h3>{storeName}</h3>
-            <p>
-              @{username} • {campus}
-            </p>
-          </div>
-        </Link>
-
-        <button
-          type="button"
-          className="feed-follow-btn"
-          onClick={onToggleStoreFollow || onRequireAuth}
-        >
-          {storeFollowing ? "Following" : "Follow"}
-        </button>
+        {showFollowAction ? (
+          <button
+            type="button"
+            className="feed-follow-btn"
+            onClick={onToggleStoreFollow || onRequireAuth}
+          >
+            {storeFollowing ? "Following" : "Follow"}
+          </button>
+        ) : null}
       </div>
 
       <div className="feed-media-shell">
@@ -411,24 +451,28 @@ const { addToCart } = useCart();
       </div>
 
       <div className="feed-actions">
-        <button
-          type="button"
-          onClick={onToggleLike || onRequireAuth}
-          aria-label="Like product"
-          className={productLiked ? "active" : ""}
-        >
-          <FiHeart fill={productLiked ? "currentColor" : "none"} />
-          <span>{compactNumber(likeCount)}</span>
-        </button>
+        {showLikeAction ? (
+          <button
+            type="button"
+            onClick={onToggleLike || onRequireAuth}
+            aria-label="Like product"
+            className={productLiked ? "active" : ""}
+          >
+            <FiHeart fill={productLiked ? "currentColor" : "none"} />
+            <span>{compactNumber(likeCount)}</span>
+          </button>
+        ) : null}
 
-        <button
-          type="button"
-          onClick={onComment || onRequireAuth}
-          aria-label="Comment on product"
-        >
-          <FiMessageCircle />
-          <span>{compactNumber(commentCount)}</span>
-        </button>
+        {showCommentAction ? (
+          <button
+            type="button"
+            onClick={onComment || onRequireAuth}
+            aria-label="Comment on product"
+          >
+            <FiMessageCircle />
+            <span>{compactNumber(commentCount)}</span>
+          </button>
+        ) : null}
 
         <button
           type="button"
@@ -450,6 +494,13 @@ const { addToCart } = useCart();
       </div>
 
       <div className="feed-info">
+        {sourceTag ? (
+          <div className="feed-source-tag">
+            <strong>{sourceTag}</strong>
+            {sourceDetail ? <small>{sourceDetail}</small> : null}
+          </div>
+        ) : null}
+
         <div>
           <h4>{productName}</h4>
 
@@ -461,7 +512,7 @@ const { addToCart } = useCart();
         <div className="price-quantity-row">
           <strong>{price}</strong>
 
-          <div className="quantity-control">
+          {cartEnabled ? <div className="quantity-control">
             <button
               type="button"
               onClick={decreaseQuantity}
@@ -476,28 +527,33 @@ const { addToCart } = useCart();
               type="button"
               onClick={increaseQuantity}
               aria-label="Increase quantity"
-              disabled={stockLimit === 0}
+              disabled={
+                stockLimit === 0 ||
+                (stockLimit !== undefined && quantity >= stockLimit)
+              }
               title="Increase quantity"
             >
               <FiPlus />
             </button>
-          </div>
+          </div> : null}
         </div>
       </div>
 
       <div className="product-card-buttons">
-        <button
-          type="button"
-          className="add-cart-btn"
-          onClick={handleAddToCart}
-          disabled={stockLimit === 0 || isOwnProduct}
-          aria-label={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
-          title={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
-        >
-          <FiShoppingCart />
-        </button>
+        {cartEnabled ? (
+          <button
+            type="button"
+            className="add-cart-btn"
+            onClick={handleAddToCart}
+            disabled={stockLimit === 0 || isOwnProduct}
+            aria-label={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
+            title={isOwnProduct ? "You cannot order your own product" : "Add to cart"}
+          >
+            <FiShoppingCart />
+          </button>
+        ) : null}
 
-        <Link to={`/products/${id}`} className="view-details-btn">
+        <Link to={resolvedDetailsPath} className="view-details-btn">
           View Details
         </Link>
       </div>

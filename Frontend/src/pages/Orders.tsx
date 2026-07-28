@@ -145,15 +145,6 @@ function Orders() {
 
   return (
     <section className="page-shell orders-page orders-upgraded-page">
-      <div className="orders-header">
-        <span className="eyebrow">My Orders</span>
-        <h1>Track your campus purchases</h1>
-        <p>
-          Continue unpaid payments, follow seller progress, and keep your delivery
-          code safe until you receive the correct item.
-        </p>
-      </div>
-
       <div className="orders-filter-bar">
         {statusFilters.map((status) => (
           <button

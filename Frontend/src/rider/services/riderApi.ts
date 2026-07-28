@@ -467,6 +467,16 @@ export type VerificationCase = {
   operationalStatus: string;
   operationalReason?: string;
   completionPercent: number;
+  stageReadiness: Array<{
+    stage: 1 | 2 | 3;
+    title: string;
+    started: boolean;
+    approved: boolean;
+    submissionComplete: boolean;
+    previousStageApproved: boolean;
+    approvalReady: boolean;
+    missingRequirementCodes: string[];
+  }>;
   requirements: VerificationRequirement[];
   eligibility?: {
     eligible: boolean;
@@ -593,8 +603,14 @@ export const riderApi = {
   logout() {
     return apiRequest<{ ok: boolean }>('/api/rider/logout', { method: 'POST' });
   },
-  updateAvailability(availability: Availability) {
-    return apiRequest<BackendRiderAuthResponse>('/api/rider/availability', { method: 'PATCH', body: JSON.stringify({ availability }) }).then(normalizeRider);
+  updateAvailability(
+    availability: Availability,
+    currentLocation?: { lat: number; lng: number; accuracyMeters?: number },
+  ) {
+    return apiRequest<BackendRiderAuthResponse>('/api/rider/availability', {
+      method: 'PATCH',
+      body: JSON.stringify({ availability, currentLocation }),
+    }).then(normalizeRider);
   },
   dashboard() {
     return apiRequest<BackendDashboardResponse>('/api/rider/dashboard').then(normalizeDashboard);

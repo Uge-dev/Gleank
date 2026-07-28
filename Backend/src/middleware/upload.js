@@ -235,6 +235,7 @@ class GleencImageStorage {
           format: result.format,
           width: result.width,
           height: result.height,
+          moderationBuffer: image.buffer,
         });
         return;
       }
@@ -254,6 +255,7 @@ class GleencImageStorage {
             : 1,
         storageProvider: "local",
         path: target,
+        moderationBuffer: image.buffer,
       });
     } catch (error) {
       callback(error);

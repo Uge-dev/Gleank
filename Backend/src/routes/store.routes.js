@@ -15,6 +15,7 @@ import {
   storeInteraction,
   unfollowStore,
 } from "../services/interaction.service.js";
+import { usedListingInteraction } from "../services/used-listing-interaction.service.js";
 
 export const storeRouter = Router();
 
@@ -32,9 +33,17 @@ function serializeHighlight(row) {
   };
 }
 
+function normalizedCategory(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
 function firstImage(items, category) {
   return (
-    items.find((item) => item.category === category && item.imageUrls?.[0])
+    items.find(
+      (item) =>
+        normalizedCategory(item.category) === normalizedCategory(category) &&
+        item.imageUrls?.[0],
+    )
       ?.imageUrls?.[0] || null
   );
 }
@@ -43,11 +52,12 @@ function buildCategoryHighlights(products, services) {
   const categories = new Map();
 
   for (const product of products) {
-    const current = categories.get(product.category);
+    const categoryKey = normalizedCategory(product.category);
+    const current = categories.get(categoryKey);
     const productImage = product.imageUrls[0] || null;
 
     if (!current) {
-      categories.set(product.category, {
+      categories.set(categoryKey, {
         id: `highlight-${product.category.toLowerCase().replaceAll(" ", "-")}`,
         title: product.category,
         category: product.category,
@@ -64,11 +74,12 @@ function buildCategoryHighlights(products, services) {
   }
 
   for (const service of services) {
-    const current = categories.get(service.category);
+    const categoryKey = normalizedCategory(service.category);
+    const current = categories.get(categoryKey);
     const serviceImage = service.imageUrls[0] || null;
 
     if (!current) {
-      categories.set(service.category, {
+      categories.set(categoryKey, {
         id: `highlight-${service.category.toLowerCase().replaceAll(" ", "-")}`,
         title: service.category,
         category: service.category,
@@ -123,18 +134,26 @@ function buildStoreHighlights(storeId, products, services) {
 
   return customHighlights.map((highlight) => {
     const favoriteCount =
-      highlight.category === "Favorites"
+      normalizedCategory(highlight.category) === "favorites"
         ? products.filter((item) => item.isFeatured).length +
           services.filter((item) => item.isFeatured).length
-        : products.filter((item) => item.category === highlight.category).length +
-          services.filter((item) => item.category === highlight.category).length;
+        : products.filter(
+            (item) =>
+              normalizedCategory(item.category) ===
+              normalizedCategory(highlight.category),
+          ).length +
+          services.filter(
+            (item) =>
+              normalizedCategory(item.category) ===
+              normalizedCategory(highlight.category),
+          ).length;
 
     return {
       ...highlight,
       count: favoriteCount,
       imageUrl:
         highlight.imageUrl ||
-        (highlight.category === "Favorites"
+        (normalizedCategory(highlight.category) === "favorites"
           ? products.find((item) => item.isFeatured && item.imageUrls[0])
               ?.imageUrls[0] ||
             services.find((item) => item.isFeatured && item.imageUrls[0])
@@ -166,19 +185,21 @@ storeRouter.get("/", (req, res) => {
 
   const stores = db
     .prepare(`
-      SELECT * FROM stores
-      WHERE status = 'active'
+      SELECT stores.*, markets.name AS market_name
+      FROM stores
+      LEFT JOIN markets ON markets.id = stores.market_id
+      WHERE stores.status = 'active'
         AND (
           ? = ''
-          OR name LIKE ? ESCAPE '\\'
-          OR description LIKE ? ESCAPE '\\'
-          OR campus LIKE ? ESCAPE '\\'
-          OR category LIKE ? ESCAPE '\\'
+          OR stores.name LIKE ? ESCAPE '\\'
+          OR stores.description LIKE ? ESCAPE '\\'
+          OR stores.campus LIKE ? ESCAPE '\\'
+          OR stores.category LIKE ? ESCAPE '\\'
         )
       ORDER BY
-        CASE WHEN ? != '' AND LOWER(campus) = LOWER(?) THEN 0 ELSE 1 END,
-        verified DESC,
-        updated_at DESC
+        CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
+        stores.verified DESC,
+        stores.updated_at DESC
       LIMIT 50
     `)
     .all(query, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
@@ -249,9 +270,12 @@ storeRouter.get("/", (req, res) => {
   const usedListings = db
     .prepare(`
       SELECT used_listings.*, users.name AS seller_name,
-             users.phone AS seller_phone
+             users.phone AS seller_phone, users.role AS seller_role,
+             stores.slug AS seller_store_slug,
+             stores.name AS seller_store_name
       FROM used_listings
       JOIN users ON users.id = used_listings.seller_id
+      LEFT JOIN stores ON stores.owner_id = used_listings.seller_id
       WHERE used_listings.status = 'active'
         AND (
           ? = ''
@@ -268,7 +292,10 @@ storeRouter.get("/", (req, res) => {
       LIMIT 50
     `)
     .all(query, pattern, pattern, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
-    .map((row) => serializeUsedListing(row));
+    .map((row) => ({
+      ...serializeUsedListing(row),
+      interaction: usedListingInteraction(row.id, req.auth),
+    }));
 
   res.json({ stores, products, services, usedListings });
 });

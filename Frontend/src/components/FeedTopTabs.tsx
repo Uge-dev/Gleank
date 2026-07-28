@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
-import { FiBell, FiSearch } from "react-icons/fi";
+import { FiBell, FiSearch, FiShoppingCart } from "react-icons/fi";
+import { useAuth } from "../context/AuthContext";
+import { useCart } from "../context/CartContext";
 
 type FeedTopTab = "hot" | "vendors" | "following";
 
@@ -14,6 +16,10 @@ function FeedTopTabs({
   onTabChange,
   onRequireAuth,
 }: FeedTopTabsProps) {
+  const { user } = useAuth();
+  const { cartCount, openCartDrawer } = useCart();
+  const isSeller = user?.role === "seller" || user?.role === "admin";
+
   return (
     <div className="for-you-fixed-tabs">
       <button
@@ -52,6 +58,18 @@ function FeedTopTabs({
         <Link to="/search" className="for-you-search-link" aria-label="Search">
           <FiSearch />
         </Link>
+
+        {isSeller ? (
+          <button
+            type="button"
+            className="for-you-cart-link"
+            aria-label={`Cart${cartCount ? `, ${cartCount} item(s)` : ""}`}
+            onClick={openCartDrawer}
+          >
+            <FiShoppingCart />
+            {cartCount > 0 ? <small>{cartCount}</small> : null}
+          </button>
+        ) : null}
       </div>
     </div>
   );

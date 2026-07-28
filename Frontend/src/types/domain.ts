@@ -55,6 +55,7 @@ export type SellerStore = {
   pickupLocation?: string;
   nearestLandmark?: string;
   marketId?: string | null;
+  marketName?: string;
   shopStallNumber?: string;
   shopSection?: string;
   marketSection?: string;
@@ -382,6 +383,8 @@ export type UsedListing = {
   reviewRequired?: boolean;
   sellerVerificationLevel?: number;
   sellerTrust?: UsedSellerTrust;
+  interaction?: ProductInteraction;
+  comments?: ProductComment[];
 };
 
 export type SavedItemType =

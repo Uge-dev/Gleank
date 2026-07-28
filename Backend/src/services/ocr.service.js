@@ -90,3 +90,89 @@ export async function scanAssetText(assetUrl) {
     }));
   }
 }
+
+export async function scanUploadedImagesForModeration(files = []) {
+  const images = (Array.isArray(files) ? files : [])
+    .filter((file) => Buffer.isBuffer(file?.moderationBuffer))
+    .slice(0, 10);
+
+  if (!images.length || !env.enableOcrModeration || env.ocrProvider === "none") {
+    return {
+      status: "skipped",
+      flagged: false,
+      reviewRequired: env.isProduction,
+      extractedText: "",
+      reasons: [],
+      resultIds: [],
+    };
+  }
+
+  if (env.ocrProvider !== "tesseract") {
+    return {
+      status: "provider_unavailable",
+      flagged: false,
+      reviewRequired: true,
+      extractedText: "",
+      reasons: [],
+      resultIds: [],
+    };
+  }
+
+  let tesseract;
+
+  try {
+    tesseract = await import("tesseract.js");
+  } catch {
+    return {
+      status: "provider_unavailable",
+      flagged: false,
+      reviewRequired: true,
+      extractedText: "",
+      reasons: [],
+      resultIds: [],
+    };
+  }
+  const textParts = [];
+  const reasons = [];
+  const resultIds = [];
+  let failed = false;
+
+  for (const file of images) {
+    const assetUrl = file.url || file.path || file.filename || "uploaded-image";
+
+    try {
+      const result = await tesseract.recognize(file.moderationBuffer, "eng");
+      const extractedText = clean(result?.data?.text || "", 5000);
+      const scan = scanListingContent({ description: extractedText });
+      const row = insertOcrResult({
+        assetUrl,
+        provider: "tesseract",
+        status: "completed",
+        extractedText,
+        riskReasons: scan.reasons || [],
+      });
+
+      resultIds.push(row.id);
+      if (extractedText) textParts.push(extractedText);
+      if (scan.flagged) reasons.push(...(scan.reasons || []));
+    } catch (error) {
+      failed = true;
+      const row = insertOcrResult({
+        assetUrl,
+        provider: "tesseract",
+        status: "review_required",
+        errorMessage: error?.message || "OCR could not run.",
+      });
+      resultIds.push(row.id);
+    }
+  }
+
+  return {
+    status: failed ? "partial" : "completed",
+    flagged: reasons.length > 0,
+    reviewRequired: failed,
+    extractedText: clean(textParts.join("\n"), 5000),
+    reasons: Array.from(new Set(reasons)),
+    resultIds,
+  };
+}

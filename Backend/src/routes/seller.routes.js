@@ -27,7 +27,10 @@ import {
   createRiderAssignment,
   listAvailableRiders,
 } from "../services/rider.service.js";
-import { getSellerActionableOrderCount } from "../services/order.service.js";
+import {
+  getSellerActionableOrderCount,
+  listSellerOrders,
+} from "../services/order.service.js";
 import {
   createProduct,
   createService,
@@ -55,6 +58,7 @@ import {
   getSellerPickupLocation,
   upsertSellerPickupLocation,
 } from "../services/location.service.js";
+import { scanUploadedImagesForModeration } from "../services/ocr.service.js";
 
 export const sellerRouter = Router();
 
@@ -175,9 +179,36 @@ function listHighlights(storeId) {
     .map(serializeHighlight);
 }
 
-function normalizeHighlightInput(body) {
-  const title = String(body.title || "").trim().slice(0, 40);
-  const category = String(body.category || "").trim().slice(0, 60);
+function normalizeCategoryKey(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function canonicalStoreCategory(storeId, value) {
+  const requestedCategory = String(value || "").trim().replace(/\s+/g, " ").slice(0, 60);
+  const categoryKey = normalizeCategoryKey(requestedCategory);
+  const categories = db
+    .prepare(`
+      SELECT category FROM products WHERE store_id = ?
+      UNION
+      SELECT category FROM services WHERE store_id = ?
+    `)
+    .all(storeId, storeId)
+    .map((row) => String(row.category || "").trim())
+    .filter(Boolean);
+
+  return (
+    categories.find((category) => normalizeCategoryKey(category) === categoryKey) ||
+    requestedCategory
+  );
+}
+
+function oneWordLabel(value) {
+  return String(value || "").trim().split(/\s+/).filter(Boolean)[0]?.slice(0, 24) || "";
+}
+
+function normalizeHighlightInput(body, storeId) {
+  const category = canonicalStoreCategory(storeId, body.category);
+  const title = oneWordLabel(body.title || category);
   const sortOrder = Number.parseInt(String(body.sortOrder ?? "0"), 10);
 
   if (!title) {
@@ -209,6 +240,10 @@ sellerRouter.get("/workspace", (req, res) => {
 
 sellerRouter.get("/orders/actionable-count", (req, res) => {
   res.json({ count: getSellerActionableOrderCount(req.auth) });
+});
+
+sellerRouter.get("/orders", (req, res) => {
+  res.json({ orders: listSellerOrders(req.auth) });
 });
 
 sellerRouter.get("/orders/:orderId/available-riders", (req, res) => {
@@ -258,7 +293,7 @@ sellerRouter.patch(
 
 sellerRouter.post("/highlights", upload.single("image"), (req, res) => {
   const store = getSellerStore(req.auth.user_id);
-  const input = normalizeHighlightInput(req.body);
+  const input = normalizeHighlightInput(req.body, store.id);
   const now = new Date().toISOString();
   const image = req.file ? fileUrl(req, req.file) : null;
   const maxSort = db
@@ -330,7 +365,7 @@ sellerRouter.patch("/highlights/:id", upload.single("image"), (req, res) => {
     throw new HttpError(404, "Highlight was not found.");
   }
 
-  const input = normalizeHighlightInput(req.body);
+  const input = normalizeHighlightInput(req.body, store.id);
   const image = req.file ? fileUrl(req, req.file) : existing.image_url;
 
   db.prepare(`
@@ -383,11 +418,13 @@ sellerRouter.post(
   requireVerifiedSellerAccess,
   upload.array("images", 10),
   validate(productSchema),
-  (req, res) => {
+  async (req, res) => {
+    const imageModeration = await scanUploadedImagesForModeration(req.files || []);
     const product = createProduct(
       req.auth.user_id,
       req.body,
       (req.files || []).map((file) => fileUrl(req, file)),
+      imageModeration,
     );
     res.status(201).json({ product });
   },
@@ -398,12 +435,16 @@ sellerRouter.patch(
   requireVerifiedSellerAccess,
   upload.array("images", 10),
   validate(productSchema),
-  (req, res) => {
+  async (req, res) => {
+    const imageModeration = (req.files || []).length
+      ? await scanUploadedImagesForModeration(req.files || [])
+      : null;
     const product = updateProduct(
       req.auth.user_id,
       req.params.id,
       req.body,
       (req.files || []).map((file) => fileUrl(req, file)),
+      imageModeration,
     );
     res.json({ product });
   },
@@ -419,11 +460,13 @@ sellerRouter.post(
   requireVerifiedSellerAccess,
   upload.array("images", 10),
   validate(serviceSchema),
-  (req, res) => {
+  async (req, res) => {
+    const imageModeration = await scanUploadedImagesForModeration(req.files || []);
     const service = createService(
       req.auth.user_id,
       req.body,
       (req.files || []).map((file) => fileUrl(req, file)),
+      imageModeration,
     );
     res.status(201).json({ service });
   },
@@ -434,12 +477,16 @@ sellerRouter.patch(
   requireVerifiedSellerAccess,
   upload.array("images", 10),
   validate(serviceSchema),
-  (req, res) => {
+  async (req, res) => {
+    const imageModeration = (req.files || []).length
+      ? await scanUploadedImagesForModeration(req.files || [])
+      : null;
     const service = updateService(
       req.auth.user_id,
       req.params.id,
       req.body,
       (req.files || []).map((file) => fileUrl(req, file)),
+      imageModeration,
     );
     res.json({ service });
   },

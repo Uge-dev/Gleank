@@ -33,7 +33,13 @@ process.env.SMTP_USER = "";
 process.env.SMTP_PASS = "";
 process.env.SMTP_FROM_EMAIL = "";
 
-fs.rmSync(path.join(testRoot, "gleank-test.sqlite"), { force: true });
+for (const databaseFile of [
+  "gleank-test.sqlite",
+  "gleank-test.sqlite-shm",
+  "gleank-test.sqlite-wal",
+]) {
+  fs.rmSync(path.join(testRoot, databaseFile), { force: true });
+}
 fs.rmSync(path.join(testRoot, "uploads"), {
   recursive: true,
   force: true,
@@ -125,6 +131,8 @@ test("seller can register and load workspace", async () => {
   assert.equal(productResponse.body.product.platformFee, 750);
   assert.equal(productResponse.body.product.price, 15750);
   assert.equal(productResponse.body.product.isFeatured, true);
+  assert.equal(productResponse.body.product.status, "active");
+  assert.equal(productResponse.body.product.moderationStatus, "auto_approved");
   const productId = productResponse.body.product.id;
 
   const serviceResponse = await agent
@@ -252,6 +260,26 @@ test("seller can register and load workspace", async () => {
   );
   assert.equal(removeSavedResponse.status, 204);
 
+  const highValueProductResponse = await agent
+    .post("/api/seller/products")
+    .field("name", "High Value Test Laptop")
+    .field("category", "Electronics")
+    .field("description", "A high-value product that must wait for admin review.")
+    .field("price", "600000")
+    .field("stock", "1")
+    .field("status", "active")
+    .field(
+      "retainedImageUrls",
+      JSON.stringify(["/uploads/high-value-test-laptop.jpg"]),
+    );
+
+  assert.equal(highValueProductResponse.status, 201);
+  assert.equal(
+    highValueProductResponse.body.product.moderationStatus,
+    "pending_review",
+  );
+  assert.equal(highValueProductResponse.body.product.status, "draft");
+
   const usedListingResponse = await agent
     .post("/api/used-market")
     .field("name", "Used Test Desk Chair")
@@ -278,7 +306,15 @@ test("seller can register and load workspace", async () => {
     .field("accountName", "TEST SELLER")
     .field("accountNumber", "0123456789")
     .attach("images", tinyPng, {
-      filename: "used-item.png",
+      filename: "used-item-front.png",
+      contentType: "image/png",
+    })
+    .attach("images", tinyPng, {
+      filename: "used-item-back.png",
+      contentType: "image/png",
+    })
+    .attach("images", tinyPng, {
+      filename: "used-item-side.png",
       contentType: "image/png",
     })
     .attach("ownershipProof", tinyPng, {
@@ -305,6 +341,34 @@ test("seller can register and load workspace", async () => {
     .query({ q: "Test Chair" });
   assert.equal(globalUsedSearchResponse.status, 200);
   assert.equal(globalUsedSearchResponse.body.usedListings.length, 1);
+  assert.equal(
+    globalUsedSearchResponse.body.usedListings[0].sellerStoreSlug,
+    "test-campus-store",
+  );
+  assert.equal(globalUsedSearchResponse.body.usedListings[0].sellerRole, "seller");
+  assert.equal(
+    globalUsedSearchResponse.body.usedListings[0].interaction.likeCount,
+    0,
+  );
+
+  const likeUsedResponse = await agent.post(
+    `/api/used-market/${usedListingId}/like`,
+  );
+  assert.equal(likeUsedResponse.status, 200);
+  assert.equal(likeUsedResponse.body.interaction.likeCount, 1);
+
+  const usedCommentResponse = await agent
+    .post(`/api/used-market/${usedListingId}/comments`)
+    .send({ body: "Is this item still available?" });
+  assert.equal(usedCommentResponse.status, 201);
+  assert.equal(usedCommentResponse.body.comment.body, "Is this item still available?");
+
+  const usedDetailsResponse = await agent.get(
+    `/api/used-market/${usedListingId}`,
+  );
+  assert.equal(usedDetailsResponse.status, 200);
+  assert.equal(usedDetailsResponse.body.listing.interaction.commentCount, 1);
+  assert.equal(usedDetailsResponse.body.listing.comments.length, 1);
 
   const usedSaveResponse = await agent.post("/api/saved").send({
     itemType: "used_listing",
@@ -468,6 +532,11 @@ test("requirement verification supports independent rider resubmissions and live
   const centerResponse = await riderAgent.get("/api/verification/me?role=rider&history=true");
   assert.equal(centerResponse.status, 200);
   const initialRequirements = centerResponse.body.case.requirements;
+  const initialStageOne = centerResponse.body.case.stageReadiness.find(
+    (stage) => stage.stage === 1,
+  );
+  assert.equal(initialStageOne.approvalReady, false);
+  assert.ok(initialStageOne.missingRequirementCodes.length > 0);
   const governmentId = initialRequirements.find((item) => item.code === "rider_government_id");
   const identitySelfie = initialRequirements.find((item) => item.code === "rider_identity_selfie");
   const liveFace = initialRequirements.find((item) => item.code === "rider_live_face");
@@ -475,6 +544,7 @@ test("requirement verification supports independent rider resubmissions and live
   assert.ok(governmentId);
   assert.ok(identitySelfie);
   assert.ok(liveFace);
+  assert.equal(governmentId.latestSubmission, null);
   assert.equal(identitySelfie.latestSubmission.version, 1);
   assert.notEqual(liveFace.status, "approved");
 
@@ -489,8 +559,71 @@ test("requirement verification supports independent rider resubmissions and live
   assert.equal(governmentResubmit.status, 201);
   const updatedGovernment = governmentResubmit.body.case.requirements.find((item) => item.code === "rider_government_id");
   const updatedSelfie = governmentResubmit.body.case.requirements.find((item) => item.code === "rider_identity_selfie");
-  assert.equal(updatedGovernment.latestSubmission.version, 2);
+  assert.equal(updatedGovernment.latestSubmission.version, 1);
   assert.equal(updatedSelfie.latestSubmission.version, 1);
+
+  const secondGovernmentSubmission = await riderAgent
+    .post("/api/verification/requirements/rider_government_id/submissions")
+    .field(
+      "payload",
+      JSON.stringify({
+        idType: "NIN",
+        idNumberReference: "ending-5678",
+      }),
+    )
+    .attach("identityDocument", tinyPng, {
+      filename: "step2-rider-id-second-version.png",
+      contentType: "image/png",
+    });
+
+  assert.equal(secondGovernmentSubmission.status, 201);
+  const secondGovernment = secondGovernmentSubmission.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(secondGovernment.latestSubmission.version, 2);
+
+  for (const [code, payload] of [
+    [
+      "rider_personal_profile",
+      {
+        fullLegalName: "Step Two Rider",
+        homeAddress: "Rider test address",
+        state: "Delta",
+        cityLga: "Uvwie",
+        nearestLandmark: "FUPRE main gate",
+      },
+    ],
+    [
+      "rider_vehicle_capacity",
+      {
+        vehicleType: "Bike",
+        plateInformation: "STP-200",
+        packageSizes: "Small and medium",
+        weightLimit: "20kg",
+        fragileCapability: "Yes",
+      },
+    ],
+    [
+      "rider_service_zone",
+      {
+        serviceZones: "FUPRE",
+        locationPermissionState: "enabled",
+      },
+    ],
+  ]) {
+    const stageSubmission = await riderAgent
+      .post(`/api/verification/requirements/${code}/submissions`)
+      .field("payload", JSON.stringify(payload));
+    assert.equal(stageSubmission.status, 201);
+  }
+
+  const stageReadyResponse = await riderAgent.get(
+    "/api/verification/me?role=rider&history=true",
+  );
+  const stageOneReady = stageReadyResponse.body.case.stageReadiness.find(
+    (stage) => stage.stage === 1,
+  );
+  assert.equal(stageOneReady.approvalReady, true);
 
   const adminAgent = await createAdminAgent();
   db.prepare("UPDATE rider_profiles SET availability = 'offline', availability_mode = 'offline' WHERE user_id = ?").run(riderId);
@@ -511,7 +644,14 @@ test("requirement verification supports independent rider resubmissions and live
     .send({ action: "approve", feedback: "Government ID approved after admin review." });
   assert.equal(reviewResponse.status, 200);
 
+  const stageApproveResponse = await adminAgent
+    .patch(`/api/verification/admin/cases/${adminCase.id}/level`)
+    .send({ level: 1, reason: "Stage 1 requirements completed and approved." });
+  assert.equal(stageApproveResponse.status, 200);
+  assert.equal(stageApproveResponse.body.case.currentVerifiedLevel, 1);
+
   const profile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
+  assert.equal(profile.verification_status, "verified");
   assert.equal(profile.availability, "offline");
 
   const eligibilityResponse = await riderAgent.get("/api/rider/eligibility");
@@ -650,6 +790,16 @@ test("public payment verification confirms local payment and protects buyer OTP"
   const sellerOrderResponse = await sellerAgent.get(`/api/orders/${orderId}`);
   assert.equal(sellerOrderResponse.status, 200);
   assert.equal(sellerOrderResponse.body.order.verificationCode, "");
+
+  const sellerPurchaseHistory = await sellerAgent.get("/api/orders");
+  assert.equal(sellerPurchaseHistory.status, 200);
+  assert.equal(sellerPurchaseHistory.body.orders.length, 0);
+
+  const sellerBuyerOrders = await sellerAgent.get("/api/seller/orders");
+  assert.equal(sellerBuyerOrders.status, 200);
+  assert.ok(
+    sellerBuyerOrders.body.orders.some((order) => order.id === orderId),
+  );
 
   const sellerDeliveryAttempt = await sellerAgent
     .post(`/api/orders/${orderId}/verify-delivery`)

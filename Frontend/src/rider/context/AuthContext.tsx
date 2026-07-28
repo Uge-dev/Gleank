@@ -20,6 +20,33 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function currentBrowserLocation() {
+  return new Promise<{ lat: number; lng: number; accuracyMeters?: number }>(
+    (resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Location access is required before going online."));
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) =>
+          resolve({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy,
+          }),
+        () =>
+          reject(
+            new Error(
+              "Enable location permission so sellers can see you for dispatch.",
+            ),
+          ),
+        { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
+      );
+    },
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [rider, setRider] = useState<Rider | null>(() => (shouldUseMock() ? riderLocalStore.load().rider : null));
   const [loading, setLoading] = useState(() => shouldUseApi());
@@ -58,6 +85,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
     };
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (
+      !shouldUseApi() ||
+      !rider ||
+      rider.availability !== "online"
+    ) {
+      return;
+    }
+
+    let active = true;
+
+    async function sendHeartbeat() {
+      try {
+        const location = await currentBrowserLocation();
+        if (active) await riderApi.updateLocation(location);
+      } catch {
+        // The verification center explains a missing or stale location to the rider.
+      }
+    }
+
+    void sendHeartbeat();
+    const heartbeat = window.setInterval(() => void sendHeartbeat(), 60_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(heartbeat);
+    };
+  }, [rider?.availability, rider?.id]);
 
   const value = useMemo<AuthContextValue>(() => ({
     rider,
@@ -119,7 +175,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async updateAvailability(availability: Availability) {
       try {
         if (shouldUseApi()) {
-          const response = await riderApi.updateAvailability(availability);
+          const currentLocation =
+            availability === "online"
+              ? await currentBrowserLocation()
+              : undefined;
+          const response = await riderApi.updateAvailability(
+            availability,
+            currentLocation,
+          );
           setRider((current) => ({
             ...(current || response.rider),
             ...response.rider,

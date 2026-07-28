@@ -381,6 +381,73 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS product_comment_likes_comment_id_idx
     ON product_comment_likes(comment_id);
 
+  CREATE TABLE IF NOT EXISTS used_listing_likes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE,
+    UNIQUE(user_id, listing_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS used_listing_likes_listing_id_idx
+    ON used_listing_likes(listing_id);
+
+  CREATE TABLE IF NOT EXISTS used_listing_comments (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    parent_comment_id TEXT,
+    body TEXT NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_comment_id) REFERENCES used_listing_comments(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS used_listing_comments_listing_id_idx
+    ON used_listing_comments(listing_id);
+
+  CREATE TABLE IF NOT EXISTS used_listing_comment_likes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    comment_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (comment_id) REFERENCES used_listing_comments(id) ON DELETE CASCADE,
+    UNIQUE(user_id, comment_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS used_listing_comment_likes_comment_id_idx
+    ON used_listing_comment_likes(comment_id);
+
+  CREATE TABLE IF NOT EXISTS used_listing_shares (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS used_listing_shares_listing_id_idx
+    ON used_listing_shares(listing_id);
+
+  CREATE TABLE IF NOT EXISTS used_listing_views (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    listing_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE,
+    UNIQUE(user_id, listing_id)
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS used_listing_views_listing_id_idx
+    ON used_listing_views(listing_id);
+
   CREATE TABLE IF NOT EXISTS cart_items (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

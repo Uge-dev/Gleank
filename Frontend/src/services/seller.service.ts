@@ -7,6 +7,7 @@ import type {
   SellerStore,
   SellerWorkspace,
   StoreHighlight,
+  GleencOrder,
 } from "../types/domain";
 
 export function getSellerWorkspace() {
@@ -15,6 +16,10 @@ export function getSellerWorkspace() {
 
 export function getSellerActionableOrderCount() {
   return apiRequest<{ count: number }>("/seller/orders/actionable-count");
+}
+
+export function getSellerOrders() {
+  return apiRequest<{ orders: GleencOrder[] }>("/seller/orders");
 }
 
 export type SellerPickupTaskItem = {

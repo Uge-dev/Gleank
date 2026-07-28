@@ -4,8 +4,13 @@ import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { getPayoutAccount, getTrustProfile, ensureUsedMarketTrust } from "./trust.service.js";
 import { createNotification } from "./notification.service.js";
+import {
+  usedListingComments,
+  usedListingInteraction,
+} from "./used-listing-interaction.service.js";
 
 const MAX_USED_IMAGES = 10;
+const MIN_USED_IMAGES = 3;
 
 const selectListing = `
   SELECT used_listings.*, users.name AS seller_name,
@@ -181,7 +186,7 @@ function serializeUsedListing(row, includePrivate = false) {
   };
 }
 
-export function listUsedListings({ query = "", category = "" }) {
+export function listUsedListings({ query = "", category = "", viewerId = "" }) {
   const cleanQuery = query.trim().slice(0, 100);
   const cleanCategory = category.trim().slice(0, 80);
   const pattern = `%${cleanQuery.replaceAll("%", "\\%").replaceAll("_", "\\_")}%`;
@@ -215,10 +220,17 @@ export function listUsedListings({ query = "", category = "" }) {
       pattern,
       pattern,
     )
-    .map((row) => serializeUsedListing(row));
+    .map((row) => ({
+      ...serializeUsedListing(row),
+      interaction: usedListingInteraction(row.id, viewerId),
+    }));
 }
 
-export function getUsedListing(listingId, viewerId) {
+export function getUsedListing(listingId, viewer = null) {
+  const viewerId =
+    typeof viewer === "string"
+      ? viewer
+      : viewer?.user_id || viewer?.id || "";
   const row = db
     .prepare(`
       ${selectListing}
@@ -228,7 +240,11 @@ export function getUsedListing(listingId, viewerId) {
     .get(listingId, viewerId || "");
 
   if (!row) throw new HttpError(404, "Used item was not found.");
-  return serializeUsedListing(row, row.seller_id === viewerId);
+  return {
+    ...serializeUsedListing(row, row.seller_id === viewerId),
+    interaction: usedListingInteraction(row.id, viewer),
+    comments: usedListingComments(row.id, viewer),
+  };
 }
 
 export function listOwnUsedListings(userId) {
@@ -239,7 +255,10 @@ export function listOwnUsedListings(userId) {
       ORDER BY used_listings.created_at DESC
     `)
     .all(userId)
-    .map((row) => serializeUsedListing(row, true));
+    .map((row) => ({
+      ...serializeUsedListing(row, true),
+      interaction: usedListingInteraction(row.id, userId),
+    }));
 }
 
 export function createUsedListing(userId, input, files) {
@@ -251,8 +270,11 @@ export function createUsedListing(userId, input, files) {
   const id = createId("usd");
   const images = (files.images || []).map((file) => file.url).slice(0, MAX_USED_IMAGES);
 
-  if (!images.length) {
-    throw new HttpError(422, "Upload at least one clear product image.");
+  if (images.length < MIN_USED_IMAGES) {
+    throw new HttpError(
+      422,
+      `Upload at least ${MIN_USED_IMAGES} clear product images from different angles.`,
+    );
   }
 
   if (!files.ownershipProof?.url) {

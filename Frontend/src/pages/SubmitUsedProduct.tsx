@@ -22,6 +22,7 @@ import {
 import type { UsedListing, UsedMarketTrustStatus } from "../types/domain";
 
 const MAX_USED_IMAGES = 10;
+const MIN_USED_IMAGES = 3;
 
 type UsedCategoryField = {
   name: string;
@@ -269,8 +270,10 @@ function SubmitUsedProduct() {
     event.preventDefault();
     setError("");
 
-    if (!imageFiles.length) {
-      setError("Upload at least one clear product image.");
+    if (imageFiles.length < MIN_USED_IMAGES) {
+      setError(
+        `Upload at least ${MIN_USED_IMAGES} clear product images from different angles.`,
+      );
       return;
     }
 
@@ -639,8 +642,14 @@ function SubmitUsedProduct() {
             <label className="secure-file-drop large">
               <FiImage />
               <div>
-                <strong>Product images ({previews.length}/{MAX_USED_IMAGES})</strong>
-                <p>Upload up to 10 clear images. Show front, back, defects, accessories, and serial area if needed.</p>
+                <strong>
+                  Product images ({previews.length}/{MAX_USED_IMAGES}) • minimum{" "}
+                  {MIN_USED_IMAGES}
+                </strong>
+                <p>
+                  At least 3 images are required. Show the front, back, defects,
+                  accessories, and serial area where relevant.
+                </p>
               </div>
               <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple onChange={handleImages} />
             </label>
@@ -706,7 +715,14 @@ function SubmitUsedProduct() {
               </span>
             </label>
 
-            <button type="submit" disabled={isSubmitting || isLoadingTrust}>
+            <button
+              type="submit"
+              disabled={
+                isSubmitting ||
+                isLoadingTrust ||
+                imageFiles.length < MIN_USED_IMAGES
+              }
+            >
               <FiShield />
               {isSubmitting ? "Submitting securely..." : "Submit for Gleenc Review"}
             </button>

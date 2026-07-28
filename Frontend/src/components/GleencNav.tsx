@@ -273,7 +273,9 @@ function GleencNav() {
   const mobileNavItems = [
     navItems.find((item) => item.label === "For You"),
     navItems.find((item) => item.label === "Market"),
-    navItems.find((item) => item.label === "Cart"),
+    navItems.find((item) =>
+      isSellerExperience ? item.label === "Store" : item.label === "Cart",
+    ),
     navItems.find((item) =>
       isSellerExperience ? item.label === "Orders" : item.label === "Notifications",
     ),
@@ -434,12 +436,7 @@ function GleencNav() {
             </div>
           )}
 
-          <div className="sidebar-footer-links">
-            <span>Company</span>
-            <span>Program</span>
-            <span>Terms & Policies</span>
-            <span>© 2026 Gleenc</span>
-          </div>
+          
         </div>
       </aside>
 

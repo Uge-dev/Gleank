@@ -128,7 +128,7 @@ function RequirementCard({
   const fields = fieldsForRequirement(requirement);
   const fileFields = fileFieldsForRequirement(requirement);
   const isSystem = requirement.workflowType === 'system';
-  const isLiveFace = requirement.code === 'rider_live_face';
+  const isProvider = requirement.workflowType === 'provider';
 
   function updateField(key: string, value: string | boolean) {
     onDraftChange({ ...draft, payload: { ...draft.payload, [key]: value } });
@@ -147,7 +147,7 @@ function RequirementCard({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-black text-slate-950">{requirement.title}</h3>
-            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">Level {requirement.requiredLevel}</span>
+            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">Stage {requirement.requiredLevel}</span>
             {requirement.blocking ? <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-black text-rose-600">Blocking</span> : null}
           </div>
           <p className="mt-2 text-sm leading-6 text-slate-500">{requirement.description}</p>
@@ -188,9 +188,9 @@ function RequirementCard({
         <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
           This requirement updates automatically from your account. If it is still incomplete, update the matching account detail first.
         </div>
-      ) : isLiveFace ? (
+      ) : isProvider ? (
         <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
-          Live-face is separate from selfie upload. If Dojah/live-face is not configured, this requirement remains incomplete and admin cannot safely mark it passed from a static image.
+          This advanced check must return a verified result from the configured identity provider. A note or static selfie cannot complete it.
         </div>
       ) : (
         <form
@@ -207,6 +207,7 @@ function RequirementCard({
                 <input
                   value={String(draft.payload[key] || '')}
                   onChange={(event) => updateField(key, event.target.value)}
+                  required
                   className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-950 outline-none focus:border-slate-950"
                 />
               </label>
@@ -218,6 +219,7 @@ function RequirementCard({
                 type="checkbox"
                 checked={Boolean(draft.payload.consentConfirmed)}
                 onChange={(event) => updateField('consentConfirmed', event.target.checked)}
+                required
                 className="h-4 w-4"
               />
               Guarantor consent has been confirmed.
@@ -270,6 +272,7 @@ export default function VerificationCenter() {
     const groups = new Map<number, VerificationRequirement[]>();
     requirements.forEach((requirement) => {
       const level = requirement.requiredLevel || 1;
+      if (level > 3) return;
       groups.set(level, [...(groups.get(level) || []), requirement]);
     });
     return Array.from(groups.entries()).sort(([a], [b]) => a - b);
@@ -313,8 +316,9 @@ export default function VerificationCenter() {
     setSavingCode('upgrade');
     setError('');
     try {
-      setCenter(await riderApi.requestVerificationLevel(Math.max(2, center.case.currentVerifiedLevel + 1), 'Requesting the next rider verification level.'));
-      setNotice('Upgrade request sent to admin.');
+      if (center.case.currentVerifiedLevel >= 3) return;
+      setCenter(await riderApi.requestVerificationLevel(Math.max(2, center.case.currentVerifiedLevel + 1), 'Requesting the next rider verification stage.'));
+      setNotice('Next-stage request sent to admin.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Upgrade request could not be sent.');
     } finally {
@@ -344,15 +348,23 @@ export default function VerificationCenter() {
                   <p className="text-xs font-black uppercase tracking-widest text-slate-400">Requirement-based verification</p>
                   <h2 className="mt-2 text-2xl font-black text-slate-950">{rider.fullName}</h2>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Level {center.case.currentVerifiedLevel} approved · Level {center.case.requestedLevel} requested · {center.case.completionPercent}% complete
+                    Stage {center.case.currentVerifiedLevel} of 3 approved · {center.case.completionPercent}% complete
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <StatusBadge value={center.case.overallStatus} />
                     <StatusBadge value={center.case.operationalStatus} />
                   </div>
                 </div>
-                <Button icon={FiAward} disabled={savingCode === 'upgrade'} onClick={requestUpgrade}>
-                  {savingCode === 'upgrade' ? 'Requesting...' : 'Request next level'}
+                <Button
+                  icon={FiAward}
+                  disabled={savingCode === 'upgrade' || center.case.currentVerifiedLevel >= 3}
+                  onClick={requestUpgrade}
+                >
+                  {center.case.currentVerifiedLevel >= 3
+                    ? 'All stages approved'
+                    : savingCode === 'upgrade'
+                      ? 'Requesting...'
+                      : 'Request next stage'}
                 </Button>
               </div>
               <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-100">
@@ -386,12 +398,44 @@ export default function VerificationCenter() {
             </div>
           ) : null}
 
+          <div className="mb-8 grid gap-4 md:grid-cols-3">
+            {center.case.stageReadiness.map((stage) => (
+              <Card
+                key={stage.stage}
+                className={`border p-5 ${
+                  stage.approved
+                    ? 'border-emerald-100 bg-emerald-50'
+                    : stage.approvalReady
+                      ? 'border-amber-100 bg-amber-50'
+                      : 'border-slate-100 bg-white'
+                }`}
+              >
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Stage {stage.stage}</p>
+                <h3 className="mt-2 text-lg font-black text-slate-950">{stage.title}</h3>
+                <p className="mt-2 text-sm font-bold leading-6 text-slate-600">
+                  {stage.approved
+                    ? 'Approved'
+                    : stage.approvalReady
+                      ? 'Complete and waiting for admin approval'
+                      : stage.started
+                        ? 'In progress — finish every item'
+                        : 'Not started'}
+                </p>
+                {stage.stage === 1 ? (
+                  <p className="mt-2 text-xs font-bold leading-5 text-emerald-700">
+                    Approval at this stage qualifies you for standard dispatch.
+                  </p>
+                ) : null}
+              </Card>
+            ))}
+          </div>
+
           <div className="space-y-8">
             {levelGroups.map(([level, rows]) => (
               <section key={level}>
                 <div className="mb-3 flex items-center gap-2">
                   <FiClock className="text-slate-400" />
-                  <h2 className="text-lg font-black text-slate-950">Level {level} requirements</h2>
+                  <h2 className="text-lg font-black text-slate-950">Stage {level} requirements</h2>
                 </div>
                 <div className="grid gap-4">
                   {rows.map((requirement) => (

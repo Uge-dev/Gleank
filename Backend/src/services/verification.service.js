@@ -166,15 +166,6 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     description: "Admin review of delivery performance, disputes and complaints.",
   },
   {
-    code: "rider_high_value_approval",
-    role: "rider",
-    level: 4,
-    blocking: false,
-    workflowType: "provider",
-    title: "High-value delivery approval",
-    description: "Additional checks before high-value deliveries are allowed.",
-  },
-  {
     code: "seller_email_verified",
     role: "seller",
     level: 1,
@@ -718,6 +709,171 @@ function serializeRequirement(row, { includeHistory = false } = {}) {
   };
 }
 
+const REQUIRED_SUBMISSION_FIELDS = {
+  rider_personal_profile: [
+    "fullLegalName",
+    "homeAddress",
+    "state",
+    "cityLga",
+    "nearestLandmark",
+  ],
+  rider_vehicle_capacity: [
+    "vehicleType",
+    "plateInformation",
+    "packageSizes",
+    "weightLimit",
+    "fragileCapability",
+  ],
+  rider_service_zone: ["serviceZones", "locationPermissionState"],
+  rider_government_id: ["idType", "idNumberReference"],
+  rider_home_address: [
+    "fullLegalName",
+    "homeAddress",
+    "state",
+    "cityLga",
+    "nearestLandmark",
+  ],
+  rider_emergency_contact: [
+    "fullName",
+    "relationship",
+    "primaryPhone",
+    "address",
+  ],
+  rider_guarantor: [
+    "fullName",
+    "relationship",
+    "phone",
+    "email",
+    "address",
+    "occupation",
+    "consentConfirmed",
+  ],
+  rider_vehicle_authorization: [
+    "vehicleType",
+    "plateInformation",
+    "packageSizes",
+    "weightLimit",
+    "fragileCapability",
+  ],
+};
+
+const DOCUMENT_REQUIRED_CODES = new Set([
+  "rider_government_id",
+  "rider_identity_selfie",
+  "rider_guarantor",
+  "rider_vehicle_authorization",
+]);
+
+const VERIFIED_PROVIDER_CODES = new Set([
+  "rider_nin_dojah",
+  "rider_live_face",
+]);
+
+function hasSubmissionValue(value) {
+  if (typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.length > 0;
+  return String(value ?? "").trim().length > 0;
+}
+
+function evaluateSubmissionCompleteness(
+  requirement,
+  { payload = {}, documentUrls = [], provider = "", providerStatus = "" } = {},
+) {
+  if (requirement.workflow_type === "system") {
+    return {
+      complete: requirement.status === "approved",
+      missing: requirement.status === "approved" ? [] : ["automatic account check"],
+    };
+  }
+
+  const requiredFields = REQUIRED_SUBMISSION_FIELDS[requirement.code] || [];
+  const missing = requiredFields
+    .filter((field) => !hasSubmissionValue(payload[field]))
+    .map((field) => field.replace(/([A-Z])/g, " $1").toLowerCase());
+
+  if (
+    requirement.code === "rider_service_zone" &&
+    /disabled|denied|blocked|off/i.test(String(payload.locationPermissionState || ""))
+  ) {
+    missing.push("enabled location permission");
+  }
+
+  if (DOCUMENT_REQUIRED_CODES.has(requirement.code) && documentUrls.length === 0) {
+    missing.push("required document");
+  }
+
+  if (
+    VERIFIED_PROVIDER_CODES.has(requirement.code) &&
+    (String(provider).toLowerCase() === "manual" ||
+      String(providerStatus).toLowerCase() !== "verified")
+  ) {
+    missing.push("verified provider result");
+  }
+
+  return { complete: missing.length === 0, missing };
+}
+
+function stageReadinessForCase(caseRow, requirements) {
+  const currentLevel = Number(caseRow.current_verified_level || 0);
+
+  return [1, 2, 3].map((stage) => {
+    const rows = requirements.filter(
+      (requirement) => Number(requirement.required_level || 1) === stage,
+    );
+    const rowStates = rows.map((requirement) => {
+      if (requirement.status === "approved") {
+        return { requirement, complete: true };
+      }
+
+      const submission = requirement.latest_submission_id
+        ? db
+            .prepare("SELECT * FROM verification_submissions WHERE id = ?")
+            .get(requirement.latest_submission_id)
+        : null;
+      const completion = evaluateSubmissionCompleteness(requirement, {
+        payload: parseJson(submission?.payload_json, {}),
+        documentUrls: parseJson(submission?.document_urls, []),
+        provider: submission?.provider || "",
+        providerStatus: submission?.provider_status || "",
+      });
+
+      return {
+        requirement,
+        complete:
+          ["submitted", "under_review"].includes(requirement.status) &&
+          completion.complete,
+        missing: completion.missing,
+      };
+    });
+    const approved = currentLevel >= stage;
+    const started = rows.some(
+      (requirement) => requirement.status !== "not_submitted",
+    );
+    const submissionComplete =
+      rows.length > 0 && rowStates.every((state) => state.complete);
+    const previousStageApproved = stage === 1 || currentLevel >= stage - 1;
+
+    return {
+      stage,
+      title:
+        stage === 1
+          ? "Basic dispatch"
+          : stage === 2
+            ? "Identity and trust"
+            : "Advanced and high-value",
+      started,
+      approved,
+      submissionComplete,
+      previousStageApproved,
+      approvalReady:
+        !approved && previousStageApproved && submissionComplete,
+      missingRequirementCodes: rowStates
+        .filter((state) => !state.complete)
+        .map((state) => state.requirement.code),
+    };
+  });
+}
+
 function serializeCase(row, { includeHistory = false, includeEligibility = false } = {}) {
   if (!row) return null;
   const user = getUser(row.user_id);
@@ -775,6 +931,7 @@ function serializeCase(row, { includeHistory = false, includeEligibility = false
     requirements: summary.requirements.map((requirement) =>
       serializeRequirement(requirement, { includeHistory }),
     ),
+    stageReadiness: stageReadinessForCase(row, summary.requirements),
     eligibility: includeEligibility && row.role === "rider"
       ? evaluateRiderEligibility(row.user_id)
       : null,
@@ -843,6 +1000,20 @@ export function submitRequirement(auth, code, input = {}) {
     ...Object.values(input.files || {}).flat().map((file) => file.url).filter(Boolean),
   ].map((value) => clean(value, 500)).filter(Boolean);
   const payload = input.payload && typeof input.payload === "object" ? input.payload : {};
+  const submissionCheck = evaluateSubmissionCompleteness(requirement, {
+    payload,
+    documentUrls,
+    provider: input.provider || "manual",
+    providerStatus: input.providerStatus || "",
+  });
+
+  if (!submissionCheck.complete) {
+    throw new HttpError(
+      422,
+      `Complete every required field before submitting ${requirement.title}.`,
+      { missingFields: submissionCheck.missing },
+    );
+  }
   const now = nowIso();
   const latestVersion = db
     .prepare("SELECT COALESCE(MAX(version), 0) AS version FROM verification_submissions WHERE requirement_id = ?")
@@ -907,10 +1078,22 @@ export function submitRequirement(auth, code, input = {}) {
     refreshCaseStatus(caseRow.id);
   });
 
+  const updatedCase = requireCase(caseRow.id);
+  const stageState = stageReadinessForCase(
+    updatedCase,
+    computeCaseSummary(caseRow.id).requirements,
+  ).find((stage) => stage.stage === Number(requirement.required_level || 1));
+
   createNotificationForUsers(getAdminIds(), {
     type: "admin",
-    title: nextVersion > 1 ? "Verification resubmitted" : "New verification submission",
-    body: `${auth.name || "A user"} submitted ${requirement.title} for review.`,
+    title: stageState?.approvalReady
+      ? `${auth.role === "rider" ? "Rider" : "Seller"} Stage ${stageState.stage} ready for approval`
+      : nextVersion > 1
+        ? "Verification resubmitted"
+        : "New verification submission",
+    body: stageState?.approvalReady
+      ? `${auth.name || `A ${auth.role}`} completed every Stage ${stageState.stage} requirement.`
+      : `${auth.name || "A user"} submitted ${requirement.title} for review.`,
     actionLabel: "Review",
     actionPath: "/admin",
   });
@@ -1047,16 +1230,6 @@ export function reviewRequirement(auth, requirementId, input = {}) {
   };
 }
 
-function approvedBlockingRequirementsForLevel(caseId, level) {
-  const requirements = db
-    .prepare("SELECT * FROM verification_requirements WHERE case_id = ? AND blocking = 1 AND required_level <= ?")
-    .all(caseId, level);
-  return {
-    requirements,
-    missing: requirements.filter((requirement) => requirement.status !== "approved"),
-  };
-}
-
 function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
   if (caseRow.role === "rider") {
     db.prepare(`
@@ -1110,18 +1283,85 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
 export function approveCaseLevel(auth, caseId, input = {}) {
   const adminId = requireAdmin(auth);
   const caseRow = requireCase(caseId);
-  const requestedLevel = Math.max(1, Number(input.level || caseRow.requested_level || 1));
-  const check = approvedBlockingRequirementsForLevel(caseRow.id, requestedLevel);
-  if (check.missing.length > 0) {
+  const requestedLevel = Math.min(
+    3,
+    Math.max(1, Number(caseRow.current_verified_level || 0) + 1),
+  );
+  const requirements = computeCaseSummary(caseRow.id).requirements;
+  const readiness = stageReadinessForCase(caseRow, requirements).find(
+    (stage) => stage.stage === requestedLevel,
+  );
+
+  if (!readiness?.approvalReady) {
     throw new HttpError(
       422,
-      "Approve all blocking requirements before approving this level.",
-      { missingRequirementCodes: check.missing.map((requirement) => requirement.code) },
+      `Stage ${requestedLevel} cannot be approved until every requirement in that stage is complete.`,
+      {
+        missingRequirementCodes: readiness?.missingRequirementCodes || [],
+        previousStageApproved: readiness?.previousStageApproved || false,
+      },
     );
   }
 
   const now = nowIso();
   transaction(() => {
+    for (const requirement of requirements.filter(
+      (row) =>
+        Number(row.required_level || 1) === requestedLevel &&
+        row.status !== "approved",
+    )) {
+      const reviewId = createId("vrev");
+
+      db.prepare(`
+        INSERT INTO verification_reviews (
+          id, requirement_id, submission_id, case_id, admin_id, action,
+          previous_status, new_status, feedback, metadata_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, 'approve', ?, 'approved', ?, ?, ?)
+      `).run(
+        reviewId,
+        requirement.id,
+        requirement.latest_submission_id || null,
+        caseRow.id,
+        adminId,
+        requirement.status,
+        clean(input.reason || `Approved with Stage ${requestedLevel}.`, 1000),
+        safeJson({ stage: requestedLevel, bulkStageApproval: true }),
+        now,
+      );
+
+      db.prepare(`
+        UPDATE verification_requirements
+        SET status = 'approved',
+            latest_review_id = ?,
+            review_result = 'approve',
+            admin_feedback = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        reviewId,
+        clean(input.reason || `Approved with Stage ${requestedLevel}.`, 1000),
+        now,
+        requirement.id,
+      );
+
+      if (requirement.latest_submission_id) {
+        db.prepare(
+          "UPDATE verification_submissions SET status = 'approved' WHERE id = ?",
+        ).run(requirement.latest_submission_id);
+      }
+
+      addAuditEvent({
+        caseId: caseRow.id,
+        actorId: adminId,
+        actorRole: "admin",
+        eventType: "requirement_approved_with_stage",
+        requirementCode: requirement.code,
+        previousStatus: requirement.status,
+        newStatus: "approved",
+        summary: `Approved as part of Stage ${requestedLevel}.`,
+      });
+    }
+
     db.prepare(`
       UPDATE verification_cases
       SET current_verified_level = CASE
@@ -1147,7 +1387,7 @@ export function approveCaseLevel(auth, caseId, input = {}) {
       requestedLevel,
       requestedLevel,
       requestedLevel,
-      clean(input.reason || `Level ${requestedLevel} approved.`, 800),
+      clean(input.reason || `Stage ${requestedLevel} approved.`, 800),
       adminId,
       now,
       now,
@@ -1163,7 +1403,7 @@ export function approveCaseLevel(auth, caseId, input = {}) {
           updated_at = ?
       WHERE case_id = ? AND requested_level <= ? AND status = 'pending'
     `).run(
-      clean(input.reason || `Level ${requestedLevel} approved.`, 800),
+      clean(input.reason || `Stage ${requestedLevel} approved.`, 800),
       adminId,
       now,
       now,
@@ -1177,18 +1417,18 @@ export function approveCaseLevel(auth, caseId, input = {}) {
       caseId: caseRow.id,
       actorId: adminId,
       actorRole: "admin",
-      eventType: "level_approved",
+      eventType: "stage_approved",
       previousStatus: String(caseRow.current_verified_level || 0),
       newStatus: String(requestedLevel),
-      summary: clean(input.reason || `${caseRow.role} verification level ${requestedLevel} approved.`, 900),
-      metadata: { level: requestedLevel },
+      summary: clean(input.reason || `${caseRow.role} verification Stage ${requestedLevel} approved.`, 900),
+      metadata: { stage: requestedLevel },
     });
   });
 
   notifyCaseUser(
     caseRow,
-    "Verification level approved",
-    `Your ${caseRow.role} verification level ${requestedLevel} has been approved.`,
+    "Verification stage approved",
+    `Your ${caseRow.role} verification Stage ${requestedLevel} has been approved.`,
   );
 
   return {
@@ -1200,7 +1440,13 @@ export function requestVerificationLevel(auth, input = {}) {
   const userId = requireAuth(auth);
   const role = normalizeRole(auth.role);
   const caseRow = ensureVerificationCase(userId, role);
-  const requestedLevel = Math.max(Number(caseRow.current_verified_level || 0) + 1, Number(input.level || caseRow.requested_level || 1));
+  const requestedLevel = Math.min(
+    3,
+    Math.max(
+      Number(caseRow.current_verified_level || 0) + 1,
+      Number(input.level || caseRow.requested_level || 1),
+    ),
+  );
   const now = nowIso();
   const id = createId("vlr");
 
@@ -1363,7 +1609,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
   const zoneReady = Boolean(serviceZones.length || profile?.coverage_area || profile?.current_zone_id);
   const highValueAllowed =
     !options.highValue ||
-    Number(caseRow?.current_verified_level || 0) >= 4 ||
+    Number(caseRow?.current_verified_level || 0) >= 3 ||
     Number(profile?.max_package_value_kobo || 0) >= Number(options.packageValueKobo || 0);
   const checks = {
     correctRole: user?.role === "rider",
