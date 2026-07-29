@@ -18,8 +18,10 @@ import {
   type PaymentSummary,
 } from "../services/payment.service";
 import { formatNaira } from "../utils/price";
+import { useAuth } from "../context/AuthContext";
 
 function OrderSuccess() {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const reference = useMemo(
     () =>
@@ -36,6 +38,10 @@ function OrderSuccess() {
   const [payment, setPayment] = useState<GleencPayment | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(reference));
   const [error, setError] = useState("");
+  const purchaseOrdersPath =
+    user?.role === "seller" || user?.role === "admin"
+      ? "/purchases"
+      : "/orders";
 
   useEffect(() => {
     if (!reference) {
@@ -125,8 +131,8 @@ function OrderSuccess() {
             Back Home
           </Link>
 
-          <Link to="/orders" className="success-primary-link">
-            My Orders
+          <Link to={purchaseOrdersPath} className="success-primary-link">
+            Your Orders
             <FiArrowRight />
           </Link>
         </div>
@@ -149,7 +155,7 @@ function OrderSuccess() {
         ? `/used-orders/${summary.orderId}`
         : summary.orderId
           ? `/orders/${summary.orderId}`
-          : "/orders";
+          : purchaseOrdersPath;
 
   return (
     <section className="order-success-page">

@@ -370,3 +370,29 @@ html[data-theme="dark"] .order-action-row a:last-child {
     height: 178px !important;
   }
 }
+.orders-page-heading {
+  margin-bottom: 20px;
+}
+
+.orders-page-heading span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.orders-page-heading h1 {
+  margin: 4px 0 0;
+  color: #0f172a;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 900;
+  letter-spacing: -0.035em;
+}
+
+.orders-page-heading p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 650;
+}

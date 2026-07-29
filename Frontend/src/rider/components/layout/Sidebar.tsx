@@ -1,18 +1,19 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { FiBell, FiCheckCircle, FiCreditCard, FiHome, FiKey, FiLogOut, FiPackage, FiSettings, FiShield, FiTruck, FiUser } from 'react-icons/fi';
+import { FiCheckCircle, FiCreditCard, FiHome, FiKey, FiLogOut, FiPackage, FiSettings, FiShield, FiTruck, FiUser } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import StatusBadge from '../ui/StatusBadge';
 
-const navItems = [
-  { label: 'Dashboard', path: '/rider', icon: FiHome, end: true },
-  { label: 'Assigned Orders', path: '/rider/assigned', icon: FiPackage },
-  { label: 'Active Deliveries', path: '/rider/active', icon: FiTruck },
+const deliveryItems = [
+  { label: 'Home', path: '/rider', icon: FiHome, end: true },
+  { label: 'New Jobs', path: '/rider/assigned', icon: FiPackage },
+  { label: 'Active', path: '/rider/active', icon: FiTruck },
   { label: 'Verify Code', path: '/rider/verify-code', icon: FiKey },
-  { label: 'Completed Deliveries', path: '/rider/completed', icon: FiCheckCircle },
+  { label: 'Completed', path: '/rider/completed', icon: FiCheckCircle },
   { label: 'Earnings', path: '/rider/earnings', icon: FiCreditCard },
-  { label: 'Notifications', path: '/rider/notifications', icon: FiBell },
-  { label: 'Verification Center', path: '/rider/verification', icon: FiShield },
-  { label: 'Safety Center', path: '/rider/safety', icon: FiShield },
+];
+
+const accountItems = [
+  { label: 'Verification', path: '/rider/verification', icon: FiShield },
   { label: 'Profile', path: '/rider/profile', icon: FiUser },
   { label: 'Settings', path: '/rider/settings', icon: FiSettings }
 ];
@@ -34,7 +35,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
         <div>
           <p className="text-lg font-black tracking-tight text-slate-950">Gleenc</p>
-          <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">Rider DMS</p>
+          <p className="text-xs font-semibold text-slate-400">Rider</p>
         </div>
       </div>
 
@@ -49,7 +50,7 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <nav className="mt-6 flex-1 space-y-1.5">
-        {navItems.map((item) => (
+        {deliveryItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
@@ -58,6 +59,24 @@ export default function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             className={({ isActive }) =>
               `flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition-all ${
                 isActive ? 'bg-slate-950 text-white shadow-card' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'
+              }`
+            }
+          >
+            <item.icon className="text-lg" />
+            {item.label}
+          </NavLink>
+        ))}
+
+        <div className="my-4 border-t border-slate-100" />
+
+        {accountItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={onNavigate}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-2xl px-4 py-2.5 text-sm font-bold transition-all ${
+                isActive ? 'bg-slate-950 text-white' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-950'
               }`
             }
           >

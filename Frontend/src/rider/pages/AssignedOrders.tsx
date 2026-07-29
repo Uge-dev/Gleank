@@ -1,5 +1,5 @@
-import { FiClock, FiMapPin, FiPhone, FiShield, FiTruck, FiX } from 'react-icons/fi';
-import { useEffect, useMemo, useState } from 'react';
+import { FiClock, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
+import { useEffect, useState } from 'react';
 import { useRiderData } from '../context/RiderDataContext';
 import AssignmentCard from '../components/rider/AssignmentCard';
 import Button from '../components/ui/Button';
@@ -10,27 +10,16 @@ import { shouldUseApi } from '../config/env';
 import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import type { RiderDispatchOffer } from '../services/riderApi';
-import { formatDateTime } from '../utils/format';
-
-const categories = ['All', 'Food', 'Groceries', 'Fashion', 'Electronics', 'Books', 'Health', 'Beauty', 'Household', 'Used Items', 'Others'];
-const channels = ['All', 'campus', 'physical_market', 'nearby_market', 'used_market'];
 
 export default function AssignedOrders() {
   const { assignments, refresh } = useRiderData();
-  const [category, setCategory] = useState('All');
-  const [channel, setChannel] = useState('All');
   const [dispatches, setDispatches] = useState<RiderDispatchOffer[]>([]);
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [dispatchAction, setDispatchAction] = useState('');
   const [dispatchError, setDispatchError] = useState('');
-  const assigned = assignments.filter((item) => ['assigned', 'accepted', 'arrived_at_pickup'].includes(item.status));
-  const filtered = useMemo(() => {
-    return assigned.filter((item) => {
-      const categoryOk = category === 'All' || item.category === category;
-      const channelOk = channel === 'All' || item.orderChannel === channel;
-      return categoryOk && channelOk;
-    });
-  }, [assigned, category, channel]);
+  const assigned = assignments.filter((item) =>
+    ['assigned', 'accepted', 'arrived_at_pickup'].includes(item.status),
+  );
 
   async function loadDispatches() {
     if (
@@ -38,11 +27,12 @@ export default function AssignedOrders() {
       !navigator.onLine ||
       document.visibilityState !== 'visible'
     ) return;
+
     setDispatchLoading(true);
     try {
       const payload = await riderApi.activeDispatches();
       setDispatches(
-        (payload.dispatches || []).filter((offer) => offer.status === "offered"),
+        (payload.dispatches || []).filter((offer) => offer.status === 'offered'),
       );
       setDispatchError('');
     } catch (requestError) {
@@ -54,10 +44,10 @@ export default function AssignedOrders() {
         const reasons = payload?.error?.details || payload?.details || [];
         setDispatchError(
           reasons.map((reason) => reason.message).filter(Boolean).join(' ') ||
-          'Dispatch access is restricted. Open Verification Center to see the exact requirement that needs attention.'
+          'Complete rider verification before accepting jobs.',
         );
       } else {
-        setDispatchError('Unable to load dispatch offers right now. Please try again.');
+        setDispatchError('Unable to load new jobs. Please try again.');
       }
     } finally {
       setDispatchLoading(false);
@@ -68,9 +58,7 @@ export default function AssignedOrders() {
     void loadDispatches();
     const refreshOnFocus = () => void loadDispatches();
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void loadDispatches();
-      }
+      if (document.visibilityState === 'visible') void loadDispatches();
     };
     window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', refreshWhenVisible);
@@ -94,7 +82,7 @@ export default function AssignedOrders() {
       setDispatchError(
         requestError instanceof ApiClientError
           ? requestError.message
-          : 'This dispatch could not be accepted. Refresh the page and try again.',
+          : 'This job could not be accepted. Refresh and try again.',
       );
     } finally {
       setDispatchAction('');
@@ -108,93 +96,82 @@ export default function AssignedOrders() {
       await loadDispatches();
       setDispatchError('');
     } catch {
-      setDispatchError('This dispatch could not be rejected. Please refresh and try again.');
+      setDispatchError('This job could not be declined. Please try again.');
     } finally {
       setDispatchAction('');
     }
   }
 
+  const hasJobs = dispatches.length > 0 || assigned.length > 0;
+
   return (
     <div>
-      <PageHeader
-        title="Assigned Orders"
-        subtitle="Gleenc dispatch offers and private delivery tasks. Customer/order/payment details remain locked until pickup OTP and proof are recorded."
-      />
+      <PageHeader title="New Jobs" subtitle="Accept a job, then follow the pickup and delivery steps." />
 
-      <section className="mb-6">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-gleenc-green">Gleenc dispatch</p>
-            <h2 className="text-xl font-black text-slate-950">Batch offers waiting for you</h2>
-          </div>
-          {dispatchLoading && <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">Refreshing</span>}
+      {dispatchError && (
+        <div className="mb-4 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+          {dispatchError}
         </div>
-        {dispatchError && <div className="mb-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{dispatchError}</div>}
-        {!dispatchLoading && !dispatchError && dispatches.length === 0 && (
-          <EmptyState icon={FiTruck} title="No dispatch offers available right now" message="Keep the rider app open and connected. New seller-ready orders will appear here automatically." />
-        )}
-        {dispatches.length > 0 && (
+      )}
+
+      {dispatches.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-black text-slate-950">Available now</h2>
+            {dispatchLoading ? <span className="text-xs font-bold text-slate-400">Refreshing</span> : null}
+          </div>
           <div className="grid gap-4 xl:grid-cols-2">
             {dispatches.map((offer) => {
               const batch = offer.batch;
               const pickupTasks = batch?.pickupTasks || [];
-              const remainingMinutes = offer.remainingSeconds != null ? Math.max(0, Math.ceil(offer.remainingSeconds / 60)) : null;
-              const packageLabel = [batch?.packageSizeSummary, batch?.weightClassSummary, batch?.fragilitySummary].filter(Boolean).join(' · ') || 'Mixed package';
+              const remainingMinutes = offer.remainingSeconds != null
+                ? Math.max(0, Math.ceil(offer.remainingSeconds / 60))
+                : null;
+              const packageLabel = [
+                batch?.packageSizeSummary,
+                batch?.weightClassSummary,
+                batch?.fragilitySummary,
+              ].filter(Boolean).join(' · ') || 'Delivery package';
+
               return (
-                <Card key={offer.id} className="border border-emerald-100 bg-gradient-to-br from-white via-white to-emerald-50 p-5">
-                  <div className="flex flex-col justify-between gap-4 md:flex-row">
+                <Card key={offer.id} className="border border-emerald-100 p-5">
+                  <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase text-emerald-700">{batch?.batchType?.replace(/_/g, ' ') || 'Delivery batch'}</span>
-                        <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black uppercase text-white">Score {offer.dispatchScore}</span>
-                        {remainingMinutes != null && <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-black uppercase text-amber-800">{remainingMinutes} min left</span>}
-                      </div>
-                      <h3 className="mt-4 text-xl font-black text-slate-950">{batch?.pickupCount || pickupTasks.length || 1} pickup batch</h3>
-                      <p className="mt-1 text-sm font-bold text-slate-500">{packageLabel}</p>
+                      <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-700">Delivery job</p>
+                      <h3 className="mt-1 text-xl font-black text-slate-950">
+                        {batch?.pickupCount || pickupTasks.length || 1} pickup
+                        {(batch?.pickupCount || pickupTasks.length || 1) === 1 ? '' : 's'}
+                      </h3>
+                      <p className="mt-1 text-sm font-semibold text-slate-500">{packageLabel}</p>
                     </div>
-                    <div className="rounded-2xl bg-white px-4 py-3 text-right shadow-sm">
-                      <p className="text-xs font-black uppercase tracking-widest text-slate-400">Dispatch privacy</p>
-                      <p className="text-sm font-black text-slate-950">No payment details shown</p>
-                    </div>
+                    {remainingMinutes != null ? (
+                      <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+                        <FiClock className="mr-1 inline" /> {remainingMinutes} min
+                      </span>
+                    ) : null}
                   </div>
 
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-white p-4 shadow-sm">
-                      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400"><FiMapPin /> Pickup sequence</p>
-                      <div className="mt-3 space-y-2">
-                        {pickupTasks.length ? pickupTasks.slice(0, 4).map((task) => (
-                          <div key={task.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-                            <p>#{task.pickupSequence || 1} {task.sellerName || 'Seller'}</p>
-                            <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                              <FiMapPin /> {task.pickupLocation || 'Pickup location unavailable'}
-                            </p>
-                            {task.sellerPhone ? (
-                              <a
-                                className="mt-1 flex items-center gap-2 text-xs text-emerald-700"
-                                href={`tel:${task.sellerPhone}`}
-                              >
-                                <FiPhone /> {task.sellerPhone}
-                              </a>
-                            ) : null}
-                          </div>
-                        )) : (
-                          <p className="text-sm font-bold text-slate-500">Seller pickup information is unavailable.</p>
-                        )}
+                  <div className="mt-4 space-y-2">
+                    {pickupTasks.length ? pickupTasks.map((task) => (
+                      <div key={task.id} className="rounded-2xl bg-slate-50 p-3">
+                        <p className="text-sm font-black text-slate-800">
+                          {task.pickupSequence || 1}. {task.sellerName || 'Seller'}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          <FiMapPin className="mr-1 inline" />
+                          {task.pickupLocation || 'Pickup location unavailable'}
+                        </p>
+                        {task.sellerPhone ? (
+                          <a className="mt-1 block text-xs font-bold text-emerald-700" href={`tel:${task.sellerPhone}`}>
+                            <FiPhone className="mr-1 inline" /> {task.sellerPhone}
+                          </a>
+                        ) : null}
                       </div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-4 shadow-sm">
-                      <p className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-400"><FiTruck /> Dispatch rules</p>
-                      <div className="mt-3 space-y-2 text-sm font-bold text-slate-600">
-                        <p>Vehicle: {batch?.requiredVehicleType?.replace(/_/g, ' ') || 'compatible rider'}</p>
-                        <p>Risk: <span className={batch?.riskLevel === 'high' ? 'text-rose-600' : 'text-emerald-600'}>{batch?.riskLevel || 'normal'}</span></p>
-                        <p>GPS proof: {batch?.requiresGps ? 'Required' : 'Optional / zone fallback'}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm font-bold text-slate-500">
-                    <span className="inline-flex items-center gap-2"><FiClock /> Offered {offer.offeredAt ? formatDateTime(offer.offeredAt) : 'now'}</span>
-                    {offer.expiresAt && <span className="inline-flex items-center gap-2 text-amber-700"><FiClock /> Expires {formatDateTime(offer.expiresAt)}</span>}
+                    )) : (
+                      <p className="rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-500">
+                        Pickup details will appear after acceptance.
+                      </p>
+                    )}
                   </div>
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -204,7 +181,7 @@ export default function AssignedOrders() {
                       onClick={() => acceptDispatch(offer.id)}
                       fullWidth
                     >
-                      {dispatchAction === offer.id ? 'Working...' : 'Accept batch'}
+                      {dispatchAction === offer.id ? 'Working...' : 'Accept'}
                     </Button>
                     <Button
                       variant="secondary"
@@ -213,50 +190,34 @@ export default function AssignedOrders() {
                       onClick={() => rejectDispatch(offer.id)}
                       fullWidth
                     >
-                      Reject
+                      Decline
                     </Button>
                   </div>
                 </Card>
               );
             })}
           </div>
-        )}
-      </section>
-
-      <div className="mb-4 overflow-x-auto pb-2">
-        <div className="flex min-w-max gap-2">
-          {channels.map((item) => (
-            <button
-              key={item}
-              onClick={() => setChannel(item)}
-              className={`rounded-full px-4 py-2 text-sm font-bold capitalize transition-all ${channel === item ? 'bg-slate-950 text-white' : 'bg-white text-slate-500 hover:text-slate-950'}`}
-            >
-              {item.replace(/_/g, ' ')}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="mb-5 overflow-x-auto pb-2">
-        <div className="flex min-w-max gap-2">
-          {categories.map((item) => (
-            <button
-              key={item}
-              onClick={() => setCategory(item)}
-              className={`rounded-full px-4 py-2 text-sm font-bold transition-all ${category === item ? 'bg-gleenc-gradient text-gleenc-dark' : 'bg-white text-slate-500 hover:text-slate-950'}`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <EmptyState icon={FiShield} title="No private assignments" message="No seller-assigned delivery tasks are currently waiting in this category/channel." />
-      ) : (
-        <div className="grid gap-5 xl:grid-cols-2">
-          {filtered.map((assignment) => <AssignmentCard key={assignment.id} assignment={assignment} />)}
-        </div>
+        </section>
       )}
+
+      {assigned.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-black text-slate-950">Assigned to you</h2>
+          <div className="grid gap-4 xl:grid-cols-2">
+            {assigned.map((assignment) => (
+              <AssignmentCard key={assignment.id} assignment={assignment} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {!hasJobs && !dispatchLoading && !dispatchError ? (
+        <EmptyState
+          icon={FiTruck}
+          title="No new jobs"
+          message="Keep the rider app open. New jobs appear automatically."
+        />
+      ) : null}
     </div>
   );
 }

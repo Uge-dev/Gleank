@@ -10,7 +10,7 @@ export default function CompletedDeliveries() {
   const { completed } = useRiderData();
   return (
     <div>
-      <PageHeader title="Completed Deliveries" subtitle="History of successfully delivered packages." />
+      <PageHeader title="Completed" subtitle="Your finished deliveries." />
       {completed.length === 0 ? (
         <EmptyState icon={FiCheckCircle} title="No completed deliveries" message="Delivered orders will appear here after confirmation." />
       ) : (
@@ -24,17 +24,13 @@ export default function CompletedDeliveries() {
                 </div>
                 <StatusBadge value="Delivered" />
               </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Delivery Date</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Completed</p>
                   <p className="mt-2 text-sm font-bold text-slate-800">{formatDateTime(order.completedAt || order.orderDate)}</p>
                 </div>
                 <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Payment Method</p>
-                  <p className="mt-2 text-sm font-bold text-slate-800">{order.paymentMethod === 'paid_online' ? 'Pay Now' : 'Pay at Delivery via Gleenc'}</p>
-                </div>
-                <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Rider Earning</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Your earning</p>
                   <p className="mt-2 text-sm font-black text-slate-950">{formatCurrency(order.riderEarning)}</p>
                 </div>
               </div>

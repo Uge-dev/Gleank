@@ -43,6 +43,7 @@ function MoreDrawer({
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const isLoggedIn = isAuthenticated;
+  const isSellerAccount = user?.role === "seller" || user?.role === "admin";
 
   function handleProtectedAction() {
     if (!isLoggedIn) {
@@ -145,6 +146,21 @@ function MoreDrawer({
 
             <FiChevronRight />
           </Link>
+
+          {isSellerAccount ? (
+            <Link className="more-menu-row" to="/orders" onClick={onClose}>
+              <span className="more-row-icon">
+                <FiShoppingBag />
+              </span>
+
+              <div>
+                <strong>Orders</strong>
+                <small>Manage products purchased from your store</small>
+              </div>
+
+              <FiChevronRight />
+            </Link>
+          ) : null}
         </div>
 
         <div className="more-section">
@@ -189,14 +205,18 @@ function MoreDrawer({
             <FiChevronRight />
           </Link>
 
-          <Link className="more-menu-row" to="/orders" onClick={onClose}>
+          <Link
+            className="more-menu-row"
+            to={isSellerAccount ? "/purchases" : "/orders"}
+            onClick={onClose}
+          >
             <span className="more-row-icon">
               <FiShoppingBag />
             </span>
 
             <div>
-              <strong>Orders</strong>
-              <small>Track your purchases and requests</small>
+              <strong>{isSellerAccount ? "Your Orders" : "Orders"}</strong>
+              <small>Track items you purchased from sellers</small>
             </div>
 
             <FiChevronRight />

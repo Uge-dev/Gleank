@@ -12,6 +12,7 @@ import {
 } from "react-icons/fi";
 import { FaWhatsapp } from "react-icons/fa";
 import { getSupportWhatsAppUrl } from "../utils/support";
+import { useAuth } from "../context/AuthContext";
 
 const moreLinks = [
   {
@@ -71,6 +72,29 @@ const moreLinks = [
 ];
 
 function More() {
+  const { user } = useAuth();
+  const isSellerAccount = user?.role === "seller" || user?.role === "admin";
+  const links = moreLinks.flatMap((item) => {
+    if (item.path !== "/orders") return [item];
+
+    if (!isSellerAccount) return [item];
+
+    return [
+      {
+        ...item,
+        title: "Orders",
+        description: "Manage products purchased from your store.",
+        path: "/orders",
+      },
+      {
+        ...item,
+        title: "Your Orders",
+        description: "Track items you purchased from other sellers.",
+        path: "/purchases",
+      },
+    ];
+  });
+
   return (
     <section className="more-page">
       <div className="more-page-header">
@@ -83,7 +107,7 @@ function More() {
       </div>
 
       <div className="more-page-grid">
-        {moreLinks.map((item) => (
+        {links.map((item) => (
           <Link to={item.path} key={item.title} className="more-page-card">
             <div className="more-page-card-icon">{item.icon}</div>
 

@@ -963,7 +963,7 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .field("category", "Electronics")
     .field("description", "Product for secure payment callback test.")
     .field("price", "10000")
-    .field("stock", "3")
+    .field("stock", "6")
     .field("status", "active")
     .field("retainedImageUrls", JSON.stringify(["/uploads/payment-test-product.jpg"]));
 
@@ -1046,6 +1046,81 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.equal(sellerVisibleOrder.buyerPhone, "");
   assert.equal(sellerVisibleOrder.status, "paid");
   assert.equal(sellerVisibleOrder.sellerConfirmedAt, null);
+
+  const purchasingSellerAgent = request.agent(app);
+  const purchasingSellerRegister = await purchasingSellerAgent
+    .post("/api/auth/register")
+    .send({
+      name: "Purchasing Seller",
+      email: "purchasing-seller@gleank.local",
+      password: "CampusSeller456!",
+      role: "seller",
+      campus: "FUPRE",
+      storeName: "Purchasing Seller Store",
+    });
+  assert.equal(purchasingSellerRegister.status, 201);
+
+  const sellerPurchaseOrder = await purchasingSellerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId, quantity: 1 }],
+      buyerName: "Purchasing Seller",
+      buyerPhone: "08000000004",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(
+    sellerPurchaseOrder.status,
+    201,
+    JSON.stringify(sellerPurchaseOrder.body),
+  );
+  const sellerPurchaseOrderId = sellerPurchaseOrder.body.orders[0].id;
+
+  const sellerPurchasePayment = await purchasingSellerAgent
+    .post("/api/payments/initialize")
+    .send({ purpose: "store_order", targetId: sellerPurchaseOrderId });
+  assert.equal(sellerPurchasePayment.status, 201);
+
+  const sellerPurchasePaymentVerify = await purchasingSellerAgent
+    .post("/api/payments/public/verify")
+    .send({ reference: sellerPurchasePayment.body.payment.reference });
+  assert.equal(sellerPurchasePaymentVerify.status, 200);
+  assert.equal(sellerPurchasePaymentVerify.body.payment.status, "paid");
+
+  const purchasingSellerYourOrders = await purchasingSellerAgent.get("/api/orders");
+  assert.equal(purchasingSellerYourOrders.status, 200);
+  assert.ok(
+    purchasingSellerYourOrders.body.orders.some(
+      (order) => order.id === sellerPurchaseOrderId,
+    ),
+  );
+
+  const purchasingSellerSales = await purchasingSellerAgent.get(
+    "/api/seller/orders",
+  );
+  assert.equal(purchasingSellerSales.status, 200);
+  assert.equal(
+    purchasingSellerSales.body.orders.some(
+      (order) => order.id === sellerPurchaseOrderId,
+    ),
+    false,
+  );
+
+  const originalSellerIncomingOrders = await sellerAgent.get(
+    "/api/seller/orders",
+  );
+  assert.ok(
+    originalSellerIncomingOrders.body.orders.some(
+      (order) => order.id === sellerPurchaseOrderId,
+    ),
+  );
+
+  const purchasingSellerCannotFulfilOwnPurchase = await purchasingSellerAgent
+    .post(`/api/orders/${sellerPurchaseOrderId}/seller-confirm`)
+    .send({ note: "This seller is the buyer, not the fulfilment seller." });
+  assert.equal(purchasingSellerCannotFulfilOwnPurchase.status, 403);
 
   const paidOrderConfirmation = await sellerAgent
     .post(`/api/orders/${orderId}/seller-confirm`)

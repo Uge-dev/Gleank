@@ -313,7 +313,11 @@ function Profile() {
           >
             <div>{stat.icon}</div>
             <strong>{stat.value}</strong>
-            <span>{stat.label}</span>
+            <span>
+              {user?.role === "seller" && stat.path === "/orders"
+                ? "Your Orders"
+                : stat.label}
+            </span>
           </Link>
         ))}
       </div>
@@ -337,7 +341,11 @@ function Profile() {
                   <div className="profile-action-icon">{action.icon}</div>
 
                   <div>
-                    <strong>{action.title}</strong>
+                    <strong>
+                      {user?.role === "seller" && action.path === "/orders"
+                        ? "Your Orders"
+                        : action.title}
+                    </strong>
                     <p>{action.description}</p>
                   </div>
 

@@ -86,6 +86,12 @@ function OrderDetails() {
     "paymentNotice" in location.state
       ? String(location.state.paymentNotice || "")
       : "";
+  const requestedOrderView =
+    typeof location.state === "object" &&
+    location.state &&
+    "orderView" in location.state
+      ? String(location.state.orderView || "")
+      : "";
   const [order, setOrder] = useState<GleencOrder | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
@@ -124,7 +130,7 @@ function OrderDetails() {
   }, [id]);
 
   useEffect(() => {
-    if (!order || user?.role !== "seller") {
+    if (!order || user?.id !== order.sellerId) {
       setSellerPickupTask(null);
       return;
     }
@@ -146,7 +152,7 @@ function OrderDetails() {
     return () => {
       active = false;
     };
-  }, [order, user?.role]);
+  }, [order, user?.id]);
 
   async function handleContinuePayment() {
     if (!order || !canContinuePayment(order) || isOpeningPayment) return;
@@ -203,9 +209,13 @@ function OrderDetails() {
   }
 
   if (!order) {
+    const missingOrderBackPath =
+      user?.role === "seller" && requestedOrderView !== "sales"
+        ? "/purchases"
+        : "/orders";
     return (
       <section className="page-shell order-details-page">
-        <Link className="back-link" to="/orders">
+        <Link className="back-link" to={missingOrderBackPath}>
           <FiArrowLeft /> Back to orders
         </Link>
         <h1>Order not found</h1>
@@ -214,11 +224,19 @@ function OrderDetails() {
     );
   }
 
-  const isSeller = user?.id === order.sellerId || user?.role === "seller";
-  const showContinuePayment = !isSeller && canContinuePayment(order);
+  const isSellerOfOrder = user?.id === order.sellerId;
+  const isBuyerOfOrder = user?.id === order.buyerId;
+  const backPath =
+    isSellerOfOrder
+      ? "/orders"
+      : user?.role === "seller" || user?.role === "admin"
+        ? "/purchases"
+        : "/orders";
+  const backLabel = isSellerOfOrder ? "Back to Orders" : "Back to Your Orders";
+  const showContinuePayment = isBuyerOfOrder && canContinuePayment(order);
   const sellerConfirmed = Boolean(order.sellerConfirmedAt);
   const sellerCanConfirm =
-    isSeller &&
+    isSellerOfOrder &&
     !sellerConfirmed &&
     !["cancelled", "disputed", "delivered", "completed"].includes(order.status) &&
     (order.paymentStatus === "paid" ||
@@ -227,8 +245,8 @@ function OrderDetails() {
 
   return (
     <section className="page-shell order-details-page order-details-upgraded-page">
-      <Link className="back-link" to="/orders">
-        <FiArrowLeft /> Back to orders
+      <Link className="back-link" to={backPath}>
+        <FiArrowLeft /> {backLabel}
       </Link>
 
       <div className="order-details-hero">
@@ -236,7 +254,9 @@ function OrderDetails() {
           <span className="eyebrow">Order Status</span>
           <h1>{order.orderCode}</h1>
           <p>
-            Your order from {order.storeName} is currently {order.statusLabel}.
+            {isSellerOfOrder
+              ? `${order.buyerName || "A customer"} ordered from your store.`
+              : `Your order from ${order.storeName} is currently ${order.statusLabel}.`}
           </p>
         </div>
         <div className="order-details-status-pill">{order.statusLabel}</div>
@@ -352,14 +372,14 @@ function OrderDetails() {
           </section>
 
           <section className="delivery-code-panel">
-            <span>{isSeller ? "Seller Pickup Code" : "Delivery Code"}</span>
+            <span>{isSellerOfOrder ? "Seller Pickup Code" : "Delivery Code"}</span>
             <strong>
-              {isSeller
+              {isSellerOfOrder
                 ? sellerPickupTask?.sellerPickupCode || "Preparing"
                 : order.verificationCode || "Locked"}
             </strong>
             <p>
-              {isSeller
+              {isSellerOfOrder
                 ? sellerPickupTask?.sellerPickupCode
                   ? "Keep this code private. Share it only with the assigned rider when the package is collected."
                   : "The seller pickup code is created with the dispatch record after order confirmation."
@@ -407,7 +427,7 @@ function OrderDetails() {
             )}
           </section>
 
-          {isSeller && (
+          {isSellerOfOrder && (
             <section className="seller-order-detail-actions">
               <h2>Seller fulfilment</h2>
               {sellerCanConfirm ? (
@@ -461,7 +481,7 @@ function OrderDetails() {
                       </p>
                     </div>
                   ) : null}
-                  <Link to={`/seller/orders?order=${encodeURIComponent(order.id)}`}>
+                  <Link to="/orders">
                     <FiTruck /> Prepare package / assign rider
                   </Link>
                 </>
@@ -477,7 +497,7 @@ function OrderDetails() {
           )}
 
           <Link className="order-message-link" to={`/messages?order=${order.id}`}>
-            <FiMessageCircle /> {isSeller ? "Message buyer" : "Message seller"}
+            <FiMessageCircle /> {isSellerOfOrder ? "Message buyer" : "Message seller"}
           </Link>
         </aside>
       </div>

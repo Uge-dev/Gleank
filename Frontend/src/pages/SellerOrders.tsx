@@ -270,6 +270,12 @@ function SellerOrders() {
 
   return (
     <section className="page-shell seller-orders-page">
+      <div className="orders-page-heading">
+        <span>Sales from your store</span>
+        <h1>Orders</h1>
+        <p>Confirm products, prepare packages and assign riders.</p>
+      </div>
+
       {(error || notice) && (
         <div
           className={`seller-workspace-message ${error ? "error" : "success"}`}
@@ -283,7 +289,7 @@ function SellerOrders() {
       <div className="seller-orders-summary">
         <article>
           <FiShoppingBag />
-          <span>Buyer orders</span>
+          <span>Orders received</span>
           <strong>{summary.total}</strong>
         </article>
         <article>
@@ -306,11 +312,11 @@ function SellerOrders() {
       <section className="seller-orders-list-section">
         <div className="seller-orders-section-title">
           <div>
-            <span>Orders placed on your products</span>
+            <span>Products purchased from you</span>
             <h1>
               {orderView === "successful"
                 ? "Successful orders"
-                : "Active buyer orders"}
+                : "Active orders"}
             </h1>
           </div>
           <button
@@ -577,7 +583,12 @@ function SellerOrders() {
                     <Link to={`/messages?order=${order.id}`}>
                       <FiMessageCircle /> Message buyer
                     </Link>
-                    <Link to={`/orders/${order.id}`}>Open order</Link>
+                    <Link
+                      to={`/orders/${order.id}`}
+                      state={{ orderView: "sales" }}
+                    >
+                      Open order
+                    </Link>
                   </div>
 
                   {pickupTask &&

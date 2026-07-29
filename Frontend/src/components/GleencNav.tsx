@@ -225,6 +225,16 @@ function GleencNav() {
       sellerOnly: true,
     },
     {
+      label: "Your Orders",
+      mobileLabel: "Your Orders",
+      path: "/purchases",
+      icon: <IoBagHandleOutline />,
+      activeIcon: <IoBagHandle />,
+      showOnDesktop: true,
+      showOnMobile: false,
+      sellerOnly: true,
+    },
+    {
       label: "Cart",
       mobileLabel: "Cart",
       path: "/cart",
@@ -270,17 +280,12 @@ function GleencNav() {
     return 0;
   }
 
-  const mobileNavItems = [
-    navItems.find((item) => item.label === "For You"),
-    navItems.find((item) => item.label === "Market"),
-    navItems.find((item) =>
-      isSellerExperience ? item.label === "Store" : item.label === "Cart",
-    ),
-    navItems.find((item) =>
-      isSellerExperience ? item.label === "Orders" : item.label === "Notifications",
-    ),
-    navItems.find((item) => item.label === "Profile"),
-  ].filter((item): item is NavItem => {
+  const mobileNavLabels = isSellerExperience
+    ? ["For You", "Market", "Store", "Orders", "Your Orders", "Profile"]
+    : ["For You", "Market", "Cart", "Notifications", "Profile"];
+  const mobileNavItems = mobileNavLabels
+    .map((label) => navItems.find((item) => item.label === label))
+    .filter((item): item is NavItem => {
     if (!item) return false;
     return allowedForRole(item);
   });

@@ -128,7 +128,7 @@ function Orders() {
           ? await initializePayAtDeliveryPayment(order.id)
           : await initializeOrdersPayment([order.id]);
       sessionStorage.setItem("gleank_pending_payment_reference", response.payment.reference);
-      window.location.href = response.payment.authorizationUrl;
+      window.location.assign(response.payment.authorizationUrl);
     } catch (requestError) {
       setPaymentError(
         requestError instanceof Error
@@ -145,6 +145,12 @@ function Orders() {
 
   return (
     <section className="page-shell orders-page orders-upgraded-page">
+      <div className="orders-page-heading">
+        <span>Purchases you made</span>
+        <h1>Your Orders</h1>
+        <p>Track items you bought from other sellers.</p>
+      </div>
+
       <div className="orders-filter-bar">
         {statusFilters.map((status) => (
           <button
@@ -226,7 +232,10 @@ function Orders() {
                     <Link to={`/messages?order=${order.id}`}>
                       <FiMessageCircle /> Contact
                     </Link>
-                    <Link to={`/orders/${order.id}`}>
+                    <Link
+                      to={`/orders/${order.id}`}
+                      state={{ orderView: "purchases" }}
+                    >
                       View details <FiArrowRight />
                     </Link>
                   </div>
