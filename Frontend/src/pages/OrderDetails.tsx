@@ -19,6 +19,10 @@ import {
   sellerConfirmOrder as confirmSellerOrder,
 } from "../services/order.service";
 import {
+  getSellerPickupTasks,
+  type SellerPickupTask,
+} from "../services/seller.service";
+import {
   initializeOrdersPayment,
   initializePayAtDeliveryPayment,
 } from "../services/payment.service";
@@ -90,6 +94,8 @@ function OrderDetails() {
   const [sellerActionError, setSellerActionError] = useState("");
   const [sellerActionNotice, setSellerActionNotice] = useState("");
   const [isConfirmingOrder, setIsConfirmingOrder] = useState(false);
+  const [sellerPickupTask, setSellerPickupTask] =
+    useState<SellerPickupTask | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -116,6 +122,31 @@ function OrderDetails() {
       active = false;
     };
   }, [id]);
+
+  useEffect(() => {
+    if (!order || user?.role !== "seller") {
+      setSellerPickupTask(null);
+      return;
+    }
+
+    let active = true;
+
+    void getSellerPickupTasks()
+      .then((response) => {
+        if (!active) return;
+        setSellerPickupTask(
+          response.pickupTasks.find((task) => task.orderId === order.id) ||
+            null,
+        );
+      })
+      .catch(() => {
+        if (active) setSellerPickupTask(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [order, user?.role]);
 
   async function handleContinuePayment() {
     if (!order || !canContinuePayment(order) || isOpeningPayment) return;
@@ -321,12 +352,20 @@ function OrderDetails() {
           </section>
 
           <section className="delivery-code-panel">
-            <span>Delivery Code</span>
-            <strong>{order.verificationCode || "Locked"}</strong>
+            <span>{isSeller ? "Seller Pickup Code" : "Delivery Code"}</span>
+            <strong>
+              {isSeller
+                ? sellerPickupTask?.sellerPickupCode || "Preparing"
+                : order.verificationCode || "Locked"}
+            </strong>
             <p>
-              {order.verificationCode
-                ? "Keep this private. Share it only after receiving the correct item."
-                : "Your delivery code unlocks only after Gleenc verifies payment."}
+              {isSeller
+                ? sellerPickupTask?.sellerPickupCode
+                  ? "Keep this code private. Share it only with the assigned rider when the package is collected."
+                  : "The seller pickup code is created with the dispatch record after order confirmation."
+                : order.verificationCode
+                  ? "Keep this private. Share it only after receiving the correct item."
+                  : "Your delivery code unlocks only after Gleenc verifies payment."}
             </p>
           </section>
 
@@ -391,6 +430,37 @@ function OrderDetails() {
                   <p className="seller-order-detail-confirmed">
                     <FiCheck /> Seller confirmed
                   </p>
+                  {sellerPickupTask ? (
+                    <div className="seller-order-detail-dispatch-summary">
+                      <p>
+                        Package:{" "}
+                        <strong>
+                          {sellerPickupTask.sellerMarkedReady
+                            ? "Ready for rider selection"
+                            : "Waiting for package details"}
+                        </strong>
+                      </p>
+                      <p>
+                        Dispatch:{" "}
+                        <strong>
+                          {sellerPickupTask.assignedRiderId
+                            ? "Rider assigned"
+                            : (
+                                sellerPickupTask.dispatchStatus ||
+                                "Not started"
+                              ).replaceAll("_", " ")}
+                        </strong>
+                      </p>
+                      <p>
+                        Pickup point:{" "}
+                        <strong>
+                          {sellerPickupTask.pickupLandmark ||
+                            sellerPickupTask.pickupZoneId ||
+                            "Store pickup location"}
+                        </strong>
+                      </p>
+                    </div>
+                  ) : null}
                   <Link to={`/seller/orders?order=${encodeURIComponent(order.id)}`}>
                     <FiTruck /> Prepare package / assign rider
                   </Link>

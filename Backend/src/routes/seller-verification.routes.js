@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { fileUrl, upload } from "../middleware/upload.js";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAuth, requireRole } from "../middleware/auth.js";
 import {
   getSellerReadiness,
   getSellerVerification,
+  submitSellerVerificationStage,
   updateSellerOnboardingDraft,
   upsertSellerVerification,
 } from "../services/seller-verification.service.js";
@@ -11,17 +12,10 @@ import { ensureSellerSubscription, getSellerSubscription } from "../services/sub
 
 export const sellerVerificationRouter = Router();
 
-sellerVerificationRouter.use(requireAuth);
+sellerVerificationRouter.use(requireAuth, requireRole("seller"));
 
 sellerVerificationRouter.get("/me", (req, res) => {
-  if (req.auth.role === "admin") {
-    res.json({ verification: null, readiness: null, subscription: null });
-    return;
-  }
-
-  if (req.auth.role === "seller") {
-    ensureSellerSubscription(req.auth.user_id);
-  }
+  ensureSellerSubscription(req.auth.user_id);
 
   res.json({
     verification: getSellerVerification(req.auth.user_id),
@@ -45,6 +39,27 @@ sellerVerificationRouter.patch("/me/draft", upload.single("identityProof"), (req
     subscription: getSellerSubscription(req.auth.user_id),
   });
 });
+
+sellerVerificationRouter.post(
+  "/me/stages/:stage/submit",
+  upload.single("identityProof"),
+  (req, res) => {
+    const identityProofUrl = req.file ? fileUrl(req, req.file) : null;
+    const verification = submitSellerVerificationStage(
+      req.auth.user_id,
+      Number(req.params.stage),
+      req.body,
+      identityProofUrl,
+    );
+    ensureSellerSubscription(req.auth.user_id);
+
+    res.json({
+      verification,
+      readiness: getSellerReadiness(req.auth.user_id),
+      subscription: getSellerSubscription(req.auth.user_id),
+    });
+  },
+);
 
 sellerVerificationRouter.post(
   "/me/submit",

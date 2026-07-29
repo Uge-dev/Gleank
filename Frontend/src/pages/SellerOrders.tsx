@@ -4,36 +4,46 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiClock,
+  FiMapPin,
   FiMessageCircle,
   FiPackage,
   FiShoppingBag,
   FiTruck,
+  FiX,
 } from "react-icons/fi";
 
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import {
-  confirmSellerOrderItemAvailability,
   getAvailableDeliveryRiders,
   getSellerOrders,
   getSellerPickupTasks,
   markSellerPickupTaskReady,
-  rejectSellerOrderItemAvailability,
   sendDeliveryOfferToRider,
   startAutomaticDispatchForBatch,
 } from "../services/seller.service";
-import { sellerConfirmOrder } from "../services/order.service";
 import type {
   AvailableDeliveryRider,
   SellerPickupTask,
 } from "../services/seller.service";
+import {
+  sellerConfirmOrder,
+  sellerRejectOrder,
+} from "../services/order.service";
 import type { GleencOrder } from "../types/domain";
-import { formatNaira } from "../utils/price";
 import { resolveMediaUrl } from "../utils/media";
-import { SellerOrderReadinessPanel } from "./Dashboard";
+import { formatNaira } from "../utils/price";
 
 const orderImageFallback =
   "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=600&q=80";
+
+type PackageDraft = {
+  packageSize: string;
+  packageWeightClass: string;
+  handlingClass: string;
+  pickupPointConfirmed: boolean;
+  note: string;
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-NG", {
@@ -42,14 +52,55 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function activityLabel(rider: AvailableDeliveryRider) {
+  if (rider.isOnline) return "Online now";
+  if (!rider.lastActiveAt) return "Offline · last activity unavailable";
+
+  const time = new Date(rider.lastActiveAt).getTime();
+  if (!Number.isFinite(time)) return "Offline";
+
+  const minutes = Math.max(1, Math.round((Date.now() - time) / 60_000));
+  if (minutes < 60) return `Active ${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Active ${hours} hr${hours === 1 ? "" : "s"} ago`;
+
+  const days = Math.round(hours / 24);
+  return `Active ${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+function packageDraftForTask(task: SellerPickupTask): PackageDraft {
+  const profile = task.packageProfileSnapshot || {};
+
+  return {
+    packageSize: String(
+      task.packageSize || profile.packageSize || "",
+    ),
+    packageWeightClass: String(
+      task.packageWeightClass || profile.packageWeightClass || "",
+    ),
+    handlingClass: String(
+      task.handlingClass || profile.fragilityLevel || "",
+    ),
+    pickupPointConfirmed: Boolean(
+      task.pickupPointConfirmed || task.pickupLandmark || task.pickupZoneId,
+    ),
+    note: task.packageReadyNote || "",
+  };
+}
+
 function SellerOrders() {
   const [orders, setOrders] = useState<GleencOrder[]>([]);
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
   const [availableRidersByBatch, setAvailableRidersByBatch] = useState<
     Record<string, AvailableDeliveryRider[]>
   >({});
+  const [packageDrafts, setPackageDrafts] = useState<
+    Record<string, PackageDraft>
+  >({});
+  const [preparationOrderId, setPreparationOrderId] = useState("");
+  const [manualDispatchBatchId, setManualDispatchBatchId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isLoadingRiders, setIsLoadingRiders] = useState(false);
   const [taskActionId, setTaskActionId] = useState("");
   const [error, setError] = useState("");
@@ -61,13 +112,8 @@ function SellerOrders() {
   }, []);
 
   const loadPickupTasks = useCallback(async () => {
-    setIsLoadingTasks(true);
-    try {
-      const response = await getSellerPickupTasks();
-      setPickupTasks(response.pickupTasks || []);
-    } finally {
-      setIsLoadingTasks(false);
-    }
+    const response = await getSellerPickupTasks();
+    setPickupTasks(response.pickupTasks || []);
   }, []);
 
   const loadPage = useCallback(async () => {
@@ -99,7 +145,11 @@ function SellerOrders() {
           order.status,
         ),
       ).length,
-      inDelivery: orders.filter((order) => order.status === "out_for_delivery").length,
+      inDelivery: orders.filter((order) =>
+        ["out_for_delivery", "rider_assigned"].includes(
+          order.deliveryStatus || order.status,
+        ),
+      ).length,
       completed: orders.filter((order) =>
         ["delivered", "completed"].includes(order.status),
       ).length,
@@ -109,6 +159,7 @@ function SellerOrders() {
 
   const loadAvailableRiders = useCallback(async (batchId: string) => {
     if (!batchId) return;
+
     setIsLoadingRiders(true);
     try {
       const response = await getAvailableDeliveryRiders(batchId);
@@ -117,51 +168,24 @@ function SellerOrders() {
         [batchId]: response.riders || [],
       }));
     } catch (requestError) {
-      setAvailableRidersByBatch((current) => ({ ...current, [batchId]: [] }));
+      setAvailableRidersByBatch((current) => ({
+        ...current,
+        [batchId]: [],
+      }));
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Available riders could not be loaded.",
+          : "Riders in this service area could not be loaded.",
       );
     } finally {
       setIsLoadingRiders(false);
     }
   }, []);
 
-  async function handleConfirmPickupTask(task: SellerPickupTask) {
-    if (!task.orderItems.length) {
-      setError("This pickup task has no order items to confirm.");
-      return;
-    }
-
-    setError("");
-    setNotice("");
-    setTaskActionId(`confirm-${task.id}`);
-
-    try {
-      for (const item of task.orderItems) {
-        await confirmSellerOrderItemAvailability(
-          item.id,
-          "Seller confirmed item availability from Buyer Orders.",
-        );
-      }
-      setNotice("Availability confirmed. Mark the package ready after packing it.");
-      await Promise.all([loadOrders(), loadPickupTasks()]);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Availability could not be confirmed.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
   async function handleConfirmOrder(order: GleencOrder) {
     setError("");
     setNotice("");
-    setTaskActionId(`confirm-order-${order.id}`);
+    setTaskActionId(`confirm-${order.id}`);
 
     try {
       await sellerConfirmOrder(
@@ -169,7 +193,7 @@ function SellerOrders() {
         "Seller confirmed product availability from Buyer Orders.",
       );
       setNotice(
-        "Order confirmed. Prepare the package; Gleenc will start rider matching when it is ready.",
+        "Order confirmed. Pack the item, then confirm its package details.",
       );
       await Promise.all([loadOrders(), loadPickupTasks()]);
     } catch (requestError) {
@@ -183,81 +207,148 @@ function SellerOrders() {
     }
   }
 
-  async function handleRejectPickupTask(task: SellerPickupTask) {
-    if (!task.orderItems.length) {
-      setError("This pickup task has no order items to reject.");
-      return;
-    }
-
+  async function handleRejectOrder(order: GleencOrder) {
     const reason = window.prompt(
-      "Why is this item unavailable? The buyer and admin will see this reason.",
-      task.sellerRejectionNote || "",
+      "Why is this order unavailable? The buyer and admin will see this reason.",
+      "",
     );
 
     if (reason === null) return;
 
     setError("");
     setNotice("");
-    setTaskActionId(`reject-${task.id}`);
+    setTaskActionId(`reject-${order.id}`);
 
     try {
-      for (const item of task.orderItems) {
-        await rejectSellerOrderItemAvailability(
-          item.id,
-          reason || "Seller marked item unavailable.",
-        );
-      }
+      await sellerRejectOrder(
+        order.id,
+        reason.trim() || "Seller marked this order unavailable.",
+      );
       setNotice("The buyer and admin have been notified.");
       await Promise.all([loadOrders(), loadPickupTasks()]);
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "The item could not be rejected.",
+          : "The order could not be rejected.",
       );
     } finally {
       setTaskActionId("");
     }
   }
 
-  async function handleMarkPickupReady(task: SellerPickupTask) {
+  function openPackagePreparation(order: GleencOrder, task: SellerPickupTask) {
+    setError("");
+    setNotice("");
+    setPreparationOrderId(order.id);
+    setPackageDrafts((current) => ({
+      ...current,
+      [task.id]: current[task.id] || packageDraftForTask(task),
+    }));
+  }
+
+  function updatePackageDraft(
+    taskId: string,
+    patch: Partial<PackageDraft>,
+    task: SellerPickupTask,
+  ) {
+    setPackageDrafts((current) => ({
+      ...current,
+      [taskId]: {
+        ...(current[taskId] || packageDraftForTask(task)),
+        ...patch,
+      },
+    }));
+  }
+
+  async function handleMarkPackageReady(
+    order: GleencOrder,
+    task: SellerPickupTask,
+  ) {
+    const draft = packageDrafts[task.id] || packageDraftForTask(task);
+
+    if (
+      !draft.packageSize ||
+      !draft.packageWeightClass ||
+      !draft.handlingClass
+    ) {
+      setError(
+        "Select the package size, weight class, and handling requirement.",
+      );
+      return;
+    }
+
+    if (!draft.pickupPointConfirmed) {
+      setError("Confirm the seller pickup point before continuing.");
+      return;
+    }
+
     setError("");
     setNotice("");
     setTaskActionId(`ready-${task.id}`);
 
     try {
-      await markSellerPickupTaskReady(task.id, {
-        packageSize: String(
-          task.packageProfileSnapshot?.packageSize || task.packageSize || "",
-        ),
-        packageWeightClass: String(
-          task.packageProfileSnapshot?.packageWeightClass ||
-            task.packageWeightClass ||
-            "",
-        ),
-        handlingClass: String(
-          task.packageProfileSnapshot?.fragilityLevel ||
-            task.handlingClass ||
-            "normal_handling",
-        ),
-        pickupPointConfirmed: true,
-        note: "Seller marked package ready from Buyer Orders.",
-      });
-      setNotice("Package marked ready. Gleenc can now match a Stage 1 approved rider.");
+      await markSellerPickupTaskReady(task.id, draft);
+      setPreparationOrderId("");
+      setManualDispatchBatchId("");
+      setNotice(
+        "Package is ready. Choose automatic rider selection or select a rider manually.",
+      );
       await Promise.all([loadOrders(), loadPickupTasks()]);
-      await loadAvailableRiders(task.deliveryBatchId);
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(`seller-order-${order.id}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Package could not be marked ready.",
+          : "Package readiness could not be saved.",
       );
     } finally {
       setTaskActionId("");
     }
   }
 
-  async function handleAssignManualRider(task: SellerPickupTask, riderId: string) {
+  async function handleAutomaticDispatch(task: SellerPickupTask) {
+    setError("");
+    setNotice("");
+    setManualDispatchBatchId("");
+    setTaskActionId(`auto-${task.id}`);
+
+    try {
+      const response = await startAutomaticDispatchForBatch(
+        task.deliveryBatchId,
+      );
+      setNotice(
+        response.sellerManualAssignmentRequired
+          ? "No online rider matched automatically. Select a rider manually from the service-area list."
+          : "Gleenc sent the order to the best active rider. The rider must accept the offer.",
+      );
+      await loadPickupTasks();
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Automatic rider selection could not start.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
+  async function handleOpenManualDispatch(task: SellerPickupTask) {
+    setError("");
+    setNotice("");
+    setManualDispatchBatchId(task.deliveryBatchId);
+    await loadAvailableRiders(task.deliveryBatchId);
+  }
+
+  async function handleAssignManualRider(
+    task: SellerPickupTask,
+    riderId: string,
+  ) {
     setError("");
     setNotice("");
     setTaskActionId(`assign-${task.id}-${riderId}`);
@@ -267,9 +358,11 @@ function SellerOrders() {
         batchId: task.deliveryBatchId,
         riderId,
       });
-      setNotice("Delivery offer sent. The rider must accept it before assignment.");
+      setNotice(
+        "Delivery offer sent. The rider will receive it and must go online to accept if currently inactive.",
+      );
+      setManualDispatchBatchId("");
       await loadPickupTasks();
-      await loadAvailableRiders(task.deliveryBatchId);
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -279,40 +372,6 @@ function SellerOrders() {
     } finally {
       setTaskActionId("");
     }
-  }
-
-  async function handleStartAutomaticDispatch(task: SellerPickupTask) {
-    setError("");
-    setNotice("");
-    setTaskActionId(`auto-${task.id}`);
-
-    try {
-      const response = await startAutomaticDispatchForBatch(task.deliveryBatchId);
-      setNotice(
-        response.sellerManualAssignmentRequired
-          ? "No rider accepted automatically. Refresh the Stage 1 approved riders and send an offer."
-          : "Gleenc is offering this delivery to the best compatible rider.",
-      );
-      await loadPickupTasks();
-      await loadAvailableRiders(task.deliveryBatchId);
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Automatic dispatch could not start.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleOpenManualDispatch(task: SellerPickupTask) {
-    await loadAvailableRiders(task.deliveryBatchId);
-    window.requestAnimationFrame(() => {
-      document
-        .getElementById(`seller-pickup-task-${task.id}`)
-        ?.scrollIntoView({ behavior: "smooth", block: "center" });
-    });
   }
 
   if (isLoading) {
@@ -332,10 +391,26 @@ function SellerOrders() {
       )}
 
       <div className="seller-orders-summary">
-        <article><FiShoppingBag /><span>Buyer orders</span><strong>{summary.total}</strong></article>
-        <article><FiClock /><span>Needs action</span><strong>{summary.needsAction}</strong></article>
-        <article><FiTruck /><span>In delivery</span><strong>{summary.inDelivery}</strong></article>
-        <article><FiCheckCircle /><span>Completed</span><strong>{summary.completed}</strong></article>
+        <article>
+          <FiShoppingBag />
+          <span>Buyer orders</span>
+          <strong>{summary.total}</strong>
+        </article>
+        <article>
+          <FiClock />
+          <span>Needs action</span>
+          <strong>{summary.needsAction}</strong>
+        </article>
+        <article>
+          <FiTruck />
+          <span>In delivery</span>
+          <strong>{summary.inDelivery}</strong>
+        </article>
+        <article>
+          <FiCheckCircle />
+          <span>Completed</span>
+          <strong>{summary.completed}</strong>
+        </article>
       </div>
 
       <section className="seller-orders-list-section">
@@ -376,101 +451,418 @@ function SellerOrders() {
                 (order.paymentStatus === "paid" ||
                   order.paymentMethod === "pay_on_delivery" ||
                   Boolean(order.sellerConfirmationRequired));
+              const offerPending = [
+                "offer_pending",
+                "rider_offered",
+                "rider_accepted",
+              ].includes(pickupTask?.dispatchStatus || "");
+              const availableRiders = pickupTask
+                ? availableRidersByBatch[pickupTask.deliveryBatchId] || []
+                : [];
+              const packageDraft = pickupTask
+                ? packageDrafts[pickupTask.id] ||
+                  packageDraftForTask(pickupTask)
+                : null;
               const image = resolveMediaUrl(
                 firstItem?.productImageUrl,
                 orderImageFallback,
               );
 
               return (
-              <article key={order.id}>
-                <div className="seller-order-card-image">
-                  <img
-                    src={image}
-                    alt={firstItem?.productName || "Buyer order"}
-                  />
-                  <span>{order.statusLabel}</span>
-                </div>
-                <div className="seller-order-card-content">
-                  <small>{order.orderCode}</small>
-                  <h3>{order.buyerName || "Gleenc buyer"}</h3>
-                  <p>
-                    {order.items
-                      .map(
-                        (item) =>
-                          `${item.quantity}× ${item.productName}`,
-                      )
-                      .join(", ")}
-                  </p>
-                </div>
-                <div className="seller-orders-list-meta">
-                  <strong>{formatNaira(order.total)}</strong>
-                  <small>{formatDate(order.createdAt)}</small>
-                  {canConfirmOrder ? (
-                    <button
-                      type="button"
-                      className="seller-order-confirm-card-action"
-                      disabled={taskActionId === `confirm-order-${order.id}`}
-                      onClick={() => void handleConfirmOrder(order)}
-                    >
-                      <FiCheckCircle />
-                      {taskActionId === `confirm-order-${order.id}`
-                        ? "Confirming..."
-                        : "Confirm order"}
-                    </button>
-                  ) : sellerConfirmed && !orderClosed ? (
-                    <span className="seller-order-confirmed-card-label">
-                      <FiCheckCircle /> Seller confirmed
+                <article
+                  className="seller-order-unified-card"
+                  id={`seller-order-${order.id}`}
+                  key={order.id}
+                >
+                  <div className="seller-order-card-image">
+                    <img
+                      src={image}
+                      alt={firstItem?.productName || "Buyer order"}
+                    />
+                    <span>{order.statusLabel}</span>
+                  </div>
+
+                  <div className="seller-order-card-content">
+                    <small>{order.orderCode}</small>
+                    <h3>{order.buyerName || "Gleenc buyer"}</h3>
+                    <p>
+                      {order.items
+                        .map(
+                          (item) => `${item.quantity}× ${item.productName}`,
+                        )
+                        .join(", ")}
+                    </p>
+                  </div>
+
+                  <div className="seller-order-essential-meta">
+                    <span>
+                      <FiPackage /> {order.items.length} item(s)
                     </span>
-                  ) : !orderClosed &&
-                    order.paymentMethod === "pay_now" &&
-                    order.paymentStatus !== "paid" ? (
-                    <span className="seller-order-payment-waiting-card-label">
-                      <FiClock /> Waiting for payment
+                    <span>
+                      <FiMapPin /> {order.campus || "Delivery area"}
                     </span>
-                  ) : null}
-                  {sellerConfirmed &&
-                  pickupTask &&
-                  !pickupTask.sellerMarkedReady &&
-                  !pickupTask.assignedRiderId &&
-                  !orderClosed ? (
-                    <button
-                      type="button"
-                      className="seller-order-card-secondary-action"
-                      disabled={taskActionId === `ready-${pickupTask.id}`}
-                      onClick={() => void handleMarkPickupReady(pickupTask)}
-                    >
-                      <FiPackage />
-                      {taskActionId === `ready-${pickupTask.id}`
-                        ? "Updating..."
-                        : "Mark package ready"}
-                    </button>
-                  ) : null}
-                  {pickupTask?.sellerMarkedReady &&
-                  !pickupTask.assignedRiderId &&
-                  !orderClosed ? (
-                    <button
-                      type="button"
-                      className="seller-order-card-secondary-action"
-                      disabled={isLoadingRiders}
-                      onClick={() => void handleOpenManualDispatch(pickupTask)}
-                    >
-                      <FiTruck />
-                      {isLoadingRiders
-                        ? "Loading riders..."
-                        : "Assign rider manually"}
-                    </button>
-                  ) : null}
-                  {pickupTask?.assignedRiderId && !orderClosed ? (
-                    <span className="seller-order-rider-assigned-card-label">
-                      <FiTruck /> Rider assigned
+                    <span>
+                      <FiClock />{" "}
+                      {order.paymentMethod === "pay_on_delivery"
+                        ? "Pay on delivery"
+                        : order.paymentStatus === "paid"
+                          ? "Paid"
+                          : "Payment pending"}
                     </span>
+                  </div>
+
+                  {order.paymentMethod === "pay_on_delivery" &&
+                  order.paymentStatus !== "paid" ? (
+                    <div className="seller-order-pod-note">
+                      <FiAlertCircle />
+                      <span>
+                        This protected Payment on Delivery order can be prepared
+                        and assigned now. The rider cannot complete handover until
+                        Paystack confirms payment.
+                      </span>
+                    </div>
                   ) : null}
-                  <Link to={`/messages?order=${order.id}`}>
-                    <FiMessageCircle /> Message buyer
-                  </Link>
-                  <Link to={`/orders/${order.id}`}>Open order</Link>
-                </div>
-              </article>
+
+                  <div className="seller-order-compact-items">
+                    {order.items.map((item) => (
+                      <div key={item.id}>
+                        <img
+                          src={resolveMediaUrl(
+                            item.productImageUrl,
+                            orderImageFallback,
+                          )}
+                          alt=""
+                        />
+                        <span>
+                          <strong>{item.productName}</strong>
+                          <small>
+                            Qty {item.quantity} · {formatNaira(item.total)}
+                          </small>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {pickupTask?.sellerPickupCode ? (
+                    <div className="seller-order-pickup-code">
+                      <span>Seller pickup code</span>
+                      <strong>{pickupTask.sellerPickupCode}</strong>
+                      <small>Share only with the assigned rider at pickup.</small>
+                    </div>
+                  ) : null}
+
+                  <div className="seller-orders-list-meta">
+                    <strong>{formatNaira(order.total)}</strong>
+                    <small>{formatDate(order.createdAt)}</small>
+
+                    {canConfirmOrder ? (
+                      <button
+                        type="button"
+                        className="seller-order-confirm-card-action"
+                        disabled={taskActionId === `confirm-${order.id}`}
+                        onClick={() => void handleConfirmOrder(order)}
+                      >
+                        <FiCheckCircle />
+                        {taskActionId === `confirm-${order.id}`
+                          ? "Confirming..."
+                          : "Seller confirm order"}
+                      </button>
+                    ) : sellerConfirmed && !orderClosed ? (
+                      <span className="seller-order-confirmed-card-label">
+                        <FiCheckCircle /> Seller confirmed
+                      </span>
+                    ) : !orderClosed &&
+                      order.paymentMethod === "pay_now" &&
+                      order.paymentStatus !== "paid" ? (
+                      <span className="seller-order-payment-waiting-card-label">
+                        <FiClock /> Waiting for payment
+                      </span>
+                    ) : null}
+
+                    {sellerConfirmed &&
+                    pickupTask &&
+                    !pickupTask.sellerMarkedReady &&
+                    !pickupTask.assignedRiderId &&
+                    !orderClosed ? (
+                      <button
+                        type="button"
+                        className="seller-order-card-secondary-action"
+                        onClick={() =>
+                          openPackagePreparation(order, pickupTask)
+                        }
+                      >
+                        <FiPackage /> Mark package ready
+                      </button>
+                    ) : null}
+
+                    {sellerConfirmed &&
+                    !pickupTask &&
+                    !orderClosed ? (
+                      <span className="seller-order-setup-pending">
+                        <FiClock /> Preparing dispatch record…
+                      </span>
+                    ) : null}
+
+                    {pickupTask?.sellerMarkedReady &&
+                    !pickupTask.assignedRiderId &&
+                    !orderClosed &&
+                    !offerPending ? (
+                      <div className="seller-order-dispatch-choice">
+                        <strong>How should Gleenc select the rider?</strong>
+                        <button
+                          type="button"
+                          disabled={taskActionId === `auto-${pickupTask.id}`}
+                          onClick={() =>
+                            void handleAutomaticDispatch(pickupTask)
+                          }
+                        >
+                          <FiTruck />
+                          {taskActionId === `auto-${pickupTask.id}`
+                            ? "Finding rider..."
+                            : "Allow automatic rider selection"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isLoadingRiders}
+                          onClick={() =>
+                            void handleOpenManualDispatch(pickupTask)
+                          }
+                        >
+                          <FiShoppingBag />
+                          {isLoadingRiders &&
+                          manualDispatchBatchId ===
+                            pickupTask.deliveryBatchId
+                            ? "Loading riders..."
+                            : "Select rider manually"}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {offerPending && !pickupTask?.assignedRiderId ? (
+                      <span className="seller-order-rider-offer-label">
+                        <FiClock /> Waiting for rider acceptance
+                      </span>
+                    ) : null}
+
+                    {pickupTask?.assignedRiderId && !orderClosed ? (
+                      <span className="seller-order-rider-assigned-card-label">
+                        <FiTruck /> Rider assigned
+                      </span>
+                    ) : null}
+
+                    {pickupTask &&
+                    manualDispatchBatchId === pickupTask.deliveryBatchId &&
+                    pickupTask.sellerMarkedReady &&
+                    !pickupTask.assignedRiderId ? (
+                      <div className="seller-order-manual-riders">
+                        <div>
+                          <strong>Riders in this service area</strong>
+                          <small>
+                            Online riders appear first. Offline riders still
+                            receive the offer and must go online before accepting.
+                          </small>
+                        </div>
+                        {availableRiders.length ? (
+                          availableRiders.map((rider) => (
+                            <button
+                              type="button"
+                              key={rider.id}
+                              disabled={taskActionId.startsWith(
+                                `assign-${pickupTask.id}-`,
+                              )}
+                              onClick={() =>
+                                void handleAssignManualRider(
+                                  pickupTask,
+                                  rider.id,
+                                )
+                              }
+                            >
+                              <span>
+                                <strong>
+                                  {rider.displayName ||
+                                    rider.name ||
+                                    "Verified rider"}
+                                </strong>
+                                <small
+                                  className={
+                                    rider.isOnline ? "online" : "offline"
+                                  }
+                                >
+                                  {activityLabel(rider)}
+                                </small>
+                              </span>
+                              <em>
+                                {rider.matchSummary ||
+                                  "Stage 1 approved · service-area match"}
+                              </em>
+                              <b>
+                                {taskActionId ===
+                                `assign-${pickupTask.id}-${rider.id}`
+                                  ? "Sending..."
+                                  : "Send offer"}
+                              </b>
+                            </button>
+                          ))
+                        ) : (
+                          <p>
+                            {isLoadingRiders
+                              ? "Loading matching riders..."
+                              : "No Stage 1 approved rider currently covers this service area and package capacity."}
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {!orderClosed &&
+                    !pickupTask?.sellerMarkedReady &&
+                    (sellerConfirmed || canConfirmOrder) ? (
+                      <button
+                        type="button"
+                        className="seller-order-reject-action"
+                        disabled={taskActionId === `reject-${order.id}`}
+                        onClick={() => void handleRejectOrder(order)}
+                      >
+                        <FiX />
+                        {taskActionId === `reject-${order.id}`
+                          ? "Updating..."
+                          : "Item unavailable"}
+                      </button>
+                    ) : null}
+
+                    <Link to={`/messages?order=${order.id}`}>
+                      <FiMessageCircle /> Message buyer
+                    </Link>
+                    <Link to={`/orders/${order.id}`}>Open order</Link>
+                  </div>
+
+                  {pickupTask &&
+                  packageDraft &&
+                  preparationOrderId === order.id &&
+                  !pickupTask.sellerMarkedReady ? (
+                    <div className="seller-order-package-form">
+                      <div>
+                        <strong>Confirm package details</strong>
+                        <button
+                          type="button"
+                          aria-label="Close package form"
+                          onClick={() => setPreparationOrderId("")}
+                        >
+                          <FiX />
+                        </button>
+                      </div>
+                      <p>
+                        These details determine which riders and vehicles can
+                        safely receive this order.
+                      </p>
+                      <label>
+                        <span>Package size</span>
+                        <select
+                          value={packageDraft.packageSize}
+                          onChange={(event) =>
+                            updatePackageDraft(
+                              pickupTask.id,
+                              { packageSize: event.target.value },
+                              pickupTask,
+                            )
+                          }
+                        >
+                          <option value="">Select size</option>
+                          <option value="small">Small</option>
+                          <option value="medium">Medium</option>
+                          <option value="large">Large</option>
+                          <option value="extra_large">Extra large</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Weight class</span>
+                        <select
+                          value={packageDraft.packageWeightClass}
+                          onChange={(event) =>
+                            updatePackageDraft(
+                              pickupTask.id,
+                              { packageWeightClass: event.target.value },
+                              pickupTask,
+                            )
+                          }
+                        >
+                          <option value="">Select weight</option>
+                          <option value="very_light">Very light</option>
+                          <option value="light">Light</option>
+                          <option value="medium">Medium</option>
+                          <option value="heavy">Heavy</option>
+                          <option value="very_heavy">Very heavy</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Handling</span>
+                        <select
+                          value={packageDraft.handlingClass}
+                          onChange={(event) =>
+                            updatePackageDraft(
+                              pickupTask.id,
+                              { handlingClass: event.target.value },
+                              pickupTask,
+                            )
+                          }
+                        >
+                          <option value="">Select handling</option>
+                          <option value="not_fragile">Normal handling</option>
+                          <option value="fragile">Fragile</option>
+                          <option value="very_fragile">Very fragile</option>
+                        </select>
+                      </label>
+                      <label className="seller-order-package-note">
+                        <span>Rider note (optional)</span>
+                        <textarea
+                          rows={2}
+                          value={packageDraft.note}
+                          placeholder="Example: Keep upright; collect at front counter."
+                          onChange={(event) =>
+                            updatePackageDraft(
+                              pickupTask.id,
+                              { note: event.target.value },
+                              pickupTask,
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="seller-order-pickup-confirm">
+                        <input
+                          type="checkbox"
+                          checked={packageDraft.pickupPointConfirmed}
+                          onChange={(event) =>
+                            updatePackageDraft(
+                              pickupTask.id,
+                              {
+                                pickupPointConfirmed: event.target.checked,
+                              },
+                              pickupTask,
+                            )
+                          }
+                        />
+                        <span>
+                          Pickup point is correct:{" "}
+                          {pickupTask.pickupLandmark ||
+                            pickupTask.pickupZoneId ||
+                            "store pickup location"}
+                        </span>
+                      </label>
+                      <button
+                        type="button"
+                        className="seller-order-package-submit"
+                        disabled={taskActionId === `ready-${pickupTask.id}`}
+                        onClick={() =>
+                          void handleMarkPackageReady(order, pickupTask)
+                        }
+                      >
+                        <FiCheckCircle />
+                        {taskActionId === `ready-${pickupTask.id}`
+                          ? "Saving package..."
+                          : "Confirm package is ready"}
+                      </button>
+                    </div>
+                  ) : null}
+                </article>
               );
             })}
           </div>
@@ -478,25 +870,10 @@ function SellerOrders() {
           <EmptyState
             icon={<FiPackage />}
             title="No buyer orders yet"
-            message="Paid and Pay at Delivery orders placed on your products will appear here."
+            message="Paid and protected Payment on Delivery orders placed on your products will appear here."
           />
         )}
       </section>
-
-      <SellerOrderReadinessPanel
-        tasks={pickupTasks}
-        loading={isLoadingTasks}
-        actionId={taskActionId}
-        availableRidersByBatch={availableRidersByBatch}
-        ridersLoading={isLoadingRiders}
-        onRefresh={loadPickupTasks}
-        onRefreshRiders={(task) => loadAvailableRiders(task.deliveryBatchId)}
-        onConfirm={handleConfirmPickupTask}
-        onReject={handleRejectPickupTask}
-        onMarkReady={handleMarkPickupReady}
-        onStartAutoDispatch={handleStartAutomaticDispatch}
-        onAssignRider={handleAssignManualRider}
-      />
     </section>
   );
 }

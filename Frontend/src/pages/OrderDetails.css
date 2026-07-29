@@ -346,6 +346,34 @@
   background: #111827;
 }
 
+.seller-order-detail-dispatch-summary {
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: var(--soft-bg, #f8fafc);
+  display: grid;
+  gap: 0.45rem;
+}
+
+.seller-order-detail-dispatch-summary p {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--text-muted, #64748b);
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.seller-order-detail-dispatch-summary strong {
+  color: var(--text-main, #111827);
+  text-align: right;
+}
+
+.seller-order-detail-dispatch-summary + a {
+  background: #111827;
+}
+
 html[data-theme="dark"] .order-details-hero {
   background: linear-gradient(135deg, #020617, #0f172a);
 }

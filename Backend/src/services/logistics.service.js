@@ -242,7 +242,11 @@ function offerWindowSeconds() {
 function batchSafePaymentReady(order) {
   if (!order) return false;
   if (order.payment_status === "paid") return true;
-  return order.payment_method === "pay_on_delivery" && ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status || "");
+  return (
+    order.payment_method === "pay_on_delivery" &&
+    !["failed", "refunded"].includes(order.payment_status || "") &&
+    !["cancelled", "disputed", "completed"].includes(order.status || "")
+  );
 }
 
 function deriveBatchBlockingStep(batchId) {
@@ -1502,10 +1506,17 @@ export function listSellerReadinessTasks(auth) {
     params.push(auth.user_id);
   }
   return db.prepare(`
-    SELECT pickup_tasks.*, users.name AS seller_name, orders.order_code
+    SELECT pickup_tasks.*,
+           users.name AS seller_name,
+           orders.order_code,
+           delivery_batches.status AS batch_status,
+           delivery_batches.dispatch_status,
+           delivery_batches.assigned_rider_id,
+           delivery_batches.dispatch_attempt_count
     FROM pickup_tasks
     LEFT JOIN users ON users.id = pickup_tasks.seller_id
     LEFT JOIN orders ON orders.id = pickup_tasks.order_id
+    LEFT JOIN delivery_batches ON delivery_batches.id = pickup_tasks.delivery_batch_id
     ${where}
     ORDER BY pickup_tasks.created_at DESC
     LIMIT 150
@@ -1535,7 +1546,11 @@ export function sellerConfirmAvailability(auth, orderItemId, note = "") {
   `).run(now, now, task.id);
   db.prepare(`
     UPDATE orders
-    SET status = CASE WHEN payment_status = 'paid' THEN 'paid' ELSE status END,
+    SET status = CASE
+          WHEN payment_status = 'paid' THEN 'paid'
+          WHEN payment_method = 'pay_on_delivery' THEN 'seller_confirmed'
+          ELSE status
+        END,
         stage4_status = 'seller_confirmed_package_pending',
         fulfillment_status = 'seller_confirmed',
         seller_confirmation_required = 0,
@@ -1673,7 +1688,11 @@ export function markPickupTaskReady(auth, pickupTaskId, input = {}) {
   );
   db.prepare(`
     UPDATE orders
-    SET status = CASE WHEN payment_status = 'paid' THEN 'ready_for_delivery' ELSE status END,
+    SET status = CASE
+          WHEN payment_status = 'paid' OR payment_method = 'pay_on_delivery'
+            THEN 'ready_for_delivery'
+          ELSE status
+        END,
         stage4_status = 'package_ready',
         fulfillment_status = 'package_ready',
         package_ready_at = ?,
@@ -1727,15 +1746,6 @@ function maybeMarkBatchReady(batchId) {
     note: "All active sellers marked their package ready for dispatch.",
     statusAfter: "ready_for_dispatch",
   });
-
-  try {
-    offerNextRiderForBatch(batchId, { internal: true });
-  } catch (error) {
-    console.error("Automatic rider selection could not start for ready batch:", {
-      batchId,
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
 }
 
 export function syncOrderReadinessForDispatch(orderId) {
@@ -1765,7 +1775,8 @@ export function syncOrderReadinessForDispatch(orderId) {
     db.prepare(`
       UPDATE orders
       SET status = CASE
-            WHEN payment_status = 'paid' THEN 'ready_for_delivery'
+            WHEN payment_status = 'paid' OR payment_method = 'pay_on_delivery'
+              THEN 'ready_for_delivery'
             ELSE status
           END,
           stage4_status = 'package_ready',
@@ -1928,7 +1939,11 @@ export function advanceDueReadinessAndDispatch() {
     `).run(now, task.id);
     db.prepare(`
       UPDATE orders
-      SET status = CASE WHEN payment_status = 'paid' THEN 'ready_for_delivery' ELSE status END,
+      SET status = CASE
+            WHEN payment_status = 'paid' OR payment_method = 'pay_on_delivery'
+              THEN 'ready_for_delivery'
+            ELSE status
+          END,
           stage4_status = 'package_ready',
           fulfillment_status = 'package_ready',
           seller_ready_status = 'ready',
@@ -2112,6 +2127,16 @@ function publicRiderSnapshot(rider, batch, score = null) {
     distanceToPickupKm:
       distanceKm === null ? null : Number(distanceKm.toFixed(2)),
     availabilityMode: capacity.availabilityMode,
+    isOnline:
+      rider.availability === "online" ||
+      ["online", "online_gps_active", "online_zone_only"].includes(
+        capacity.availabilityMode,
+      ),
+    lastActiveAt:
+      rider.last_location_at ||
+      rider.user_last_login_at ||
+      rider.updated_at ||
+      null,
     currentZoneId: capacity.currentZoneId,
     transportType: capacity.transportType,
     maxPackageSize: capacity.maxPackageSize,
@@ -2146,6 +2171,9 @@ function riderBatchDiagnostics(
     highValue: batch.risk_level === "high" || batch.risk_level === "critical",
     maxActiveAssignments: 1,
     requireAutoDispatch: assignmentMode === "automatic",
+    requireOnline: assignmentMode === "automatic",
+    requireRecentHeartbeat: assignmentMode === "automatic",
+    requireLocationPermission: assignmentMode === "automatic",
   });
 
   if (attemptedRiderIds.has(riderId)) reasons.push("already_contacted_for_this_batch");
@@ -2156,7 +2184,13 @@ function riderBatchDiagnostics(
   if (assignmentMode === "automatic" && !capacity?.canReceiveAutoDispatch) {
     reasons.push("auto_dispatch_disabled");
   }
-  if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") {
+  if (
+    assignmentMode === "automatic" &&
+    !["online", "online_gps_active", "online_zone_only"].includes(
+      capacity.availabilityMode,
+    ) &&
+    rider.availability !== "online"
+  ) {
     reasons.push("rider_offline");
   }
   if (Number(capacity.currentActiveBatchCount || 0) > 0 || rider.availability === "busy") reasons.push("rider_busy");
@@ -2175,7 +2209,12 @@ function riderBatchDiagnostics(
   if (rank(riderVehicleCapability(capacity.transportType), VEHICLE_ORDER) < rank(batch.required_vehicle_type, VEHICLE_ORDER)) {
     if (!(capacity.transportType === "car" || capacity.transportType === "van")) reasons.push("vehicle_not_supported");
   }
-  if (batch.requires_gps && capacity.gpsPermissionStatus !== "gps_enabled" && !String(capacity.availabilityMode).includes("gps")) {
+  if (
+    assignmentMode === "automatic" &&
+    batch.requires_gps &&
+    capacity.gpsPermissionStatus !== "gps_enabled" &&
+    !String(capacity.availabilityMode).includes("gps")
+  ) {
     reasons.push("gps_required");
   }
   const zones = new Set(capacity.serviceZoneIds);
@@ -2212,7 +2251,12 @@ function listRiderCandidatesForBatchInternal(
     db.prepare("SELECT rider_id FROM dispatch_attempts WHERE delivery_batch_id = ?").all(batchId).map((row) => row.rider_id),
   );
   const riders = db.prepare(`
-    SELECT users.id AS rider_id, users.name, users.phone, users.avatar_url, rider_profiles.*
+    SELECT users.id AS rider_id,
+           users.name,
+           users.phone,
+           users.avatar_url,
+           users.last_login_at AS user_last_login_at,
+           rider_profiles.*
     FROM rider_profiles
     JOIN users ON users.id = rider_profiles.user_id
     WHERE users.role = 'rider'
@@ -2346,7 +2390,10 @@ function createDispatchOfferForCandidate(batch, candidate, { internal = false, a
     packageSummary: `${batch.package_size_summary} ${batch.weight_class_summary} ${batch.fragility_summary}`,
     isHeavyFragile: ["heavy", "very_heavy"].includes(batch.weight_class_summary) || batch.fragility_summary !== "not_fragile",
   });
-  const windowSeconds = offerWindowSeconds();
+  const windowSeconds =
+    assignmentMode === "manual"
+      ? Math.max(600, offerWindowSeconds())
+      : offerWindowSeconds();
   const attemptId = createId("dsp");
   const attemptNumber = Number(batch.dispatch_attempt_count || 0) + 1;
   const riderId = candidate.rider.rider_id || candidate.rider.user_id;
@@ -2603,7 +2650,11 @@ function createAssignmentsForBatch(batchId, riderId) {
       UPDATE orders
       SET assigned_rider_id = ?,
           rider_assignment_id = ?,
-          status = CASE WHEN payment_status = 'paid' THEN 'ready_for_delivery' ELSE status END,
+          status = CASE
+            WHEN payment_status = 'paid' OR payment_method = 'pay_on_delivery'
+              THEN 'ready_for_delivery'
+            ELSE status
+          END,
           auto_dispatch_status = 'rider_accepted',
           dispatch_status = 'rider_assigned',
           delivery_status = 'rider_assigned',
@@ -3520,6 +3571,20 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
   if (!task) throw new HttpError(404, "Delivery task was not found.");
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(task.delivery_batch_id);
   if (batch?.assigned_rider_id !== riderId) throw new HttpError(403, "This delivery is not assigned to you.");
+  const unpaidOrders = Number(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM orders
+      WHERE delivery_batch_id = ?
+        AND payment_status != 'paid'
+    `).get(task.delivery_batch_id)?.count || 0,
+  );
+  if (unpaidOrders > 0) {
+    throw new HttpError(
+      422,
+      "Payment on Delivery must be completed through Gleenc/Paystack before the buyer delivery code can be verified.",
+    );
+  }
   const proofUrl = clean(input.proofUrl || input.fileUrl || "", 500);
   if (!proofUrl) throw new HttpError(422, "Upload a delivery proof photo before verifying buyer delivery.");
   assertOtpAttemptAllowed("delivery_tasks", "id", task, "buyer delivery");

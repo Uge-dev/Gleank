@@ -50,3 +50,16 @@ export function submitSellerVerification(formData: FormData) {
     body: formData,
   });
 }
+
+export function submitSellerVerificationStage(
+  stage: 1 | 2,
+  payload: FormData | Record<string, unknown>,
+) {
+  return apiRequest<SellerVerificationResponse>(
+    `/seller-verification/me/stages/${stage}/submit`,
+    {
+      method: "POST",
+      body: payload instanceof FormData ? payload : JSON.stringify(payload),
+    },
+  );
+}

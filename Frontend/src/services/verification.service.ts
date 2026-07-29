@@ -10,6 +10,13 @@ export type VerificationRequirement = {
   requiredLevel: number;
   blocking: boolean;
   adminFeedback?: string;
+  canRequestResubmission?: boolean;
+  resubmissionRequest?: {
+    id: string;
+    reason: string;
+    status: string;
+    adminFeedback?: string;
+  } | null;
   latestSubmission?: {
     id: string;
     version: number;
@@ -29,6 +36,16 @@ export type VerificationCase = {
   operationalStatus: string;
   completionPercent: number;
   requirements: VerificationRequirement[];
+  stageReadiness?: Array<{
+    stage: number;
+    title: string;
+    started: boolean;
+    approved: boolean;
+    submissionComplete: boolean;
+    previousStageApproved: boolean;
+    approvalReady: boolean;
+    missingRequirementCodes: string[];
+  }>;
 };
 
 export type VerificationCenterResponse = {
@@ -38,5 +55,18 @@ export type VerificationCenterResponse = {
 export function getMyVerificationCenter(role: "seller" | "rider", history = false) {
   return apiRequest<VerificationCenterResponse>(
     `/verification/me?role=${role}${history ? "&history=true" : ""}`,
+  );
+}
+
+export function requestVerificationRequirementResubmission(
+  requirementId: string,
+  reason: string,
+) {
+  return apiRequest<VerificationCenterResponse>(
+    `/verification/requirements/${encodeURIComponent(requirementId)}/resubmission-request`,
+    {
+      method: "POST",
+      body: JSON.stringify({ reason, role: "seller" }),
+    },
   );
 }

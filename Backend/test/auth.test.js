@@ -48,6 +48,10 @@ fs.rmSync(path.join(testRoot, "uploads"), {
 const { app } = await import("../src/app.js");
 const { db } = await import("../src/db/database.js");
 const { createId } = await import("../src/lib/ids.js");
+const { env } = await import("../src/config/env.js");
+const { assertSellerVerified } = await import(
+  "../src/services/seller-verification.service.js"
+);
 const {
   backfillLegacyVerification,
   verificationRequirementDefinitions,
@@ -381,6 +385,160 @@ test("seller can register and load workspace", async () => {
     .send({ status: "sold" });
   assert.equal(soldResponse.status, 200);
   assert.equal(soldResponse.body.listing.status, "sold");
+});
+
+test("seller verification advances through three admin-approved stages", async () => {
+  const sellerAgent = request.agent(app);
+  const registerResponse = await sellerAgent
+    .post("/api/auth/register")
+    .send({
+      name: "Three Stage Seller",
+      email: "three-stage-seller@gleank.local",
+      password: "SellerStages123!",
+      phone: "08000000071",
+      role: "seller",
+      campus: "FUPRE",
+      storeName: "Three Stage Store",
+    });
+  assert.equal(registerResponse.status, 201);
+  const sellerId = registerResponse.body.user.id;
+
+  const stageOneSubmit = await sellerAgent
+    .post("/api/seller-verification/me/stages/1/submit")
+    .send({
+      sellerType: "campus",
+      storeName: "Three Stage Store",
+      storeCategory: "Electronics",
+      fullName: "Three Stage Seller",
+      phone: "08000000071",
+      campus: "FUPRE",
+      locationArea: "FUPRE campus",
+      pickupLocation: "Main gate seller pickup desk",
+      nearestLandmark: "FUPRE library",
+      operatingHours: "Monday to Saturday, 8am to 6pm",
+      currentStep: "1",
+    });
+  assert.equal(stageOneSubmit.status, 200);
+
+  const stageOneCenter = await sellerAgent.get(
+    "/api/verification/me?role=seller&history=true",
+  );
+  assert.equal(stageOneCenter.status, 200);
+  assert.equal(stageOneCenter.body.case.currentVerifiedLevel, 0);
+  assert.equal(
+    stageOneCenter.body.case.stageReadiness.find(
+      (stage) => stage.stage === 1,
+    ).approvalReady,
+    true,
+  );
+
+  const adminAgent = await createAdminAgent(
+    "seller-stage-admin@gleank.local",
+    "SellerStageAdmin123!",
+  );
+  const sellerQueues = await adminAgent.get(
+    "/api/verification/admin/queues?role=seller",
+  );
+  const sellerCase = sellerQueues.body.cases.find(
+    (item) => item.userId === sellerId,
+  );
+  assert.ok(sellerCase?.id);
+
+  const stageOneApproval = await adminAgent
+    .patch(`/api/verification/admin/cases/${sellerCase.id}/level`)
+    .send({ level: 1, reason: "Seller store and pickup details approved." });
+  assert.equal(stageOneApproval.status, 200);
+  assert.equal(stageOneApproval.body.case.currentVerifiedLevel, 1);
+
+  const authRow = db.prepare("SELECT * FROM users WHERE id = ?").get(sellerId);
+  const originalAutoActivation = env.autoActivateSellerSubscription;
+  try {
+    env.autoActivateSellerSubscription = false;
+    assert.throws(
+      () => assertSellerVerified(authRow),
+      /Stage 2/,
+    );
+  } finally {
+    env.autoActivateSellerSubscription = originalAutoActivation;
+  }
+
+  const stageTwoSubmit = await sellerAgent
+    .post("/api/seller-verification/me/stages/2/submit")
+    .field("sellerType", "campus")
+    .field("campus", "FUPRE")
+    .field("faceVerified", "true")
+    .field("faceProvider", "local")
+    .field("faceReference", "seller-live-face-stage-two")
+    .field(
+      "businessDescription",
+      "We sell verified electronics and prepare every order from our campus pickup desk.",
+    )
+    .field("agreementAccepted", "true")
+    .field("currentStep", "2")
+    .attach("identityProof", tinyPng, {
+      filename: "three-stage-seller-id.png",
+      contentType: "image/png",
+    });
+  assert.equal(stageTwoSubmit.status, 200);
+
+  const refreshedSellerQueues = await adminAgent.get(
+    "/api/verification/admin/queues?role=seller",
+  );
+  const stageTwoCase = refreshedSellerQueues.body.cases.find(
+    (item) => item.userId === sellerId,
+  );
+  const stageTwoApproval = await adminAgent
+    .patch(`/api/verification/admin/cases/${stageTwoCase.id}/level`)
+    .send({ level: 2, reason: "Seller identity and trust checks approved." });
+  assert.equal(stageTwoApproval.status, 200);
+  assert.equal(stageTwoApproval.body.case.currentVerifiedLevel, 2);
+
+  try {
+    env.autoActivateSellerSubscription = false;
+    assert.doesNotThrow(() => assertSellerVerified(authRow));
+  } finally {
+    env.autoActivateSellerSubscription = originalAutoActivation;
+  }
+
+  const stageTwoStore = db
+    .prepare("SELECT * FROM stores WHERE owner_id = ?")
+    .get(sellerId);
+  assert.equal(Number(stageTwoStore.verified), 0);
+  assert.equal(stageTwoStore.verification_status, "stage_2_approved");
+
+  const payoutResponse = await sellerAgent
+    .put("/api/trust/payout")
+    .send({
+      bankName: "Test Bank",
+      accountName: "THREE STAGE SELLER",
+      accountNumber: "0123456789",
+    });
+  assert.equal(payoutResponse.status, 200);
+
+  const finalSubmit = await sellerAgent
+    .post("/api/seller-verification/me/submit")
+    .field("sellerType", "campus")
+    .field("currentStep", "3");
+  assert.equal(finalSubmit.status, 200);
+  assert.equal(finalSubmit.body.verification.status, "pending_verification");
+
+  const finalQueues = await adminAgent.get(
+    "/api/verification/admin/queues?role=seller",
+  );
+  const finalCase = finalQueues.body.cases.find(
+    (item) => item.userId === sellerId,
+  );
+  const finalApproval = await adminAgent
+    .patch(`/api/verification/admin/cases/${finalCase.id}/level`)
+    .send({ level: 3, reason: "Payout and operating agreement approved." });
+  assert.equal(finalApproval.status, 200);
+  assert.equal(finalApproval.body.case.currentVerifiedLevel, 3);
+
+  const verifiedStore = db
+    .prepare("SELECT * FROM stores WHERE owner_id = ?")
+    .get(sellerId);
+  assert.equal(Number(verifiedStore.verified), 1);
+  assert.equal(verifiedStore.verification_status, "verified");
 });
 
 test("user can securely reset a forgotten password", async () => {
@@ -917,8 +1075,31 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .post(`/api/orders/${paymentOnDeliveryOrder.body.orders[0].id}/seller-confirm`)
     .send({ note: "Payment on Delivery stock confirmed." });
   assert.equal(paymentOnDeliveryConfirmation.status, 200);
-  assert.equal(paymentOnDeliveryConfirmation.body.order.status, "seller_confirmed");
+  assert.equal(
+    paymentOnDeliveryConfirmation.body.order.status,
+    "ready_for_delivery",
+  );
   assert.ok(paymentOnDeliveryConfirmation.body.order.sellerConfirmedAt);
+  const paymentOnDeliveryTask = db
+    .prepare("SELECT * FROM pickup_tasks WHERE order_id = ?")
+    .get(paymentOnDeliveryOrder.body.orders[0].id);
+  assert.ok(paymentOnDeliveryTask?.id);
+  const paymentOnDeliveryReady = await sellerAgent
+    .post(
+      `/api/seller/pickup-tasks/${paymentOnDeliveryTask.id}/mark-ready`,
+    )
+    .send({
+      packageSize: "small",
+      packageWeightClass: "light",
+      handlingClass: "not_fragile",
+      pickupPointConfirmed: true,
+    });
+  assert.equal(paymentOnDeliveryReady.status, 200);
+  const paymentOnDeliveryRow = db
+    .prepare("SELECT payment_status, status FROM orders WHERE id = ?")
+    .get(paymentOnDeliveryOrder.body.orders[0].id);
+  assert.notEqual(paymentOnDeliveryRow.payment_status, "paid");
+  assert.equal(paymentOnDeliveryRow.status, "ready_for_delivery");
 
   const highValueProductResponse = await sellerAgent
     .post("/api/seller/products")
@@ -1166,6 +1347,17 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     });
   assert.equal(readyResponse.status, 200);
 
+  const dispatchesBeforeSelection = await riderAgent.get(
+    "/api/rider/dispatches/active",
+  );
+  assert.equal(dispatchesBeforeSelection.status, 200);
+  assert.equal(dispatchesBeforeSelection.body.dispatches.length, 0);
+
+  const automaticStart = await sellerAgent.post(
+    `/api/dispatch/batches/${batchId}/start`,
+  );
+  assert.equal(automaticStart.status, 200);
+
   const riderDispatches = await riderAgent.get("/api/rider/dispatches/active");
   assert.equal(riderDispatches.status, 200);
   assert.equal(riderDispatches.body.dispatches.length, 1);
@@ -1186,7 +1378,10 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     `/api/dispatch/batches/${batchId}/rider-candidates`,
   );
   assert.equal(candidateResponse.status, 200);
-  assert.equal(candidateResponse.body.riders.length, 0);
+  assert.equal(
+    candidateResponse.body.riders.some((rider) => rider.id === riderId),
+    false,
+  );
 
   const manualOfferWhileAutomaticPending = await sellerAgent
     .post(`/api/dispatch/batches/${batchId}/offers`)
@@ -1246,8 +1441,8 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     UPDATE rider_profiles
     SET verification_status = 'verified',
         verification_level = 1,
-        availability = 'online',
-        availability_mode = 'online_gps_active',
+        availability = 'offline',
+        availability_mode = 'offline',
         gps_permission_status = 'gps_enabled',
         service_zone_ids = '["zone_fupre"]',
         current_zone_id = 'zone_fupre',
@@ -1306,12 +1501,18 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.ok(
     manualCandidates.body.riders.some((rider) => rider.id === manualRiderId),
   );
+  const offlineCandidate = manualCandidates.body.riders.find(
+    (rider) => rider.id === manualRiderId,
+  );
+  assert.equal(offlineCandidate.isOnline, false);
+  assert.ok(offlineCandidate.lastActiveAt);
 
   const sellerManualOffer = await sellerAgent
     .post(`/api/dispatch/batches/${manualBatchId}/offers`)
     .send({ riderId: manualRiderId });
   assert.equal(sellerManualOffer.status, 201);
   assert.equal(sellerManualOffer.body.attempt.assignmentMode, "manual");
+  assert.equal(sellerManualOffer.body.attempt.offerWindowSeconds, 600);
 
   const manualAccept = await manualRiderAgent.post(
     `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,

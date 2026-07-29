@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import {
   FiAlertCircle,
@@ -8,7 +8,6 @@ import {
   FiChevronRight,
   FiCheckCircle,
   FiCreditCard,
-  FiEdit3,
   FiHeart,
   FiLock,
   FiLogOut,
@@ -25,6 +24,10 @@ import {
 import LogoutConfirmModal from "../components/LogoutConfirmModal";
 import { useAuth } from "../context/AuthContext";
 import { uploadProfileAvatar } from "../services/user.service";
+import {
+  getMyVerificationCenter,
+  type VerificationCase,
+} from "../services/verification.service";
 import { resolveMediaUrl } from "../utils/media";
 
 const profileStats = [
@@ -114,6 +117,8 @@ function Profile() {
   const [profileMessage, setProfileMessage] = useState("");
   const [profileError, setProfileError] = useState("");
   const [uploadedAvatarUrl, setUploadedAvatarUrl] = useState("");
+  const [sellerVerificationCase, setSellerVerificationCase] =
+    useState<VerificationCase | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   const displayName = user?.name || "Gleenc User";
@@ -127,6 +132,31 @@ function Profile() {
       : user?.avatarUrl
         ? resolveMediaUrl(user.avatarUrl, "")
         : "";
+  const sellerVerificationPercent = Math.max(
+    0,
+    Math.min(
+      100,
+      sellerVerificationCase?.completionPercent ?? (store?.verified ? 100 : 0),
+    ),
+  );
+  const sellerVerifiedLevel = Number(
+    sellerVerificationCase?.currentVerifiedLevel || 0,
+  );
+  const sellerStageLabel =
+    sellerVerifiedLevel >= 3
+      ? "Stage 3 approved"
+      : `Stage ${Math.min(3, sellerVerifiedLevel + 1)} in progress`;
+
+  useEffect(() => {
+    if (user?.role !== "seller" && !store) {
+      setSellerVerificationCase(null);
+      return;
+    }
+
+    void getMyVerificationCenter("seller", true)
+      .then((response) => setSellerVerificationCase(response.case))
+      .catch(() => setSellerVerificationCase(null));
+  }, [store, user?.role]);
 
   async function handleLogoutConfirm() {
     setIsLoggingOut(true);
@@ -225,23 +255,38 @@ function Profile() {
             </div>
           </div>
 
-          <button
-            type="button"
-            className="profile-edit-btn"
-            disabled={isUploadingAvatar || user?.role === "seller" || Boolean(store)}
-            onClick={() => {
-              if (user?.role !== "seller" && !store) {
-                avatarInputRef.current?.click();
-              }
-            }}
-          >
-            <FiEdit3 />
-            {user?.role === "seller" || store
-              ? "Store logo controls profile"
-              : isUploadingAvatar
-                ? "Uploading..."
-                : "Upload buyer photo"}
-          </button>
+          {user?.role === "seller" || store ? (
+            <Link
+              to="/seller/onboarding"
+              className="profile-seller-verification-entry"
+              aria-label={`Seller verification ${sellerVerificationPercent}% complete, ${sellerStageLabel}`}
+            >
+              <span className="profile-seller-verification-copy">
+                <FiShield />
+                <span>
+                  <strong>Store logo controls profile</strong>
+                  <small>{sellerStageLabel}</small>
+                </span>
+                <b>{sellerVerificationPercent}%</b>
+              </span>
+              <span
+                className="profile-seller-verification-meter"
+                aria-hidden="true"
+              >
+                <i style={{ width: `${sellerVerificationPercent}%` }} />
+              </span>
+            </Link>
+          ) : (
+            <button
+              type="button"
+              className="profile-edit-btn"
+              disabled={isUploadingAvatar}
+              onClick={() => avatarInputRef.current?.click()}
+            >
+              <FiCamera />
+              {isUploadingAvatar ? "Uploading..." : "Upload buyer photo"}
+            </button>
+          )}
         </div>
       </div>
 

@@ -79,6 +79,8 @@ export type AvailableDeliveryRider = {
   distanceToPickupKm?: number | null;
   matchSummary?: string;
   availabilityMode?: string;
+  isOnline?: boolean;
+  lastActiveAt?: string | null;
   privacyNote?: string;
   profile?: {
     availability?: string;

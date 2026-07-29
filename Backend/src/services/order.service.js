@@ -784,6 +784,13 @@ export function sellerConfirmOrder(user, orderId, note = "") {
   }
 
   if (row.seller_confirmed_at) {
+    if (!row.pickup_task_id || !row.delivery_batch_id) {
+      createParentOrderForOrders({
+        buyerId: row.buyer_id,
+        orderIds: [row.id],
+      });
+    }
+    syncOrderReadinessForDispatch(row.id);
     return getOrder(user.user_id, row.id);
   }
 

@@ -13,7 +13,10 @@ import {
   createMarketRequestForSeller,
   ensureSellerCategoryRequest,
 } from "./market.service.js";
-import { submitRequirementForUser } from "./verification.service.js";
+import {
+  ensureVerificationCase,
+  submitRequirementForUser,
+} from "./verification.service.js";
 
 function clean(value, max = 500) {
   return String(value || "").trim().slice(0, max);
@@ -82,11 +85,21 @@ function hasActiveSellerSubscription(userId) {
 }
 
 const SELLER_ONBOARDING_STEPS = [
-  { key: "store_details", step: 1, label: "Seller Type & Store Details" },
-  { key: "contact_location", step: 2, label: "Contact & Location Details" },
-  { key: "face_verification", step: 3, label: "Face Verification" },
-  { key: "documents_business", step: 4, label: "Identity Document & Business Details" },
-  { key: "review_submit", step: 5, label: "Review & Submit for Admin Approval" },
+  {
+    key: "store_details",
+    step: 1,
+    label: "Store, Contact & Pickup Location",
+  },
+  {
+    key: "documents_business",
+    step: 2,
+    label: "Identity, Face & Seller Trust",
+  },
+  {
+    key: "review_submit",
+    step: 3,
+    label: "Payout, Agreement & Final Review",
+  },
 ];
 
 function parseJsonObject(value) {
@@ -187,28 +200,25 @@ function buildSellerVerificationProgress(row) {
     missingRequirements.push("Phone/contact details");
   }
   if (!row?.seller_type) missingRequirements.push("Seller type");
-  if (!sellerStoreDetailsComplete(row, store)) {
+  const locationMissing = sellerLocationMissing(row);
+  const contactReady =
+    user?.phone_verified || hasText(row?.phone) || hasText(user?.phone);
+
+  if (
+    !sellerStoreDetailsComplete(row, store) ||
+    locationMissing.length ||
+    !contactReady
+  ) {
     missingRequirements.push("Store name and primary category");
   } else {
     completedSteps.push("store_details");
   }
 
-  const locationMissing = sellerLocationMissing(row);
   if (locationMissing.length) {
     missingRequirements.push(...locationMissing);
   }
-  if (
-    !locationMissing.length &&
-    (user?.phone_verified || hasText(row?.phone) || hasText(user?.phone))
-  ) {
-    completedSteps.push("contact_location");
-  }
 
-  if (!row?.face_verified) {
-    missingRequirements.push("Face verification");
-  } else {
-    completedSteps.push("face_verification");
-  }
+  if (!row?.face_verified) missingRequirements.push("Face verification");
 
   if (!row?.identity_proof_url) missingRequirements.push("Identity document");
   if (!hasText(row?.business_description, 20)) {
@@ -217,6 +227,7 @@ function buildSellerVerificationProgress(row) {
   if (!row?.agreement_accepted) missingRequirements.push("Seller agreement");
 
   if (
+    row?.face_verified &&
     row?.identity_proof_url &&
     hasText(row?.business_description, 20) &&
     row?.agreement_accepted
@@ -239,10 +250,6 @@ function buildSellerVerificationProgress(row) {
 
   let lockedSteps = uniqueArray(savedLockedSteps);
 
-  if (row?.face_verified) {
-    lockedSteps.push("face_verification");
-  }
-
   if (["pending_verification", "verified"].includes(row?.status || "")) {
     lockedSteps = SELLER_ONBOARDING_STEPS.map((item) => item.key);
   }
@@ -255,7 +262,7 @@ function buildSellerVerificationProgress(row) {
   }
 
   const currentStep = ["pending_verification", "verified"].includes(row?.status || "")
-    ? 5
+    ? 3
     : clampStep(row?.current_step, firstIncompleteStep(uniqueCompletedSteps));
 
   return {
@@ -279,7 +286,7 @@ function syncSellerVerificationProgress(userId, preferredStep) {
 
   const progress = buildSellerVerificationProgress(row);
   const currentStep = ["pending_verification", "verified"].includes(row.status)
-    ? 5
+    ? 3
     : clampStep(preferredStep, progress.currentStep);
   const adminReviewStatus =
     row.admin_review_status ||
@@ -595,7 +602,15 @@ export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl
           identity_proof_url, face_verified, face_provider, face_reference,
           face_verified_at, business_description, agreement_accepted,
           status, note, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', '', ?, ?)
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          'draft', '', ?, ?
+        )
       `).run(
         createId("svp"),
         userId,
@@ -683,6 +698,247 @@ export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl
     userId,
     input.nextStep || input.currentStep || existing?.current_step || 1,
   );
+}
+
+function submitSellerRequirementIfReviewable(
+  userId,
+  sellerType,
+  code,
+  input,
+) {
+  const caseRow = ensureVerificationCase(userId, "seller", { sellerType });
+  const requirement = db
+    .prepare(
+      "SELECT * FROM verification_requirements WHERE case_id = ? AND code = ?",
+    )
+    .get(caseRow.id, code);
+
+  if (!requirement) return null;
+  if (["submitted", "under_review"].includes(requirement.status)) return null;
+
+  if (requirement.status === "approved") {
+    const reopen = db
+      .prepare(`
+        SELECT status
+        FROM verification_resubmission_requests
+        WHERE requirement_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `)
+      .get(requirement.id);
+    if (reopen?.status !== "approved") return null;
+  }
+
+  return submitRequirementForUser(userId, "seller", code, input);
+}
+
+function sellerStagePayload(userId) {
+  const profile = db
+    .prepare("SELECT * FROM seller_verification_profiles WHERE user_id = ?")
+    .get(userId);
+  const store = findStoreByOwnerId(userId);
+  const payout = getPayoutAccount(userId);
+  const marketRequest = parseJsonObject(profile?.market_request_json);
+  const sellerType = sellerTypeFromInput(
+    profile?.seller_type || store?.seller_type || "campus",
+  );
+
+  return {
+    profile,
+    store,
+    payout,
+    sellerType,
+    shared: {
+      sellerType,
+      storeName: store?.name || "",
+      storeCategory: store?.category || "General",
+      fullName: profile?.full_name || "",
+      phone: profile?.phone || store?.phone || "",
+      campus: profile?.campus || store?.campus || "",
+      locationArea: profile?.location_area || store?.location_area || "",
+      pickupLocation:
+        profile?.pickup_location || store?.pickup_location || "",
+      nearestLandmark:
+        profile?.nearest_landmark || store?.nearest_landmark || "",
+      marketId: profile?.market_id || store?.market_id || "",
+      marketSelection:
+        profile?.market_id ||
+        store?.market_id ||
+        marketRequest.marketName ||
+        marketRequest.cityArea ||
+        "",
+      shopStallNumber:
+        profile?.shop_stall_number || store?.shop_stall_number || "",
+      shopSection: profile?.shop_section || store?.shop_section || "",
+      whatsappPhone:
+        profile?.whatsapp_phone || store?.whatsapp_phone || "",
+      operatingHours:
+        profile?.operating_hours || store?.operating_hours || "",
+      businessDescription:
+        profile?.business_description || store?.description || "",
+      agreementAccepted: Boolean(profile?.agreement_accepted),
+    },
+  };
+}
+
+function submitSellerVerificationStageRequirements(userId, stage) {
+  const stageNumber = Math.min(3, Math.max(1, Number(stage || 1)));
+  const { profile, payout, sellerType, shared } = sellerStagePayload(userId);
+  const progress = buildSellerVerificationProgress(profile);
+
+  if (
+    stageNumber === 1 &&
+    !progress.completedSteps.includes("store_details")
+  ) {
+    throw new HttpError(
+      422,
+      "Complete the store, contact, and pickup-location details before submitting Stage 1.",
+    );
+  }
+
+  if (
+    stageNumber === 2 &&
+    !progress.completedSteps.includes("documents_business")
+  ) {
+    throw new HttpError(
+      422,
+      "Complete face verification, identity document, business description, and seller agreement before submitting Stage 2.",
+    );
+  }
+
+  if (stageNumber === 3 && !payout?.isComplete) {
+    throw new HttpError(
+      422,
+      "Save a complete payout account before submitting Stage 3.",
+    );
+  }
+
+  if (stageNumber === 1) {
+    submitSellerRequirementIfReviewable(
+      userId,
+      sellerType,
+      "seller_store_identity",
+      { payload: shared, provider: "seller_onboarding_stage_1" },
+    );
+    submitSellerRequirementIfReviewable(
+      userId,
+      sellerType,
+      "seller_pickup_information",
+      { payload: shared, provider: "seller_onboarding_stage_1" },
+    );
+
+    if (["local_market", "nearby"].includes(sellerType)) {
+      submitSellerRequirementIfReviewable(
+        userId,
+        sellerType,
+        "seller_market_selection",
+        { payload: shared, provider: "seller_onboarding_stage_1" },
+      );
+    }
+  }
+
+  if (stageNumber === 2) {
+    submitSellerRequirementIfReviewable(
+      userId,
+      sellerType,
+      "seller_identity_selfie",
+      {
+        payload: {
+          faceVerified: Boolean(profile?.face_verified),
+          faceProvider: profile?.face_provider || "seller_onboarding",
+          faceReference: profile?.face_reference || "",
+        },
+        documentUrls: [profile?.identity_proof_url].filter(Boolean),
+        provider: profile?.face_provider || "seller_onboarding",
+        providerReference: profile?.face_reference || "",
+        providerStatus: profile?.face_verified ? "verified" : "submitted",
+      },
+    );
+
+    if (sellerType === "campus") {
+      submitSellerRequirementIfReviewable(
+        userId,
+        sellerType,
+        "seller_campus_identity",
+        {
+          payload: {
+            campus: shared.campus,
+            studentId: profile?.student_id || "",
+          },
+          provider: "seller_onboarding_stage_2",
+        },
+      );
+    }
+
+    if (["local_market", "nearby"].includes(sellerType)) {
+      submitSellerRequirementIfReviewable(
+        userId,
+        sellerType,
+        "seller_shop_identity",
+        { payload: shared, provider: "seller_onboarding_stage_2" },
+      );
+    }
+
+    if (sellerType === "used_market") {
+      submitSellerRequirementIfReviewable(
+        userId,
+        sellerType,
+        "seller_used_item_authenticity",
+        {
+          payload: shared,
+          documentUrls: [profile?.identity_proof_url].filter(Boolean),
+          provider: "seller_onboarding_stage_2",
+        },
+      );
+    }
+  }
+
+  if (stageNumber === 3) {
+    submitSellerRequirementIfReviewable(
+      userId,
+      sellerType,
+      "seller_payout_account",
+      {
+        payload: {
+          bankName: payout.bankName,
+          accountName: payout.accountName,
+          accountLast4: payout.accountLast4,
+        },
+        provider: "seller_onboarding_stage_3",
+      },
+    );
+    submitSellerRequirementIfReviewable(
+      userId,
+      sellerType,
+      "seller_operational_agreement",
+      { payload: shared, provider: "seller_onboarding_stage_3" },
+    );
+  }
+
+  db.prepare(`
+    UPDATE seller_verification_profiles
+    SET current_step = ?,
+        admin_review_status = ?,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    stageNumber,
+    `stage_${stageNumber}_pending`,
+    new Date().toISOString(),
+    userId,
+  );
+
+  return getSellerVerification(userId);
+}
+
+export function submitSellerVerificationStage(
+  userId,
+  stage,
+  input = {},
+  identityProofUrl = null,
+) {
+  updateSellerOnboardingDraft(userId, input, identityProofUrl);
+  return submitSellerVerificationStageRequirements(userId, stage);
 }
 
 export function upsertSellerVerification(userId, input, identityProofUrl = null) {
@@ -800,14 +1056,10 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
   }
 
   const now = new Date().toISOString();
-  const canSelfVerify =
-    env.autoActivateSellerSubscription || hasActiveSellerSubscription(userId);
-  const requiresAdminApproval = ["local_market", "nearby"].includes(next.sellerType);
-  const status = canSelfVerify && !requiresAdminApproval ? "verified" : "pending_verification";
-  const verifiedAt = status === "verified" ? now : null;
-  const note = status === "verified"
-    ? "Seller verification completed after payment, face check, and agreement confirmation."
-    : "Seller verification is under review.";
+  const status = "pending_verification";
+  const verifiedAt = null;
+  const note =
+    "Seller verification Stage 3 is under admin review. Stage 2 approval already controls product-upload access.";
 
   transaction(() => {
     if (existing) {
@@ -1005,7 +1257,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
 
     db.prepare(`
       UPDATE seller_verification_profiles
-      SET current_step = 5,
+      SET current_step = 3,
           completed_steps_json = ?,
           locked_steps_json = ?,
           submitted_for_review_at = COALESCE(submitted_for_review_at, ?),
@@ -1022,72 +1274,9 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
     );
   });
 
-  const sharedPayload = {
-    sellerType: next.sellerType,
-    storeName: next.storeName,
-    storeCategory: next.storeCategory,
-    fullName: next.fullName,
-    phone: next.phone,
-    campus: next.campus,
-    locationArea: next.locationArea,
-    pickupLocation: next.pickupLocation,
-    nearestLandmark: next.nearestLandmark,
-    marketId: next.marketId,
-    shopStallNumber: next.shopStallNumber,
-    shopSection: next.shopSection,
-    whatsappPhone: next.whatsappPhone,
-    operatingHours: next.operatingHours,
-    businessDescription: next.businessDescription,
-    agreementAccepted: next.agreementAccepted,
-  };
-
-  submitRequirementForUser(userId, "seller", "seller_identity_selfie", {
-    payload: {
-      faceVerified: next.faceVerified,
-      faceProvider: next.faceProvider,
-      faceReference: next.faceReference,
-    },
-    documentUrls: [next.identityProofUrl].filter(Boolean),
-    provider: next.faceProvider || "seller_onboarding",
-    providerReference: next.faceReference,
-    providerStatus: next.faceVerified ? "verified" : "submitted",
-  });
-  submitRequirementForUser(userId, "seller", "seller_store_identity", {
-    payload: sharedPayload,
-    provider: "seller_onboarding",
-  });
-  submitRequirementForUser(userId, "seller", "seller_pickup_information", {
-    payload: sharedPayload,
-    provider: "seller_onboarding",
-  });
-
-  if (next.sellerType === "campus") {
-    submitRequirementForUser(userId, "seller", "seller_campus_identity", {
-      payload: {
-        campus: next.campus,
-        studentId: next.studentId,
-      },
-      provider: "seller_onboarding",
-    });
-  }
-
-  if (["local_market", "nearby"].includes(next.sellerType)) {
-    submitRequirementForUser(userId, "seller", "seller_market_selection", {
-      payload: sharedPayload,
-      provider: "seller_onboarding",
-    });
-    submitRequirementForUser(userId, "seller", "seller_shop_identity", {
-      payload: sharedPayload,
-      provider: "seller_onboarding",
-    });
-  }
-
-  if (next.sellerType === "used_market") {
-    submitRequirementForUser(userId, "seller", "seller_used_item_authenticity", {
-      payload: sharedPayload,
-      provider: "seller_onboarding",
-    });
-  }
+  submitSellerVerificationStageRequirements(userId, 1);
+  submitSellerVerificationStageRequirements(userId, 2);
+  submitSellerVerificationStageRequirements(userId, 3);
 
   return getSellerVerification(userId);
 }
@@ -1120,11 +1309,21 @@ export function assertSellerVerified(user) {
   }
 
   const verification = getSellerVerification(userId);
-  if (verification.status !== "verified") {
-    if (!env.isProduction && env.autoActivateSellerSubscription) {
-      return verification;
-    }
-    throw new HttpError(403, "Complete seller verification before publishing products or services.");
+  const caseRow = ensureVerificationCase(userId, "seller", {
+    sellerType: verification.sellerType,
+  });
+  const stageTwoApproved =
+    Number(caseRow?.current_verified_level || 0) >= 2;
+
+  if (
+    verification.status !== "verified" &&
+    !stageTwoApproved &&
+    !(!env.isProduction && env.autoActivateSellerSubscription)
+  ) {
+    throw new HttpError(
+      403,
+      "Admin must approve seller verification Stage 2 before you can upload products or services.",
+    );
   }
 
   return verification;

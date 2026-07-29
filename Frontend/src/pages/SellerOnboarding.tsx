@@ -18,19 +18,22 @@ import {
   getSellerVerification,
   saveSellerVerificationDraft,
   submitSellerVerification,
+  submitSellerVerificationStage,
   type SellerVerificationResponse,
 } from "../services/seller-verification.service";
 import { savePayoutAccount } from "../services/trust.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
 import { getLocalMarkets, type LocalMarket } from "../services/market.service";
-import { getMyVerificationCenter, type VerificationCase } from "../services/verification.service";
+import {
+  getMyVerificationCenter,
+  requestVerificationRequirementResubmission,
+  type VerificationCase,
+} from "../services/verification.service";
 import { apiUrl } from "../lib/api";
 
 type SellerType = "used_market" | "campus" | "local_market" | "nearby";
 type VerificationStepKey =
   | "store_details"
-  | "contact_location"
-  | "face_verification"
   | "documents_business"
   | "review_submit";
 
@@ -73,53 +76,37 @@ const verificationSteps: Array<{
   {
     step: 1,
     key: "store_details",
-    title: "Seller Type & Store Details",
-    shortTitle: "Store",
+    title: "Store, Contact & Pickup Location",
+    shortTitle: "Profile",
     description:
-      "Choose the seller type and save the basic public store details buyers will see.",
+      "Complete the seller type, public store details, contact information, and exact pickup location.",
   },
   {
     step: 2,
-    key: "contact_location",
-    title: "Contact & Location Details",
-    shortTitle: "Location",
+    key: "documents_business",
+    title: "Identity, Face & Seller Trust",
+    shortTitle: "Trust",
     description:
-      "Save the correct phone, WhatsApp, pickup, campus, or market location information.",
+      "Complete face verification, upload identity proof, describe the business, and accept the seller agreement.",
   },
   {
     step: 3,
-    key: "face_verification",
-    title: "Face Verification",
-    shortTitle: "Face",
-    description:
-      "Complete the face check so admin can trust the seller identity tied to this account.",
-  },
-  {
-    step: 4,
-    key: "documents_business",
-    title: "Identity Document & Business Details",
-    shortTitle: "Documents",
-    description:
-      "Upload identity proof, describe the business clearly, and accept the seller agreement.",
-  },
-  {
-    step: 5,
     key: "review_submit",
-    title: "Review & Submit for Admin Approval",
-    shortTitle: "Submit",
+    title: "Payout, Operations & Final Review",
+    shortTitle: "Operations",
     description:
-      "Review your progress and submit once. Submitted details stay locked while admin reviews.",
+      "Confirm payout readiness and submit the final operating profile for admin approval.",
   },
 ];
 
 const sectionToStep: Record<string, number> = {
   "seller-identity-section": 1,
-  "seller-phone-section": 2,
-  "seller-location-section": 2,
-  "seller-face-section": 3,
-  "seller-document-section": 4,
-  "seller-fee-section": 4,
-  "seller-review-section": 5,
+  "seller-phone-section": 1,
+  "seller-location-section": 1,
+  "seller-face-section": 2,
+  "seller-document-section": 2,
+  "seller-fee-section": 3,
+  "seller-review-section": 3,
 };
 
 function safeStep(value: unknown, fallback = 1) {
@@ -171,6 +158,11 @@ function SellerOnboarding() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingPayout, setIsSavingPayout] = useState(false);
+  const [resubmissionReasons, setResubmissionReasons] = useState<
+    Record<string, string>
+  >({});
+  const [resubmissionRequirementId, setResubmissionRequirementId] =
+    useState("");
 
   async function load() {
     setIsLoading(true);
@@ -204,11 +196,24 @@ function SellerOnboarding() {
       .catch(() => setLocalMarkets([]));
   }, []);
 
+  useEffect(() => {
+    if (!requirementCase) return;
+    const firstAvailableStage = Math.min(
+      3,
+      Math.max(1, requirementCase.currentVerifiedLevel + 1),
+    );
+    if (currentStep > firstAvailableStage) {
+      setCurrentStep(firstAvailableStage);
+    }
+  }, [currentStep, requirementCase]);
+
   const verification = state?.verification;
   const subscription = state?.subscription;
   const activeStore = state?.readiness?.store || store || null;
   const subscriptionActive = Boolean(subscription?.isActive);
-  const verificationReady = verification?.status === "verified";
+  const verificationReady =
+    verification?.status === "verified" ||
+    Number(requirementCase?.currentVerifiedLevel || 0) >= 3;
   const verificationSubmitted =
     verificationReady || verification?.status === "pending_verification";
   const adminResubmissionRequested =
@@ -243,24 +248,67 @@ function SellerOnboarding() {
     { label: "Payout account ready", done: payoutReady, target: "seller-payout-section" },
     { label: "Platform fee ready", done: platformFeeReady, target: "seller-fee-section" },
   ];
-  const sellerCompletionPercent = Math.round(
-    (sellerCompletionChecks.filter((item) => item.done).length /
-      sellerCompletionChecks.length) *
-      100,
-  );
+  const sellerCompletionPercent =
+    requirementCase?.completionPercent ??
+    Math.round(
+      (sellerCompletionChecks.filter((item) => item.done).length /
+        sellerCompletionChecks.length) *
+        100,
+    );
   const sellerMissingChecks = sellerCompletionChecks
     .filter((item) => !item.done)
     .map((item) => item.label);
 
+  function stageForKey(stepKey: VerificationStepKey) {
+    return (
+      verificationSteps.find((item) => item.key === stepKey)?.step || 1
+    );
+  }
+
+  function stageRequirements(stage: number) {
+    return (requirementCase?.requirements || []).filter(
+      (requirement) => requirement.requiredLevel === stage,
+    );
+  }
+
+  function stageIsApproved(stage: number) {
+    return Number(requirementCase?.currentVerifiedLevel || 0) >= stage;
+  }
+
+  function stageIsPending(stage: number) {
+    const requirements = stageRequirements(stage);
+    return requirements.some((requirement) =>
+      ["submitted", "under_review"].includes(requirement.status),
+    );
+  }
+
+  function stageNeedsCorrection(stage: number) {
+    return stageRequirements(stage).some((requirement) =>
+      ["needs_information", "rejected"].includes(requirement.status),
+    );
+  }
+
+  function stageIsAccessible(stage: number) {
+    return stage === 1 || Number(requirementCase?.currentVerifiedLevel || 0) >= stage - 1;
+  }
+
   function stepIsLocked(stepKey: VerificationStepKey) {
-    return submittedLocked || lockedStepSet.has(stepKey);
+    const stage = stageForKey(stepKey);
+    return (
+      submittedLocked ||
+      stageIsApproved(stage) ||
+      stageIsPending(stage) ||
+      !stageIsAccessible(stage) ||
+      lockedStepSet.has(stepKey)
+    );
   }
 
   function stepStatusLabel(stepKey: VerificationStepKey) {
-    if (submittedLocked) {
-      return verificationReady ? "Admin approved" : "Waiting for admin review";
-    }
-    if (lockedStepSet.has(stepKey)) return "Locked";
+    const stage = stageForKey(stepKey);
+    if (stageIsApproved(stage)) return "Admin approved";
+    if (!stageIsAccessible(stage)) return `Complete Stage ${stage - 1}`;
+    if (stageNeedsCorrection(stage)) return "Correction required";
+    if (stageIsPending(stage) || submittedLocked) return "Admin review";
     if (completedStepSet.has(stepKey)) return "Completed";
     return "Needs action";
   }
@@ -290,7 +338,7 @@ function SellerOnboarding() {
   }
 
   async function handleLocalFaceCheck() {
-    if (stepIsLocked("face_verification")) return;
+    if (stepIsLocked("documents_business")) return;
 
     const reference = `local-face-${Date.now()}`;
     setError("");
@@ -303,14 +351,14 @@ function SellerOnboarding() {
         faceVerified: "true",
         faceProvider: "local",
         faceReference: reference,
-        currentStep: "4",
-        nextStep: "4",
+        currentStep: "2",
+        nextStep: "2",
       });
       setState(result);
       setFaceVerified(true);
       setFaceReference(reference);
-      setCurrentStep(safeStep(result.verification?.currentStep, 4));
-      setMessage("Face check completed and saved. Continue to documents.");
+      setCurrentStep(2);
+      setMessage("Face check completed and saved. Add your identity document below.");
     } catch (requestError) {
       setError(
         friendlySellerError(
@@ -336,17 +384,16 @@ function SellerOnboarding() {
     setIsSubmitting(true);
 
     try {
-      if (currentStep === 3 && !faceReady) {
+      if (currentStep === 2 && !faceReady) {
         setError("Complete face verification before continuing.");
         return;
       }
 
-      if (currentStep < 5) {
-        const nextStep = safeStep(currentStep + 1, currentStep + 1);
+      if (currentStep < 3) {
         const draftPayload =
-          currentStep === 4
+          currentStep === 2
             ? new FormData(event.currentTarget)
-            : formToDraftPayload(event.currentTarget, nextStep);
+            : formToDraftPayload(event.currentTarget, currentStep);
 
         if (draftPayload instanceof FormData) {
           const identityProof = draftPayload.get("identityProof");
@@ -354,8 +401,8 @@ function SellerOnboarding() {
             draftPayload.delete("identityProof");
           }
 
-          draftPayload.set("currentStep", String(nextStep));
-          draftPayload.set("nextStep", String(nextStep));
+          draftPayload.set("currentStep", String(currentStep));
+          draftPayload.set("nextStep", String(currentStep));
           draftPayload.set("sellerType", sellerType);
           draftPayload.set("faceVerified", faceReady ? "true" : "false");
           draftPayload.set("faceProvider", verification?.faceProvider || "local");
@@ -365,16 +412,20 @@ function SellerOnboarding() {
           );
         }
 
-        const result = await saveSellerVerificationDraft(draftPayload);
+        const result = await submitSellerVerificationStage(
+          currentStep as 1 | 2,
+          draftPayload,
+        );
         setState(result);
-        void getMyVerificationCenter("seller", true)
-          .then((response) => setRequirementCase(response.case))
-          .catch(() => setRequirementCase(null));
+        const refreshedCase = await getMyVerificationCenter("seller", true);
+        setRequirementCase(refreshedCase.case);
         setFaceVerified(Boolean(result.verification?.faceVerified));
         setFaceReference(result.verification?.faceReference || faceReference);
         setSellerType((result.verification?.sellerType as SellerType) || sellerType);
-        setCurrentStep(safeStep(result.verification?.currentStep, nextStep));
-        setMessage(`${currentStepMeta.shortTitle} step saved.`);
+        setCurrentStep(currentStep);
+        setMessage(
+          `Stage ${currentStep} submitted. It is locked while admin reviews it.`,
+        );
         return;
       }
 
@@ -390,7 +441,7 @@ function SellerOnboarding() {
         .then((response) => setRequirementCase(response.case))
         .catch(() => setRequirementCase(null));
       await refreshSession();
-      setCurrentStep(safeStep(result.verification?.currentStep, 5));
+      setCurrentStep(3);
       setMessage(
         result.verification?.status === "verified"
           ? "Seller profile completed successfully. Your seller dashboard is ready."
@@ -400,13 +451,51 @@ function SellerOnboarding() {
       setError(
         friendlySellerError(
           requestError,
-          currentStep < 5
+          currentStep < 3
             ? "Seller verification could not be saved. Please try again."
             : "Seller verification could not be submitted. Please review the missing requirements and try again.",
         ),
       );
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleRequirementResubmission(requirementId: string) {
+    const reason = (resubmissionReasons[requirementId] || "").trim();
+    if (reason.length < 10) {
+      setError(
+        "Explain why this seller requirement must be reopened (at least 10 characters).",
+      );
+      return;
+    }
+
+    setError("");
+    setMessage("");
+    setResubmissionRequirementId(requirementId);
+    try {
+      await requestVerificationRequirementResubmission(
+        requirementId,
+        reason,
+      );
+      const refreshedCase = await getMyVerificationCenter("seller", true);
+      setRequirementCase(refreshedCase.case);
+      setResubmissionReasons((current) => ({
+        ...current,
+        [requirementId]: "",
+      }));
+      setMessage(
+        "Your request was sent. The requirement stays locked until admin approves reopening it.",
+      );
+    } catch (requestError) {
+      setError(
+        friendlySellerError(
+          requestError,
+          "The resubmission request could not be sent. Please try again.",
+        ),
+      );
+    } finally {
+      setResubmissionRequirementId("");
     }
   }
 
@@ -526,6 +615,7 @@ function SellerOnboarding() {
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                disabled={!stageIsAccessible(item.step)}
                 onClick={() => setCurrentStep(item.step)}
               >
                 <span>{item.step}</span>
@@ -549,7 +639,7 @@ function SellerOnboarding() {
               .join(" ")}
           >
             <div className="seller-onboarding-title" id="seller-identity-section">
-              <span>Step {currentStep} of 5</span>
+              <span>Stage {currentStep} of 3</span>
               <h2>{currentStepMeta.title}</h2>
               <p>{currentStepMeta.description}</p>
             </div>
@@ -617,8 +707,8 @@ function SellerOnboarding() {
               </fieldset>
             )}
 
-            {currentStep === 2 && (
-              <fieldset id="seller-location-section" disabled={stepIsLocked("contact_location")}>
+            {currentStep === 1 && (
+              <fieldset id="seller-location-section" disabled={stepIsLocked("store_details")}>
                 <div className="seller-onboarding-form-grid">
                   <label>
                     <span>Full name</span>
@@ -962,8 +1052,8 @@ function SellerOnboarding() {
               </fieldset>
             )}
 
-            {currentStep === 3 && (
-              <fieldset disabled={stepIsLocked("face_verification")}>
+            {currentStep === 2 && (
+              <fieldset disabled={stepIsLocked("documents_business")}>
                 <div className="seller-face-check-card" id="seller-face-section">
                   <FiShield />
                   <div>
@@ -984,7 +1074,10 @@ function SellerOnboarding() {
                   <button
                     type="button"
                     onClick={() => void handleLocalFaceCheck()}
-                    disabled={isSubmitting || (faceReady && stepIsLocked("face_verification"))}
+                    disabled={
+                      isSubmitting ||
+                      (faceReady && stepIsLocked("documents_business"))
+                    }
                   >
                     {faceReady ? "Face check completed" : "Start face check"}
                   </button>
@@ -992,7 +1085,7 @@ function SellerOnboarding() {
               </fieldset>
             )}
 
-            {currentStep === 4 && (
+            {currentStep === 2 && (
               <fieldset disabled={stepIsLocked("documents_business")}>
                 <label className="seller-onboarding-full" id="seller-document-section">
                   <span>Seller identity document</span>
@@ -1050,7 +1143,7 @@ function SellerOnboarding() {
               </fieldset>
             )}
 
-            {currentStep === 5 && (
+            {currentStep === 3 && (
               <div className="seller-verification-review" id="seller-review-section">
                 {verificationSubmitted ? (
                   <div className="seller-onboarding-message success">
@@ -1072,7 +1165,7 @@ function SellerOnboarding() {
                 )}
 
                 <div className="seller-verification-review-list">
-                  {verificationSteps.slice(0, 4).map((item) => (
+                  {verificationSteps.slice(0, 2).map((item) => (
                     <button
                       type="button"
                       key={item.key}
@@ -1114,9 +1207,18 @@ function SellerOnboarding() {
               Back
             </button>
 
-            {currentStep < 5 ? (
-              <button type="submit" disabled={isSubmitting || submittedLocked}>
-                {isSubmitting ? "Saving..." : "Save & Continue"}
+            {currentStep < 3 ? (
+              <button
+                type="submit"
+                disabled={
+                  isSubmitting ||
+                  submittedLocked ||
+                  stepIsLocked(currentStepMeta.key)
+                }
+              >
+                {isSubmitting
+                  ? "Submitting..."
+                  : `Submit Stage ${currentStep} for Admin Review`}
               </button>
             ) : (
               <button
@@ -1124,6 +1226,8 @@ function SellerOnboarding() {
                 disabled={
                   isSubmitting ||
                   submittedLocked ||
+                  !payoutReady ||
+                  !stageIsAccessible(3) ||
                   !verification?.canSubmit ||
                   Boolean(verification?.missingRequirements?.length)
                 }
@@ -1176,22 +1280,88 @@ function SellerOnboarding() {
                 Level {requirementCase.currentVerifiedLevel} approved · {requirementCase.operationalStatus.replaceAll("_", " ")}
               </p>
               <div className="seller-requirement-list">
-                {requirementCase.requirements.slice(0, 7).map((requirement) => (
-                  <button
-                    key={requirement.id}
-                    type="button"
-                    className={requirement.status === "approved" ? "done" : requirement.status}
-                    onClick={() => {
-                      if (requirement.code.includes("phone")) handleReadinessClick("seller-phone-section");
-                      else if (requirement.code.includes("payout")) handleReadinessClick("seller-payout-section");
-                      else if (requirement.code.includes("pickup") || requirement.code.includes("market")) handleReadinessClick("seller-location-section");
-                      else if (requirement.code.includes("identity") || requirement.code.includes("campus")) handleReadinessClick("seller-document-section");
-                      else handleReadinessClick("seller-review-section");
-                    }}
-                  >
-                    <span>{requirement.title}</span>
-                    <strong>{requirement.status.replaceAll("_", " ")}</strong>
-                  </button>
+                {requirementCase.requirements.map((requirement) => (
+                  <div className="seller-requirement-entry" key={requirement.id}>
+                    <button
+                      type="button"
+                      className={
+                        requirement.status === "approved"
+                          ? "done"
+                          : requirement.status
+                      }
+                      onClick={() => {
+                        if (requirement.code.includes("phone")) {
+                          handleReadinessClick("seller-phone-section");
+                        } else if (requirement.code.includes("payout")) {
+                          handleReadinessClick("seller-payout-section");
+                        } else if (
+                          requirement.code.includes("pickup") ||
+                          requirement.code.includes("market") ||
+                          requirement.code.includes("store")
+                        ) {
+                          handleReadinessClick("seller-location-section");
+                        } else if (
+                          requirement.code.includes("identity") ||
+                          requirement.code.includes("campus") ||
+                          requirement.code.includes("shop")
+                        ) {
+                          handleReadinessClick("seller-document-section");
+                        } else {
+                          handleReadinessClick("seller-review-section");
+                        }
+                      }}
+                    >
+                      <span>
+                        Stage {requirement.requiredLevel} · {requirement.title}
+                      </span>
+                      <strong>{requirement.status.replaceAll("_", " ")}</strong>
+                    </button>
+
+                    {requirement.adminFeedback ? (
+                      <small className="seller-requirement-feedback">
+                        Admin: {requirement.adminFeedback}
+                      </small>
+                    ) : null}
+
+                    {requirement.resubmissionRequest ? (
+                      <small className="seller-requirement-feedback">
+                        Reopen request:{" "}
+                        {requirement.resubmissionRequest.status.replaceAll("_", " ")}
+                        {requirement.resubmissionRequest.adminFeedback
+                          ? ` · ${requirement.resubmissionRequest.adminFeedback}`
+                          : ""}
+                      </small>
+                    ) : null}
+
+                    {requirement.canRequestResubmission ? (
+                      <div className="seller-requirement-resubmission">
+                        <textarea
+                          rows={2}
+                          value={resubmissionReasons[requirement.id] || ""}
+                          onChange={(event) =>
+                            setResubmissionReasons((current) => ({
+                              ...current,
+                              [requirement.id]: event.target.value,
+                            }))
+                          }
+                          placeholder="Explain why this approved requirement needs to be reopened"
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            resubmissionRequirementId === requirement.id
+                          }
+                          onClick={() =>
+                            void handleRequirementResubmission(requirement.id)
+                          }
+                        >
+                          {resubmissionRequirementId === requirement.id
+                            ? "Sending..."
+                            : "Request resubmission"}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
