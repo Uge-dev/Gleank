@@ -501,7 +501,7 @@ export function serializePackageProfile(row) {
   };
 }
 
-function serializeCapacity(row) {
+function serializeCapacity(row, presenceOnline = isRiderPresenceOnline(row)) {
   if (!row) return null;
   const serviceZones = safeJsonArray(row.service_zone_ids, []);
   return {
@@ -514,7 +514,11 @@ function serializeCapacity(row) {
     serviceZoneIds: serviceZones,
     currentZoneId: row.current_zone_id || null,
     gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
-    availabilityMode: row.availability_mode || row.availability || "offline",
+    availabilityMode: presenceOnline
+      ? row.gps_permission_status === "gps_enabled"
+        ? "online_gps_active"
+        : "online_zone_only"
+      : "offline",
     canReceiveAutoDispatch: row.can_receive_auto_dispatch !== 0,
     capacityLocked: row.capacity_locked === 1,
     capacityChangeUnlockedUntil: row.capacity_change_unlocked_until || null,
@@ -2260,7 +2264,8 @@ function publicRiderSnapshot(
   score = null,
   { includeContact = false } = {},
 ) {
-  const capacity = serializeCapacity(rider);
+  const presenceOnline = isRiderPresenceOnline(rider);
+  const capacity = serializeCapacity(rider, presenceOnline);
   const safeName = clean(rider.name || "Verified rider", 80);
   const distanceKm = riderDistanceToPickup(rider, batch);
   const serviceZoneNames = capacity.serviceZoneIds
@@ -2291,7 +2296,7 @@ function publicRiderSnapshot(
     distanceToPickupKm:
       distanceKm === null ? null : Number(distanceKm.toFixed(2)),
     availabilityMode: capacity.availabilityMode,
-    isOnline: isRiderPresenceOnline(rider),
+    isOnline: presenceOnline,
     lastActiveAt:
       rider.last_presence_at ||
       rider.last_location_at ||
@@ -2311,7 +2316,7 @@ function publicRiderSnapshot(
     ratingAverage: Number(rider.rating_average || 0),
     successfulDeliveries: Number(rider.completed_deliveries || 0),
     profile: {
-      availability: isRiderPresenceOnline(rider) ? "online" : "offline",
+      availability: presenceOnline ? "online" : "offline",
       coverageArea,
       transportType: capacity.transportType,
       maxPackageSize: capacity.maxPackageSize,

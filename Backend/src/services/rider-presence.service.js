@@ -32,23 +32,32 @@ function presenceCutoff(now = Date.now()) {
   return new Date(now - timeoutMs).toISOString();
 }
 
-function activePresenceExists(riderId, cutoff = presenceCutoff()) {
+function activePresenceExists(
+  riderId,
+  cutoff = presenceCutoff(),
+  timestamp = nowIso(),
+) {
   if (!riderId) return false;
   return Boolean(
     db.prepare(`
       SELECT 1
-      FROM rider_presence_instances
-      WHERE rider_id = ?
-        AND status = 'online'
-        AND last_heartbeat_at > ?
+      FROM rider_presence_instances AS presence
+      JOIN sessions
+        ON sessions.id = presence.auth_session_id
+      WHERE presence.rider_id = ?
+        AND presence.status = 'online'
+        AND presence.last_heartbeat_at > ?
+        AND sessions.user_id = presence.rider_id
+        AND sessions.revoked_at IS NULL
+        AND sessions.expires_at > ?
       LIMIT 1
-    `).get(riderId, cutoff),
+    `).get(riderId, cutoff, timestamp),
   );
 }
 
 function syncRiderAvailability(riderId, now = nowIso()) {
   if (!riderId) return "offline";
-  const online = activePresenceExists(riderId);
+  const online = activePresenceExists(riderId, presenceCutoff(), now);
   db.prepare(`
     UPDATE rider_profiles
     SET availability = ?,
@@ -80,6 +89,16 @@ export function markRiderPresenceOnline(
 ) {
   if (!userId || !authSessionId || !presenceId) return "offline";
   const now = nowIso();
+  const activeSession = db.prepare(`
+    SELECT 1
+    FROM sessions
+    WHERE id = ?
+      AND user_id = ?
+      AND revoked_at IS NULL
+      AND expires_at > ?
+    LIMIT 1
+  `).get(authSessionId, userId, now);
+  if (!activeSession) return "offline";
 
   transaction(() => {
     db.prepare(`
@@ -175,11 +194,21 @@ export function expireStaleRiderPresence(now = Date.now()) {
 
   return transaction(() => {
     const expired = db.prepare(`
-      UPDATE rider_presence_instances
+      UPDATE rider_presence_instances AS presence
       SET status = 'offline', updated_at = ?
-      WHERE status = 'online'
-        AND last_heartbeat_at <= ?
-    `).run(timestamp, cutoff);
+      WHERE presence.status = 'online'
+        AND (
+          presence.last_heartbeat_at <= ?
+          OR NOT EXISTS (
+            SELECT 1
+            FROM sessions
+            WHERE sessions.id = presence.auth_session_id
+              AND sessions.user_id = presence.rider_id
+              AND sessions.revoked_at IS NULL
+              AND sessions.expires_at > ?
+          )
+        )
+    `).run(timestamp, cutoff, timestamp);
 
     const staleProfiles = db.prepare(`
       UPDATE rider_profiles
@@ -189,12 +218,17 @@ export function expireStaleRiderPresence(now = Date.now()) {
       WHERE availability != 'offline'
         AND NOT EXISTS (
           SELECT 1
-          FROM rider_presence_instances
-          WHERE rider_presence_instances.rider_id = rider_profiles.user_id
-            AND rider_presence_instances.status = 'online'
-            AND rider_presence_instances.last_heartbeat_at > ?
+          FROM rider_presence_instances AS presence
+          JOIN sessions
+            ON sessions.id = presence.auth_session_id
+          WHERE presence.rider_id = rider_profiles.user_id
+            AND presence.status = 'online'
+            AND presence.last_heartbeat_at > ?
+            AND sessions.user_id = presence.rider_id
+            AND sessions.revoked_at IS NULL
+            AND sessions.expires_at > ?
         )
-    `).run(timestamp, cutoff);
+    `).run(timestamp, cutoff, timestamp);
 
     return {
       expiredSessions: Number(expired.changes || 0),
@@ -204,17 +238,58 @@ export function expireStaleRiderPresence(now = Date.now()) {
 }
 
 export function isRiderPresenceOnline(row, now = Date.now()) {
-  if (!row || row.availability !== "online") return false;
-  const lastPresenceAt = row.last_presence_at || row.lastPresenceAt;
-  if (!lastPresenceAt) return false;
-  const lastPresenceMs = new Date(lastPresenceAt).getTime();
-  const timeoutMs = Math.max(30000, Number(env.riderPresenceTimeoutMs || 75000));
-  return Number.isFinite(lastPresenceMs) &&
-    now - lastPresenceMs <= timeoutMs;
+  const riderId =
+    row?.rider_id ||
+    row?.riderId ||
+    row?.user_id ||
+    row?.userId ||
+    "";
+  if (!riderId) return false;
+  return activePresenceExists(
+    riderId,
+    presenceCutoff(now),
+    new Date(now).toISOString(),
+  );
+}
+
+export function normalizeRiderPresenceState(now = Date.now()) {
+  const timestamp = new Date(now).toISOString();
+  const legacy = db.prepare(`
+    UPDATE rider_profiles
+    SET availability = 'offline',
+        availability_mode = 'offline',
+        updated_at = ?
+    WHERE availability IS NULL
+       OR availability NOT IN ('online', 'offline')
+       OR availability_mode = 'busy'
+  `).run(timestamp);
+
+  const expired = expireStaleRiderPresence(now);
+  const activeRiders = db.prepare(`
+    SELECT DISTINCT presence.rider_id
+    FROM rider_presence_instances AS presence
+    JOIN sessions
+      ON sessions.id = presence.auth_session_id
+    WHERE presence.status = 'online'
+      AND presence.last_heartbeat_at > ?
+      AND sessions.user_id = presence.rider_id
+      AND sessions.revoked_at IS NULL
+      AND sessions.expires_at > ?
+  `).all(presenceCutoff(now), timestamp);
+
+  for (const row of activeRiders) {
+    syncRiderAvailability(row.rider_id, timestamp);
+  }
+
+  return {
+    legacyStatusesRemoved: Number(legacy.changes || 0),
+    ...expired,
+    activeRiders: activeRiders.length,
+  };
 }
 
 export function startRiderPresenceMonitor() {
-  expireStaleRiderPresence();
+  normalizeRiderPresenceState();
   const interval = setInterval(
     () => expireStaleRiderPresence(),
     Math.max(10000, Number(env.riderPresenceSweepMs || 25000)),

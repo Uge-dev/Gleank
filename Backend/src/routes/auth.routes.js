@@ -24,10 +24,7 @@ import {
   resetPassword,
   verifyEmail,
 } from "../services/auth.service.js";
-import {
-  heartbeatRiderPresence,
-  markAuthenticatedRiderOffline,
-} from "../services/rider-presence.service.js";
+import { markAuthenticatedRiderOffline } from "../services/rider-presence.service.js";
 
 export const authRouter = Router();
 
@@ -148,9 +145,6 @@ authRouter.post("/logout", (req, res) => {
 });
 
 authRouter.get("/me", requireAuth, (req, res) => {
-  if (req.auth.role === "rider") {
-    heartbeatRiderPresence(req.auth);
-  }
   const user = serializeUser(req.auth);
   const store = serializeStore(findStoreByOwnerId(req.auth.user_id));
   res.json({

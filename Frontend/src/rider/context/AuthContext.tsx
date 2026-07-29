@@ -93,6 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let active = true;
     let heartbeatCount = 0;
     let consecutiveHeartbeatFailures = 0;
+    let hiddenOfflineTimer: number | null = null;
+
+    function cancelHiddenOffline() {
+      if (hiddenOfflineTimer === null) return;
+      window.clearTimeout(hiddenOfflineTimer);
+      hiddenOfflineTimer = null;
+    }
 
     function setAutomaticAvailability(
       availability: Rider['availability'],
@@ -139,7 +146,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (active) {
           consecutiveHeartbeatFailures += 1;
           if (consecutiveHeartbeatFailures >= 2) {
-            setApiConnected(false);
+            setAutomaticAvailability('offline', false);
           }
         }
         return;
@@ -162,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     function handleOnline() {
+      cancelHiddenOffline();
       void sendHeartbeat(true);
     }
 
@@ -171,16 +179,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     function handleVisibilityChange() {
       if (document.visibilityState === 'hidden') {
-        setAutomaticAvailability('offline', navigator.onLine);
-        riderApi.sendPresenceOfflineBeacon();
+        cancelHiddenOffline();
+        // Browser GPS/permission prompts can briefly hide the document even
+        // though the rider did not leave Gleenc. Give those prompts a short
+        // grace period, then close only this tab's presence if it stays hidden.
+        hiddenOfflineTimer = window.setTimeout(() => {
+          hiddenOfflineTimer = null;
+          if (!active || document.visibilityState !== 'hidden') return;
+          setAutomaticAvailability('offline', navigator.onLine);
+          riderApi.sendPresenceOfflineBeacon();
+        }, 5_000);
         return;
       }
+      cancelHiddenOffline();
       void sendHeartbeat(true);
     }
 
     function handlePageHide() {
+      cancelHiddenOffline();
       setAutomaticAvailability('offline', navigator.onLine);
       riderApi.sendPresenceOfflineBeacon();
+    }
+
+    function handleFocus() {
+      cancelHiddenOffline();
+      void sendHeartbeat(true);
     }
 
     void sendHeartbeat(true);
@@ -190,15 +213,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, 25_000);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('focus', handleFocus);
     window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
+      cancelHiddenOffline();
       riderApi.sendPresenceOfflineBeacon();
       window.clearInterval(heartbeat);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('focus', handleFocus);
       window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };

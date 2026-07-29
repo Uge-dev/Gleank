@@ -424,13 +424,7 @@ export function runRiderMigrations() {
 
   db.prepare(`
     UPDATE rider_profiles
-    SET max_package_value_kobo = 2000000,
-        availability = CASE WHEN availability = 'busy' THEN 'online' ELSE availability END,
-        availability_mode = CASE
-          WHEN availability = 'busy' AND gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
-          WHEN availability = 'busy' THEN 'online_zone_only'
-          ELSE availability_mode
-        END
+    SET max_package_value_kobo = 2000000
     WHERE verification_status = 'verified'
       AND safety_status = 'normal'
       AND COALESCE(max_package_value_kobo, 0) <= 0
@@ -438,11 +432,8 @@ export function runRiderMigrations() {
 
   db.prepare(`
     UPDATE rider_profiles
-    SET availability = 'online',
-        availability_mode = CASE
-          WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
-          ELSE 'online_zone_only'
-        END,
+    SET availability = 'offline',
+        availability_mode = 'offline',
         updated_at = ?
     WHERE availability = 'busy'
   `).run(new Date().toISOString());

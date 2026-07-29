@@ -96,6 +96,7 @@ test("health endpoint responds", async () => {
   const response = await request(app).get("/api/health");
   assert.equal(response.status, 200);
   assert.equal(response.body.status, "ok");
+  assert.equal(response.body.riderPresenceModel, "session-heartbeat-v3");
 });
 
 test("seller can register and load workspace", async () => {
@@ -764,6 +765,11 @@ test("rider verification locks approved stages and requires admin-approved resub
 
   const adminAgent = await createAdminAgent();
   db.prepare("UPDATE rider_profiles SET availability = 'offline', availability_mode = 'offline' WHERE user_id = ?").run(riderId);
+  db.prepare(`
+    UPDATE rider_presence_instances
+    SET status = 'offline', updated_at = ?
+    WHERE rider_id = ?
+  `).run(new Date().toISOString(), riderId);
 
   const adminQueues = await adminAgent.get("/api/verification/admin/queues?role=rider");
   assert.equal(adminQueues.status, 200);
@@ -1600,6 +1606,11 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
         updated_at = ?
     WHERE user_id = ?
   `).run(manualNow, manualNow, manualRiderId);
+  db.prepare(`
+    UPDATE rider_presence_instances
+    SET status = 'offline', updated_at = ?
+    WHERE rider_id = ?
+  `).run(manualNow, manualRiderId);
 
   const manualOrderResponse = await buyerAgent
     .post("/api/orders")
@@ -1722,6 +1733,15 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     .post("/api/rider/presence/offline")
     .send({ presenceSessionId: "manual-rider-second-tab" });
   assert.equal(secondTabOffline.status, 204);
+  assert.equal(
+    db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
+      manualRiderId,
+    ).availability,
+    "offline",
+  );
+
+  const generalSessionCheck = await manualRiderAgent.get("/api/auth/me");
+  assert.equal(generalSessionCheck.status, 200);
   assert.equal(
     db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
       manualRiderId,

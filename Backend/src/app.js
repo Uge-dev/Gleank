@@ -118,6 +118,11 @@ app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "gleank-api",
+    riderPresenceModel: "session-heartbeat-v3",
+    release:
+      process.env.RENDER_GIT_COMMIT ||
+      process.env.GIT_COMMIT_SHA ||
+      "local",
     timestamp: new Date().toISOString(),
   });
 });
