@@ -236,8 +236,15 @@ function applyDevelopmentRiderDispatchDefaults(userId, now) {
   );
 }
 
-export async function registerUser(input, meta = {}) {
+export async function registerUser(input, meta = {}, options = {}) {
   const email = String(input.email || "").trim().toLowerCase();
+
+  if (input.role === "rider" && options.allowRiderRegistration !== true) {
+    throw new HttpError(
+      403,
+      "Rider accounts can only be created through the Rider page.",
+    );
+  }
 
   const existingUser = findUserByEmail(email);
   if (existingUser) {
@@ -338,10 +345,13 @@ export async function registerUser(input, meta = {}) {
   };
 }
 
-export async function loginUser(input, meta = {}) {
+export async function loginUser(input, meta = {}, options = {}) {
   const cleanMeta = normalizeMeta(meta);
   const email = String(input.email || "").toLowerCase();
   const user = findUserByEmail(email);
+  const allowedRoles = Array.isArray(options.allowedRoles)
+    ? options.allowedRoles
+    : ["buyer", "seller"];
 
   if (user?.locked_until && new Date(user.locked_until).getTime() > Date.now()) {
     createLoginAttempt({
@@ -387,6 +397,24 @@ export async function loginUser(input, meta = {}) {
     });
 
     throw new HttpError(403, "This account is currently disabled.");
+  }
+
+  if (!allowedRoles.includes(user.role)) {
+    createLoginAttempt({
+      email,
+      userId: user.id,
+      success: false,
+      reason: "wrong_login_portal",
+      meta: cleanMeta,
+    });
+
+    throw new HttpError(
+      403,
+      options.wrongRoleMessage ||
+        (user.role === "rider"
+          ? "This is a rider account. Please use Login/create rider account."
+          : "This account cannot be used on the buyer/seller login page."),
+    );
   }
 
   const loggedInAt = new Date().toISOString();

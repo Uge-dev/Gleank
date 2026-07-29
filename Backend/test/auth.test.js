@@ -637,6 +637,97 @@ test("rider account cannot be silently converted to seller", async () => {
   assert.equal(sessionResponse.body.user.role, "rider");
 });
 
+test("buyer/seller and rider authentication portals are strictly separated", async () => {
+  const riderEmail = "portal-rider@gleank.local";
+  const riderPassword = "PortalRider123!";
+  const buyerEmail = "portal-buyer@gleank.local";
+  const buyerPassword = "PortalBuyer123!";
+
+  const riderRegistration = await request(app)
+    .post("/api/rider/register")
+    .field("name", "Portal Rider")
+    .field("email", riderEmail)
+    .field("password", riderPassword)
+    .field("phone", "08000000091")
+    .field("campus", "FUPRE")
+    .field("vehicleType", "motorcycle")
+    .field("vehiclePlate", "PORTAL-91")
+    .field("coverageArea", "FUPRE")
+    .attach("identityDocument", tinyPng, {
+      filename: "portal-rider-id.png",
+      contentType: "image/png",
+    })
+    .attach("selfie", tinyPng, {
+      filename: "portal-rider-selfie.png",
+      contentType: "image/png",
+    });
+  assert.equal(riderRegistration.status, 201);
+
+  const buyerRegistration = await request(app)
+    .post("/api/auth/register")
+    .send({
+      name: "Portal Buyer",
+      email: buyerEmail,
+      password: buyerPassword,
+      role: "buyer",
+      campus: "FUPRE",
+    });
+  assert.equal(buyerRegistration.status, 201);
+
+  const riderSessionCountBeforeWrongLogin = db
+    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
+    .get(riderRegistration.body.user.id).count;
+  const riderOnMainLogin = await request(app)
+    .post("/api/auth/login")
+    .send({ email: riderEmail, password: riderPassword });
+  assert.equal(riderOnMainLogin.status, 403);
+  assert.match(riderOnMainLogin.body.message, /rider account/i);
+  assert.equal(riderOnMainLogin.headers["set-cookie"], undefined);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
+      .get(riderRegistration.body.user.id).count,
+    riderSessionCountBeforeWrongLogin,
+  );
+
+  const buyerSessionCountBeforeWrongLogin = db
+    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
+    .get(buyerRegistration.body.user.id).count;
+  const buyerOnRiderLogin = await request(app)
+    .post("/api/rider/login")
+    .send({ email: buyerEmail, password: buyerPassword });
+  assert.equal(buyerOnRiderLogin.status, 403);
+  assert.match(buyerOnRiderLogin.body.message, /buyer or seller account/i);
+  assert.equal(buyerOnRiderLogin.headers["set-cookie"], undefined);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
+      .get(buyerRegistration.body.user.id).count,
+    buyerSessionCountBeforeWrongLogin,
+  );
+
+  const correctRiderLogin = await request(app)
+    .post("/api/rider/login")
+    .send({ email: riderEmail, password: riderPassword });
+  assert.equal(correctRiderLogin.status, 200);
+  assert.equal(correctRiderLogin.body.user.role, "rider");
+
+  const correctBuyerLogin = await request(app)
+    .post("/api/auth/login")
+    .send({ email: buyerEmail, password: buyerPassword });
+  assert.equal(correctBuyerLogin.status, 200);
+  assert.equal(correctBuyerLogin.body.user.role, "buyer");
+
+  const riderThroughMainRegistration = await request(app)
+    .post("/api/auth/register")
+    .send({
+      name: "Blocked Rider Signup",
+      email: "blocked-rider-signup@gleank.local",
+      password: "BlockedRider123!",
+      role: "rider",
+      campus: "FUPRE",
+    });
+  assert.equal(riderThroughMainRegistration.status, 422);
+});
+
 test("buyer cannot access seller or rider operations", async () => {
   const buyerAgent = request.agent(app);
 

@@ -23,21 +23,11 @@ function Login() {
         password: String(formData.get("password") || ""),
       });
       if (!user.emailVerified) {
-        navigate(user.role === "rider" ? "/rider/verify-email" : "/verify-email");
-        return;
-      }
-      if (user.role === "admin") {
-        navigate("/admin");
+        navigate("/verify-email");
         return;
       }
 
-      navigate(
-        user.role === "seller"
-          ? "/dashboard"
-          : user.role === "rider"
-            ? "/rider"
-            : "/profile",
-      );
+      navigate(user.role === "seller" ? "/dashboard" : "/profile");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -64,7 +54,7 @@ function Login() {
             <FiAlertCircle />
             <span>{error}</span>
             {error.toLowerCase().includes("rider account") && (
-              <Link to="/rider/login">Go to Rider Login</Link>
+              <Link to="/rider/login">Login/create rider account</Link>
             )}
           </div>
         )}
@@ -126,6 +116,9 @@ function Login() {
         <p className="auth-switch-text">
           New to Gleenc? <Link to="/signup">Create account</Link>
         </p>
+        <Link className="auth-rider-link" to="/rider/login">
+          Login/create rider account
+        </Link>
       </div>
       </div>
     </section>

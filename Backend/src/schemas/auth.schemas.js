@@ -27,7 +27,7 @@ export const registerSchema = z
     name: z.string().trim().min(2).max(80),
     email,
     password,
-    role: z.enum(["buyer", "seller", "rider"]).default("buyer"),
+    role: z.enum(["buyer", "seller"]).default("buyer"),
     campus: z.string().trim().min(2).max(80),
     phone: z.string().trim().max(30).optional().default(""),
     storeName: z.string().trim().max(100).optional().default(""),
@@ -52,21 +52,6 @@ export const registerSchema = z
       });
     }
 
-    if (value.role === "rider" && value.phone.length < 6) {
-      context.addIssue({
-        code: "custom",
-        path: ["phone"],
-        message: "Phone number is required for rider accounts.",
-      });
-    }
-
-    if (value.role === "rider" && value.coverageArea.length < 2) {
-      context.addIssue({
-        code: "custom",
-        path: ["coverageArea"],
-        message: "Coverage area is required for rider accounts.",
-      });
-    }
   });
 
 export const loginSchema = z.object({

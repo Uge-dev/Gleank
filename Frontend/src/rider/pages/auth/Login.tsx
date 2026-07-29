@@ -13,11 +13,13 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showMainLoginLink, setShowMainLoginLink] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setError('');
+    setShowMainLoginLink(false);
     setIsSubmitting(true);
     try {
       const rider = await login(email, password);
@@ -30,9 +32,10 @@ export default function Login() {
       if (
         err instanceof ApiClientError &&
         err.status === 403 &&
-        /not a rider|rider account/i.test(err.message)
+        /not a rider|buyer|seller|rider account/i.test(err.message)
       ) {
-        setError('This account is not a rider account. Please use the correct login page.');
+        setError('This is a buyer or seller account. Please log in through the buyer/seller page.');
+        setShowMainLoginLink(true);
         return;
       }
       if (
@@ -97,7 +100,20 @@ export default function Login() {
             </span>
           </label>
 
-          {error && <p className="mb-4 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">{error}</p>}
+          {error && (
+            <div className="mb-4 rounded-2xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+              <p>{error}</p>
+              {showMainLoginLink && (
+                <p className="mt-2">
+                  Return to the buyer/seller login page{' '}
+                  <Link to="/login" className="font-black underline">
+                    here
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
+          )}
           <Button fullWidth size="lg" disabled={isSubmitting}>
             {isSubmitting ? 'Signing in...' : 'Login'}
           </Button>

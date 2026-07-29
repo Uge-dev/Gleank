@@ -49,12 +49,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
       onClose();
 
       if (!user.emailVerified) {
-        navigate(user.role === "rider" ? "/rider/verify-email" : "/verify-email");
-        return;
-      }
-
-      if (user.role === "admin") {
-        navigate("/admin");
+        navigate("/verify-email");
         return;
       }
 
@@ -103,7 +98,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
             <span>{error}</span>
             {error.toLowerCase().includes("rider account") && (
               <Link to="/rider/login" onClick={onClose}>
-                Go to Rider Login
+                Login/create rider account
               </Link>
             )}
           </div>
@@ -177,7 +172,7 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
           </Link>
         </div>
         <Link className="auth-rider-link" to="/rider/login" onClick={onClose}>
-          <FiTruck /> Login/Create Riders Account
+          <FiTruck /> Login/create rider account
         </Link>
       </div>
     </div>

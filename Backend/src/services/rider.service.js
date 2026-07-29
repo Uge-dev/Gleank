@@ -634,7 +634,7 @@ export async function registerRider(input, meta = {}) {
     storeName: "",
     identityDocumentUrl: input.identityDocumentUrl,
     selfieUrl: input.selfieUrl,
-  }, meta);
+  }, meta, { allowRiderRegistration: true });
 
   const now = nowIso();
   transaction(() => {
@@ -720,7 +720,11 @@ export async function registerRider(input, meta = {}) {
 }
 
 export async function loginRider(input, meta = {}) {
-  const result = await loginUser(input, meta);
+  const result = await loginUser(input, meta, {
+    allowedRoles: ["rider"],
+    wrongRoleMessage:
+      "This is a buyer or seller account. Please log in through the buyer/seller page.",
+  });
   if (result.user.role !== "rider") {
     throw new HttpError(403, "This login is not a rider account.");
   }
