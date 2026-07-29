@@ -34330,6 +34330,48 @@ html[data-theme="dark"] .feed-source-tag small {
   font-weight: 950;
 }
 
+.seller-orders-view-tabs {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 14px;
+  padding: 4px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 14px;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.seller-orders-view-tabs > button {
+  min-width: max-content;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.seller-orders-view-tabs > button span {
+  margin-left: 5px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.seller-orders-view-tabs > button.active {
+  background: var(--card-bg, #ffffff);
+  color: var(--text-main, #111827);
+  box-shadow: 0 5px 14px rgba(15, 23, 42, 0.08);
+}
+
+.seller-orders-view-tabs > button.active span {
+  background: rgba(34, 197, 94, 0.14);
+  color: #15803d;
+}
+
 .seller-orders-list {
   margin-top: 0 !important;
   display: grid !important;

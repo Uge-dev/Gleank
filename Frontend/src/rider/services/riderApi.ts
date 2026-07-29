@@ -138,6 +138,7 @@ export type RiderDispatchOffer = {
     pickupTasks?: Array<{
       id: string;
       sellerName?: string;
+      sellerPhone?: string;
       pickupLocation?: string;
       pickupSequence?: number;
       status?: string;

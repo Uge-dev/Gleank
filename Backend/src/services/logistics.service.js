@@ -27,6 +27,16 @@ const MANUAL_ASSIGNMENT_DISPATCH_STATUSES = new Set([
   "offer_expired",
   "ready_for_dispatch",
 ]);
+const MANUAL_ASSIGNMENT_HARD_BLOCKS = new Set([
+  "already_contacted_for_this_batch",
+  "ROLE_NOT_RIDER",
+  "ACCOUNT_INACTIVE",
+  "EMAIL_NOT_VERIFIED",
+  "PHONE_NOT_VERIFIED",
+  "VERIFICATION_INCOMPLETE",
+  "OPERATIONAL_RESTRICTED",
+  "SAFETY_REVIEW",
+]);
 
 const DEFAULT_PROFILE = {
   packageSize: "small",
@@ -2329,7 +2339,8 @@ function riderBatchDiagnostics(
   const verification = evaluateRiderEligibility(riderId, {
     packageValueKobo: batch.package_value_kobo,
     highValue: batch.risk_level === "high" || batch.risk_level === "critical",
-    maxActiveAssignments: 1,
+    maxActiveAssignments:
+      assignmentMode === "automatic" ? 1 : Number.MAX_SAFE_INTEGER,
     requireAutoDispatch: assignmentMode === "automatic",
     requireOnline: assignmentMode === "automatic",
     requireRecentHeartbeat: assignmentMode === "automatic",
@@ -2352,6 +2363,15 @@ function riderBatchDiagnostics(
       capacity.availabilityMode,
     ) &&
     rider.availability !== "online"
+  ) {
+    reasons.push("rider_offline");
+  }
+  if (
+    assignmentMode === "manual" &&
+    rider.availability !== "online" &&
+    !["online", "online_gps_active", "online_zone_only"].includes(
+      capacity.availabilityMode,
+    )
   ) {
     reasons.push("rider_offline");
   }
@@ -2387,7 +2407,12 @@ function riderBatchDiagnostics(
     rider,
     riderId,
     score: dispatchScore(rider, batch),
-    eligible: reasons.length === 0,
+    eligible:
+      assignmentMode === "automatic"
+        ? reasons.length === 0
+        : !reasons.some((reason) =>
+            MANUAL_ASSIGNMENT_HARD_BLOCKS.has(reason),
+          ),
     reasons: Array.from(new Set(reasons)),
     verification,
   };
@@ -2489,14 +2514,18 @@ function assertBatchReadyForRiderOffer(batchId) {
   return { batch, tasks };
 }
 
-export function listRiderCandidatesForBatch(auth, batchId) {
+export function listRiderCandidatesForBatch(auth, batchId, options = {}) {
   assertSellerOrAdminCanDispatch(auth, batchId);
   advanceDueReadinessAndDispatch();
   advanceExpiredDispatchAttempts();
   assertBatchReadyForRiderOffer(batchId);
+  const assignmentMode =
+    String(options.assignmentMode || "").toLowerCase() === "automatic"
+      ? "automatic"
+      : "manual";
   const { batch, candidates, excluded } = listRiderCandidatesForBatchInternal(batchId, {
     includeExcluded: true,
-    assignmentMode: "manual",
+    assignmentMode,
   });
   const safeCandidates = candidates.map((candidate) => ({
     ...publicRiderSnapshot(candidate.rider, batch, candidate.score, {
@@ -2504,6 +2533,8 @@ export function listRiderCandidatesForBatch(auth, batchId) {
     }),
     eligibleForThisOrder: true,
     exclusionReasons: [],
+    compatibilityWarnings:
+      assignmentMode === "manual" ? candidate.reasons : [],
   }));
   const safeExcluded = excluded
     .filter(
@@ -2549,6 +2580,7 @@ export function listRiderCandidatesForBatch(auth, batchId) {
   );
   return {
     batch: getDeliveryBatchById(batchId),
+    assignmentMode,
     riders: visibleRiders,
     excludedRiders: auth.role === "admin" ? safeExcluded : [],
   };
@@ -3113,22 +3145,50 @@ export function listRiderDispatches(auth) {
   `).all(riderId).map((attempt) => {
     const batch = getDeliveryBatchById(attempt.delivery_batch_id);
     const offeredOnly = attempt.status === "offered";
+    const sellerPickupDetails = offeredOnly
+      ? db.prepare(`
+          SELECT pickup_tasks.id,
+                 COALESCE(NULLIF(users.name, ''), NULLIF(stores.name, ''), 'Seller') AS seller_name,
+                 COALESCE(NULLIF(users.phone, ''), NULLIF(stores.phone, ''), '') AS seller_phone,
+                 COALESCE(
+                   NULLIF(stores.pickup_location, ''),
+                   NULLIF(stores.nearest_landmark, ''),
+                   NULLIF(pickup_tasks.pickup_landmark, ''),
+                   NULLIF(stores.location_area, ''),
+                   'Pickup location unavailable'
+                 ) AS pickup_location
+          FROM pickup_tasks
+          JOIN orders ON orders.id = pickup_tasks.order_id
+          JOIN users ON users.id = pickup_tasks.seller_id
+          LEFT JOIN stores ON stores.id = orders.store_id
+          WHERE pickup_tasks.delivery_batch_id = ?
+            AND pickup_tasks.status != 'seller_rejected'
+        `).all(attempt.delivery_batch_id)
+      : [];
+    const sellerPickupDetailsByTask = new Map(
+      sellerPickupDetails.map((detail) => [detail.id, detail]),
+    );
     const safeBatch = batch && offeredOnly
       ? {
           ...batch,
-          pickupTasks: (batch.pickupTasks || []).map((task) => ({
-            ...task,
-            orderId: null,
-            orderCode: "",
-            packageTagCode: "",
-            pickupLandmark: "Pickup details unlock after acceptance",
-            sellerPickupCode: undefined,
-            packageInstruction: "",
-            orderItems: [],
-          })),
+          pickupTasks: (batch.pickupTasks || []).map((task) => {
+            const detail = sellerPickupDetailsByTask.get(task.id);
+            return {
+              id: task.id,
+              sellerName: detail?.seller_name || task.sellerName || "Seller",
+              sellerPhone: detail?.seller_phone || "",
+              pickupLocation:
+                detail?.pickup_location ||
+                task.pickupLandmark ||
+                "Pickup location unavailable",
+              pickupSequence: task.pickupSequence,
+              status: task.status,
+            };
+          }),
           deliveryTask: batch.deliveryTask
             ? {
-                ...batch.deliveryTask,
+                id: batch.deliveryTask.id,
+                status: batch.deliveryTask.status,
                 deliveryLandmark: "Delivery details unlock after pickup verification",
               }
             : null,

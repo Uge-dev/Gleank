@@ -278,7 +278,28 @@ function getOrderRowsForBuyer(userId) {
     .all(userId);
 }
 
-function getOrderRowsForSeller(userId) {
+function getOrderRowsForSeller(userId, view = "active") {
+  const normalizedView = String(view || "active").trim().toLowerCase();
+  const lifecycleFilter =
+    normalizedView === "successful"
+      ? `
+        AND (
+          orders.status IN ('delivered', 'completed')
+          OR orders.fulfillment_status IN ('delivered', 'completed')
+          OR orders.delivery_status IN ('delivered', 'completed')
+        )
+      `
+        : normalizedView === "all"
+        ? `
+          AND orders.status NOT IN ('cancelled', 'refunded')
+          AND COALESCE(orders.fulfillment_status, '') != 'cancelled'
+        `
+        : `
+          AND orders.status NOT IN ('cancelled', 'refunded', 'delivered', 'completed')
+          AND COALESCE(orders.fulfillment_status, '') NOT IN ('cancelled', 'delivered', 'completed')
+          AND COALESCE(orders.delivery_status, '') NOT IN ('cancelled', 'delivered', 'completed')
+        `;
+
   return db
     .prepare(`
       SELECT orders.*, stores.name AS store_name, stores.slug AS store_slug,
@@ -291,6 +312,7 @@ function getOrderRowsForSeller(userId) {
           orders.payment_status = 'paid'
           OR orders.payment_method = 'pay_on_delivery'
         )
+        ${lifecycleFilter}
       ORDER BY orders.created_at DESC
     `)
     .all(userId);
@@ -376,7 +398,7 @@ export function listOrders(userId) {
   return getOrderRowsForBuyer(userId).map((row) => hydrateOrder(row, userId));
 }
 
-export function listSellerOrders(user) {
+export function listSellerOrders(user, options = {}) {
   if (!user || !["seller", "admin"].includes(user.role)) {
     throw new HttpError(403, "Only sellers can view incoming buyer orders.");
   }
@@ -389,7 +411,9 @@ export function listSellerOrders(user) {
     throw new HttpError(422, "Seller account is required.");
   }
 
-  return getOrderRowsForSeller(sellerId).map((row) => hydrateOrder(row, sellerId));
+  return getOrderRowsForSeller(sellerId, options.view).map((row) =>
+    hydrateOrder(row, sellerId),
+  );
 }
 
 export function getSellerActionableOrderCount(user) {
@@ -872,12 +896,10 @@ export function sellerRejectOrder(user, orderId, note = "") {
   if (user.role !== "admin" && row.seller_id !== user.user_id) {
     throw new HttpError(403, "Only the seller or admin can reject this order.");
   }
-  if (row.payment_status === "paid") {
-    throw new HttpError(422, "Paid orders cannot be rejected here. Use cancellation/refund workflow.");
-  }
 
   const now = new Date().toISOString();
   const reason = String(note || "Seller could not confirm availability.").slice(0, 700);
+  const paidOrder = row.payment_status === "paid";
 
   return transaction(() => {
     db.prepare(`
@@ -890,6 +912,53 @@ export function sellerRejectOrder(user, orderId, note = "") {
           updated_at = ?
       WHERE id = ?
     `).run(now, reason, now, row.id);
+
+    db.prepare(`
+      UPDATE pickup_tasks
+      SET status = 'seller_rejected',
+          seller_rejected_at = ?,
+          seller_rejection_note = ?,
+          updated_at = ?
+      WHERE order_id = ?
+        AND status != 'picked_up'
+    `).run(now, reason, now, row.id);
+
+    if (row.delivery_batch_id) {
+      const remainingPackages = Number(
+        db.prepare(`
+          SELECT COUNT(*) AS count
+          FROM pickup_tasks
+          WHERE delivery_batch_id = ?
+            AND status != 'seller_rejected'
+        `).get(row.delivery_batch_id)?.count || 0,
+      );
+      if (remainingPackages === 0) {
+        db.prepare(`
+          UPDATE delivery_batches
+          SET status = 'cancelled',
+              dispatch_status = 'cancelled',
+              updated_at = ?
+          WHERE id = ?
+            AND assigned_rider_id IS NULL
+        `).run(now, row.delivery_batch_id);
+      }
+    }
+
+    if (paidOrder) {
+      db.prepare(`
+        UPDATE payouts
+        SET status = 'blocked',
+            hold_reason = ?,
+            updated_at = ?
+        WHERE source_type = 'store_order'
+          AND order_id = ?
+          AND status NOT IN ('released', 'refunded')
+      `).run(
+        "Seller marked the paid order unavailable. Buyer refund review is required.",
+        now,
+        row.id,
+      );
+    }
 
     restoreReservedStockForOrder(row, now);
 
@@ -907,10 +976,26 @@ export function sellerRejectOrder(user, orderId, note = "") {
       userId: row.buyer_id,
       type: "order",
       title: "Order unavailable",
-      body: reason,
+      body: paidOrder
+        ? `${reason} Your payment remains protected while the refund is reviewed.`
+        : reason,
       actionLabel: "View order",
       actionPath: `/orders/${row.id}`,
     });
+
+    if (paidOrder) {
+      const adminIds = db
+        .prepare("SELECT id FROM users WHERE role = 'admin' AND is_active = 1")
+        .all()
+        .map((admin) => admin.id);
+      createNotificationForUsers(adminIds, {
+        type: "admin",
+        title: "Paid order requires refund review",
+        body: `${row.order_code}: ${reason}`,
+        actionLabel: "Review order",
+        actionPath: "/admin",
+      });
+    }
 
     return getOrder(user.user_id, row.id);
   });

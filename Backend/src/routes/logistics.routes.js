@@ -148,7 +148,9 @@ logisticsRouter.post("/dispatch/batches/:batchId/start", requireAuth, requireEma
 });
 
 logisticsRouter.get("/dispatch/batches/:batchId/rider-candidates", requireAuth, requireEmailVerified, requireRole("admin", "seller"), (req, res) => {
-  res.json(listRiderCandidatesForBatch(req.auth, req.params.batchId));
+  res.json(listRiderCandidatesForBatch(req.auth, req.params.batchId, {
+    assignmentMode: String(req.query?.mode || "manual"),
+  }));
 });
 
 logisticsRouter.post("/dispatch/batches/:batchId/offers", requireAuth, requireEmailVerified, requireRole("admin", "seller"), (req, res) => {

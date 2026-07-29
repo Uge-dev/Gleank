@@ -1,4 +1,4 @@
-import { FiClock, FiMapPin, FiShield, FiTruck, FiX } from 'react-icons/fi';
+import { FiClock, FiMapPin, FiPhone, FiShield, FiTruck, FiX } from 'react-icons/fi';
 import { useEffect, useMemo, useState } from 'react';
 import { useRiderData } from '../context/RiderDataContext';
 import AssignmentCard from '../components/rider/AssignmentCard';
@@ -62,8 +62,13 @@ export default function AssignedOrders() {
 
   useEffect(() => {
     loadDispatches();
-    const interval = window.setInterval(loadDispatches, 25000);
-    return () => window.clearInterval(interval);
+    const refreshOnFocus = () => void loadDispatches();
+    window.addEventListener('focus', refreshOnFocus);
+    const interval = window.setInterval(loadDispatches, 10000);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshOnFocus);
+    };
   }, []);
 
   async function acceptDispatch(dispatchId: string) {
@@ -147,10 +152,21 @@ export default function AssignedOrders() {
                       <div className="mt-3 space-y-2">
                         {pickupTasks.length ? pickupTasks.slice(0, 4).map((task) => (
                           <div key={task.id} className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">
-                            #{task.pickupSequence || 1} {task.sellerName || 'Seller'} · {task.pickupLocation || 'Pickup zone'}
+                            <p>#{task.pickupSequence || 1} {task.sellerName || 'Seller'}</p>
+                            <p className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                              <FiMapPin /> {task.pickupLocation || 'Pickup location unavailable'}
+                            </p>
+                            {task.sellerPhone ? (
+                              <a
+                                className="mt-1 flex items-center gap-2 text-xs text-emerald-700"
+                                href={`tel:${task.sellerPhone}`}
+                              >
+                                <FiPhone /> {task.sellerPhone}
+                              </a>
+                            ) : null}
                           </div>
                         )) : (
-                          <p className="text-sm font-bold text-slate-500">Pickup details unlock after acceptance.</p>
+                          <p className="text-sm font-bold text-slate-500">Seller pickup information is unavailable.</p>
                         )}
                       </div>
                     </div>

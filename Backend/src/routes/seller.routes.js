@@ -243,7 +243,11 @@ sellerRouter.get("/orders/actionable-count", (req, res) => {
 });
 
 sellerRouter.get("/orders", (req, res) => {
-  res.json({ orders: listSellerOrders(req.auth) });
+  res.json({
+    orders: listSellerOrders(req.auth, {
+      view: String(req.query?.view || "active"),
+    }),
+  });
 });
 
 sellerRouter.get("/orders/:orderId/available-riders", (req, res) => {

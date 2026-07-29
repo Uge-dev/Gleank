@@ -1115,6 +1115,39 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.notEqual(paymentOnDeliveryRow.payment_status, "paid");
   assert.equal(paymentOnDeliveryRow.status, "ready_for_delivery");
 
+  const unavailablePaidOrder = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId, quantity: 1 }],
+      buyerName: "Payment Buyer",
+      buyerPhone: "08000000002",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(unavailablePaidOrder.status, 201);
+  const unavailablePaidOrderId = unavailablePaidOrder.body.orders[0].id;
+  const unavailablePayment = await buyerAgent
+    .post("/api/payments/initialize")
+    .send({ purpose: "store_order", targetId: unavailablePaidOrderId });
+  assert.equal(unavailablePayment.status, 201);
+  const unavailablePaymentVerify = await request(app)
+    .post("/api/payments/public/verify")
+    .send({ reference: unavailablePayment.body.payment.reference });
+  assert.equal(unavailablePaymentVerify.status, 200);
+  const unavailableReject = await sellerAgent
+    .post(`/api/orders/${unavailablePaidOrderId}/seller-reject`)
+    .send({ note: "Item unavailable after final stock inspection." });
+  assert.equal(unavailableReject.status, 200);
+  assert.equal(unavailableReject.body.order.status, "cancelled");
+  const unavailablePayout = db
+    .prepare(
+      "SELECT status FROM payouts WHERE source_type = 'store_order' AND order_id = ?",
+    )
+    .get(unavailablePaidOrderId);
+  assert.equal(unavailablePayout.status, "blocked");
+
   const highValueProductResponse = await sellerAgent
     .post("/api/seller/products")
     .field("name", "High Value Checkout Product")
@@ -1192,6 +1225,60 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .post(`/api/orders/${orderId}/verify-delivery`)
     .send({ verificationCode: buyerOrderResponse.body.order.verificationCode });
   assert.equal(sellerDeliveryAttempt.status, 403);
+
+  const lifecycleNow = new Date().toISOString();
+  db.prepare(`
+    UPDATE orders
+    SET status = 'completed',
+        fulfillment_status = 'completed',
+        delivery_status = 'completed',
+        updated_at = ?
+    WHERE id = ?
+  `).run(lifecycleNow, orderId);
+  db.prepare(`
+    UPDATE orders
+    SET status = 'cancelled',
+        fulfillment_status = 'cancelled',
+        delivery_status = 'cancelled',
+        updated_at = ?
+    WHERE id = ?
+  `).run(lifecycleNow, paymentOnDeliveryOrder.body.orders[0].id);
+
+  const activeSellerOrders = await sellerAgent.get(
+    "/api/seller/orders?view=active",
+  );
+  assert.equal(activeSellerOrders.status, 200);
+  assert.equal(
+    activeSellerOrders.body.orders.some((order) => order.id === orderId),
+    false,
+  );
+  assert.equal(
+    activeSellerOrders.body.orders.some(
+      (order) => order.id === paymentOnDeliveryOrder.body.orders[0].id,
+    ),
+    false,
+  );
+  assert.equal(
+    activeSellerOrders.body.orders.some(
+      (order) => order.id === unavailablePaidOrderId,
+    ),
+    false,
+  );
+
+  const successfulSellerOrders = await sellerAgent.get(
+    "/api/seller/orders?view=successful",
+  );
+  assert.equal(successfulSellerOrders.status, 200);
+  assert.equal(
+    successfulSellerOrders.body.orders.some((order) => order.id === orderId),
+    true,
+  );
+  assert.equal(
+    successfulSellerOrders.body.orders.some(
+      (order) => order.id === paymentOnDeliveryOrder.body.orders[0].id,
+    ),
+    false,
+  );
 });
 
 test("seller-ready dispatch uses privacy-safe rider offers before assignment", async () => {
@@ -1388,9 +1475,16 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(typeof automaticOffer.safeRiderSnapshot.distanceToPickupKm, "number");
   assert.match(automaticOffer.safeRiderSnapshot.privacyNote, /Private phone/);
   assert.equal(
-    automaticOffer.batch.pickupTasks[0].pickupLandmark,
-    "Pickup details unlock after acceptance",
+    automaticOffer.batch.pickupTasks[0].sellerName,
+    "Step Three Seller",
   );
+  assert.equal(
+    automaticOffer.batch.pickupTasks[0].sellerPhone,
+    "08000000030",
+  );
+  assert.ok(automaticOffer.batch.pickupTasks[0].pickupLocation);
+  assert.equal(automaticOffer.batch.pickupTasks[0].orderId, undefined);
+  assert.equal(automaticOffer.batch.pickupTasks[0].orderItems, undefined);
 
   const candidateResponse = await sellerAgent.get(
     `/api/dispatch/batches/${batchId}/rider-candidates`,
@@ -1502,7 +1596,7 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
         current_zone_id = 'zone_fupre',
         last_location_at = ?,
         can_receive_auto_dispatch = 0,
-        current_active_batch_count = 0,
+        current_active_batch_count = 2,
         updated_at = ?
     WHERE user_id = ?
   `).run(manualNow, manualNow, manualRiderId);
@@ -1565,6 +1659,7 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(offlineCandidate.vehicleType, "Bike");
   assert.equal(offlineCandidate.coverageArea, "FUPRE");
   assert.equal(offlineCandidate.eligibleForThisOrder, true);
+  assert.ok(offlineCandidate.compatibilityWarnings.includes("rider_busy"));
   assert.equal(offlineCandidate.successfulDeliveries, 0);
 
   const sellerManualOffer = await sellerAgent
@@ -1590,6 +1685,7 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     UPDATE rider_profiles
     SET availability = 'online',
         availability_mode = 'online_zone_only',
+        current_active_batch_count = 0,
         updated_at = ?
     WHERE user_id = ?
   `).run(new Date().toISOString(), manualRiderId);

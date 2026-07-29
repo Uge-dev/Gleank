@@ -35,12 +35,17 @@ const exclusionLabels: Record<string, string> = {
   very_fragile_not_supported: "Very fragile handling is not supported",
   fragile_not_supported: "Fragile handling is not supported",
   vehicle_not_supported: "Vehicle does not match this package",
-  outside_service_zone: "Rider does not cover this pickup area",
-  no_service_zone: "Rider has not selected a service area",
+  outside_service_zone:
+    "Rider serves a different area; confirm the pickup location first",
+  no_service_zone:
+    "Rider has not selected a service area; confirm the pickup location first",
   WORKLOAD_LIMIT: "Rider is currently handling another delivery",
   DELIVERY_LIMIT: "Order value is above this rider's verification limit",
-  CAPACITY_MISSING: "Vehicle or package capacity is incomplete",
+  CAPACITY_MISSING:
+    "Package capacity is incomplete; confirm suitability with the rider",
   SERVICE_ZONE_MISSING: "Rider service area is incomplete",
+  rider_busy: "Rider is currently busy but can receive this manual offer",
+  rider_offline: "Rider is offline and must come online before accepting",
 };
 
 function activityLabel(rider: AvailableDeliveryRider) {
@@ -131,6 +136,7 @@ export default function SellerRiderSelection() {
 
       const candidates = await getAvailableDeliveryRiders(
         nextTask.deliveryBatchId,
+        mode,
       );
       setRiders(candidates.riders || []);
     } catch (requestError) {
@@ -142,7 +148,7 @@ export default function SellerRiderSelection() {
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [mode, orderId]);
 
   useEffect(() => {
     void loadPage();
@@ -368,8 +374,9 @@ export default function SellerRiderSelection() {
           <h2>{filteredRiders.length} rider(s)</h2>
         </div>
         <p>
-          Nearest compatible riders appear first. Offline riders may receive a
-          manual offer when they cover the pickup area and match the package.
+          {mode === "manual"
+            ? "Every active Stage 1-approved rider is listed, including busy and offline riders. Use location and vehicle filters, then review any compatibility warning before assigning."
+            : "Only online, location-ready riders who match the package can receive automatic offers. Nearest compatible riders appear first."}
         </p>
       </div>
 
@@ -426,6 +433,16 @@ export default function SellerRiderSelection() {
                         "This rider cannot safely receive this specific package."}
                     </p>
                   )}
+                  {eligible &&
+                    mode === "manual" &&
+                    Boolean(rider.compatibilityWarnings?.length) && (
+                      <p className="seller-rider-ineligible-reason">
+                        {exclusionLabels[
+                          rider.compatibilityWarnings?.[0] || ""
+                        ] ||
+                          "Review this rider's availability and package fit before assigning."}
+                      </p>
+                    )}
                   <button type="button" onClick={() => setSelectedRider(rider)}>
                     View full rider details
                   </button>
@@ -548,19 +565,33 @@ export default function SellerRiderSelection() {
                 </span>
               </div>
             ) : (
-              <button
-                type="button"
-                className="seller-rider-assign-button"
-                disabled={action === selectedRider.id}
-                onClick={() => void assignSelectedRider(selectedRider)}
-              >
-                <FiCheckCircle />
-                {action === selectedRider.id
-                  ? "Sending assignment..."
-                  : `Assign order to ${
-                      selectedRider.displayName || selectedRider.name
-                    }`}
-              </button>
+              <>
+                {mode === "manual" &&
+                Boolean(selectedRider.compatibilityWarnings?.length) ? (
+                  <div className="seller-rider-modal-warning">
+                    <FiClock />
+                    <span>
+                      {exclusionLabels[
+                        selectedRider.compatibilityWarnings?.[0] || ""
+                      ] ||
+                        "Confirm this rider's availability and package fit before assigning."}
+                    </span>
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  className="seller-rider-assign-button"
+                  disabled={action === selectedRider.id}
+                  onClick={() => void assignSelectedRider(selectedRider)}
+                >
+                  <FiCheckCircle />
+                  {action === selectedRider.id
+                    ? "Sending assignment..."
+                    : `Assign order to ${
+                        selectedRider.displayName || selectedRider.name
+                      }`}
+                </button>
+              </>
             )}
           </section>
         </div>

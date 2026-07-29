@@ -68,7 +68,9 @@ function packageDraftForTask(task: SellerPickupTask): PackageDraft {
 
 function SellerOrders() {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState<GleencOrder[]>([]);
+  const [activeOrders, setActiveOrders] = useState<GleencOrder[]>([]);
+  const [successfulOrders, setSuccessfulOrders] = useState<GleencOrder[]>([]);
+  const [orderView, setOrderView] = useState<"active" | "successful">("active");
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
   const [packageDrafts, setPackageDrafts] = useState<
     Record<string, PackageDraft>
@@ -80,8 +82,12 @@ function SellerOrders() {
   const [notice, setNotice] = useState("");
 
   const loadOrders = useCallback(async () => {
-    const response = await getSellerOrders();
-    setOrders(response.orders || []);
+    const [activeResponse, successfulResponse] = await Promise.all([
+      getSellerOrders("active"),
+      getSellerOrders("successful"),
+    ]);
+    setActiveOrders(activeResponse.orders || []);
+    setSuccessfulOrders(successfulResponse.orders || []);
   }, []);
 
   const loadPickupTasks = useCallback(async () => {
@@ -112,23 +118,23 @@ function SellerOrders() {
 
   const summary = useMemo(
     () => ({
-      total: orders.length,
-      needsAction: orders.filter((order) =>
+      total: activeOrders.length + successfulOrders.length,
+      needsAction: activeOrders.filter((order) =>
         ["paid", "seller_confirmed", "processing", "ready_for_delivery"].includes(
           order.status,
         ),
       ).length,
-      inDelivery: orders.filter((order) =>
+      inDelivery: activeOrders.filter((order) =>
         ["out_for_delivery", "rider_assigned"].includes(
           order.deliveryStatus || order.status,
         ),
       ).length,
-      completed: orders.filter((order) =>
-        ["delivered", "completed"].includes(order.status),
-      ).length,
+      completed: successfulOrders.length,
     }),
-    [orders],
+    [activeOrders, successfulOrders],
   );
+  const visibleOrders =
+    orderView === "successful" ? successfulOrders : activeOrders;
 
   async function handleConfirmOrder(order: GleencOrder) {
     setError("");
@@ -301,7 +307,11 @@ function SellerOrders() {
         <div className="seller-orders-section-title">
           <div>
             <span>Orders placed on your products</span>
-            <h1>All buyer orders</h1>
+            <h1>
+              {orderView === "successful"
+                ? "Successful orders"
+                : "Active buyer orders"}
+            </h1>
           </div>
           <button
             type="button"
@@ -313,9 +323,30 @@ function SellerOrders() {
           </button>
         </div>
 
-        {orders.length ? (
+        <div className="seller-orders-view-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={orderView === "active"}
+            className={orderView === "active" ? "active" : ""}
+            onClick={() => setOrderView("active")}
+          >
+            Active orders <span>{activeOrders.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={orderView === "successful"}
+            className={orderView === "successful" ? "active" : ""}
+            onClick={() => setOrderView("successful")}
+          >
+            Successful orders <span>{successfulOrders.length}</span>
+          </button>
+        </div>
+
+        {visibleOrders.length ? (
           <div className="seller-orders-list">
-            {orders.map((order) => {
+            {visibleOrders.map((order) => {
               const firstItem = order.items[0];
               const pickupTask = pickupTasks.find(
                 (task) => task.orderId === order.id,
@@ -683,8 +714,16 @@ function SellerOrders() {
         ) : (
           <EmptyState
             icon={<FiPackage />}
-            title="No buyer orders yet"
-            message="Paid and protected Payment on Delivery orders placed on your products will appear here."
+            title={
+              orderView === "successful"
+                ? "No successful deliveries yet"
+                : "No active buyer orders"
+            }
+            message={
+              orderView === "successful"
+                ? "Orders move here automatically after the rider completes delivery."
+                : "Paid and protected Payment on Delivery orders stay here until delivery is completed."
+            }
           />
         )}
       </section>
