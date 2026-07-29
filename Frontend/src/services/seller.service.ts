@@ -18,8 +18,12 @@ export function getSellerActionableOrderCount() {
   return apiRequest<{ count: number }>("/seller/orders/actionable-count");
 }
 
-export function getSellerOrders() {
-  return apiRequest<{ orders: GleencOrder[] }>("/seller/orders");
+export function getSellerOrders(
+  view: "active" | "successful" | "all" = "active",
+) {
+  return apiRequest<{ orders: GleencOrder[] }>(
+    `/seller/orders?view=${encodeURIComponent(view)}`,
+  );
 }
 
 export type SellerPickupTaskItem = {
@@ -91,6 +95,7 @@ export type AvailableDeliveryRider = {
   successfulDeliveries?: number;
   eligibleForThisOrder?: boolean;
   exclusionReasons?: string[];
+  compatibilityWarnings?: string[];
   privacyNote?: string;
   profile?: {
     availability?: string;
@@ -146,9 +151,12 @@ export function markSellerPickupTaskReady(
   );
 }
 
-export function getAvailableDeliveryRiders(batchId: string) {
+export function getAvailableDeliveryRiders(
+  batchId: string,
+  mode: "manual" | "automatic" = "manual",
+) {
   return apiRequest<{ riders: AvailableDeliveryRider[] }>(
-    `/dispatch/batches/${encodeURIComponent(batchId)}/rider-candidates`,
+    `/dispatch/batches/${encodeURIComponent(batchId)}/rider-candidates?mode=${encodeURIComponent(mode)}`,
   );
 }
 
