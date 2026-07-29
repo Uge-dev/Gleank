@@ -5,6 +5,7 @@ import { HttpError } from "../lib/http-error.js";
 import { serializeUser } from "../lib/serializers.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { isDojahConfigured } from "./dojah.service.js";
+import { isRiderPresenceOnline } from "./rider-presence.service.js";
 
 const REQUIREMENT_STATUSES = new Set([
   "not_submitted",
@@ -186,7 +187,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
   {
     code: "seller_identity_selfie",
     role: "seller",
-    level: 2,
+    level: 1,
     blocking: true,
     workflowType: "document",
     title: "Identity/selfie",
@@ -213,7 +214,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
   {
     code: "seller_payout_account",
     role: "seller",
-    level: 3,
+    level: 1,
     blocking: true,
     workflowType: "form",
     title: "Payout account",
@@ -223,7 +224,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     code: "seller_campus_identity",
     role: "seller",
     sellerTypes: ["campus"],
-    level: 2,
+    level: 1,
     blocking: true,
     workflowType: "document",
     title: "Campus identity",
@@ -243,7 +244,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     code: "seller_shop_identity",
     role: "seller",
     sellerTypes: ["local_market", "nearby"],
-    level: 2,
+    level: 1,
     blocking: true,
     workflowType: "document",
     title: "Shop/stall identity",
@@ -258,16 +259,6 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     workflowType: "document",
     title: "Business documentation",
     description: "CAC/business documentation and authorized representative information.",
-  },
-  {
-    code: "seller_operational_agreement",
-    role: "seller",
-    level: 3,
-    blocking: true,
-    workflowType: "form",
-    title: "Seller operating agreement",
-    description:
-      "Business description, operating information and acceptance of the Gleenc seller agreement.",
   },
   {
     code: "seller_used_item_authenticity",
@@ -539,7 +530,7 @@ function applySystemSignals(caseRow) {
   const now = nowIso();
 
   for (const requirement of requirements) {
-    if (requirement.workflow_type !== "system") continue;
+    if (requirement.workflow_type !== "system" && requirement.code !== "seller_payout_account") continue;
     const nextStatus = systemRequirementSignal(user, requirement, caseRow);
     if (!nextStatus || requirement.status === nextStatus) continue;
     if (!["not_submitted", "approved", "needs_information"].includes(requirement.status)) continue;
@@ -848,25 +839,6 @@ const REQUIRED_SUBMISSION_FIELDS = {
     "weightLimit",
     "fragileCapability",
   ],
-  seller_store_identity: ["storeName", "storeCategory", "sellerType"],
-  seller_pickup_information: [
-    "locationArea",
-    "pickupLocation",
-    "nearestLandmark",
-  ],
-  seller_market_selection: ["marketSelection", "locationArea"],
-  seller_identity_selfie: ["faceVerified", "faceReference"],
-  seller_campus_identity: ["campus"],
-  seller_shop_identity: [
-    "shopStallNumber",
-    "shopSection",
-    "nearestLandmark",
-  ],
-  seller_payout_account: ["bankName", "accountName", "accountLast4"],
-  seller_operational_agreement: [
-    "businessDescription",
-    "agreementAccepted",
-  ],
 };
 
 const DOCUMENT_REQUIRED_CODES = new Set([
@@ -874,7 +846,6 @@ const DOCUMENT_REQUIRED_CODES = new Set([
   "rider_identity_selfie",
   "rider_guarantor",
   "rider_vehicle_authorization",
-  "seller_identity_selfie",
 ]);
 
 const VERIFIED_PROVIDER_CODES = new Set([
@@ -930,13 +901,9 @@ function stageReadinessForCase(caseRow, requirements) {
   const currentLevel = Number(caseRow.current_verified_level || 0);
 
   return [1, 2, 3].map((stage) => {
-    const allStageRows = requirements.filter(
+    const rows = requirements.filter(
       (requirement) => Number(requirement.required_level || 1) === stage,
     );
-    const blockingRows = allStageRows.filter(
-      (requirement) => requirement.blocking !== 0,
-    );
-    const rows = blockingRows.length ? blockingRows : allStageRows;
     const rowStates = rows.map((requirement) => {
       if (requirement.status === "approved") {
         return { requirement, complete: true };
@@ -1612,36 +1579,6 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
     return;
   }
 
-  if (level < 3) {
-    db.prepare(`
-      UPDATE stores
-      SET verified = 0,
-          verification_status = ?,
-          verification_note = ?,
-          updated_at = ?
-      WHERE owner_id = ?
-    `).run(
-      `stage_${level}_approved`,
-      `Seller verification Stage ${level} approved by ${adminId}.`,
-      now,
-      caseRow.user_id,
-    );
-
-    db.prepare(`
-      UPDATE seller_verification_profiles
-      SET admin_review_status = ?,
-          note = ?,
-          updated_at = ?
-      WHERE user_id = ?
-    `).run(
-      `stage_${level}_approved`,
-      `Seller verification Stage ${level} approved by ${adminId}.`,
-      now,
-      caseRow.user_id,
-    );
-    return;
-  }
-
   db.prepare(`
     UPDATE stores
     SET verified = 1,
@@ -1651,7 +1588,7 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
         updated_at = ?
     WHERE owner_id = ?
   `).run(
-    `All three seller verification stages approved by ${adminId}.`,
+    `Approved through requirement-based verification by ${adminId}.`,
     now,
     now,
     caseRow.user_id,
@@ -1667,7 +1604,7 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
     WHERE user_id = ?
   `).run(
     now,
-    `All three seller verification stages approved by ${adminId}.`,
+    `Approved through requirement-based verification by ${adminId}.`,
     now,
     caseRow.user_id,
   );
@@ -1996,7 +1933,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
       `).get(userId).count
     : 0;
   const serviceZones = parseArrayColumn(profile?.service_zone_ids);
-  const heartbeatSeconds = secondsSince(profile?.last_location_at);
+  const heartbeatSeconds = secondsSince(profile?.last_presence_at);
   const requiredLevel = Math.max(1, Number(options.requiredLevel || 1));
   const capacityReady = Boolean(profile?.transport_type && profile?.max_package_size && profile?.max_weight_class && profile?.delivery_bag_type);
   const zoneReady = Boolean(serviceZones.length || profile?.coverage_area || profile?.current_zone_id);
@@ -2014,15 +1951,9 @@ export function evaluateRiderEligibility(userId, options = {}) {
       profile?.verification_status === "verified",
     operationallyActive: caseRow?.operational_status === "active" || (profile?.verification_status === "verified" && profile?.safety_status !== "suspended"),
     safetyClear: Boolean(profile && profile.safety_status !== "suspended" && profile.verification_status !== "suspended"),
-    manuallyOnline:
-      options.requireOnline === false || profile?.availability === "online",
-    recentHeartbeat:
-      options.requireRecentHeartbeat === false ||
-      heartbeatSeconds <= Number(options.heartbeatSeconds || 180),
-    locationPermission:
-      options.requireLocationPermission === false ||
-      profile?.gps_permission_status === "gps_enabled" ||
-      String(profile?.availability_mode || "").includes("gps"),
+    presenceOnline: isRiderPresenceOnline(profile),
+    recentHeartbeat: heartbeatSeconds <= Number(options.heartbeatSeconds || 180),
+    locationPermission: profile?.gps_permission_status === "gps_enabled" || String(profile?.availability_mode || "").includes("gps"),
     capacityReady,
     zoneReady,
     workloadReady: Number(activeWorkload || 0) < Number(options.maxActiveAssignments || 2),
@@ -2044,21 +1975,9 @@ export function evaluateRiderEligibility(userId, options = {}) {
   add(checks.requiredVerificationApproved, "VERIFICATION_INCOMPLETE", "Complete the required rider verification level.");
   add(checks.operationallyActive, "OPERATIONAL_RESTRICTED", "Your rider account is restricted or awaiting admin activation.");
   add(checks.safetyClear, "SAFETY_REVIEW", "Your rider account has a safety restriction.");
-  add(
-    checks.manuallyOnline,
-    "RIDER_OFFLINE",
-    "Switch your rider availability to online.",
-  );
-  add(
-    checks.recentHeartbeat,
-    "HEARTBEAT_STALE",
-    "Share a fresh location update to receive assignments.",
-  );
-  add(
-    checks.locationPermission,
-    "LOCATION_PERMISSION_MISSING",
-    "Enable GPS/location permission.",
-  );
+  add(checks.presenceOnline, "RIDER_OFFLINE", "Open the rider app and stay connected to receive assignments.");
+  add(checks.recentHeartbeat, "HEARTBEAT_STALE", "The rider app has not sent a recent presence update.");
+  add(checks.locationPermission, "LOCATION_PERMISSION_MISSING", "Enable GPS/location permission.");
   add(checks.capacityReady, "CAPACITY_MISSING", "Complete your vehicle and package capacity.");
   add(checks.zoneReady, "SERVICE_ZONE_MISSING", "Select at least one working zone.");
   add(checks.workloadReady, "WORKLOAD_LIMIT", "Finish current deliveries before taking another assignment.");

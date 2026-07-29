@@ -26,7 +26,6 @@ import {
   registerRider,
   riderDashboard,
   updateRiderVerificationDocuments,
-  updateRiderAvailability,
   updateRiderLocation,
   verifyDeliveryCode,
   verifyPickup,
@@ -34,7 +33,7 @@ import {
 } from "../services/rider.service.js";
 import {
   createRiderAssignmentSchema,
-  riderAvailabilitySchema,
+  riderPresenceHeartbeatSchema,
   riderCompleteDeliverySchema,
   riderDocumentUploadSchema,
   riderContactAuditSchema,
@@ -53,6 +52,10 @@ import {
   upsertRiderLocation,
 } from "../services/location.service.js";
 import { evaluateRiderEligibility } from "../services/verification.service.js";
+import {
+  heartbeatRiderPresence,
+  markAuthenticatedRiderOffline,
+} from "../services/rider-presence.service.js";
 
 export const riderRouter = Router();
 
@@ -156,7 +159,7 @@ riderRouter.post(
 );
 
 riderRouter.post("/logout", (req, res) => {
-  logoutRider(req.cookies?.[cookieConfig().sessionCookieName]);
+  logoutRider(req.cookies?.[cookieConfig().sessionCookieName], req.auth);
   res.clearCookie(cookieConfig().sessionCookieName, cookieConfig().sessionCookieOptions);
   res.status(204).end();
 });
@@ -171,7 +174,31 @@ riderRouter.get("/session", requireAuth, requireRole("rider"), (req, res) => {
   });
 });
 
-riderRouter.use(requireAuth, requireEmailVerified);
+riderRouter.use(requireAuth);
+
+riderRouter.post(
+  "/presence/heartbeat",
+  requireRole("rider"),
+  locationLimiter,
+  validate(riderPresenceHeartbeatSchema),
+  (req, res) => {
+    heartbeatRiderPresence(req.auth);
+    if (req.body.currentLocation) {
+      upsertRiderLocation(req.auth, {
+        currentLocation: req.body.currentLocation,
+        assignmentId: "",
+      });
+    }
+    res.json(getRiderSession(req.auth, { touchPresence: false }));
+  },
+);
+
+riderRouter.post("/presence/offline", requireRole("rider"), (req, res) => {
+  markAuthenticatedRiderOffline(req.auth);
+  res.status(204).end();
+});
+
+riderRouter.use(requireEmailVerified);
 
 riderRouter.get("/dashboard", requireRole("rider"), (req, res) => {
   res.json(riderDashboard(req.auth));
@@ -192,11 +219,6 @@ riderRouter.post(
     res.json(getRiderSession(req.auth));
   },
 );
-
-riderRouter.patch("/availability", requireRole("rider"), validate(riderAvailabilitySchema), (req, res) => {
-  updateRiderAvailability(req.auth, req.body);
-  res.json(getRiderSession(req.auth));
-});
 
 riderRouter.get("/location/status", requireRole("rider"), (req, res) => {
   res.json(getRiderLocationStatus(req.auth));

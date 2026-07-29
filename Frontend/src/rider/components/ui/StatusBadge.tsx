@@ -37,8 +37,6 @@ const classes: Record<string, string> = {
   rejected: 'bg-rose-50 text-rose-700 border-rose-100',
   online: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   offline: 'bg-slate-100 text-slate-600 border-slate-200',
-  busy: 'bg-orange-50 text-orange-700 border-orange-100',
-  break: 'bg-violet-50 text-violet-700 border-violet-100',
   not_submitted: 'bg-slate-100 text-slate-600 border-slate-200',
   pending_review: 'bg-amber-50 text-amber-700 border-amber-100',
   not_required: 'bg-slate-100 text-slate-600 border-slate-200',

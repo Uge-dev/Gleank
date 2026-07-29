@@ -44,7 +44,8 @@ const exclusionLabels: Record<string, string> = {
   CAPACITY_MISSING:
     "Package capacity is incomplete; confirm suitability with the rider",
   SERVICE_ZONE_MISSING: "Rider service area is incomplete",
-  rider_busy: "Rider is currently busy but can receive this manual offer",
+  rider_has_active_delivery:
+    "Rider is handling another delivery but can receive this manual offer",
   rider_offline: "Rider is offline and must come online before accepting",
 };
 
@@ -375,7 +376,7 @@ export default function SellerRiderSelection() {
         </div>
         <p>
           {mode === "manual"
-            ? "Every active Stage 1-approved rider is listed, including busy and offline riders. Use location and vehicle filters, then review any compatibility warning before assigning."
+            ? "Every active Stage 1-approved rider is listed, including offline riders and riders handling another delivery. Use location and vehicle filters, then review any compatibility warning before assigning."
             : "Only online, location-ready riders who match the package can receive automatic offers. Nearest compatible riders appear first."}
         </p>
       </div>

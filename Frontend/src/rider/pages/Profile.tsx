@@ -13,13 +13,11 @@ import {
 } from '../../services/logistics.service';
 
 export default function Profile() {
-  const { rider, updateAvailability } = useAuth();
+  const { rider } = useAuth();
   const [zones, setZones] = useState<DeliveryZone[]>([]);
   const [capacity, setCapacity] = useState<RiderCapacityProfile | null>(null);
   const [savingCapacity, setSavingCapacity] = useState(false);
   const [notice, setNotice] = useState('');
-  const [availabilityNotice, setAvailabilityNotice] = useState('');
-  const [availabilityUpdating, setAvailabilityUpdating] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -74,7 +72,7 @@ export default function Profile() {
 
   return (
     <div>
-      <PageHeader title="Profile" subtitle="Your rider account, vehicle, contact, rating, and availability details." />
+      <PageHeader title="Profile" subtitle="Your rider account, vehicle, contact, rating, and automatic presence status." />
       {notice && (
         <div className="mb-4 rounded-3xl bg-emerald-50 px-5 py-4 text-sm font-extrabold text-emerald-700">
           {notice}
@@ -135,27 +133,19 @@ export default function Profile() {
             Phone number changes must go through OTP verification.
           </div>
           <div className="mt-7">
-            <label className="text-sm font-bold text-slate-700">Availability</label>
-            <select
-              value={rider.availability}
-              onChange={(event) => {
-                setAvailabilityNotice('');
-                setAvailabilityUpdating(true);
-                updateAvailability(event.target.value as typeof rider.availability)
-                  .then(() => setAvailabilityNotice('Availability updated.'))
-                  .catch((error) => setAvailabilityNotice(error instanceof Error ? error.message : 'Availability could not be changed.'))
-                  .finally(() => setAvailabilityUpdating(false));
-              }}
-              disabled={availabilityUpdating}
-              className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-gleenc-cyan"
-            >
-              <option value="online">Online</option>
-              <option value="offline">Offline</option>
-              <option value="busy">Busy</option>
-            </select>
-            <p className="mt-2 text-sm text-slate-500">Sellers can only assign delivery tasks to available online riders.</p>
-            {availabilityUpdating && <p className="mt-2 rounded-2xl bg-slate-50 p-3 text-sm font-bold text-slate-600">Updating availability...</p>}
-            {availabilityNotice && <p className="mt-2 rounded-2xl bg-amber-50 p-3 text-sm font-bold text-amber-700">{availabilityNotice}</p>}
+            <p className="text-sm font-bold text-slate-700">Availability</p>
+            <div className="mt-2 flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <strong className="block text-sm text-slate-950">Automatic presence</strong>
+                <span className="text-xs font-semibold text-slate-500">
+                  Online while this rider app is open and connected.
+                </span>
+              </div>
+              <StatusBadge value={rider.availability} pulse={rider.availability === 'online'} />
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              Gleenc switches you online after login and offline when the app is left or loses its connection. No manual switch is required.
+            </p>
           </div>
         </Card>
 

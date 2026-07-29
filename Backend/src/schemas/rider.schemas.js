@@ -71,8 +71,7 @@ export const riderLoginSchema = z.object({
   password: z.string().min(1).max(72),
 });
 
-export const riderAvailabilitySchema = z.object({
-  availability: z.enum(["offline", "online", "busy"]),
+export const riderPresenceHeartbeatSchema = z.object({
   currentLocation: coordinate.optional(),
 });
 

@@ -724,7 +724,6 @@ function AdminDashboard() {
   const riderRows = useMemo(() => {
     if (riderFilter === "online") return riders.filter((rider) => rider.availability === "online");
     if (riderFilter === "offline") return riders.filter((rider) => rider.availability === "offline");
-    if (riderFilter === "busy") return riders.filter((rider) => rider.availability === "busy");
     if (riderFilter === "pending") return riders.filter((rider) => rider.verificationStatus !== "verified");
     if (riderFilter === "suspended") {
       return riders.filter((rider) => rider.verificationStatus === "suspended" || rider.safetyStatus === "suspended");
@@ -1556,7 +1555,6 @@ function AdminDashboard() {
                   ["all", "All riders"],
                   ["online", "Online"],
                   ["offline", "Offline"],
-                  ["busy", "Busy"],
                   ["pending", "Verification pending"],
                   ["suspended", "Suspended"],
                 ].map(([value, label]) => (

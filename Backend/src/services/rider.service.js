@@ -26,6 +26,12 @@ import {
   evaluateRiderEligibility,
   submitRequirementForUser,
 } from "./verification.service.js";
+import {
+  expireStaleRiderPresence,
+  isRiderPresenceOnline,
+  markAuthenticatedRiderOffline,
+  markRiderPresenceOnline,
+} from "./rider-presence.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -271,6 +277,7 @@ function serializeProfile(row) {
   if (!row) return null;
   const serviceZoneIds = safeJsonArray(row.service_zone_ids);
   const completion = riderCompletion(row);
+  const presenceOnline = isRiderPresenceOnline(row);
   return {
     id: row.id,
     userId: row.user_id,
@@ -287,7 +294,11 @@ function serializeProfile(row) {
     serviceZoneIds,
     currentZoneId: row.current_zone_id || null,
     gpsPermissionStatus: row.gps_permission_status || "gps_disabled",
-    availabilityMode: row.availability_mode || row.availability || "offline",
+    availabilityMode: presenceOnline
+      ? row.gps_permission_status === "gps_enabled"
+        ? "online_gps_active"
+        : "online_zone_only"
+      : "offline",
     canReceiveAutoDispatch: row.can_receive_auto_dispatch !== 0,
     capacityLocked: row.capacity_locked === 1,
     capacityChangeUnlockedUntil: row.capacity_change_unlocked_until || null,
@@ -311,7 +322,8 @@ function serializeProfile(row) {
     verificationLevel: row.verification_level,
     maxPackageValueKobo: row.max_package_value_kobo,
     maxPackageValue: money(row.max_package_value_kobo),
-    availability: row.availability,
+    availability: presenceOnline ? "online" : "offline",
+    lastPresenceAt: row.last_presence_at || null,
     currentLocation: row.current_lat == null || row.current_lng == null ? null : {
       lat: row.current_lat,
       lng: row.current_lng,
@@ -717,7 +729,8 @@ export async function loginRider(input, meta = {}) {
   };
 }
 
-export function logoutRider(cookieToken) {
+export function logoutRider(cookieToken, auth = null) {
+  markAuthenticatedRiderOffline(auth);
   deleteSession(cookieToken);
 }
 
@@ -766,57 +779,15 @@ export function updateRiderVerificationDocuments(auth, input) {
   return serializeProfile(getRiderProfile(riderId));
 }
 
-export function getRiderSession(auth) {
+export function getRiderSession(auth, { touchPresence = true } = {}) {
   const userId = requireRiderUser(auth);
+  if (touchPresence) {
+    markRiderPresenceOnline(userId, auth.session_id);
+  }
   return {
     user: serializeUser(auth),
     riderProfile: serializeProfile(getRiderProfile(userId)),
   };
-}
-
-export function updateRiderAvailability(auth, input) {
-  const userId = requireRiderUser(auth);
-  const profile = ["online", "busy"].includes(input.availability)
-    ? requireVerifiedRider(userId)
-    : getRiderProfile(userId);
-  if (!profile) throw new HttpError(404, "Rider profile was not found.");
-  const now = nowIso();
-  const location = input.currentLocation || null;
-  db.prepare(`
-    UPDATE rider_profiles
-    SET availability = ?,
-        availability_mode = CASE
-          WHEN ? = 'online' AND ? IS NOT NULL THEN 'online_gps_active'
-          WHEN ? = 'online' THEN 'online_zone_only'
-          WHEN ? = 'busy' THEN 'busy'
-          ELSE 'offline'
-        END,
-        current_lat = COALESCE(?, current_lat),
-        current_lng = COALESCE(?, current_lng),
-        current_accuracy_meters = COALESCE(?, current_accuracy_meters),
-        last_location_at = COALESCE(?, last_location_at),
-        gps_permission_status = CASE
-          WHEN ? IS NOT NULL THEN 'gps_enabled'
-          ELSE gps_permission_status
-        END,
-        updated_at = ?
-    WHERE user_id = ?
-  `).run(
-    input.availability,
-    input.availability,
-    location?.lat ?? null,
-    input.availability,
-    input.availability,
-    location?.lat ?? null,
-    location?.lng ?? null,
-    location?.accuracyMeters ?? null,
-    location ? now : null,
-    location?.lat ?? null,
-    now,
-    userId,
-  );
-  if (location) recordLocation(userId, location);
-  return serializeProfile(getRiderProfile(userId));
 }
 
 export function updateRiderLocation(auth, input) {
@@ -889,6 +860,7 @@ export function getRiderAssignment(auth, assignmentId) {
 
 export function listAvailableRiders(auth) {
   if (!auth || !["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Only sellers or admins can view available riders.");
+  expireStaleRiderPresence();
   return db.prepare(`
     SELECT users.id, users.name, rider_profiles.*
     FROM rider_profiles
@@ -957,7 +929,6 @@ export function createRiderAssignment(auth, input) {
   const rider = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'rider' AND is_active = 1").get(input.riderId);
   if (!rider) throw new HttpError(404, "Selected rider was not found.");
   const riderProfile = requireVerifiedRider(input.riderId);
-  if (riderProfile.availability === "offline") throw new HttpError(422, "Selected rider is currently offline.");
   if (Number(input.packageValueKobo || order.total_kobo || 0) > Number(riderProfile.max_package_value_kobo || 0)) {
     throw new HttpError(422, "This package value is above the rider's current verification limit.");
   }
@@ -1116,6 +1087,7 @@ export function createRiderAssignment(auth, input) {
 
 export function acceptRiderAssignment(auth, assignmentId) {
   const riderId = requireRiderUser(auth);
+  expireStaleRiderPresence();
   const profile = requireVerifiedRider(riderId);
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
@@ -1129,14 +1101,13 @@ export function acceptRiderAssignment(auth, assignmentId) {
   if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
     throw new HttpError(422, "Delivery is blocked until platform payment is confirmed.");
   }
-  if (profile.availability === "offline") throw new HttpError(422, "Go online before accepting a delivery.");
+  if (!isRiderPresenceOnline(profile)) throw new HttpError(422, "Open the rider app and reconnect before accepting a delivery.");
   if (Number(row.package_value_kobo || 0) > Number(profile.max_package_value_kobo || 0)) {
     throw new HttpError(422, "This package value is above your current rider verification limit.");
   }
   const now = nowIso();
   transaction(() => {
     db.prepare("UPDATE rider_assignments SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, assignmentId);
-    db.prepare("UPDATE rider_profiles SET availability = 'busy', availability_mode = 'busy', updated_at = ? WHERE user_id = ?").run(now, riderId);
     updateConnectedOrderAssignment(row.order_type, row.order_id, assignmentId, riderId, row.order_type === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
     if (row.order_type === "store_order") {
       db.prepare(`
@@ -1492,7 +1463,7 @@ export function completeDelivery(auth, orderId, input) {
     `).run(createId("reg"), riderId, row.id, row.order_id, row.order_type, row.delivery_fee_kobo || 0, now, now);
     db.prepare(`
       UPDATE rider_profiles
-      SET availability = 'online', completed_deliveries = completed_deliveries + 1, updated_at = ?
+      SET completed_deliveries = completed_deliveries + 1, updated_at = ?
       WHERE user_id = ?
     `).run(now, riderId);
     createNotification({
@@ -1563,7 +1534,6 @@ export function failAssignment(auth, assignmentId, input) {
   const now = nowIso();
   transaction(() => {
     db.prepare("UPDATE rider_assignments SET status = 'failed', fail_reason = ?, failed_at = ?, updated_at = ? WHERE id = ?").run(clean(input.note, 500), now, now, assignmentId);
-    db.prepare("UPDATE rider_profiles SET availability = 'online', updated_at = ? WHERE user_id = ?").run(now, riderId);
     if (input.currentLocation) recordLocation(riderId, input.currentLocation, assignmentId);
     createNotification({
       userId: row.seller_id,
@@ -1641,6 +1611,7 @@ export function cookieConfig() {
 
 export function adminListRiders(auth, status = "") {
   if (!auth || auth.role !== "admin") throw new HttpError(403, "Only admins can manage riders.");
+  expireStaleRiderPresence();
   const params = [];
   let where = "WHERE users.role = 'rider'";
   if (status) {

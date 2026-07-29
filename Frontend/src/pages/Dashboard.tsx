@@ -1127,7 +1127,7 @@ export function SellerOrderReadinessPanel({
                         <p>
                           {ridersLoading
                             ? "Loading available riders..."
-                            : "No rider currently matches this delivery. A rider appears here after Stage 1 approval, switching online, sharing a fresh GPS location, and matching the package capacity and service zone."}
+                            : "No rider currently matches this delivery. A rider appears here after Stage 1 approval, opening the connected rider app, sharing a fresh GPS location, and matching the package capacity and service zone."}
                         </p>
                       )}
                     </div>

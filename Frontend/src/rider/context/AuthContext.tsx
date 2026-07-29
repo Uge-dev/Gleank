@@ -4,7 +4,7 @@ import { shouldUseApi, shouldUseMock } from '../config/env';
 import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
-import type { Availability, Rider } from '../types';
+import type { Rider } from '../types';
 import { requestLocationAfterLogin } from '../../services/location-presence.service';
 
 interface AuthContextValue {
@@ -15,7 +15,6 @@ interface AuthContextValue {
   signup: (payload: Partial<Rider> & { password: string; identityDocument?: File | null; selfie?: File | null }) => Promise<Rider>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
-  updateAvailability: (availability: Availability) => Promise<void>;
   updateRiderLocally: (patch: Partial<Rider>) => void;
 }
 
@@ -25,7 +24,7 @@ function currentBrowserLocation() {
   return new Promise<{ lat: number; lng: number; accuracyMeters?: number }>(
     (resolve, reject) => {
       if (!navigator.geolocation) {
-        reject(new Error("Location access is required before going online."));
+        reject(new Error("Location access is unavailable on this device."));
         return;
       }
 
@@ -52,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [rider, setRider] = useState<Rider | null>(() => (shouldUseMock() ? riderLocalStore.load().rider : null));
   const [loading, setLoading] = useState(() => shouldUseApi());
   const [apiConnected, setApiConnected] = useState(false);
+  const riderId = rider?.id;
 
   const refreshSession = useCallback(async () => {
     if (!shouldUseApi()) return;
@@ -88,33 +88,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   useEffect(() => {
-    if (
-      !shouldUseApi() ||
-      !rider ||
-      rider.availability !== "online"
-    ) {
-      return;
-    }
+    if (!shouldUseApi() || !riderId) return;
 
     let active = true;
+    let heartbeatCount = 0;
 
-    async function sendHeartbeat() {
+    function setAutomaticAvailability(
+      availability: Rider['availability'],
+      connected: boolean,
+    ) {
+      if (!active) return;
+      setRider((current) => current ? { ...current, availability } : current);
+      setApiConnected(connected);
+    }
+
+    async function sendHeartbeat(includeLocation = false) {
+      if (!active || !navigator.onLine || document.visibilityState !== 'visible') {
+        return;
+      }
+      let location: Awaited<ReturnType<typeof currentBrowserLocation>> | undefined;
+      if (includeLocation) {
+        try {
+          location = await currentBrowserLocation();
+        } catch {
+          location = undefined;
+        }
+      }
       try {
-        const location = await currentBrowserLocation();
-        if (active) await riderApi.updateLocation(location);
+        const response = await riderApi.presenceHeartbeat(location);
+        if (!active) return;
+        setRider((current) => ({
+          ...(current || response.rider),
+          ...response.rider,
+          availability: 'online',
+          email: response.rider.email || current?.email || '',
+          profilePhoto: response.rider.profilePhoto || current?.profilePhoto || '',
+        }));
+        setApiConnected(true);
       } catch {
-        // The verification center explains a missing or stale location to the rider.
+        if (!navigator.onLine) {
+          setAutomaticAvailability('offline', false);
+        } else if (active) {
+          setApiConnected(false);
+        }
       }
     }
 
-    void sendHeartbeat();
-    const heartbeat = window.setInterval(() => void sendHeartbeat(), 60_000);
+    function handleOnline() {
+      void sendHeartbeat(true);
+    }
+
+    function handleOffline() {
+      setAutomaticAvailability('offline', false);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'hidden') {
+        setAutomaticAvailability('offline', navigator.onLine);
+        riderApi.sendPresenceOfflineBeacon();
+        return;
+      }
+      void sendHeartbeat(true);
+    }
+
+    function handlePageHide() {
+      setAutomaticAvailability('offline', navigator.onLine);
+      riderApi.sendPresenceOfflineBeacon();
+    }
+
+    void sendHeartbeat(true);
+    const heartbeat = window.setInterval(() => {
+      heartbeatCount += 1;
+      void sendHeartbeat(heartbeatCount % 3 === 0);
+    }, 25_000);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      riderApi.sendPresenceOfflineBeacon();
       active = false;
       window.clearInterval(heartbeat);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [rider?.availability, rider?.id]);
+  }, [riderId]);
 
   const value = useMemo<AuthContextValue>(() => ({
     rider,
@@ -151,6 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.signup(payload);
           setRider(response.rider);
           setApiConnected(true);
+          void requestLocationAfterLogin('rider');
           return response.rider;
         }
         if (shouldUseMock()) {
@@ -174,37 +236,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiConnected(false);
     },
     refreshSession,
-    async updateAvailability(availability: Availability) {
-      try {
-        if (shouldUseApi()) {
-          const currentLocation =
-            availability === "online"
-              ? await currentBrowserLocation()
-              : undefined;
-          const response = await riderApi.updateAvailability(
-            availability,
-            currentLocation,
-          );
-          setRider((current) => ({
-            ...(current || response.rider),
-            ...response.rider,
-            email: response.rider.email || current?.email || '',
-            profilePhoto: response.rider.profilePhoto || current?.profilePhoto || '',
-          }));
-          setApiConnected(true);
-          return;
-        }
-        if (shouldUseMock()) {
-          const nextRider = riderLocalStore.updateAvailability(availability);
-          setRider(nextRider);
-          return;
-        }
-        throw new Error('Rider API is not configured. Set VITE_API_URL or VITE_GLEANK_API_URL before changing availability.');
-      } catch (error) {
-        setApiConnected(false);
-        throw error instanceof Error ? error : new Error('Availability update failed.');
-      }
-    },
     updateRiderLocally(patch: Partial<Rider>) {
       setRider((current) => (current ? { ...current, ...patch } : current));
     }

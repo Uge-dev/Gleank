@@ -241,7 +241,7 @@ function normalizeRider(row: {
     verificationNote: String(profile.verificationNote || ""),
     verificationLevel: Number(profile.verificationLevel || 1),
     maxPackageValue: Number(profile.maxPackageValue || 0),
-    availability: String(profile.availability || "offline"),
+    availability: profile.availability === "online" ? "online" : "offline",
     safetyStatus: String(profile.safetyStatus || "normal"),
     ratingAverage: Number(profile.ratingAverage || 0),
     completedDeliveries: Number(profile.completedDeliveries || 0),

@@ -178,7 +178,7 @@ export function runRiderMigrations() {
       verification_note TEXT NOT NULL DEFAULT '',
       verification_level INTEGER NOT NULL DEFAULT 1 CHECK (verification_level >= 1 AND verification_level <= 5),
       max_package_value_kobo INTEGER NOT NULL DEFAULT 2000000 CHECK (max_package_value_kobo >= 0),
-      availability TEXT NOT NULL DEFAULT 'offline' CHECK (availability IN ('offline','online','busy')),
+      availability TEXT NOT NULL DEFAULT 'offline' CHECK (availability IN ('offline','online')),
       transport_type TEXT NOT NULL DEFAULT 'motorcycle',
       max_package_size TEXT NOT NULL DEFAULT 'small_medium',
       max_weight_class TEXT NOT NULL DEFAULT 'up_to_medium',
@@ -195,6 +195,7 @@ export function runRiderMigrations() {
       current_lng REAL,
       current_accuracy_meters REAL,
       last_location_at TEXT,
+      last_presence_at TEXT,
       live_face_verified INTEGER NOT NULL DEFAULT 0,
       safety_status TEXT NOT NULL DEFAULT 'normal' CHECK (safety_status IN ('normal','flagged','suspended')),
       rating_average REAL NOT NULL DEFAULT 0,
@@ -206,6 +207,20 @@ export function runRiderMigrations() {
 
     CREATE INDEX IF NOT EXISTS rider_profiles_user_id_idx ON rider_profiles(user_id);
     CREATE INDEX IF NOT EXISTS rider_profiles_availability_idx ON rider_profiles(availability, verification_status);
+
+    CREATE TABLE IF NOT EXISTS rider_presence_sessions (
+      session_id TEXT PRIMARY KEY,
+      rider_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online','offline')),
+      last_heartbeat_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (rider_id) REFERENCES users(id) ON DELETE CASCADE
+    ) STRICT;
+
+    CREATE INDEX IF NOT EXISTS rider_presence_sessions_rider_idx
+      ON rider_presence_sessions(rider_id, status, last_heartbeat_at);
 
     CREATE TABLE IF NOT EXISTS rider_assignments (
       id TEXT PRIMARY KEY,
@@ -390,16 +405,32 @@ export function runRiderMigrations() {
   ensureColumn("rider_profiles", "capacity_locked", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn("rider_profiles", "capacity_change_unlocked_until", "TEXT");
   ensureColumn("rider_profiles", "live_face_verified", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("rider_profiles", "last_presence_at", "TEXT");
 
   db.prepare(`
     UPDATE rider_profiles
     SET max_package_value_kobo = 2000000,
-        availability = availability,
-        availability_mode = availability_mode
+        availability = CASE WHEN availability = 'busy' THEN 'online' ELSE availability END,
+        availability_mode = CASE
+          WHEN availability = 'busy' AND gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+          WHEN availability = 'busy' THEN 'online_zone_only'
+          ELSE availability_mode
+        END
     WHERE verification_status = 'verified'
       AND safety_status = 'normal'
       AND COALESCE(max_package_value_kobo, 0) <= 0
   `).run();
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET availability = 'online',
+        availability_mode = CASE
+          WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
+          ELSE 'online_zone_only'
+        END,
+        updated_at = ?
+    WHERE availability = 'busy'
+  `).run(new Date().toISOString());
 }
 
 runRiderMigrations();

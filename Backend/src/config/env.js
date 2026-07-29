@@ -181,6 +181,14 @@ export const env = {
     10,
   ),
   riderLocationRefreshMs: numberFromEnv(process.env.RIDER_LOCATION_REFRESH_MS, 30000),
+  riderPresenceTimeoutMs: numberFromEnv(
+    process.env.RIDER_PRESENCE_TIMEOUT_MS,
+    75000,
+  ),
+  riderPresenceSweepMs: numberFromEnv(
+    process.env.RIDER_PRESENCE_SWEEP_MS,
+    25000,
+  ),
   allowZoneOnlyRiderDispatch: booleanFromEnv(
     process.env.ALLOW_ZONE_ONLY_RIDER_DISPATCH,
     true,

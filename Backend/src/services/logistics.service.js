@@ -13,6 +13,10 @@ import {
 } from "./dispatch-timeout.service.js";
 import { evaluateRiderEligibility } from "./verification.service.js";
 import { createDeliveryAssignmentConversation } from "./message.service.js";
+import {
+  expireStaleRiderPresence,
+  isRiderPresenceOnline,
+} from "./rider-presence.service.js";
 
 const SIZE_ORDER = ["small", "medium", "large", "extra_large"];
 const WEIGHT_ORDER = ["very_light", "light", "medium", "heavy", "very_heavy"];
@@ -2165,8 +2169,8 @@ function riderCanHandle(rider, batch, { assignmentMode = "automatic" } = {}) {
   if (!eligibility.eligible) return false;
   const capacity = serializeCapacity(rider);
   if (assignmentMode === "automatic" && !capacity?.canReceiveAutoDispatch) return false;
-  if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") return false;
-  if (Number(capacity.currentActiveBatchCount || 0) > 0 || rider.availability === "busy") return false;
+  if (!isRiderPresenceOnline(rider)) return false;
+  if (Number(capacity.currentActiveBatchCount || 0) > 0) return false;
   if (rank(riderCapacityValue(capacity.maxPackageSize, "size"), SIZE_ORDER) < rank(batch.package_size_summary, SIZE_ORDER)) return false;
   if (rank(riderCapacityValue(capacity.maxWeightClass, "weight"), WEIGHT_ORDER) < rank(batch.weight_class_summary, WEIGHT_ORDER)) return false;
   if (batch.fragility_summary === "very_fragile" && capacity.fragileHandlingAbility !== "can_handle_very_fragile") return false;
@@ -2286,12 +2290,9 @@ function publicRiderSnapshot(
     distanceToPickupKm:
       distanceKm === null ? null : Number(distanceKm.toFixed(2)),
     availabilityMode: capacity.availabilityMode,
-    isOnline:
-      rider.availability === "online" ||
-      ["online", "online_gps_active", "online_zone_only"].includes(
-        capacity.availabilityMode,
-      ),
+    isOnline: isRiderPresenceOnline(rider),
     lastActiveAt:
+      rider.last_presence_at ||
       rider.last_location_at ||
       rider.user_last_login_at ||
       rider.updated_at ||
@@ -2309,7 +2310,7 @@ function publicRiderSnapshot(
     ratingAverage: Number(rider.rating_average || 0),
     successfulDeliveries: Number(rider.completed_deliveries || 0),
     profile: {
-      availability: rider.availability || "offline",
+      availability: isRiderPresenceOnline(rider) ? "online" : "offline",
       coverageArea,
       transportType: capacity.transportType,
       maxPackageSize: capacity.maxPackageSize,
@@ -2359,23 +2360,19 @@ function riderBatchDiagnostics(
   }
   if (
     assignmentMode === "automatic" &&
-    !["online", "online_gps_active", "online_zone_only"].includes(
-      capacity.availabilityMode,
-    ) &&
-    rider.availability !== "online"
+    !isRiderPresenceOnline(rider)
   ) {
     reasons.push("rider_offline");
   }
   if (
     assignmentMode === "manual" &&
-    rider.availability !== "online" &&
-    !["online", "online_gps_active", "online_zone_only"].includes(
-      capacity.availabilityMode,
-    )
+    !isRiderPresenceOnline(rider)
   ) {
     reasons.push("rider_offline");
   }
-  if (Number(capacity.currentActiveBatchCount || 0) > 0 || rider.availability === "busy") reasons.push("rider_busy");
+  if (Number(capacity.currentActiveBatchCount || 0) > 0) {
+    reasons.push("rider_has_active_delivery");
+  }
   if (rank(riderCapacityValue(capacity.maxPackageSize, "size"), SIZE_ORDER) < rank(batch.package_size_summary, SIZE_ORDER)) {
     reasons.push("package_size_too_large");
   }
@@ -2422,6 +2419,7 @@ function listRiderCandidatesForBatchInternal(
   batchId,
   { includeExcluded = false, assignmentMode = "automatic" } = {},
 ) {
+  expireStaleRiderPresence();
   const storedBatch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
   const routeCoordinates = routeCoordinatesForBatch(batchId) || {};
   const batch = storedBatch
@@ -2926,13 +2924,14 @@ export function riderAcceptDispatch(auth, dispatchId) {
   if (initialAttempt.status !== "offered") {
     throw new HttpError(409, "This dispatch offer is no longer active.");
   }
+  expireStaleRiderPresence();
   const initialProfile = db
-    .prepare("SELECT availability FROM rider_profiles WHERE user_id = ?")
+    .prepare("SELECT * FROM rider_profiles WHERE user_id = ?")
     .get(riderId);
-  if (initialProfile?.availability !== "online") {
+  if (!isRiderPresenceOnline(initialProfile)) {
     throw new HttpError(
       422,
-      "Switch your rider availability to online before accepting this dispatch.",
+      "Open the rider app and reconnect before accepting this dispatch.",
     );
   }
   if (
@@ -2969,12 +2968,12 @@ export function riderAcceptDispatch(auth, dispatchId) {
       throw new HttpError(409, "This dispatch offer is no longer active.");
     }
     const profile = db
-      .prepare("SELECT availability FROM rider_profiles WHERE user_id = ?")
+      .prepare("SELECT * FROM rider_profiles WHERE user_id = ?")
       .get(riderId);
-    if (profile?.availability !== "online") {
+    if (!isRiderPresenceOnline(profile)) {
       throw new HttpError(
         422,
-        "Switch your rider availability to online before accepting this dispatch.",
+        "Open the rider app and reconnect before accepting this dispatch.",
       );
     }
     if (
@@ -3023,8 +3022,7 @@ export function riderAcceptDispatch(auth, dispatchId) {
     db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, attempt.delivery_batch_id);
     db.prepare(`
       UPDATE rider_profiles
-      SET availability = 'busy', availability_mode = 'busy',
-          current_active_batch_count = current_active_batch_count + 1,
+      SET current_active_batch_count = current_active_batch_count + 1,
           updated_at = ?
       WHERE user_id = ?
     `).run(now, riderId);
@@ -3975,12 +3973,7 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
   );
   db.prepare(`
     UPDATE rider_profiles
-    SET availability = 'online',
-        availability_mode = CASE
-          WHEN gps_permission_status = 'gps_enabled' THEN 'online_gps_active'
-          ELSE 'online_zone_only'
-        END,
-        current_active_batch_count = ?,
+    SET current_active_batch_count = ?,
         updated_at = ?
     WHERE user_id = ?
   `).run(Math.max(0, activeBatchCount - 1), now, riderId);

@@ -119,7 +119,7 @@ export default function AssignedOrders() {
         </div>
         {dispatchError && <div className="mb-3 rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">{dispatchError}</div>}
         {!dispatchLoading && !dispatchError && dispatches.length === 0 && (
-          <EmptyState icon={FiTruck} title="No dispatch offers available right now" message="Keep your availability online. New seller-ready orders will appear here automatically." />
+          <EmptyState icon={FiTruck} title="No dispatch offers available right now" message="Keep the rider app open and connected. New seller-ready orders will appear here automatically." />
         )}
         {dispatches.length > 0 && (
           <div className="grid gap-4 xl:grid-cols-2">

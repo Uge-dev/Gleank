@@ -37,6 +37,7 @@ import {
   findStoreByOwnerId,
   findStoreBySlug,
 } from "../repositories/store.repository.js";
+import { markRiderPresenceOnline } from "./rider-presence.service.js";
 
 function uniqueStoreSlug(storeName) {
   const base = slugify(storeName);
@@ -318,10 +319,15 @@ export async function registerUser(input, meta = {}) {
     }));
   }
 
+  const session = createSession(result.user.id, cleanMeta);
+  if (result.user.role === "rider") {
+    markRiderPresenceOnline(result.user.id, session.id);
+  }
+
   return {
     user: serializeUser(findUserById(result.user.id) || result.user),
     store: serializeStore(findStoreByOwnerId(result.user.id)),
-    session: createSession(result.user.id, cleanMeta),
+    session,
     emailVerificationRequired: !emailVerified,
     ...(!env.isProduction && result.verification
       ? {
@@ -395,11 +401,15 @@ export async function loginUser(input, meta = {}) {
   createSecurityEvent(user.id, "login_success", {}, cleanMeta);
 
   const freshUser = findUserByEmail(email);
+  const session = createSession(freshUser.id, cleanMeta);
+  if (freshUser.role === "rider") {
+    markRiderPresenceOnline(freshUser.id, session.id);
+  }
 
   return {
     user: serializeUser(freshUser),
     store: serializeStore(findStoreByOwnerId(freshUser.id)),
-    session: createSession(freshUser.id, cleanMeta),
+    session,
   };
 }
 

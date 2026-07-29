@@ -2,6 +2,10 @@ import { db } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import {
+  expireStaleRiderPresence,
+  isRiderPresenceOnline,
+} from "./rider-presence.service.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -461,17 +465,21 @@ export function upsertRiderLocation(auth, input = {}) {
 
 export function getRiderLocationStatus(auth) {
   const riderId = requireRole(auth, ["rider", "admin"]);
+  expireStaleRiderPresence();
   const profile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
   const row = db
     .prepare("SELECT * FROM rider_locations WHERE rider_id = ? AND is_current = 1 ORDER BY created_at DESC LIMIT 1")
     .get(riderId);
 
+  const online = isRiderPresenceOnline(profile);
   return {
-    online:
-      profile?.availability === "online" &&
-      Boolean(row?.lat || profile?.current_lat),
-    availability: profile?.availability || "offline",
-    availabilityMode: profile?.availability_mode || "offline",
+    online,
+    availability: online ? "online" : "offline",
+    availabilityMode: online
+      ? profile?.gps_permission_status === "gps_enabled"
+        ? "online_gps_active"
+        : "online_zone_only"
+      : "offline",
     gpsPermissionStatus: profile?.gps_permission_status || "gps_disabled",
     location: row
       ? {

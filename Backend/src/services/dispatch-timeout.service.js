@@ -23,13 +23,15 @@ function safeSeconds(value, fallback) {
 }
 
 function includesAnyKeyword(value, keywords) {
-  const text = String(value || "").toLowerCase();
+  const text = String(value || "")
+    .toLowerCase()
+    .replace(/\b(?:not|non)[_\s-]?fragile\b/g, "")
+    .replace(/\b(?:not|non)[_\s-]?heavy\b/g, "");
   return keywords.some((keyword) => text.includes(keyword));
 }
 
 function hasHeavyFragileSignal(input = {}) {
   if (input.isHeavyFragile === true) return true;
-  if (input.isHeavyFragile === false) return false;
   const parts = [
     input.packageSummary,
     input.note,

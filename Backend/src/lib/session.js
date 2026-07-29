@@ -50,7 +50,7 @@ export function createSession(userId, meta = {}) {
     now,
   );
 
-  return { token, expiresAt };
+  return { id: sessionId, token, expiresAt };
 }
 
 export function verifySessionToken(token) {
