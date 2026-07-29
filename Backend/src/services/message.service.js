@@ -133,21 +133,11 @@ function conversationSortValue(row) {
 }
 
 function conversationDedupeKey(conversation) {
-  if (
-    conversation.contextType === "store" &&
-    !conversation.orderId &&
-    !String(conversation.contextId || "").startsWith("order:") &&
-    !String(conversation.contextId || "").startsWith("delivery_assignment:") &&
-    !String(conversation.contextId || "").startsWith("delivery_buyer:")
-  ) {
-    return `store:${conversation.buyerId}:${conversation.sellerId}`;
-  }
-
   if (conversation.contextType === "support") {
     return `support:${conversation.buyerId}:${conversation.sellerId}`;
   }
 
-  return `${conversation.contextType}:${conversation.contextId}:${conversation.buyerId}:${conversation.sellerId}`;
+  return `direct:${[conversation.buyerId, conversation.sellerId].sort().join(":")}`;
 }
 
 function dedupeSerializedConversations(conversations) {
@@ -172,7 +162,7 @@ function dedupeSerializedConversations(conversations) {
   return [...byKey.values()].sort((a, b) => conversationSortValue(b) - conversationSortValue(a));
 }
 
-function normalizeStoreConversationDuplicates(userId, store) {
+function normalizeDirectConversationDuplicates(firstUserId, secondUserId, preferredContext = {}) {
   const rows = db
     .prepare(`
       SELECT conversations.*,
@@ -182,15 +172,15 @@ function normalizeStoreConversationDuplicates(userId, store) {
                WHERE messages.conversation_id = conversations.id
              ) AS message_count
       FROM conversations
-      WHERE context_type = 'store'
-        AND buyer_id = ?
-        AND seller_id = ?
-        AND order_id IS NULL
-        AND context_id NOT LIKE 'order:%'
+      WHERE context_type != 'support'
+        AND (
+          (buyer_id = ? AND seller_id = ?)
+          OR (buyer_id = ? AND seller_id = ?)
+        )
       ORDER BY message_count DESC,
                COALESCE(last_message_at, updated_at, created_at) DESC
     `)
-    .all(userId, store.owner_id);
+    .all(firstUserId, secondUserId, secondUserId, firstUserId);
 
   if (!rows.length) return null;
 
@@ -198,6 +188,8 @@ function normalizeStoreConversationDuplicates(userId, store) {
 
   for (const duplicate of rows.slice(1)) {
     db.prepare("UPDATE messages SET conversation_id = ? WHERE conversation_id = ?").run(primary.id, duplicate.id);
+    db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE conversation_id = ?").run(primary.id, duplicate.id);
+    db.prepare("UPDATE admin_conversation_access_logs SET conversation_id = ? WHERE conversation_id = ?").run(primary.id, duplicate.id);
     db.prepare("DELETE FROM conversations WHERE id = ?").run(duplicate.id);
   }
 
@@ -214,13 +206,19 @@ function normalizeStoreConversationDuplicates(userId, store) {
   const now = new Date().toISOString();
   db.prepare(`
     UPDATE conversations
-    SET context_id = ?,
+    SET context_type = ?,
+        context_id = ?,
+        listing_id = COALESCE(listing_id, ?),
+        order_id = COALESCE(order_id, ?),
         last_message_body = ?,
         last_message_at = ?,
         updated_at = ?
     WHERE id = ?
   `).run(
-    store.id,
+    clean(preferredContext.contextType || primary.context_type, 40),
+    clean(preferredContext.contextId || primary.context_id, 180),
+    preferredContext.listingId || null,
+    preferredContext.orderId || null,
     latestMessage?.body || primary.last_message_body || "",
     latestMessage?.created_at || primary.last_message_at || null,
     now,
@@ -228,6 +226,22 @@ function normalizeStoreConversationDuplicates(userId, store) {
   );
 
   return primary.id;
+}
+
+function normalizeAllDirectConversationDuplicates(userId) {
+  const counterparts = db.prepare(`
+    SELECT DISTINCT
+      CASE WHEN buyer_id = ? THEN seller_id ELSE buyer_id END AS counterpart_id
+    FROM conversations
+    WHERE context_type != 'support'
+      AND (buyer_id = ? OR seller_id = ?)
+  `).all(userId, userId, userId);
+
+  for (const row of counterparts) {
+    if (row.counterpart_id) {
+      normalizeDirectConversationDuplicates(userId, row.counterpart_id);
+    }
+  }
 }
 
 export function createUsedListingConversation(userId, listingId) {
@@ -253,6 +267,13 @@ export function createUsedListingConversation(userId, listingId) {
   if (sellerStore) {
     return createStoreConversation(userId, sellerStore.slug || sellerStore.id);
   }
+
+  const canonicalId = normalizeDirectConversationDuplicates(
+    userId,
+    listing.seller_id,
+    { contextType: "used_listing", contextId: listingId, listingId },
+  );
+  if (canonicalId) return getConversation(userId, canonicalId);
 
   const existing = db
     .prepare(`
@@ -289,7 +310,20 @@ export function createUsedOrderConversation(userId, orderId) {
 
   if (!order) throw new HttpError(404, "Used order was not found.");
 
-  if (order.conversation_id) return getConversation(userId, order.conversation_id);
+  const canonicalId = normalizeDirectConversationDuplicates(
+    order.buyer_id,
+    order.seller_id,
+    {
+      contextType: "used_order",
+      contextId: orderId,
+      listingId: order.listing_id,
+      orderId,
+    },
+  );
+  if (canonicalId) {
+    db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE id = ?").run(canonicalId, orderId);
+    return getConversation(userId, canonicalId);
+  }
 
   const existing = db
     .prepare(`
@@ -337,7 +371,11 @@ export function createStoreConversation(userId, storeIdOrSlug) {
     throw new HttpError(422, "You cannot start a store conversation with yourself.");
   }
 
-  const existingId = normalizeStoreConversationDuplicates(userId, store);
+  const existingId = normalizeDirectConversationDuplicates(
+    userId,
+    store.owner_id,
+    { contextType: "store", contextId: store.id },
+  );
   if (existingId) return getConversation(userId, existingId);
 
   const now = new Date().toISOString();
@@ -366,17 +404,12 @@ export function createStoreOrderConversation(userId, orderId) {
   if (!order) throw new HttpError(404, "Order was not found.");
 
   const contextId = `order:${order.id}`;
-  const existing = db
-    .prepare(`
-      SELECT id FROM conversations
-      WHERE context_type = 'store'
-        AND context_id = ?
-        AND buyer_id = ?
-        AND seller_id = ?
-    `)
-    .get(contextId, order.buyer_id, order.seller_id);
-
-  if (existing) return getConversation(userId, existing.id);
+  const canonicalId = normalizeDirectConversationDuplicates(
+    order.buyer_id,
+    order.seller_id,
+    { contextType: "store", contextId, orderId: order.id },
+  );
+  if (canonicalId) return getConversation(userId, canonicalId);
 
   const now = new Date().toISOString();
   const id = createId("cnv");
@@ -418,6 +451,16 @@ export function createDeliveryAssignmentConversation(userId, assignmentId) {
     : `delivery_assignment:${assignment.id}`;
   const buyerId = isBuyerRiderChat ? assignment.buyer_id : assignment.rider_id;
   const sellerId = isBuyerRiderChat ? assignment.rider_id : assignment.seller_id;
+
+  const canonicalId = normalizeDirectConversationDuplicates(
+    buyerId,
+    sellerId,
+    { contextType: "store", contextId, orderId: assignment.order_id || assignment.id },
+  );
+  if (canonicalId) {
+    if (userRole === "admin") recordAdminConversationAccess(userId, canonicalId, "Delivery assignment review", assignment.delivery_batch_id);
+    return getConversation(userRole === "admin" ? buyerId : userId, canonicalId);
+  }
 
   const existing = db
     .prepare(`
@@ -506,6 +549,9 @@ export function createSupportConversation(userId) {
 }
 
 export function listConversations(userId) {
+  // This also repairs legacy duplicates created from product, order, store and
+  // delivery entry points before canonical account-pair conversations existed.
+  normalizeAllDirectConversationDuplicates(userId);
   const conversations = db
     .prepare(conversationSelect(`
       WHERE conversations.buyer_id = ? OR conversations.seller_id = ?

@@ -41,7 +41,15 @@ export default function AssignedOrders() {
       setDispatchError('');
     } catch (requestError) {
       if (requestError instanceof ApiClientError && requestError.status === 403) {
-        setDispatchError('Your rider account is not ready for dispatch yet.');
+        const payload = requestError.payload as {
+          error?: { details?: Array<{ message?: string }> };
+          details?: Array<{ message?: string }>;
+        } | null;
+        const reasons = payload?.error?.details || payload?.details || [];
+        setDispatchError(
+          reasons.map((reason) => reason.message).filter(Boolean).join(' ') ||
+          'Dispatch access is restricted. Open Verification Center to see the exact requirement that needs attention.'
+        );
       } else {
         setDispatchError('Unable to load dispatch offers right now. Please try again.');
       }

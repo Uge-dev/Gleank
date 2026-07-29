@@ -235,7 +235,9 @@ function UsedOrderDetails() {
             </div>
             <div className="used-order-info-grid">
               <div><span>Buyer</span><strong>{order.buyerName}</strong></div>
-              <div><span>Phone</span><strong>{order.buyerPhone}</strong></div>
+              {order.buyerPhone ? (
+                <div><span>Phone</span><strong>{order.buyerPhone}</strong></div>
+              ) : null}
               <div><span>Campus</span><strong>{order.campus}</strong></div>
               <div><span>Option</span><strong>{order.deliveryOption}</strong></div>
               <div><span>Pickup</span><strong>{order.pickupLocation || "Not set"}</strong></div>

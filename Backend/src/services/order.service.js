@@ -176,7 +176,10 @@ function serializeOrder(row, items = [], events = []) {
     storeName: row.store_name || "",
     storeSlug: row.store_slug || "",
     sellerName: row.seller_name || row.store_name || "",
-    sellerPhone: row.seller_phone || "",
+    // Buyer/seller order APIs never expose either party's phone number.
+    // Rider contact details are released only through the protected rider
+    // assignment serializer after the delivery workflow allows it.
+    sellerPhone: "",
     status: row.status,
     statusLabel: statusLabel(row.status),
     paymentStatus: row.payment_status,
@@ -210,7 +213,7 @@ function serializeOrder(row, items = [], events = []) {
     totalKobo: row.total_kobo,
     total: toNaira(row.total_kobo),
     buyerName: row.buyer_name || "",
-    buyerPhone: row.buyer_phone || "",
+    buyerPhone: "",
     campus: row.campus || "",
     deliveryOption: row.delivery_option,
     deliveryAddress: row.delivery_address || "",

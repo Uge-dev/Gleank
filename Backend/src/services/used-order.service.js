@@ -111,9 +111,11 @@ function serializeOrder(row, events = []) {
     listingCondition: row.listing_condition || "",
     listingImageUrl: imageUrls[0] || null,
     sellerName: row.seller_name || "",
-    sellerPhone: row.seller_phone || "",
+    // Direct contact details belong to the protected rider workflow, not the
+    // buyer/seller order response.
+    sellerPhone: "",
     buyerName: row.buyer_name || "",
-    buyerPhone: row.buyer_phone || "",
+    buyerPhone: "",
     campus: row.campus || "",
     status: row.status,
     statusLabel: statusLabel(row.status),

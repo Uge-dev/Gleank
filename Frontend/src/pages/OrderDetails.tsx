@@ -12,6 +12,7 @@ import {
   FiShoppingBag,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
+import { useAuth } from "../context/AuthContext";
 import { getOrder } from "../services/order.service";
 import {
   initializeOrdersPayment,
@@ -58,6 +59,7 @@ function canContinuePayment(order: GleencOrder) {
 function OrderDetails() {
   const { id = "" } = useParams();
   const location = useLocation();
+  const { user } = useAuth();
   const paymentNotice =
     typeof location.state === "object" &&
     location.state &&
@@ -137,6 +139,7 @@ function OrderDetails() {
 
   const activeIndex = getStatusIndex(order.status);
   const showContinuePayment = canContinuePayment(order);
+  const isSeller = user?.id === order.sellerId || user?.role === "seller";
 
   return (
     <section className="page-shell order-details-page order-details-upgraded-page">
@@ -247,7 +250,7 @@ function OrderDetails() {
             <h2>Delivery Details</h2>
             <p><strong>{order.deliveryOption}</strong></p>
             <p>{order.deliveryOption === "Delivery" ? order.deliveryAddress : order.pickupLocation}</p>
-            <p><FiPhone /> Buyer phone: {order.buyerPhone}</p>
+            {order.buyerPhone ? <p><FiPhone /> Buyer phone: {order.buyerPhone}</p> : null}
             <p><FiShoppingBag /> Seller: {order.storeName}</p>
           </section>
 
@@ -300,7 +303,7 @@ function OrderDetails() {
           </section>
 
           <Link className="order-message-link" to={`/messages?order=${order.id}`}>
-            <FiMessageCircle /> Message seller
+            <FiMessageCircle /> {isSeller ? "Message buyer" : "Message seller"}
           </Link>
         </aside>
       </div>

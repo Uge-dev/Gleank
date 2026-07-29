@@ -855,10 +855,14 @@ test("public payment verification confirms local payment and protects buyer OTP"
   const buyerOrderResponse = await buyerAgent.get(`/api/orders/${orderId}`);
   assert.equal(buyerOrderResponse.status, 200);
   assert.ok(buyerOrderResponse.body.order.verificationCode);
+  assert.equal(buyerOrderResponse.body.order.buyerPhone, "");
+  assert.equal(buyerOrderResponse.body.order.sellerPhone, "");
 
   const sellerOrderResponse = await sellerAgent.get(`/api/orders/${orderId}`);
   assert.equal(sellerOrderResponse.status, 200);
   assert.equal(sellerOrderResponse.body.order.verificationCode, "");
+  assert.equal(sellerOrderResponse.body.order.buyerPhone, "");
+  assert.equal(sellerOrderResponse.body.order.sellerPhone, "");
 
   const sellerPurchaseHistory = await sellerAgent.get("/api/orders");
   assert.equal(sellerPurchaseHistory.status, 200);
@@ -868,6 +872,34 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.equal(sellerBuyerOrders.status, 200);
   assert.ok(
     sellerBuyerOrders.body.orders.some((order) => order.id === orderId),
+  );
+  const sellerVisibleOrder = sellerBuyerOrders.body.orders.find(
+    (order) => order.id === orderId,
+  );
+  assert.equal(sellerVisibleOrder.buyerPhone, "");
+
+  const storeId = db.prepare("SELECT id FROM stores WHERE owner_id = ?").get(
+    sellerRegister.body.user.id,
+  ).id;
+  const orderConversation = await buyerAgent
+    .post("/api/messages/conversations")
+    .send({ contextType: "order", contextId: orderId });
+  assert.equal(orderConversation.status, 201);
+  const storeConversation = await buyerAgent
+    .post("/api/messages/conversations")
+    .send({ contextType: "store", contextId: storeId });
+  assert.equal(storeConversation.status, 201);
+  assert.equal(
+    storeConversation.body.conversation.id,
+    orderConversation.body.conversation.id,
+  );
+  const sellerConversation = await sellerAgent
+    .post("/api/messages/conversations")
+    .send({ contextType: "order", contextId: orderId });
+  assert.equal(sellerConversation.status, 201);
+  assert.equal(
+    sellerConversation.body.conversation.id,
+    orderConversation.body.conversation.id,
   );
 
   const sellerDeliveryAttempt = await sellerAgent

@@ -2766,11 +2766,11 @@ export function listRiderDispatches(auth) {
   advanceDueReadinessAndDispatch();
   advanceExpiredDispatchAttempts();
   const profile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
-  const eligibility = evaluateRiderEligibility(riderId, { maxActiveAssignments: 2 });
-  if (!profile || !eligibility.eligible) {
-    throw new HttpError(403, "Your rider account is not ready for dispatch yet.", eligibility.blockingReasons);
-  }
+  if (!profile) throw new HttpError(404, "Rider profile was not found.");
 
+  // Eligibility is enforced when a new offer is created. Never hide an offer
+  // that was already sent merely because a GPS heartbeat aged while the rider
+  // was viewing another page.
   return db.prepare(`
     SELECT * FROM dispatch_attempts
     WHERE rider_id = ?

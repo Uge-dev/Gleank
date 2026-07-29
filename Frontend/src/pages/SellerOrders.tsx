@@ -4,6 +4,7 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiClock,
+  FiMessageCircle,
   FiPackage,
   FiShoppingBag,
   FiTruck,
@@ -322,6 +323,9 @@ function SellerOrders() {
           <div className="seller-orders-list">
             {orders.map((order) => {
               const firstItem = order.items[0];
+              const pickupTask = pickupTasks.find(
+                (task) => task.orderId === order.id,
+              );
               const image = resolveMediaUrl(
                 firstItem?.productImageUrl,
                 orderImageFallback,
@@ -351,6 +355,28 @@ function SellerOrders() {
                 <div className="seller-orders-list-meta">
                   <strong>{formatNaira(order.total)}</strong>
                   <small>{formatDate(order.createdAt)}</small>
+                  {pickupTask &&
+                  !pickupTask.sellerConfirmedAvailability &&
+                  pickupTask.status !== "seller_rejected" ? (
+                    <button
+                      type="button"
+                      className="seller-order-confirm-card-action"
+                      disabled={taskActionId === `confirm-${pickupTask.id}`}
+                      onClick={() => void handleConfirmPickupTask(pickupTask)}
+                    >
+                      <FiCheckCircle />
+                      {taskActionId === `confirm-${pickupTask.id}`
+                        ? "Confirming..."
+                        : "Confirm availability"}
+                    </button>
+                  ) : pickupTask?.sellerConfirmedAvailability ? (
+                    <span className="seller-order-confirmed-card-label">
+                      <FiCheckCircle /> Seller confirmed
+                    </span>
+                  ) : null}
+                  <Link to={`/messages?order=${order.id}`}>
+                    <FiMessageCircle /> Message buyer
+                  </Link>
                   <Link to={`/orders/${order.id}`}>Open order</Link>
                 </div>
               </article>
