@@ -36,6 +36,7 @@ import Notifications from "./pages/Notifications";
 import Create from "./pages/Create";
 import Orders from "./pages/Orders";
 import SellerOrders from "./pages/SellerOrders";
+import SellerRiderSelection from "./pages/SellerRiderSelection";
 import OrderDetails from "./pages/OrderDetails";
 import OrderSuccess from "./pages/OrderSuccess";
 import Dashboard from "./pages/Dashboard";
@@ -191,6 +192,15 @@ function App() {
             element={
               <ProtectedPage>
                 <AccountOrders />
+              </ProtectedPage>
+            }
+          />
+
+          <Route
+            path="/seller/orders/:orderId/riders"
+            element={
+              <ProtectedPage roles={["seller", "admin"]}>
+                <SellerRiderSelection />
               </ProtectedPage>
             }
           />

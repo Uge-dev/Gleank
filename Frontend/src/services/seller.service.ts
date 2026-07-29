@@ -75,12 +75,22 @@ export type AvailableDeliveryRider = {
   id: string;
   name: string;
   displayName?: string;
+  profileImageUrl?: string | null;
+  phone?: string;
+  vehicleType?: string;
+  transportType?: string;
+  coverageArea?: string;
+  serviceAreas?: string[];
   dispatchScore?: number;
   distanceToPickupKm?: number | null;
   matchSummary?: string;
   availabilityMode?: string;
   isOnline?: boolean;
   lastActiveAt?: string | null;
+  ratingAverage?: number;
+  successfulDeliveries?: number;
+  eligibleForThisOrder?: boolean;
+  exclusionReasons?: string[];
   privacyNote?: string;
   profile?: {
     availability?: string;

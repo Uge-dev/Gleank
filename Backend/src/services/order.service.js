@@ -11,7 +11,11 @@ import {
   listOrderReturns,
   respondToReturnRequest,
 } from "./return-dispute.service.js";
-import { createParentOrderForOrders, syncOrderReadinessForDispatch } from "./logistics.service.js";
+import {
+  createParentOrderForOrders,
+  ensureOrderDeliverySetup,
+  syncOrderReadinessForDispatch,
+} from "./logistics.service.js";
 
 const ORDER_STATUSES = new Set([
   "pending_payment",
@@ -784,14 +788,11 @@ export function sellerConfirmOrder(user, orderId, note = "") {
   }
 
   if (row.seller_confirmed_at) {
-    if (!row.pickup_task_id || !row.delivery_batch_id) {
-      createParentOrderForOrders({
-        buyerId: row.buyer_id,
-        orderIds: [row.id],
-      });
-    }
-    syncOrderReadinessForDispatch(row.id);
-    return getOrder(user.user_id, row.id);
+    return transaction(() => {
+      ensureOrderDeliverySetup(row.id);
+      syncOrderReadinessForDispatch(row.id);
+      return getOrder(user.user_id, row.id);
+    });
   }
 
   const canConfirmBeforePayment =
@@ -805,63 +806,64 @@ export function sellerConfirmOrder(user, orderId, note = "") {
     );
   }
 
-  if (!row.pickup_task_id || !row.delivery_batch_id) {
-    createParentOrderForOrders({
-      buyerId: row.buyer_id,
-      orderIds: [row.id],
-    });
+  return transaction(() => {
+    ensureOrderDeliverySetup(row.id);
     row = getOrderRowByIdForUser(user.user_id, orderId);
     if (!row) throw new HttpError(404, "Order was not found after delivery setup.");
-  }
 
-  const now = new Date().toISOString();
-  const nextStage4Status =
-    row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
-      ? "seller_confirmed_package_pending"
-      : "seller_confirmed_waiting_payment";
-  const nextOrderStatus =
-    row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
-      ? "seller_confirmed"
-      : "pending_payment";
+    const now = new Date().toISOString();
+    const nextStage4Status =
+      row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
+        ? "seller_confirmed_package_pending"
+        : "seller_confirmed_waiting_payment";
+    const nextOrderStatus =
+      row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
+        ? "seller_confirmed"
+        : "pending_payment";
 
-  db.prepare(`
-    UPDATE orders
-    SET status = ?,
-        stage4_status = ?,
-        fulfillment_status = 'seller_confirmed',
-        seller_confirmed_at = ?,
-        seller_rejected_at = NULL,
-        seller_rejection_note = '',
-        seller_confirmation_required = 0,
-        updated_at = ?
-    WHERE id = ?
-  `).run(nextOrderStatus, nextStage4Status, now, now, row.id);
+    db.prepare(`
+      UPDATE orders
+      SET status = ?,
+          stage4_status = ?,
+          fulfillment_status = 'seller_confirmed',
+          seller_confirmed_at = ?,
+          seller_rejected_at = NULL,
+          seller_rejection_note = '',
+          seller_confirmation_required = 0,
+          updated_at = ?
+      WHERE id = ?
+    `).run(nextOrderStatus, nextStage4Status, now, now, row.id);
 
-  insertOrderEvent(row.id, nextOrderStatus, note || "Seller confirmed the item is available.");
-  insertStatusHistory({
-    orderId: row.id,
-    statusLayer: "stage4",
-    oldStatus: row.stage4_status || "",
-    newStatus: nextStage4Status,
-    changedBy: user.user_id,
-    note,
+    insertOrderEvent(
+      row.id,
+      nextOrderStatus,
+      note || "Seller confirmed the item is available.",
+    );
+    insertStatusHistory({
+      orderId: row.id,
+      statusLayer: "stage4",
+      oldStatus: row.stage4_status || "",
+      newStatus: nextStage4Status,
+      changedBy: user.user_id,
+      note,
+    });
+
+    createNotification({
+      userId: row.buyer_id,
+      type: "order",
+      title: "Seller confirmed availability",
+      body:
+        row.payment_method === "pay_on_delivery"
+          ? "The seller confirmed your order. You will pay securely through Gleenc/Paystack when the rider arrives, before delivery code verification."
+          : "The seller confirmed your order. You can now continue payment.",
+      actionLabel: "View order",
+      actionPath: `/orders/${row.id}`,
+    });
+
+    syncOrderReadinessForDispatch(row.id);
+
+    return getOrder(user.user_id, row.id);
   });
-
-  createNotification({
-    userId: row.buyer_id,
-    type: "order",
-    title: "Seller confirmed availability",
-    body:
-      row.payment_method === "pay_on_delivery"
-        ? "The seller confirmed your order. You will pay securely through Gleenc/Paystack when the rider arrives, before delivery code verification."
-        : "The seller confirmed your order. You can now continue payment.",
-    actionLabel: "View order",
-    actionPath: `/orders/${row.id}`,
-  });
-
-  syncOrderReadinessForDispatch(row.id);
-
-  return getOrder(user.user_id, row.id);
 }
 
 export function sellerRejectOrder(user, orderId, note = "") {

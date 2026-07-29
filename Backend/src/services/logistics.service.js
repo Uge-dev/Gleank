@@ -1384,6 +1384,130 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
   return getParentOrder(parentId);
 }
 
+export function ensureOrderDeliverySetup(orderId) {
+  let order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+  if (!order) throw new HttpError(404, "Order was not found.");
+
+  const linkedTask = db.prepare(`
+    SELECT pickup_tasks.id AS pickup_task_id,
+           pickup_tasks.delivery_batch_id,
+           delivery_batches.parent_order_id
+    FROM pickup_tasks
+    JOIN delivery_batches ON delivery_batches.id = pickup_tasks.delivery_batch_id
+    JOIN parent_orders ON parent_orders.id = delivery_batches.parent_order_id
+    WHERE pickup_tasks.order_id = ?
+    ORDER BY pickup_tasks.created_at DESC
+    LIMIT 1
+  `).get(order.id);
+
+  if (linkedTask) {
+    const now = nowIso();
+    db.prepare(`
+      UPDATE orders
+      SET parent_order_id = ?,
+          delivery_batch_id = ?,
+          pickup_task_id = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      linkedTask.parent_order_id,
+      linkedTask.delivery_batch_id,
+      linkedTask.pickup_task_id,
+      now,
+      order.id,
+    );
+
+    const deliveryTask = db
+      .prepare("SELECT id FROM delivery_tasks WHERE delivery_batch_id = ?")
+      .get(linkedTask.delivery_batch_id);
+    if (!deliveryTask) {
+      const batch = db
+        .prepare("SELECT * FROM delivery_batches WHERE id = ?")
+        .get(linkedTask.delivery_batch_id);
+      const codes = ensureOrderStage2Codes(order.id);
+      db.prepare(`
+        INSERT INTO delivery_tasks (
+          id, delivery_batch_id, buyer_id, delivery_zone_id, delivery_landmark,
+          delivery_otp_hash, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending_pickups', ?, ?)
+      `).run(
+        createId("dlt"),
+        linkedTask.delivery_batch_id,
+        order.buyer_id,
+        batch?.delivery_zone_id || null,
+        clean(order.delivery_address || order.pickup_location || ""),
+        hashOtp(codes?.buyerDeliveryCode || generateOtp()),
+        now,
+        now,
+      );
+    }
+
+    return {
+      order: db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id),
+      batch: getDeliveryBatchById(linkedTask.delivery_batch_id),
+    };
+  }
+
+  const staleParentId = order.parent_order_id || null;
+  const staleBatchId = order.delivery_batch_id || null;
+
+  db.prepare(`
+    UPDATE orders
+    SET parent_order_id = NULL,
+        delivery_batch_id = NULL,
+        pickup_task_id = NULL,
+        updated_at = ?
+    WHERE id = ?
+  `).run(nowIso(), order.id);
+
+  if (staleBatchId) {
+    const activeTaskCount = Number(
+      db
+        .prepare("SELECT COUNT(*) AS count FROM pickup_tasks WHERE delivery_batch_id = ?")
+        .get(staleBatchId)?.count || 0,
+    );
+    const staleBatch = db
+      .prepare("SELECT assigned_rider_id FROM delivery_batches WHERE id = ?")
+      .get(staleBatchId);
+    if (staleBatch && !staleBatch.assigned_rider_id && activeTaskCount === 0) {
+      db.prepare("DELETE FROM delivery_batches WHERE id = ?").run(staleBatchId);
+    }
+  }
+
+  if (staleParentId) {
+    const activeBatchCount = Number(
+      db
+        .prepare("SELECT COUNT(*) AS count FROM delivery_batches WHERE parent_order_id = ?")
+        .get(staleParentId)?.count || 0,
+    );
+    if (activeBatchCount === 0) {
+      db.prepare("DELETE FROM parent_orders WHERE id = ?").run(staleParentId);
+    }
+  }
+
+  createParentOrderForOrders({
+    buyerId: order.buyer_id,
+    orderIds: [order.id],
+  });
+
+  order = db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id);
+  const pickupTask = order?.pickup_task_id
+    ? db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(order.pickup_task_id)
+    : null;
+  const batch = order?.delivery_batch_id
+    ? getDeliveryBatchById(order.delivery_batch_id)
+    : null;
+
+  if (!order?.parent_order_id || !pickupTask || !batch) {
+    throw new HttpError(
+      500,
+      "The order was confirmed, but its delivery setup could not be completed. Please retry the confirmation.",
+    );
+  }
+
+  return { order, batch };
+}
+
 export function getParentOrder(parentOrderId) {
   const parent = db.prepare("SELECT * FROM parent_orders WHERE id = ?").get(parentOrderId);
   if (!parent) return null;
@@ -2115,14 +2239,39 @@ function dispatchScore(rider, batch) {
   return Number(score.toFixed(2));
 }
 
-function publicRiderSnapshot(rider, batch, score = null) {
+function publicRiderSnapshot(
+  rider,
+  batch,
+  score = null,
+  { includeContact = false } = {},
+) {
   const capacity = serializeCapacity(rider);
   const safeName = clean(rider.name || "Verified rider", 80);
   const distanceKm = riderDistanceToPickup(rider, batch);
+  const serviceZoneNames = capacity.serviceZoneIds
+    .map((zoneId) =>
+      db.prepare("SELECT name FROM delivery_zones WHERE id = ?").get(zoneId)?.name,
+    )
+    .filter(Boolean);
+  const coverageArea = clean(
+    rider.coverage_area ||
+      serviceZoneNames.join(", ") ||
+      rider.current_zone_id ||
+      "Service area not specified",
+    240,
+  );
   return {
     id: rider.rider_id || rider.user_id,
     name: safeName,
     displayName: safeName,
+    profileImageUrl: rider.selfie_url || rider.avatar_url || null,
+    ...(includeContact ? { phone: clean(rider.phone || "", 40) } : {}),
+    vehicleType: clean(rider.vehicle_type || capacity.transportType, 80),
+    transportType: capacity.transportType,
+    coverageArea,
+    serviceAreas: serviceZoneNames.length
+      ? serviceZoneNames
+      : [coverageArea].filter(Boolean),
     dispatchScore: score == null ? dispatchScore(rider, batch) : score,
     distanceToPickupKm:
       distanceKm === null ? null : Number(distanceKm.toFixed(2)),
@@ -2147,6 +2296,17 @@ function publicRiderSnapshot(rider, batch, score = null) {
     acceptanceRate: capacity.acceptanceRate,
     responseSpeedScore: capacity.responseSpeedScore,
     reliabilityScore: capacity.reliabilityScore,
+    ratingAverage: Number(rider.rating_average || 0),
+    successfulDeliveries: Number(rider.completed_deliveries || 0),
+    profile: {
+      availability: rider.availability || "offline",
+      coverageArea,
+      transportType: capacity.transportType,
+      maxPackageSize: capacity.maxPackageSize,
+      maxWeightClass: capacity.maxWeightClass,
+      ratingAverage: Number(rider.rating_average || 0),
+      completedDeliveries: Number(rider.completed_deliveries || 0),
+    },
     matchSummary: [
       capacity.transportType,
       distanceKm === null ? "" : `${distanceKm.toFixed(1)} km from pickup`,
@@ -2176,7 +2336,9 @@ function riderBatchDiagnostics(
     requireLocationPermission: assignmentMode === "automatic",
   });
 
-  if (attemptedRiderIds.has(riderId)) reasons.push("already_contacted_for_this_batch");
+  if (attemptedRiderIds.has(riderId)) {
+    reasons.push("already_contacted_for_this_batch");
+  }
   if (!verification.eligible) {
     reasons.push(...(verification.blockingReasons || []).map((reason) => reason.code || "rider_not_eligible"));
     if (!verification.blockingReasons?.length) reasons.push("rider_not_eligible");
@@ -2247,8 +2409,19 @@ function listRiderCandidatesForBatchInternal(
       }
     : null;
   if (!batch) throw new HttpError(404, "Delivery batch was not found.");
+  const previousAttempts = db
+    .prepare(
+      "SELECT rider_id, status FROM dispatch_attempts WHERE delivery_batch_id = ?",
+    )
+    .all(batchId);
   const attempted = new Set(
-    db.prepare("SELECT rider_id FROM dispatch_attempts WHERE delivery_batch_id = ?").all(batchId).map((row) => row.rider_id),
+    previousAttempts
+      .filter(
+        (row) =>
+          assignmentMode === "automatic" ||
+          ["offered", "accepted"].includes(row.status),
+      )
+      .map((row) => row.rider_id),
   );
   const riders = db.prepare(`
     SELECT users.id AS rider_id,
@@ -2322,16 +2495,43 @@ export function listRiderCandidatesForBatch(auth, batchId) {
   advanceExpiredDispatchAttempts();
   assertBatchReadyForRiderOffer(batchId);
   const { batch, candidates, excluded } = listRiderCandidatesForBatchInternal(batchId, {
-    includeExcluded: auth.role === "admin",
+    includeExcluded: true,
     assignmentMode: "manual",
   });
-  const safeCandidates = candidates.map((candidate) => publicRiderSnapshot(candidate.rider, batch, candidate.score));
-  const safeExcluded = auth.role === "admin"
-    ? excluded.map((candidate) => ({
-        ...publicRiderSnapshot(candidate.rider, batch, candidate.score),
-        exclusionReasons: candidate.reasons,
-      }))
-    : [];
+  const safeCandidates = candidates.map((candidate) => ({
+    ...publicRiderSnapshot(candidate.rider, batch, candidate.score, {
+      includeContact: true,
+    }),
+    eligibleForThisOrder: true,
+    exclusionReasons: [],
+  }));
+  const safeExcluded = excluded
+    .filter(
+      (candidate) =>
+        candidate.verification?.checks?.correctRole &&
+        candidate.verification?.checks?.accountActive &&
+        candidate.verification?.checks?.requiredVerificationApproved &&
+        candidate.verification?.checks?.operationallyActive &&
+        candidate.verification?.checks?.safetyClear,
+    )
+    .map((candidate) => ({
+      ...publicRiderSnapshot(candidate.rider, batch, candidate.score, {
+        includeContact: true,
+      }),
+      eligibleForThisOrder: false,
+      exclusionReasons: candidate.reasons,
+    }));
+  const visibleRiders = [...safeCandidates, ...safeExcluded].sort((a, b) => {
+    if (a.eligibleForThisOrder !== b.eligibleForThisOrder) {
+      return a.eligibleForThisOrder ? -1 : 1;
+    }
+    if (a.distanceToPickupKm == null && b.distanceToPickupKm != null) return 1;
+    if (a.distanceToPickupKm != null && b.distanceToPickupKm == null) return -1;
+    if (a.distanceToPickupKm != null && b.distanceToPickupKm != null) {
+      return a.distanceToPickupKm - b.distanceToPickupKm;
+    }
+    return b.dispatchScore - a.dispatchScore;
+  });
   const now = nowIso();
   db.prepare(`
     UPDATE delivery_batches
@@ -2341,7 +2541,7 @@ export function listRiderCandidatesForBatch(auth, batchId) {
         updated_at = ?
     WHERE id = ?
   `).run(
-    JSON.stringify(safeCandidates),
+    JSON.stringify(visibleRiders),
     JSON.stringify(safeExcluded),
     deriveBatchBlockingStep(batchId),
     now,
@@ -2349,8 +2549,8 @@ export function listRiderCandidatesForBatch(auth, batchId) {
   );
   return {
     batch: getDeliveryBatchById(batchId),
-    riders: safeCandidates,
-    excludedRiders: safeExcluded,
+    riders: visibleRiders,
+    excludedRiders: auth.role === "admin" ? safeExcluded : [],
   };
 }
 
@@ -2392,7 +2592,7 @@ function createDispatchOfferForCandidate(batch, candidate, { internal = false, a
   });
   const windowSeconds =
     assignmentMode === "manual"
-      ? Math.max(600, offerWindowSeconds())
+      ? policy.timeoutSeconds
       : offerWindowSeconds();
   const attemptId = createId("dsp");
   const attemptNumber = Number(batch.dispatch_attempt_count || 0) + 1;
@@ -2669,19 +2869,98 @@ function createAssignmentsForBatch(batchId, riderId) {
 
 export function riderAcceptDispatch(auth, dispatchId) {
   const riderId = requireRider(auth);
-  const attempt = db.prepare("SELECT * FROM dispatch_attempts WHERE id = ? AND rider_id = ?").get(dispatchId, riderId);
-  if (!attempt) throw new HttpError(404, "Dispatch offer was not found.");
-  if (attempt.status !== "offered") throw new HttpError(422, "This dispatch offer is no longer active.");
-  if (dispatchRemainingSeconds(attempt.expires_at) !== null && dispatchRemainingSeconds(attempt.expires_at) <= 0) {
+  const initialAttempt = db.prepare(
+    "SELECT * FROM dispatch_attempts WHERE id = ? AND rider_id = ?",
+  ).get(dispatchId, riderId);
+  if (!initialAttempt) throw new HttpError(404, "Dispatch offer was not found.");
+  if (initialAttempt.status === "accepted") {
+    const acceptedBatch = db
+      .prepare("SELECT * FROM delivery_batches WHERE id = ?")
+      .get(initialAttempt.delivery_batch_id);
+    if (acceptedBatch?.assigned_rider_id === riderId) {
+      const assignments = db.prepare(`
+        SELECT *
+        FROM rider_assignments
+        WHERE delivery_batch_id = ? AND rider_id = ?
+        ORDER BY created_at ASC
+      `).all(initialAttempt.delivery_batch_id, riderId);
+      return {
+        batch: getDeliveryBatchById(initialAttempt.delivery_batch_id),
+        assignments,
+        alreadyAccepted: true,
+      };
+    }
+  }
+  if (initialAttempt.status !== "offered") {
+    throw new HttpError(409, "This dispatch offer is no longer active.");
+  }
+  const initialProfile = db
+    .prepare("SELECT availability FROM rider_profiles WHERE user_id = ?")
+    .get(riderId);
+  if (initialProfile?.availability !== "online") {
+    throw new HttpError(
+      422,
+      "Switch your rider availability to online before accepting this dispatch.",
+    );
+  }
+  if (
+    dispatchRemainingSeconds(initialAttempt.expires_at) !== null &&
+    dispatchRemainingSeconds(initialAttempt.expires_at) <= 0
+  ) {
     riderTimeoutDispatch(auth, dispatchId);
     throw new HttpError(410, "This dispatch offer expired. Another rider is being contacted.");
   }
   const now = nowIso();
   return transaction(() => {
+    const attempt = db.prepare(
+      "SELECT * FROM dispatch_attempts WHERE id = ? AND rider_id = ?",
+    ).get(dispatchId, riderId);
+    if (!attempt) throw new HttpError(404, "Dispatch offer was not found.");
+    if (attempt.status === "accepted") {
+      const acceptedBatch = db
+        .prepare("SELECT * FROM delivery_batches WHERE id = ?")
+        .get(attempt.delivery_batch_id);
+      if (acceptedBatch?.assigned_rider_id === riderId) {
+        return {
+          batch: getDeliveryBatchById(attempt.delivery_batch_id),
+          assignments: db.prepare(`
+            SELECT *
+            FROM rider_assignments
+            WHERE delivery_batch_id = ? AND rider_id = ?
+            ORDER BY created_at ASC
+          `).all(attempt.delivery_batch_id, riderId),
+          alreadyAccepted: true,
+        };
+      }
+    }
+    if (attempt.status !== "offered") {
+      throw new HttpError(409, "This dispatch offer is no longer active.");
+    }
+    const profile = db
+      .prepare("SELECT availability FROM rider_profiles WHERE user_id = ?")
+      .get(riderId);
+    if (profile?.availability !== "online") {
+      throw new HttpError(
+        422,
+        "Switch your rider availability to online before accepting this dispatch.",
+      );
+    }
+    if (
+      dispatchRemainingSeconds(attempt.expires_at) !== null &&
+      dispatchRemainingSeconds(attempt.expires_at) <= 0
+    ) {
+      throw new HttpError(410, "This dispatch offer expired. Refresh to see the next available order.");
+    }
     const batchBefore = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(attempt.delivery_batch_id);
     if (!batchBefore) throw new HttpError(404, "Delivery batch was not found.");
     if (batchBefore.assigned_rider_id && batchBefore.assigned_rider_id !== riderId) {
       throw new HttpError(409, "Another rider has already accepted this delivery batch.");
+    }
+    if (
+      batchBefore.current_dispatch_attempt_id &&
+      batchBefore.current_dispatch_attempt_id !== dispatchId
+    ) {
+      throw new HttpError(409, "This offer was replaced by a newer rider offer.");
     }
     const attemptUpdate = db.prepare(`
       UPDATE dispatch_attempts
@@ -2828,7 +3107,7 @@ export function listRiderDispatches(auth) {
   return db.prepare(`
     SELECT * FROM dispatch_attempts
     WHERE rider_id = ?
-      AND status IN ('offered','accepted')
+      AND status = 'offered'
     ORDER BY offered_at DESC
     LIMIT 40
   `).all(riderId).map((attempt) => {

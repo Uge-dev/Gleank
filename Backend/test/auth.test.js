@@ -1071,6 +1071,16 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.equal(paymentOnDeliveryOrder.body.orders[0].paymentMethod, "pay_on_delivery");
   assert.equal(paymentOnDeliveryOrder.body.orders[0].sellerConfirmedAt, null);
 
+  const stalePaymentOnDeliverySetup = db
+    .prepare(
+      "SELECT delivery_batch_id, pickup_task_id FROM orders WHERE id = ?",
+    )
+    .get(paymentOnDeliveryOrder.body.orders[0].id);
+  assert.ok(stalePaymentOnDeliverySetup?.pickup_task_id);
+  db.prepare("DELETE FROM pickup_tasks WHERE id = ?").run(
+    stalePaymentOnDeliverySetup.pickup_task_id,
+  );
+
   const paymentOnDeliveryConfirmation = await sellerAgent
     .post(`/api/orders/${paymentOnDeliveryOrder.body.orders[0].id}/seller-confirm`)
     .send({ note: "Payment on Delivery stock confirmed." });
@@ -1084,6 +1094,10 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .prepare("SELECT * FROM pickup_tasks WHERE order_id = ?")
     .get(paymentOnDeliveryOrder.body.orders[0].id);
   assert.ok(paymentOnDeliveryTask?.id);
+  assert.notEqual(
+    paymentOnDeliveryTask.delivery_batch_id,
+    stalePaymentOnDeliverySetup.delivery_batch_id,
+  );
   const paymentOnDeliveryReady = await sellerAgent
     .post(
       `/api/seller/pickup-tasks/${paymentOnDeliveryTask.id}/mark-ready`,
@@ -1197,6 +1211,10 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     });
   assert.equal(sellerRegister.status, 201);
   const sellerId = sellerRegister.body.user.id;
+  db.prepare("UPDATE users SET phone = ? WHERE id = ?").run(
+    "08000000030",
+    sellerId,
+  );
 
   const productResponse = await sellerAgent
     .post("/api/seller/products")
@@ -1378,10 +1396,19 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     `/api/dispatch/batches/${batchId}/rider-candidates`,
   );
   assert.equal(candidateResponse.status, 200);
-  assert.equal(
-    candidateResponse.body.riders.some((rider) => rider.id === riderId),
-    false,
+  const riderWithPendingOffer = candidateResponse.body.riders.find(
+    (rider) => rider.id === riderId,
   );
+  assert.ok(riderWithPendingOffer);
+  assert.equal(riderWithPendingOffer.eligibleForThisOrder, false);
+  assert.ok(
+    riderWithPendingOffer.exclusionReasons.includes(
+      "already_contacted_for_this_batch",
+    ),
+  );
+  assert.equal(riderWithPendingOffer.phone, "08000000031");
+  assert.ok(riderWithPendingOffer.profileImageUrl);
+  assert.equal(riderWithPendingOffer.vehicleType, "Bike");
 
   const manualOfferWhileAutomaticPending = await sellerAgent
     .post(`/api/dispatch/batches/${batchId}/offers`)
@@ -1394,6 +1421,33 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(acceptResponse.status, 200);
   assert.equal(acceptResponse.body.assignments.length, 1);
   assert.equal(acceptResponse.body.batch.dispatchStatus, "rider_assigned");
+  assert.equal(acceptResponse.body.assignments[0].seller_phone, "08000000030");
+
+  const repeatedAcceptResponse = await riderAgent.post(
+    `/api/rider/dispatch/${automaticOffer.id}/accept`,
+  );
+  assert.equal(repeatedAcceptResponse.status, 200);
+  assert.equal(repeatedAcceptResponse.body.alreadyAccepted, true);
+  assert.equal(repeatedAcceptResponse.body.assignments.length, 1);
+
+  const dispatchesAfterAcceptance = await riderAgent.get(
+    "/api/rider/dispatches/active",
+  );
+  assert.equal(dispatchesAfterAcceptance.status, 200);
+  assert.equal(dispatchesAfterAcceptance.body.dispatches.length, 0);
+
+  const riderDashboardAfterAcceptance = await riderAgent.get(
+    "/api/rider/dashboard",
+  );
+  assert.equal(riderDashboardAfterAcceptance.status, 200);
+  const acceptedAssignment = riderDashboardAfterAcceptance.body.assignments.find(
+    (assignment) => assignment.id === acceptResponse.body.assignments[0].id,
+  );
+  assert.ok(acceptedAssignment);
+  assert.equal(acceptedAssignment.sellerPhone, "08000000030");
+  assert.ok(acceptedAssignment.pickupPoint.address);
+  assert.equal(typeof acceptedAssignment.pickupPoint.lat, "number");
+  assert.equal(typeof acceptedAssignment.pickupPoint.lng, "number");
 
   const assignmentId = acceptResponse.body.assignments[0].id;
   const deliveryConversation = db.prepare(`
@@ -1506,6 +1560,12 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   );
   assert.equal(offlineCandidate.isOnline, false);
   assert.ok(offlineCandidate.lastActiveAt);
+  assert.equal(offlineCandidate.phone, "08000000041");
+  assert.ok(offlineCandidate.profileImageUrl);
+  assert.equal(offlineCandidate.vehicleType, "Bike");
+  assert.equal(offlineCandidate.coverageArea, "FUPRE");
+  assert.equal(offlineCandidate.eligibleForThisOrder, true);
+  assert.equal(offlineCandidate.successfulDeliveries, 0);
 
   const sellerManualOffer = await sellerAgent
     .post(`/api/dispatch/batches/${manualBatchId}/offers`)
@@ -1514,11 +1574,43 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(sellerManualOffer.body.attempt.assignmentMode, "manual");
   assert.equal(sellerManualOffer.body.attempt.offerWindowSeconds, 600);
 
+  const offlineRiderDispatches = await manualRiderAgent.get(
+    "/api/rider/dispatches/active",
+  );
+  assert.equal(offlineRiderDispatches.status, 200);
+  assert.equal(offlineRiderDispatches.body.dispatches.length, 1);
+
+  const offlineManualAccept = await manualRiderAgent.post(
+    `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
+  );
+  assert.equal(offlineManualAccept.status, 422);
+  assert.match(offlineManualAccept.body.message, /online/i);
+
+  db.prepare(`
+    UPDATE rider_profiles
+    SET availability = 'online',
+        availability_mode = 'online_zone_only',
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(new Date().toISOString(), manualRiderId);
+
   const manualAccept = await manualRiderAgent.post(
     `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
   );
   assert.equal(manualAccept.status, 200);
   assert.equal(manualAccept.body.batch.dispatchStatus, "rider_assigned");
+
+  const repeatedManualAccept = await manualRiderAgent.post(
+    `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
+  );
+  assert.equal(repeatedManualAccept.status, 200);
+  assert.equal(repeatedManualAccept.body.alreadyAccepted, true);
+
+  const manualDispatchesAfterAcceptance = await manualRiderAgent.get(
+    "/api/rider/dispatches/active",
+  );
+  assert.equal(manualDispatchesAfterAcceptance.status, 200);
+  assert.equal(manualDispatchesAfterAcceptance.body.dispatches.length, 0);
 });
 
 test("critical webhook and admin fallback defaults are rejected", async () => {

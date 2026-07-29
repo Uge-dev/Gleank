@@ -29,6 +29,7 @@ function includesAnyKeyword(value, keywords) {
 
 function hasHeavyFragileSignal(input = {}) {
   if (input.isHeavyFragile === true) return true;
+  if (input.isHeavyFragile === false) return false;
   const parts = [
     input.packageSummary,
     input.note,

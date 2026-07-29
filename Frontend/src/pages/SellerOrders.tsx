@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   FiAlertCircle,
   FiCheckCircle,
@@ -15,17 +15,11 @@ import {
 import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import {
-  getAvailableDeliveryRiders,
   getSellerOrders,
   getSellerPickupTasks,
   markSellerPickupTaskReady,
-  sendDeliveryOfferToRider,
-  startAutomaticDispatchForBatch,
 } from "../services/seller.service";
-import type {
-  AvailableDeliveryRider,
-  SellerPickupTask,
-} from "../services/seller.service";
+import type { SellerPickupTask } from "../services/seller.service";
 import {
   sellerConfirmOrder,
   sellerRejectOrder,
@@ -52,23 +46,6 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function activityLabel(rider: AvailableDeliveryRider) {
-  if (rider.isOnline) return "Online now";
-  if (!rider.lastActiveAt) return "Offline · last activity unavailable";
-
-  const time = new Date(rider.lastActiveAt).getTime();
-  if (!Number.isFinite(time)) return "Offline";
-
-  const minutes = Math.max(1, Math.round((Date.now() - time) / 60_000));
-  if (minutes < 60) return `Active ${minutes} min ago`;
-
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `Active ${hours} hr${hours === 1 ? "" : "s"} ago`;
-
-  const days = Math.round(hours / 24);
-  return `Active ${days} day${days === 1 ? "" : "s"} ago`;
-}
-
 function packageDraftForTask(task: SellerPickupTask): PackageDraft {
   const profile = task.packageProfileSnapshot || {};
 
@@ -90,18 +67,14 @@ function packageDraftForTask(task: SellerPickupTask): PackageDraft {
 }
 
 function SellerOrders() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<GleencOrder[]>([]);
   const [pickupTasks, setPickupTasks] = useState<SellerPickupTask[]>([]);
-  const [availableRidersByBatch, setAvailableRidersByBatch] = useState<
-    Record<string, AvailableDeliveryRider[]>
-  >({});
   const [packageDrafts, setPackageDrafts] = useState<
     Record<string, PackageDraft>
   >({});
   const [preparationOrderId, setPreparationOrderId] = useState("");
-  const [manualDispatchBatchId, setManualDispatchBatchId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingRiders, setIsLoadingRiders] = useState(false);
   const [taskActionId, setTaskActionId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -156,31 +129,6 @@ function SellerOrders() {
     }),
     [orders],
   );
-
-  const loadAvailableRiders = useCallback(async (batchId: string) => {
-    if (!batchId) return;
-
-    setIsLoadingRiders(true);
-    try {
-      const response = await getAvailableDeliveryRiders(batchId);
-      setAvailableRidersByBatch((current) => ({
-        ...current,
-        [batchId]: response.riders || [],
-      }));
-    } catch (requestError) {
-      setAvailableRidersByBatch((current) => ({
-        ...current,
-        [batchId]: [],
-      }));
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Riders in this service area could not be loaded.",
-      );
-    } finally {
-      setIsLoadingRiders(false);
-    }
-  }, []);
 
   async function handleConfirmOrder(order: GleencOrder) {
     setError("");
@@ -290,7 +238,6 @@ function SellerOrders() {
     try {
       await markSellerPickupTaskReady(task.id, draft);
       setPreparationOrderId("");
-      setManualDispatchBatchId("");
       setNotice(
         "Package is ready. Choose automatic rider selection or select a rider manually.",
       );
@@ -305,69 +252,6 @@ function SellerOrders() {
         requestError instanceof Error
           ? requestError.message
           : "Package readiness could not be saved.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleAutomaticDispatch(task: SellerPickupTask) {
-    setError("");
-    setNotice("");
-    setManualDispatchBatchId("");
-    setTaskActionId(`auto-${task.id}`);
-
-    try {
-      const response = await startAutomaticDispatchForBatch(
-        task.deliveryBatchId,
-      );
-      setNotice(
-        response.sellerManualAssignmentRequired
-          ? "No online rider matched automatically. Select a rider manually from the service-area list."
-          : "Gleenc sent the order to the best active rider. The rider must accept the offer.",
-      );
-      await loadPickupTasks();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Automatic rider selection could not start.",
-      );
-    } finally {
-      setTaskActionId("");
-    }
-  }
-
-  async function handleOpenManualDispatch(task: SellerPickupTask) {
-    setError("");
-    setNotice("");
-    setManualDispatchBatchId(task.deliveryBatchId);
-    await loadAvailableRiders(task.deliveryBatchId);
-  }
-
-  async function handleAssignManualRider(
-    task: SellerPickupTask,
-    riderId: string,
-  ) {
-    setError("");
-    setNotice("");
-    setTaskActionId(`assign-${task.id}-${riderId}`);
-
-    try {
-      await sendDeliveryOfferToRider({
-        batchId: task.deliveryBatchId,
-        riderId,
-      });
-      setNotice(
-        "Delivery offer sent. The rider will receive it and must go online to accept if currently inactive.",
-      );
-      setManualDispatchBatchId("");
-      await loadPickupTasks();
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Delivery offer could not be sent.",
       );
     } finally {
       setTaskActionId("");
@@ -456,9 +340,6 @@ function SellerOrders() {
                 "rider_offered",
                 "rider_accepted",
               ].includes(pickupTask?.dispatchStatus || "");
-              const availableRiders = pickupTask
-                ? availableRidersByBatch[pickupTask.deliveryBatchId] || []
-                : [];
               const packageDraft = pickupTask
                 ? packageDrafts[pickupTask.id] ||
                   packageDraftForTask(pickupTask)
@@ -611,29 +492,25 @@ function SellerOrders() {
                         <strong>How should Gleenc select the rider?</strong>
                         <button
                           type="button"
-                          disabled={taskActionId === `auto-${pickupTask.id}`}
                           onClick={() =>
-                            void handleAutomaticDispatch(pickupTask)
+                            navigate(
+                              `/seller/orders/${order.id}/riders?mode=automatic`,
+                            )
                           }
                         >
                           <FiTruck />
-                          {taskActionId === `auto-${pickupTask.id}`
-                            ? "Finding rider..."
-                            : "Allow automatic rider selection"}
+                          Allow automatic rider selection
                         </button>
                         <button
                           type="button"
-                          disabled={isLoadingRiders}
                           onClick={() =>
-                            void handleOpenManualDispatch(pickupTask)
+                            navigate(
+                              `/seller/orders/${order.id}/riders?mode=manual`,
+                            )
                           }
                         >
                           <FiShoppingBag />
-                          {isLoadingRiders &&
-                          manualDispatchBatchId ===
-                            pickupTask.deliveryBatchId
-                            ? "Loading riders..."
-                            : "Select rider manually"}
+                          Select rider manually
                         </button>
                       </div>
                     ) : null}
@@ -648,69 +525,6 @@ function SellerOrders() {
                       <span className="seller-order-rider-assigned-card-label">
                         <FiTruck /> Rider assigned
                       </span>
-                    ) : null}
-
-                    {pickupTask &&
-                    manualDispatchBatchId === pickupTask.deliveryBatchId &&
-                    pickupTask.sellerMarkedReady &&
-                    !pickupTask.assignedRiderId ? (
-                      <div className="seller-order-manual-riders">
-                        <div>
-                          <strong>Riders in this service area</strong>
-                          <small>
-                            Online riders appear first. Offline riders still
-                            receive the offer and must go online before accepting.
-                          </small>
-                        </div>
-                        {availableRiders.length ? (
-                          availableRiders.map((rider) => (
-                            <button
-                              type="button"
-                              key={rider.id}
-                              disabled={taskActionId.startsWith(
-                                `assign-${pickupTask.id}-`,
-                              )}
-                              onClick={() =>
-                                void handleAssignManualRider(
-                                  pickupTask,
-                                  rider.id,
-                                )
-                              }
-                            >
-                              <span>
-                                <strong>
-                                  {rider.displayName ||
-                                    rider.name ||
-                                    "Verified rider"}
-                                </strong>
-                                <small
-                                  className={
-                                    rider.isOnline ? "online" : "offline"
-                                  }
-                                >
-                                  {activityLabel(rider)}
-                                </small>
-                              </span>
-                              <em>
-                                {rider.matchSummary ||
-                                  "Stage 1 approved · service-area match"}
-                              </em>
-                              <b>
-                                {taskActionId ===
-                                `assign-${pickupTask.id}-${rider.id}`
-                                  ? "Sending..."
-                                  : "Send offer"}
-                              </b>
-                            </button>
-                          ))
-                        ) : (
-                          <p>
-                            {isLoadingRiders
-                              ? "Loading matching riders..."
-                              : "No Stage 1 approved rider currently covers this service area and package capacity."}
-                          </p>
-                        )}
-                      </div>
                     ) : null}
 
                     {!orderClosed &&

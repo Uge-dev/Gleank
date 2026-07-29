@@ -37,7 +37,9 @@ export default function AssignedOrders() {
     setDispatchLoading(true);
     try {
       const payload = await riderApi.activeDispatches();
-      setDispatches(payload.dispatches || []);
+      setDispatches(
+        (payload.dispatches || []).filter((offer) => offer.status === "offered"),
+      );
       setDispatchError('');
     } catch (requestError) {
       if (requestError instanceof ApiClientError && requestError.status === 403) {
@@ -71,8 +73,12 @@ export default function AssignedOrders() {
       await refresh();
       await loadDispatches();
       setDispatchError('');
-    } catch {
-      setDispatchError('This dispatch could not be accepted. It may have expired or been reassigned.');
+    } catch (requestError) {
+      setDispatchError(
+        requestError instanceof ApiClientError
+          ? requestError.message
+          : 'This dispatch could not be accepted. Refresh the page and try again.',
+      );
     } finally {
       setDispatchAction('');
     }
