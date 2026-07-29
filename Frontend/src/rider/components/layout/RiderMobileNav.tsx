@@ -7,23 +7,23 @@ type RiderMobileNavItem = {
   path: string;
   icon: typeof FiHome;
   end?: boolean;
-  badge?: 'assignments' | 'orders';
+  badge?: 'assignments' | 'active';
 };
 
 const riderMobileNavItems: RiderMobileNavItem[] = [
   { label: 'Home', path: '/rider', icon: FiHome, end: true },
   { label: 'Assigned', path: '/rider/assigned', icon: FiPackage, badge: 'assignments' },
-  { label: 'Active', path: '/rider/active', icon: FiTruck, badge: 'orders' },
+  { label: 'Active', path: '/rider/active', icon: FiTruck, badge: 'active' },
   { label: 'Earnings', path: '/rider/earnings', icon: FiCreditCard },
   { label: 'Profile', path: '/rider/profile', icon: FiUser }
 ];
 
 export default function RiderMobileNav() {
-  const { assignments, orders } = useRiderData();
+  const { stats } = useRiderData();
 
-  function badgeCount(type?: 'assignments' | 'orders') {
-    if (type === 'assignments') return assignments.length;
-    if (type === 'orders') return orders.length;
+  function badgeCount(type?: 'assignments' | 'active') {
+    if (type === 'assignments') return stats.newAssignments;
+    if (type === 'active') return stats.active;
     return 0;
   }
 

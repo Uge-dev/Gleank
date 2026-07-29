@@ -93,6 +93,7 @@ export interface PrivateAssignment {
   deliveryLocation: string;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
+  packageSummary?: string;
   assignedTime: string;
   expectedDeliveryTime: string;
   dispatchTimeoutSeconds?: number;
@@ -203,6 +204,17 @@ export interface EarningsSummary {
   riderPayoutPending: number;
   completedDeliveriesCount: number;
   chart: Array<{ label: string; amount: number }>;
+}
+
+export interface RiderDashboardStats {
+  assigned: number;
+  pendingOffers: number;
+  newAssignments: number;
+  active: number;
+  completed: number;
+  highRiskTasks: number;
+  totalEarnings: number;
+  payoutPending: number;
 }
 
 export interface SafetyReportPayload {

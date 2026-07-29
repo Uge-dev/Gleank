@@ -48,7 +48,7 @@ export default function ActiveDeliveries() {
                   {isUnlocked && order ? (
                     <Link className="flex-1" to={`/rider/delivery/${order.id}`}><Button icon={FiSearch} fullWidth>View Details</Button></Link>
                   ) : (
-                    <Link className="flex-1" to="/rider/verify-code"><Button icon={FiSearch} fullWidth>Verify Pickup</Button></Link>
+                    <Link className="flex-1" to={`/rider/verify/${assignment.id}`}><Button icon={FiSearch} fullWidth>Verify Pickup</Button></Link>
                   )}
                 </div>
               </Card>

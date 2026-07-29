@@ -274,6 +274,16 @@ function money(kobo) {
   return Number(kobo || 0) / 100;
 }
 
+function riskLevelForAssignment(row) {
+  const packageValue = money(row?.package_value_kobo);
+  const packageDescription = `${row?.package_summary || ""} ${row?.dispatch_timeout_policy || ""}`.toLowerCase();
+  const highRiskHandling = /(heavy|fragile|hazard|chemical|glass|breakable|high.?value)/i.test(packageDescription);
+
+  if (packageValue >= 200_000 || highRiskHandling) return "high";
+  if (packageValue >= 50_000) return "medium";
+  return "low";
+}
+
 function serializeProfile(row) {
   if (!row) return null;
   const serviceZoneIds = safeJsonArray(row.service_zone_ids);
@@ -394,6 +404,7 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     buyerName: reveal ? row.buyer_name : "Locked until pickup",
     buyerPhone: reveal ? row.buyer_phone : "",
     packageSummary: revealPackage ? row.package_summary : "Accept this delivery to see package summary.",
+    riskLevel: riskLevelForAssignment(row),
     packageTagCode: "",
     sellerPickupCodeVerifiedAt: row.seller_pickup_code_verified_at || row.picked_up_at || null,
     buyerDeliveryCodeVerifiedAt: row.buyer_delivery_code_verified_at || null,
@@ -401,6 +412,8 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
     packageValue: 0,
     deliveryFeeKobo: 0,
     deliveryFee: 0,
+    riderEarningKobo: Number(row.delivery_fee_kobo || 0),
+    riderEarning: money(row.delivery_fee_kobo),
     deliveryBatchId: row.delivery_batch_id || null,
     pickupTaskId: row.pickup_task_id || null,
     pickupProof: row.pickup_proof_created_at ? {
@@ -604,19 +617,181 @@ function recordLocation(userId, location, assignmentId = "") {
 
 function statsForRider(userId) {
   const assigned = db.prepare("SELECT COUNT(*) AS count FROM rider_assignments WHERE rider_id = ? AND status = 'assigned'").get(userId).count;
+  const pendingOffers = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM dispatch_attempts
+    WHERE rider_id = ? AND status = 'offered'
+  `).get(userId).count;
   const active = db.prepare(`
     SELECT COUNT(*) AS count FROM rider_assignments
     WHERE rider_id = ? AND status IN ('accepted','arrived_pickup','picked_up','out_for_delivery')
   `).get(userId).count;
   const completed = db.prepare("SELECT COUNT(*) AS count FROM rider_assignments WHERE rider_id = ? AND status = 'delivered'").get(userId).count;
   const earnings = db.prepare("SELECT COALESCE(SUM(amount_kobo), 0) AS total FROM rider_earnings WHERE rider_id = ?").get(userId).total;
+  const payoutPending = db.prepare(`
+    SELECT COALESCE(SUM(amount_kobo), 0) AS total
+    FROM rider_earnings
+    WHERE rider_id = ? AND status IN ('pending', 'available')
+  `).get(userId).total;
+  const activeRows = db.prepare(`
+    SELECT package_value_kobo, package_summary, dispatch_timeout_policy
+    FROM rider_assignments
+    WHERE rider_id = ?
+      AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
+  `).all(userId);
+  const highRiskTasks = activeRows.filter((row) => riskLevelForAssignment(row) === "high").length;
+
   return {
     assigned: Number(assigned || 0),
+    pendingOffers: Number(pendingOffers || 0),
+    newAssignments: Number(assigned || 0) + Number(pendingOffers || 0),
     active: Number(active || 0),
     completed: Number(completed || 0),
+    highRiskTasks,
     totalEarningsKobo: Number(earnings || 0),
     totalEarnings: money(earnings),
+    payoutPendingKobo: Number(payoutPending || 0),
+    payoutPending: money(payoutPending),
   };
+}
+
+function dateKey(timestamp, timeZone = process.env.APP_TIMEZONE || "Africa/Lagos") {
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function earningsForRider(userId) {
+  const rows = db.prepare(`
+    SELECT amount_kobo, status, created_at
+    FROM rider_earnings
+    WHERE rider_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1000
+  `).all(userId);
+  const eligibleRows = rows.filter((row) => row.status !== "withheld");
+  const now = new Date();
+  const todayKey = dateKey(now);
+  const weekCutoff = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+  const monthCutoff = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+  const sumKobo = (items) => items.reduce((sum, row) => sum + Number(row.amount_kobo || 0), 0);
+  const todayKobo = sumKobo(eligibleRows.filter((row) => dateKey(row.created_at) === todayKey));
+  const weeklyKobo = sumKobo(eligibleRows.filter((row) => new Date(row.created_at).getTime() >= weekCutoff));
+  const monthlyKobo = sumKobo(eligibleRows.filter((row) => new Date(row.created_at).getTime() >= monthCutoff));
+  const pendingKobo = sumKobo(rows.filter((row) => ["pending", "available"].includes(row.status)));
+  const completedDeliveries = Number(
+    db.prepare("SELECT COUNT(*) AS count FROM rider_assignments WHERE rider_id = ? AND status = 'delivered'").get(userId)?.count || 0,
+  );
+  const onlinePaymentsDelivered = Number(
+    db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM rider_assignments
+      WHERE rider_id = ? AND status = 'delivered' AND payment_status = 'paid'
+    `).get(userId)?.count || 0,
+  );
+  const chart = [];
+
+  for (let dayOffset = 6; dayOffset >= 0; dayOffset -= 1) {
+    const day = new Date(now.getTime() - dayOffset * 24 * 60 * 60 * 1000);
+    const key = dateKey(day);
+    const amountKobo = sumKobo(eligibleRows.filter((row) => dateKey(row.created_at) === key));
+    chart.push({
+      label: day.toLocaleDateString("en-NG", {
+        timeZone: process.env.APP_TIMEZONE || "Africa/Lagos",
+        weekday: "short",
+      }),
+      amount: money(amountKobo),
+    });
+  }
+
+  return {
+    today: money(todayKobo),
+    weekly: money(weeklyKobo),
+    monthly: money(monthlyKobo),
+    cashCollected: 0,
+    onlinePaymentsDelivered,
+    platformFeesHandled: 0,
+    riderPayoutPending: money(pendingKobo),
+    completedDeliveriesCount: completedDeliveries,
+    chart,
+  };
+}
+
+function activitiesForRider(rows) {
+  const activities = [];
+
+  for (const row of rows) {
+    const sellerName = row.seller_name || "Seller";
+    const orderLabel = row.order_id ? `Order ${row.order_id}` : "Delivery order";
+
+    if (row.created_at) {
+      activities.push({
+        id: `${row.id}:assigned`,
+        title: "New assignment received",
+        description: `${sellerName} assigned ${orderLabel} for delivery.`,
+        time: row.created_at,
+        status: "info",
+      });
+    }
+    if (row.accepted_at) {
+      activities.push({
+        id: `${row.id}:accepted`,
+        title: "Delivery accepted",
+        description: `${orderLabel} was accepted and moved to Active Deliveries.`,
+        time: row.accepted_at,
+        status: "success",
+      });
+    }
+    if (row.picked_up_at) {
+      activities.push({
+        id: `${row.id}:picked-up`,
+        title: "Package picked up",
+        description: `Seller pickup was verified for ${orderLabel}.`,
+        time: row.picked_up_at,
+        status: "success",
+      });
+    }
+    if (row.buyer_delivery_code_verified_at) {
+      activities.push({
+        id: `${row.id}:buyer-code`,
+        title: "Buyer code verified",
+        description: `Buyer handover verification passed for ${orderLabel}.`,
+        time: row.buyer_delivery_code_verified_at,
+        status: "success",
+      });
+    }
+    if (row.delivered_at) {
+      activities.push({
+        id: `${row.id}:delivered`,
+        title: "Delivery completed",
+        description: `${orderLabel} was completed and rider earnings were recorded.`,
+        time: row.delivered_at,
+        status: "success",
+      });
+    }
+    if (row.failed_at) {
+      activities.push({
+        id: `${row.id}:failed`,
+        title: "Delivery needs attention",
+        description: row.fail_reason || `${orderLabel} was marked as failed.`,
+        time: row.failed_at,
+        status: "warning",
+      });
+    }
+  }
+
+  return activities
+    .filter((activity) => activity.time)
+    .sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime())
+    .slice(0, 30);
 }
 
 export async function registerRider(input, meta = {}) {
@@ -634,7 +809,7 @@ export async function registerRider(input, meta = {}) {
     storeName: "",
     identityDocumentUrl: input.identityDocumentUrl,
     selfieUrl: input.selfieUrl,
-  }, meta, { allowRiderRegistration: true });
+  }, meta);
 
   const now = nowIso();
   transaction(() => {
@@ -720,11 +895,7 @@ export async function registerRider(input, meta = {}) {
 }
 
 export async function loginRider(input, meta = {}) {
-  const result = await loginUser(input, meta, {
-    allowedRoles: ["rider"],
-    wrongRoleMessage:
-      "This is a buyer or seller account. Please log in through the buyer/seller page.",
-  });
+  const result = await loginUser(input, meta);
   if (result.user.role !== "rider") {
     throw new HttpError(403, "This login is not a rider account.");
   }
@@ -834,14 +1005,19 @@ export function riderDashboard(auth) {
         ELSE 9
       END,
       created_at DESC
-    LIMIT 80
+    LIMIT 200
   `).all(userId);
+  const notificationState = listNotifications(userId);
+
   return {
     profile: serializeProfile(profile),
     stats: statsForRider(userId),
+    earnings: earningsForRider(userId),
+    activities: activitiesForRider(rows),
     assignments: rows.filter((row) => ACTIVE_ASSIGNMENT_STATUSES.has(row.status)).map((row) => serializeAssignment(row)),
     completed: rows.filter((row) => row.status === "delivered").map((row) => serializeAssignment(row, { revealPrivate: true })),
-    notifications: listNotifications(userId),
+    notifications: notificationState.notifications,
+    unreadNotificationCount: notificationState.unreadCount,
   };
 }
 
@@ -1097,6 +1273,9 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
   const profile = requireVerifiedRider(riderId);
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
+  if (row.status === "accepted") {
+    return serializeAssignment(row);
+  }
   if (row.status !== "assigned") throw new HttpError(422, "This delivery cannot be accepted now.");
   const remainingSeconds = dispatchRemainingSeconds(row.dispatch_expires_at);
   if (remainingSeconds !== null && remainingSeconds <= 0) {
@@ -1137,6 +1316,22 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
       db.prepare("UPDATE pickup_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ? AND status != 'seller_rejected'").run(now, row.delivery_batch_id);
       db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, row.delivery_batch_id);
     }
+    createNotification({
+      userId: riderId,
+      type: "order",
+      title: "Delivery accepted",
+      body: `${row.seller_name || "Seller"}'s delivery is now active. Continue to the pickup point and verify the seller pickup code.`,
+      actionLabel: "Open active delivery",
+      actionPath: `/rider/verify/${assignmentId}`,
+    });
+    createNotification({
+      userId: row.seller_id,
+      type: "order",
+      title: "Rider accepted your delivery",
+      body: "The assigned rider accepted the delivery and is proceeding to pickup.",
+      actionLabel: "View order",
+      actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+    });
   });
   return serializeAssignment(assignmentByIdForRider(riderId, assignmentId));
 }
@@ -1421,6 +1616,9 @@ export function completeDelivery(auth, orderId, input) {
 
   const now = nowIso();
   const deliveryCodeAlreadyVerified = Boolean(row.buyer_delivery_code_verified_at);
+  const batchBeforeCompletion = row.delivery_batch_id
+    ? db.prepare("SELECT status FROM delivery_batches WHERE id = ?").get(row.delivery_batch_id)
+    : null;
   if (!deliveryCodeAlreadyVerified) {
     assertCodeAttemptAllowed(row, "Delivery");
     if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) {
@@ -1459,8 +1657,46 @@ export function completeDelivery(auth, orderId, input) {
       `).run(now, now, now, now, row.order_id);
     }
     if (row.delivery_batch_id) {
-      db.prepare("UPDATE delivery_batches SET status = 'delivered', dispatch_status = 'completed', updated_at = ? WHERE id = ?").run(now, row.delivery_batch_id);
-      db.prepare("UPDATE delivery_tasks SET status = 'delivered', delivered_at = COALESCE(delivered_at, ?), updated_at = ? WHERE delivery_batch_id = ?").run(now, now, row.delivery_batch_id);
+      const remainingAssignments = Number(db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM rider_assignments
+        WHERE delivery_batch_id = ?
+          AND rider_id = ?
+          AND status NOT IN ('delivered', 'failed', 'cancelled')
+      `).get(row.delivery_batch_id, riderId)?.count || 0);
+
+      if (remainingAssignments === 0) {
+        db.prepare(`
+          UPDATE delivery_batches
+          SET status = 'delivered',
+              dispatch_status = 'completed',
+              delivery_workflow_status = 'completed',
+              payout_workflow_status = 'ready_for_payout',
+              blocking_step = 'completed',
+              updated_at = ?
+          WHERE id = ?
+        `).run(now, row.delivery_batch_id);
+        db.prepare(`
+          UPDATE delivery_tasks
+          SET status = 'delivered',
+              delivered_at = COALESCE(delivered_at, ?),
+              buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
+              updated_at = ?
+          WHERE delivery_batch_id = ?
+        `).run(now, now, now, row.delivery_batch_id);
+
+        if (batchBeforeCompletion?.status !== "delivered") {
+          db.prepare(`
+            UPDATE rider_profiles
+            SET current_active_batch_count = CASE
+                  WHEN current_active_batch_count > 0 THEN current_active_batch_count - 1
+                  ELSE 0
+                END,
+                updated_at = ?
+            WHERE user_id = ?
+          `).run(now, riderId);
+        }
+      }
     }
     db.prepare(`
       INSERT INTO rider_earnings (id, rider_id, assignment_id, order_id, order_type, amount_kobo, status, created_at, updated_at)
@@ -1479,6 +1715,22 @@ export function completeDelivery(auth, orderId, input) {
       body: "Your Gleenc order has been delivered and confirmed with OTP.",
       actionLabel: "View order",
       actionPath: row.order_type === "used_order" ? `/used-orders/${row.order_id}` : `/orders/${row.order_id}`,
+    });
+    createNotification({
+      userId: row.seller_id,
+      type: "order",
+      title: "Delivery completed",
+      body: "The rider completed delivery with the buyer code and proof.",
+      actionLabel: "View successful orders",
+      actionPath: "/seller/orders?view=successful",
+    });
+    createNotification({
+      userId: riderId,
+      type: "order",
+      title: "Delivery completed",
+      body: `${row.seller_name || "Seller"}'s delivery was completed. Your rider earning is now pending platform payout.`,
+      actionLabel: "View completed deliveries",
+      actionPath: "/rider/completed",
     });
   });
   markPayoutDeliveryVerified({

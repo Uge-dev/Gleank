@@ -1,5 +1,15 @@
 import { apiRequest, buildApiUrl } from './apiClient';
-import type { FullDeliveryOrder, NotificationItem, PrivateAssignment, ProofRecord, Rider, SafetyReportPayload } from '../types';
+import type {
+  DeliveryActivity,
+  EarningsSummary,
+  FullDeliveryOrder,
+  NotificationItem,
+  PrivateAssignment,
+  ProofRecord,
+  Rider,
+  RiderDashboardStats,
+  SafetyReportPayload,
+} from '../types';
 
 const presenceSessionId =
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -79,11 +89,14 @@ type BackendAssignment = {
   buyerPhone?: string;
   marketName?: string;
   packageSummary?: string;
+  riskLevel?: string;
   packageTagCode?: string;
   sellerPickupCodeVerifiedAt?: string | null;
   buyerDeliveryCodeVerifiedAt?: string | null;
   packageValue?: number;
   deliveryFee?: number;
+  riderEarning?: number;
+  riderEarningKobo?: number;
   dispatchTimeoutSeconds?: number;
   dispatchTimeoutMinutes?: number;
   dispatchExpiresAt?: string | null;
@@ -98,19 +111,29 @@ type BackendAssignment = {
   updatedAt?: string;
 };
 
+type BackendNotification = {
+  id?: string;
+  type?: string;
+  title?: string;
+  body?: string;
+  message?: string;
+  createdAt?: string;
+  created_at?: string;
+  read?: boolean;
+  unread?: boolean;
+};
+
 type BackendDashboardResponse = BackendRiderAuthResponse & {
   assignments?: BackendAssignment[];
   completed?: BackendAssignment[];
-  notifications?: Array<{
-    id?: string;
-    type?: string;
-    title?: string;
-    body?: string;
-    message?: string;
-    createdAt?: string;
-    created_at?: string;
-    read?: boolean;
-  }>;
+  notifications?: BackendNotification[] | {
+    notifications?: BackendNotification[];
+    unreadCount?: number;
+  };
+  unreadNotificationCount?: number;
+  stats?: Partial<RiderDashboardStats>;
+  earnings?: Partial<EarningsSummary>;
+  activities?: DeliveryActivity[];
 };
 
 export type RiderDispatchOffer = {
@@ -211,6 +234,11 @@ function mapCategory(row: BackendAssignment): PrivateAssignment['category'] {
   return 'Others';
 }
 
+function mapRiskLevel(value?: string): PrivateAssignment['riskLevel'] {
+  if (value === 'high' || value === 'medium') return value;
+  return 'low';
+}
+
 function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
   const orderValue = 0;
   const pickupLocation = row.pickupLocation || row.pickupPoint?.address || 'Pickup location unavailable';
@@ -231,6 +259,7 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     deliveryLocation,
     deliveryLat: row.deliveryPoint?.lat ?? null,
     deliveryLng: row.deliveryPoint?.lng ?? null,
+    packageSummary: row.packageSummary || 'Gleenc delivery package',
     assignedTime: row.createdAt || row.acceptedAt || row.updatedAt || new Date().toISOString(),
     expectedDeliveryTime: row.updatedAt || row.createdAt || new Date().toISOString(),
     dispatchTimeoutSeconds: row.dispatchTimeoutSeconds,
@@ -243,7 +272,7 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     category: mapCategory(row),
     orderChannel: mapOrderChannel(row),
     orderValue,
-    riskLevel: orderValue >= 200000 ? 'high' : orderValue >= 50000 ? 'medium' : 'low',
+    riskLevel: mapRiskLevel(row.riskLevel),
     securityNotes: [
       'Buyer details and delivery OTP stay hidden from riders until the buyer provides the OTP in person.',
       'Verify seller pickup OTP and capture proof before leaving pickup point.',
@@ -272,7 +301,8 @@ function normalizeProofRecord(row: BackendAssignment, type: 'pickup' | 'delivery
 
 function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
   const packageValue = 0;
-  const deliveryFee = 0;
+  const riderEarning = Number(row.riderEarning || 0);
+  const deliveryFee = Number(row.deliveryFee || riderEarning || 0);
   const status = mapAssignmentStatus(row.status);
   const paymentStatus = (row.paymentStatus as FullDeliveryOrder['paymentStatus']) || 'unpaid';
   const paymentMethod = row.paymentMethod === 'pay_on_delivery' || paymentStatus === 'unpaid' ? 'pay_on_delivery' : 'paid_online';
@@ -280,7 +310,7 @@ function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
   return {
     id: row.orderId || row.id || '',
     assignmentId: row.id || '',
-    orderNumber: '',
+    orderNumber: row.orderId || '',
     pickupCode: '',
     sellerPickupCode: '',
     customerDeliveryCode: '',
@@ -306,7 +336,7 @@ function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
     totalAmount: packageValue + deliveryFee,
     deliveryFee,
     platformFee: 0,
-    riderEarning: deliveryFee,
+    riderEarning,
     deliveryAddress: row.deliveryLocation || row.deliveryPoint?.address || 'Delivery address unavailable',
     deliveryNotes: row.packageSummary || '',
     packageTagCode: row.packageTagCode || '',
@@ -329,25 +359,95 @@ function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
   };
 }
 
+function normalizeNotificationType(item: BackendNotification): NotificationItem['type'] {
+  const text = `${item.type || ''} ${item.title || ''} ${item.message || item.body || ''}`.toLowerCase();
+  if (/assign|dispatch|rider offer|delivery offer/.test(text)) return 'assignment';
+  if (/payment|payout|earning/.test(text)) return 'payment';
+  if (/cancel|reject|failed|unavailable/.test(text)) return 'cancelled';
+  if (/security|safety|threat|dispute/.test(text)) return 'security';
+  if (/verif|document|identity/.test(text)) return 'verification';
+  if (/deliver|pickup|package/.test(text)) return 'delivery';
+  return 'system';
+}
+
+function normalizeNotification(item: BackendNotification): NotificationItem {
+  const read = typeof item.read === 'boolean'
+    ? item.read
+    : typeof item.unread === 'boolean'
+      ? !item.unread
+      : false;
+
+  return {
+    id: item.id || '',
+    type: normalizeNotificationType(item),
+    title: item.title || 'Rider update',
+    message: item.message || item.body || '',
+    createdAt: item.createdAt || item.created_at || new Date().toISOString(),
+    read,
+  };
+}
+
+function emptyStats(): RiderDashboardStats {
+  return {
+    assigned: 0,
+    pendingOffers: 0,
+    newAssignments: 0,
+    active: 0,
+    completed: 0,
+    highRiskTasks: 0,
+    totalEarnings: 0,
+    payoutPending: 0,
+  };
+}
+
+function emptyEarnings(): EarningsSummary {
+  return {
+    today: 0,
+    weekly: 0,
+    monthly: 0,
+    cashCollected: 0,
+    onlinePaymentsDelivered: 0,
+    platformFeesHandled: 0,
+    riderPayoutPending: 0,
+    completedDeliveriesCount: 0,
+    chart: [],
+  };
+}
+
 function normalizeDashboard(response: BackendDashboardResponse): RiderDashboardPayload {
   const authShape = normalizeRider(response);
   const rows = response.assignments || [];
+  const completed = response.completed || [];
+  const notificationRows = Array.isArray(response.notifications)
+    ? response.notifications
+    : response.notifications?.notifications || [];
+  const derivedAssigned = rows.filter((row) => row.status === 'assigned').length;
+  const derivedActive = rows.filter((row) => ['accepted', 'arrived_pickup', 'picked_up', 'out_for_delivery'].includes(String(row.status || ''))).length;
+  const stats = {
+    ...emptyStats(),
+    assigned: derivedAssigned,
+    newAssignments: derivedAssigned,
+    active: derivedActive,
+    completed: completed.length,
+    highRiskTasks: rows.filter((row) => row.riskLevel === 'high').length,
+    ...response.stats,
+  };
 
   return {
     rider: authShape.rider,
+    stats,
+    earnings: {
+      ...emptyEarnings(),
+      ...response.earnings,
+      chart: Array.isArray(response.earnings?.chart) ? response.earnings.chart : [],
+    },
+    activities: Array.isArray(response.activities) ? response.activities : [],
     assignments: rows.map(normalizeAssignment),
     orders: rows
       .filter((row) => ['picked_up', 'out_for_delivery'].includes(String(row.status || '')))
       .map(normalizeOrder),
-    completed: (response.completed || []).map(normalizeOrder),
-    notifications: (response.notifications || []).map((item) => ({
-      id: item.id || '',
-      type: (item.type as NotificationItem['type']) || 'system',
-      title: item.title || 'Rider update',
-      message: item.message || item.body || '',
-      createdAt: item.createdAt || item.created_at || new Date().toISOString(),
-      read: Boolean(item.read),
-    })),
+    completed: completed.map(normalizeOrder),
+    notifications: notificationRows.map(normalizeNotification),
   };
 }
 
@@ -425,6 +525,9 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
 
 export interface RiderDashboardPayload {
   rider: Rider;
+  stats: RiderDashboardStats;
+  earnings: EarningsSummary;
+  activities: DeliveryActivity[];
   assignments: PrivateAssignment[];
   orders: FullDeliveryOrder[];
   completed: FullDeliveryOrder[];
@@ -652,6 +755,29 @@ export const riderApi = {
   },
   activeDispatches() {
     return apiRequest<{ dispatches: RiderDispatchOffer[] }>('/api/rider/dispatches/active');
+  },
+  subscribeToNotifications(handlers: {
+    onNotification?: (notification: NotificationItem) => void;
+    onError?: () => void;
+  }) {
+    if (typeof window === 'undefined' || !('EventSource' in window)) {
+      return () => undefined;
+    }
+
+    const stream = new EventSource(buildApiUrl('/api/notifications/stream'), {
+      withCredentials: true,
+    });
+    stream.addEventListener('notification', (event) => {
+      try {
+        handlers.onNotification?.(
+          normalizeNotification(JSON.parse(event.data) as BackendNotification),
+        );
+      } catch {
+        // Polling remains the fallback if a realtime event is malformed.
+      }
+    });
+    stream.onerror = () => handlers.onError?.();
+    return () => stream.close();
   },
   acceptDispatch(dispatchId: string) {
     return apiRequest<{ batch: unknown; assignments: BackendAssignment[] }>('/api/rider/dispatch/' + dispatchId + '/accept', {

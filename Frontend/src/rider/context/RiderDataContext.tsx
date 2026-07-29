@@ -4,7 +4,17 @@ import { shouldUseApi, shouldUseMock } from '../config/env';
 import { deliveryActivities, earningsSummary, completedOrders as seedCompletedOrders } from '../data/mockData';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
-import type { AssignmentStatus, DeliveryActivity, EarningsSummary, FullDeliveryOrder, NotificationItem, PrivateAssignment, SafetyReportPayload } from '../types';
+import type {
+  AssignmentStatus,
+  DeliveryActivity,
+  EarningsSummary,
+  FullDeliveryOrder,
+  NotificationItem,
+  PrivateAssignment,
+  RiderDashboardStats,
+  SafetyReportPayload,
+} from '../types';
+import { useAuth } from './AuthContext';
 
 interface VerifyResult {
   ok: boolean;
@@ -30,6 +40,7 @@ interface RiderDataContextValue {
   activities: DeliveryActivity[];
   notifications: NotificationItem[];
   earnings: EarningsSummary;
+  stats: RiderDashboardStats;
   unlockedOrderIds: string[];
   loading: boolean;
   apiConnected: boolean;
@@ -60,6 +71,19 @@ function emptyEarnings(): EarningsSummary {
     riderPayoutPending: 0,
     completedDeliveriesCount: 0,
     chart: [],
+  };
+}
+
+function emptyStats(): RiderDashboardStats {
+  return {
+    assigned: 0,
+    pendingOffers: 0,
+    newAssignments: 0,
+    active: 0,
+    completed: 0,
+    highRiskTasks: 0,
+    totalEarnings: 0,
+    payoutPending: 0,
   };
 }
 
@@ -101,26 +125,24 @@ function proofLocationFromPoint(lat?: number | null, lng?: number | null) {
   };
 }
 
-function playRiderDispatchBeep() {
-  if (typeof window === 'undefined') return;
+function scheduleRiderDispatchBeep(audio: AudioContext) {
   try {
-    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const audio = new AudioContextClass();
+    const startAt = audio.currentTime + 0.02;
+    [0, 0.24, 0.48].forEach((offset, index) => {
     const oscillator = audio.createOscillator();
     const gain = audio.createGain();
     oscillator.type = 'sine';
-    oscillator.frequency.value = 880;
+      oscillator.frequency.value = index === 1 ? 1046 : 880;
     gain.gain.value = 0.0001;
     oscillator.connect(gain);
     gain.connect(audio.destination);
-    oscillator.start();
-    gain.gain.exponentialRampToValueAtTime(0.18, audio.currentTime + 0.03);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + 0.65);
-    oscillator.stop(audio.currentTime + 0.7);
-    window.setTimeout(() => void audio.close().catch(() => undefined), 900);
+      oscillator.start(startAt + offset);
+      gain.gain.exponentialRampToValueAtTime(0.2, startAt + offset + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + 0.18);
+      oscillator.stop(startAt + offset + 0.2);
+    });
   } catch {
-    // Browser audio can be blocked until the rider interacts with the page.
+    // The next user interaction will retry a pending sound alert.
   }
 }
 
@@ -131,12 +153,24 @@ function showRiderNotification(title: string, body: string) {
   }
 }
 
+function isNewAssignmentNotification(notification: NotificationItem) {
+  return /new assignment|new delivery|delivery assigned|delivery offer|seller sent a delivery offer|new delivery batch/i.test(
+    `${notification.title} ${notification.message}`,
+  );
+}
+
 export function RiderDataProvider({ children }: { children: ReactNode }) {
+  const { rider } = useAuth();
   const initial = shouldUseMock() ? riderLocalStore.load() : emptyLocalState();
   const [assignments, setAssignments] = useState<PrivateAssignment[]>(initial.assignments);
   const [orders, setOrders] = useState<FullDeliveryOrder[]>(initial.orders);
   const [completed, setCompleted] = useState<FullDeliveryOrder[]>(initial.completed);
   const [notifications, setNotifications] = useState<NotificationItem[]>(initial.notifications);
+  const [activities, setActivities] = useState<DeliveryActivity[]>(shouldUseMock() ? deliveryActivities : []);
+  const [earnings, setEarnings] = useState<EarningsSummary>(
+    shouldUseMock() ? calculateEarnings(initial.completed, initial.orders, true) : emptyEarnings(),
+  );
+  const [stats, setStats] = useState<RiderDashboardStats>(emptyStats());
   const [unlockedOrderIds, setUnlockedOrderIds] = useState<string[]>(initial.unlockedOrderIds);
   const [loading, setLoading] = useState(false);
   const [apiConnected, setApiConnected] = useState(false);
@@ -144,6 +178,67 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const knownAssignmentIdsRef = useRef<Set<string>>(new Set(initial.assignments.map((item) => item.id)));
   const knownNotificationIdsRef = useRef<Set<string>>(new Set(initial.notifications.map((item) => item.id)));
   const knownDispatchOfferIdsRef = useRef<Set<string>>(new Set());
+  const alertedEventIdsRef = useRef<Set<string>>(new Set());
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const pendingSoundRef = useRef(false);
+
+  function getAudioContext() {
+    if (typeof window === 'undefined') return null;
+    if (audioContextRef.current) return audioContextRef.current;
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioContextRef.current = new AudioContextClass();
+    return audioContextRef.current;
+  }
+
+  function playDispatchAlert() {
+    const audio = getAudioContext();
+    if (!audio) return;
+    if (audio.state === 'running') {
+      pendingSoundRef.current = false;
+      scheduleRiderDispatchBeep(audio);
+      return;
+    }
+    pendingSoundRef.current = true;
+    void audio.resume()
+      .then(() => {
+        if (!pendingSoundRef.current) return;
+        pendingSoundRef.current = false;
+        scheduleRiderDispatchBeep(audio);
+      })
+      .catch(() => undefined);
+  }
+
+  function alertNewDispatch(id: string, title: string, body: string) {
+    const alertId = id || `${title}:${body}`;
+    if (alertedEventIdsRef.current.has(alertId)) return;
+    alertedEventIdsRef.current.add(alertId);
+    playDispatchAlert();
+    showRiderNotification(title, body);
+  }
+
+  useEffect(() => {
+    function unlockAudio() {
+      const audio = getAudioContext();
+      if (!audio || audio.state === 'running') return;
+      void audio.resume()
+        .then(() => {
+          if (!pendingSoundRef.current) return;
+          pendingSoundRef.current = false;
+          scheduleRiderDispatchBeep(audio);
+        })
+        .catch(() => undefined);
+    }
+
+    document.addEventListener('pointerdown', unlockAudio, true);
+    document.addEventListener('keydown', unlockAudio, true);
+    return () => {
+      document.removeEventListener('pointerdown', unlockAudio, true);
+      document.removeEventListener('keydown', unlockAudio, true);
+      void audioContextRef.current?.close().catch(() => undefined);
+      audioContextRef.current = null;
+    };
+  }, []);
 
   function applyStateFromLocal() {
     const state = riderLocalStore.load();
@@ -151,6 +246,16 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     setOrders(state.orders);
     setCompleted(state.completed);
     setNotifications(state.notifications);
+    setActivities(deliveryActivities);
+    setEarnings(calculateEarnings(state.completed, state.orders, true));
+    setStats({
+      ...emptyStats(),
+      assigned: state.assignments.filter((item) => item.status === 'assigned').length,
+      newAssignments: state.assignments.filter((item) => item.status === 'assigned').length,
+      active: state.assignments.filter((item) => ['accepted', 'arrived_at_pickup', 'package_picked_up', 'out_for_delivery'].includes(item.status)).length,
+      completed: state.completed.length,
+      highRiskTasks: state.assignments.filter((item) => item.riskLevel === 'high').length,
+    });
     setUnlockedOrderIds(state.unlockedOrderIds);
   }
 
@@ -164,6 +269,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
         setOrders(empty.orders);
         setCompleted(empty.completed);
         setNotifications(empty.notifications);
+        setActivities([]);
+        setEarnings(emptyEarnings());
+        setStats(emptyStats());
         setUnlockedOrderIds(empty.unlockedOrderIds);
       }
       return;
@@ -175,22 +283,38 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       const nextAssignments = payload.assignments;
       const nextNotifications = payload.notifications;
       const nextDispatchOffers = dispatchPayload.dispatches || [];
-      if (hydratedRef.current) {
-        const newAssignments = nextAssignments.filter((item) => item.status === 'assigned' && !knownAssignmentIdsRef.current.has(item.id));
-        const newDispatchOffers = nextDispatchOffers.filter((item) => item.status === 'offered' && !knownDispatchOfferIdsRef.current.has(item.id));
-        const newDispatchNotifications = nextNotifications.filter((item) =>
-          !knownNotificationIdsRef.current.has(item.id) &&
-          !item.read &&
-          /assignment|dispatch|delivery/i.test(`${item.type} ${item.title} ${item.message}`),
-        );
+      const newAssignments = nextAssignments.filter((item) =>
+        item.status === 'assigned' &&
+        (!hydratedRef.current || !knownAssignmentIdsRef.current.has(item.id)),
+      );
+      const newDispatchOffers = nextDispatchOffers.filter((item) =>
+        item.status === 'offered' &&
+        (!hydratedRef.current || !knownDispatchOfferIdsRef.current.has(item.id)),
+      );
+      const newDispatchNotifications = nextNotifications.filter((item) =>
+        !item.read &&
+        isNewAssignmentNotification(item) &&
+        (!hydratedRef.current || !knownNotificationIdsRef.current.has(item.id)),
+      );
 
-        if (newAssignments.length || newDispatchOffers.length || newDispatchNotifications.length) {
-          playRiderDispatchBeep();
-          showRiderNotification(
-            'New Gleenc dispatch',
-            newAssignments[0]?.sellerName || newDispatchNotifications[0]?.message || 'A delivery task needs your attention.',
-          );
-        }
+      if (newDispatchOffers[0]) {
+        alertNewDispatch(
+          `offer:${newDispatchOffers[0].id}`,
+          'New Gleenc dispatch',
+          'A delivery batch is waiting for your response.',
+        );
+      } else if (newAssignments[0]) {
+        alertNewDispatch(
+          `assignment:${newAssignments[0].id}`,
+          'New Gleenc assignment',
+          `${newAssignments[0].sellerName} assigned a delivery to you.`,
+        );
+      } else if (newDispatchNotifications[0]) {
+        alertNewDispatch(
+          `notification:${newDispatchNotifications[0].id}`,
+          newDispatchNotifications[0].title,
+          newDispatchNotifications[0].message,
+        );
       }
 
       knownAssignmentIdsRef.current = new Set(nextAssignments.map((item) => item.id));
@@ -202,6 +326,13 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       setOrders(payload.orders);
       setCompleted(payload.completed);
       setNotifications(nextNotifications);
+      setActivities(payload.activities);
+      setEarnings(payload.earnings);
+      setStats({
+        ...payload.stats,
+        pendingOffers: nextDispatchOffers.length,
+        newAssignments: payload.stats.assigned + nextDispatchOffers.length,
+      });
       setUnlockedOrderIds(payload.orders.map((order) => order.id));
       setApiConnected(true);
     } catch {
@@ -215,15 +346,66 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    if (!rider?.id) {
+      const empty = emptyLocalState();
+      setAssignments(empty.assignments);
+      setOrders(empty.orders);
+      setCompleted(empty.completed);
+      setNotifications(empty.notifications);
+      setActivities([]);
+      setEarnings(emptyEarnings());
+      setStats(emptyStats());
+      setUnlockedOrderIds(empty.unlockedOrderIds);
+      setApiConnected(false);
+      hydratedRef.current = false;
+      return undefined;
+    }
+
+    knownAssignmentIdsRef.current = new Set();
+    knownNotificationIdsRef.current = new Set();
+    knownDispatchOfferIdsRef.current = new Set();
+    alertedEventIdsRef.current = new Set();
+    hydratedRef.current = false;
     void refresh();
     if (!shouldUseApi()) return undefined;
-    const interval = window.setInterval(() => {
+    const refreshWhenActive = () => {
       if (navigator.onLine && document.visibilityState === 'visible') {
         void refresh();
       }
-    }, 15000);
-    return () => window.clearInterval(interval);
-  }, []);
+    };
+    const interval = window.setInterval(() => {
+      refreshWhenActive();
+    }, 10000);
+    window.addEventListener('focus', refreshWhenActive);
+    window.addEventListener('online', refreshWhenActive);
+    document.addEventListener('visibilitychange', refreshWhenActive);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenActive);
+      window.removeEventListener('online', refreshWhenActive);
+      document.removeEventListener('visibilitychange', refreshWhenActive);
+    };
+  }, [rider?.id]);
+
+  useEffect(() => {
+    if (!rider?.id || !shouldUseApi()) return undefined;
+    return riderApi.subscribeToNotifications({
+      onNotification(notification) {
+        setNotifications((current) => [
+          notification,
+          ...current.filter((item) => item.id !== notification.id),
+        ]);
+        if (isNewAssignmentNotification(notification)) {
+          alertNewDispatch(
+            `notification:${notification.id}`,
+            notification.title,
+            notification.message,
+          );
+        }
+        void refresh();
+      },
+    });
+  }, [rider?.id]);
 
   function updateAssignmentStatus(assignmentId: string, status: AssignmentStatus) {
     setAssignments((current) => current.map((item) => (item.id === assignmentId ? { ...item, status } : item)));
@@ -234,9 +416,10 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     assignments,
     orders,
     completed,
-    activities: shouldUseMock() ? deliveryActivities : [],
+    activities,
     notifications,
-    earnings: calculateEarnings(completed, orders, shouldUseMock()),
+    earnings,
+    stats,
     unlockedOrderIds,
     loading,
     apiConnected,
@@ -247,6 +430,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.acceptAssignment(assignmentId);
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
           setApiConnected(true);
+          void refresh();
           return;
         } catch (error) {
           setApiConnected(false);
@@ -277,6 +461,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
             setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order!.id])));
           }
           setApiConnected(true);
+          void refresh();
           return { ok: true, order: response.order };
         } catch (error) {
           setApiConnected(false);
@@ -302,6 +487,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
             setUnlockedOrderIds((current) => Array.from(new Set([...current, response.order!.id])));
           }
           setApiConnected(true);
+          void refresh();
           return { ok: true, order: response.order };
         } catch (error) {
           setApiConnected(false);
@@ -367,6 +553,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           setAssignments((current) => current.filter((item) => item.id !== response.assignment.id));
           setUnlockedOrderIds((current) => current.filter((id) => id !== orderId));
           setApiConnected(true);
+          void refresh();
           return { ok: true, order: response.order };
         } catch (error) {
           setApiConnected(false);
@@ -386,6 +573,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.failDelivery(assignmentId, note);
           setAssignments((current) => current.map((item) => (item.id === assignmentId ? response.assignment : item)));
           setApiConnected(true);
+          void refresh();
           return;
         } catch (error) {
           setApiConnected(false);
@@ -449,7 +637,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       riderLocalStore.submitCashReconciliation(orderIds, note);
       applyStateFromLocal();
     }
-  }), [apiConnected, assignments, completed, loading, notifications, orders, unlockedOrderIds]);
+  }), [activities, apiConnected, assignments, completed, earnings, loading, notifications, orders, stats, unlockedOrderIds]);
 
   return <RiderDataContext.Provider value={value}>{children}</RiderDataContext.Provider>;
 }

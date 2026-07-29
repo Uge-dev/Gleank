@@ -86,6 +86,7 @@ export default function AssignedOrders() {
     setDispatchAction(dispatchId);
     try {
       await riderApi.acceptDispatch(dispatchId);
+      setDispatches((current) => current.filter((offer) => offer.id !== dispatchId));
       await refresh();
       await loadDispatches();
       setDispatchError('');

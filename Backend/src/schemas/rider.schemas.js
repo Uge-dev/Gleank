@@ -128,7 +128,10 @@ export const riderPickupSchema = z.object({
 });
 
 export const riderCompleteDeliverySchema = z.object({
-  customerDeliveryCode: z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP.").optional().default(""),
+  customerDeliveryCode: z.union([
+    z.string().trim().regex(/^\d{4,8}$/, "Enter the buyer delivery OTP."),
+    z.literal(""),
+  ]).optional().default(""),
   proofUrl: optionalUploadedFileUrl,
   proofFileName: z.string().trim().min(1, "Upload delivery proof photo.").max(240),
   proofNote: z.string().trim().max(500).optional().default(""),

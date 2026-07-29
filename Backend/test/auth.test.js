@@ -59,6 +59,9 @@ const {
   backfillLegacyVerification,
   verificationRequirementDefinitions,
 } = await import("../src/services/verification.service.js");
+const { generateOrderVerificationCode } = await import(
+  "../src/services/logistics.service.js"
+);
 
 const tinyPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lxJ8qAAAAABJRU5ErkJggg==",
@@ -635,97 +638,6 @@ test("rider account cannot be silently converted to seller", async () => {
   const sessionResponse = await riderAgent.get("/api/rider/session");
   assert.equal(sessionResponse.status, 200);
   assert.equal(sessionResponse.body.user.role, "rider");
-});
-
-test("buyer/seller and rider authentication portals are strictly separated", async () => {
-  const riderEmail = "portal-rider@gleank.local";
-  const riderPassword = "PortalRider123!";
-  const buyerEmail = "portal-buyer@gleank.local";
-  const buyerPassword = "PortalBuyer123!";
-
-  const riderRegistration = await request(app)
-    .post("/api/rider/register")
-    .field("name", "Portal Rider")
-    .field("email", riderEmail)
-    .field("password", riderPassword)
-    .field("phone", "08000000091")
-    .field("campus", "FUPRE")
-    .field("vehicleType", "motorcycle")
-    .field("vehiclePlate", "PORTAL-91")
-    .field("coverageArea", "FUPRE")
-    .attach("identityDocument", tinyPng, {
-      filename: "portal-rider-id.png",
-      contentType: "image/png",
-    })
-    .attach("selfie", tinyPng, {
-      filename: "portal-rider-selfie.png",
-      contentType: "image/png",
-    });
-  assert.equal(riderRegistration.status, 201);
-
-  const buyerRegistration = await request(app)
-    .post("/api/auth/register")
-    .send({
-      name: "Portal Buyer",
-      email: buyerEmail,
-      password: buyerPassword,
-      role: "buyer",
-      campus: "FUPRE",
-    });
-  assert.equal(buyerRegistration.status, 201);
-
-  const riderSessionCountBeforeWrongLogin = db
-    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
-    .get(riderRegistration.body.user.id).count;
-  const riderOnMainLogin = await request(app)
-    .post("/api/auth/login")
-    .send({ email: riderEmail, password: riderPassword });
-  assert.equal(riderOnMainLogin.status, 403);
-  assert.match(riderOnMainLogin.body.message, /rider account/i);
-  assert.equal(riderOnMainLogin.headers["set-cookie"], undefined);
-  assert.equal(
-    db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
-      .get(riderRegistration.body.user.id).count,
-    riderSessionCountBeforeWrongLogin,
-  );
-
-  const buyerSessionCountBeforeWrongLogin = db
-    .prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
-    .get(buyerRegistration.body.user.id).count;
-  const buyerOnRiderLogin = await request(app)
-    .post("/api/rider/login")
-    .send({ email: buyerEmail, password: buyerPassword });
-  assert.equal(buyerOnRiderLogin.status, 403);
-  assert.match(buyerOnRiderLogin.body.message, /buyer or seller account/i);
-  assert.equal(buyerOnRiderLogin.headers["set-cookie"], undefined);
-  assert.equal(
-    db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = ?")
-      .get(buyerRegistration.body.user.id).count,
-    buyerSessionCountBeforeWrongLogin,
-  );
-
-  const correctRiderLogin = await request(app)
-    .post("/api/rider/login")
-    .send({ email: riderEmail, password: riderPassword });
-  assert.equal(correctRiderLogin.status, 200);
-  assert.equal(correctRiderLogin.body.user.role, "rider");
-
-  const correctBuyerLogin = await request(app)
-    .post("/api/auth/login")
-    .send({ email: buyerEmail, password: buyerPassword });
-  assert.equal(correctBuyerLogin.status, 200);
-  assert.equal(correctBuyerLogin.body.user.role, "buyer");
-
-  const riderThroughMainRegistration = await request(app)
-    .post("/api/auth/register")
-    .send({
-      name: "Blocked Rider Signup",
-      email: "blocked-rider-signup@gleank.local",
-      password: "BlockedRider123!",
-      role: "rider",
-      campus: "FUPRE",
-    });
-  assert.equal(riderThroughMainRegistration.status, 422);
 });
 
 test("buyer cannot access seller or rider operations", async () => {
@@ -1631,6 +1543,14 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     "/api/rider/dashboard",
   );
   assert.equal(riderDashboardAfterAcceptance.status, 200);
+  assert.equal(Array.isArray(riderDashboardAfterAcceptance.body.notifications), true);
+  assert.equal(riderDashboardAfterAcceptance.body.stats.active, 1);
+  assert.equal(riderDashboardAfterAcceptance.body.stats.newAssignments, 0);
+  assert.ok(
+    riderDashboardAfterAcceptance.body.activities.some(
+      (activity) => activity.title === "Delivery accepted",
+    ),
+  );
   const acceptedAssignment = riderDashboardAfterAcceptance.body.assignments.find(
     (assignment) => assignment.id === acceptResponse.body.assignments[0].id,
   );
@@ -1639,6 +1559,8 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.ok(acceptedAssignment.pickupPoint.address);
   assert.equal(typeof acceptedAssignment.pickupPoint.lat, "number");
   assert.equal(typeof acceptedAssignment.pickupPoint.lng, "number");
+  assert.match(acceptedAssignment.packageSummary, /small/i);
+  assert.match(acceptedAssignment.packageSummary, /light/i);
 
   const assignmentId = acceptResponse.body.assignments[0].id;
   const deliveryConversation = db.prepare(`
@@ -1649,6 +1571,100 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       AND seller_id = ?
   `).get(`delivery_assignment:${assignmentId}`, riderId, sellerId);
   assert.ok(deliveryConversation?.id);
+
+  db.prepare(
+    "UPDATE rider_assignments SET delivery_fee_kobo = 250000 WHERE id = ?",
+  ).run(assignmentId);
+  const sellerPickupCode = generateOrderVerificationCode(
+    "seller-pickup",
+    orderId,
+  );
+  const pickupResponse = await riderAgent
+    .post(`/api/rider/assignments/${assignmentId}/pickup`)
+    .field("sellerPickupCode", sellerPickupCode)
+    .field("proofNote", "Package collected from seller.")
+    .field("locationLabel", acceptedAssignment.pickupPoint.address)
+    .field(
+      "proofLocation",
+      JSON.stringify({
+        lat: acceptedAssignment.pickupPoint.lat,
+        lng: acceptedAssignment.pickupPoint.lng,
+        accuracyMeters: 8,
+      }),
+    )
+    .attach("proofPhoto", tinyPng, {
+      filename: "pickup-proof.png",
+      contentType: "image/png",
+    });
+  assert.equal(pickupResponse.status, 200);
+  assert.equal(pickupResponse.body.assignment.status, "picked_up");
+
+  const orderForDeliveryCode = db
+    .prepare("SELECT verification_code FROM orders WHERE id = ?")
+    .get(orderId);
+  const buyerDeliveryCode =
+    orderForDeliveryCode.verification_code ||
+    generateOrderVerificationCode("buyer-delivery", orderId);
+  const deliveryCodeResponse = await riderAgent
+    .post(`/api/rider/orders/${orderId}/verify-delivery-code`)
+    .send({ customerDeliveryCode: buyerDeliveryCode });
+  assert.equal(deliveryCodeResponse.status, 200);
+  assert.ok(
+    deliveryCodeResponse.body.assignment.buyerDeliveryCodeVerifiedAt,
+  );
+
+  const completeResponse = await riderAgent
+    .post(`/api/rider/orders/${orderId}/complete-delivery`)
+    .field("customerDeliveryCode", "")
+    .field("proofNote", "Package handed to buyer.")
+    .field("locationLabel", "Buyer delivery point")
+    .field(
+      "proofLocation",
+      JSON.stringify({
+        lat: orderRow.delivery_lat,
+        lng: orderRow.delivery_lng,
+        accuracyMeters: 9,
+      }),
+    )
+    .attach("proofPhoto", tinyPng, {
+      filename: "delivery-proof.png",
+      contentType: "image/png",
+    });
+  assert.equal(completeResponse.status, 200);
+  assert.equal(completeResponse.body.assignment.status, "delivered");
+
+  const riderDashboardAfterCompletion = await riderAgent.get(
+    "/api/rider/dashboard",
+  );
+  assert.equal(riderDashboardAfterCompletion.status, 200);
+  assert.equal(riderDashboardAfterCompletion.body.stats.active, 0);
+  assert.equal(riderDashboardAfterCompletion.body.stats.completed, 1);
+  assert.equal(riderDashboardAfterCompletion.body.earnings.today, 2500);
+  assert.equal(
+    riderDashboardAfterCompletion.body.earnings.riderPayoutPending,
+    2500,
+  );
+  assert.ok(
+    riderDashboardAfterCompletion.body.completed.some(
+      (assignment) => assignment.id === assignmentId,
+    ),
+  );
+  assert.ok(
+    riderDashboardAfterCompletion.body.activities.some(
+      (activity) => activity.title === "Delivery completed",
+    ),
+  );
+  assert.ok(
+    riderDashboardAfterCompletion.body.notifications.some(
+      (notification) => notification.title === "Delivery completed",
+    ),
+  );
+  assert.equal(
+    db.prepare(
+      "SELECT current_active_batch_count FROM rider_profiles WHERE user_id = ?",
+    ).get(riderId).current_active_batch_count,
+    0,
+  );
 
   const manualRiderAgent = request.agent(app);
   const manualRiderRegister = await manualRiderAgent

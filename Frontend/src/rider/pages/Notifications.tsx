@@ -24,7 +24,7 @@ export default function Notifications() {
       <PageHeader title="Notifications" subtitle="New assignments, payment updates, delivery confirmations, and cancelled orders." />
       <div className="space-y-4">
         {notifications.map((notification) => {
-          const Icon = iconMap[notification.type];
+          const Icon = iconMap[notification.type] || FiBell;
           return (
             <Card key={notification.id} className={`p-5 ${notification.read ? 'opacity-75' : 'ring-2 ring-cyan-100'}`}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

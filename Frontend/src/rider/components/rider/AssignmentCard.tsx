@@ -16,6 +16,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
   const [contactOpen, setContactOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState('');
   const telLink = `tel:${assignment.sellerPhone}`;
   const whatsAppLink = `https://wa.me/${assignment.sellerWhatsApp}`;
   const dispatchWindowLabel = assignment.dispatchTimeoutMinutes
@@ -30,11 +31,23 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
       : '';
 
   async function handleStartDelivery() {
+    if (assignment.status !== 'assigned') {
+      setConfirmOpen(false);
+      navigate(`/rider/verify/${assignment.id}`);
+      return;
+    }
+
     setSubmitting(true);
-    await startDelivery(assignment.id);
-    setSubmitting(false);
-    setConfirmOpen(false);
-    navigate('/rider/verify-code');
+    setActionError('');
+    try {
+      await startDelivery(assignment.id);
+      setConfirmOpen(false);
+      navigate(`/rider/verify/${assignment.id}`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'This delivery could not be accepted.');
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -85,7 +98,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600 shadow-sm">Package: value hidden</div>
+          <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600 shadow-sm">Package: {assignment.packageSummary || 'Delivery package'}</div>
           <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600">Risk: <span className={assignment.riskLevel === 'high' ? 'text-rose-600' : assignment.riskLevel === 'medium' ? 'text-amber-600' : 'text-emerald-600'}>{assignment.riskLevel}</span></div>
           <div className="rounded-2xl bg-white p-3 text-sm font-bold text-slate-600">OTP: pickup + delivery</div>
         </div>
@@ -104,8 +117,15 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <Button variant="secondary" icon={FiMessageCircle} onClick={() => setContactOpen(true)} fullWidth>Contact Seller</Button>
-          <Button icon={FiTruck} onClick={() => setConfirmOpen(true)} fullWidth>{assignment.status === 'assigned' ? 'Accept & Verify Pickup' : 'Continue Pickup'}</Button>
+          <Button
+            icon={FiTruck}
+            onClick={() => assignment.status === 'assigned' ? setConfirmOpen(true) : navigate(`/rider/verify/${assignment.id}`)}
+            fullWidth
+          >
+            {assignment.status === 'assigned' ? 'Accept & Verify Pickup' : 'Continue Pickup'}
+          </Button>
         </div>
+        {actionError && <p className="mt-3 rounded-2xl bg-rose-50 p-3 text-sm font-bold text-rose-700">{actionError}</p>}
       </Card>
 
       <Modal open={contactOpen} title="Seller Contact" message="Use these options only for locating the seller and collecting the package. Keep order discussions inside Gleenc support where possible." onClose={() => setContactOpen(false)}>

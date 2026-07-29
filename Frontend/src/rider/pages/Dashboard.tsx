@@ -11,10 +11,7 @@ import ApiConnectionBanner from '../components/rider/ApiConnectionBanner';
 
 export default function Dashboard() {
   const { rider, apiConnected } = useAuth();
-  const { assignments, completed, earnings, activities } = useRiderData();
-  const activeDeliveries = assignments.filter((item) => ['accepted', 'arrived_at_pickup', 'package_picked_up', 'out_for_delivery'].includes(item.status));
-  const assignedOrders = assignments.filter((item) => item.status === 'assigned');
-  const highRisk = assignments.filter((item) => item.riskLevel === 'high').length;
+  const { assignments, earnings, activities, stats } = useRiderData();
 
   return (
     <div>
@@ -22,12 +19,12 @@ export default function Dashboard() {
       <ApiConnectionBanner connected={apiConnected} />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <StatCard label="New Assignments" value={assignedOrders.length} icon={FiPackage} tone="cyan" />
-        <StatCard label="Active Deliveries" value={activeDeliveries.length} icon={FiTruck} tone="green" />
-        <StatCard label="Completed" value={completed.length} icon={FiCheckCircle} tone="dark" />
+        <StatCard label="New Assignments" value={stats.newAssignments} icon={FiPackage} tone="cyan" />
+        <StatCard label="Active Deliveries" value={stats.active} icon={FiTruck} tone="green" />
+        <StatCard label="Completed" value={stats.completed} icon={FiCheckCircle} tone="dark" />
         <StatCard label="Today's Earnings" value={formatCurrency(earnings.today)} icon={FiCreditCard} tone="orange" />
         <StatCard label="Platform Payout Pending" value={formatCurrency(earnings.riderPayoutPending)} icon={FiCreditCard} tone="purple" />
-        <StatCard label="High Risk Tasks" value={highRisk} icon={FiShield} tone="dark" />
+        <StatCard label="High Risk Tasks" value={stats.highRiskTasks} icon={FiShield} tone="dark" />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">

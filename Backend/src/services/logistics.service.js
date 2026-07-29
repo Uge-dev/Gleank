@@ -2872,7 +2872,12 @@ function createAssignmentsForBatch(batchId, riderId) {
       task.whatsapp_phone || task.store_phone || "",
       task.buyer_name || "Buyer",
       task.buyer_phone || "",
-      `Batch pickup ${task.pickup_sequence}: ${task.order_code}`,
+      [
+        task.package_size,
+        task.package_weight_class,
+        task.handling_class,
+        `Batch pickup ${task.pickup_sequence}: ${task.order_code}`,
+      ].filter(Boolean).join(" · "),
       task.package_tag_code || "",
       task.total_kobo || 0,
       task.delivery_fee_kobo || 0,
@@ -3058,6 +3063,14 @@ export function riderAcceptDispatch(auth, dispatchId, input = {}) {
       } catch {
         // The assignment remains valid even if chat hydration is retried from the UI.
       }
+    });
+    createNotification({
+      userId: riderId,
+      type: "order",
+      title: "Dispatch accepted",
+      body: `${assignments.length} delivery ${assignments.length === 1 ? "task is" : "tasks are"} now active. Continue to the first seller pickup point.`,
+      actionLabel: "Open active deliveries",
+      actionPath: "/rider/active",
     });
     updateReliabilityScore(riderId, "rider");
     notifyBatchParties(attempt.delivery_batch_id, "Rider assigned", "A rider accepted the delivery batch. Open Gleenc to track progress.", "rider_assigned");

@@ -23,6 +23,12 @@ export default function DeliveryActivityList({ activities }: { activities: Deliv
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">Live</span>
       </div>
       <div className="space-y-4">
+        {activities.length === 0 && (
+          <div className="rounded-2xl bg-slate-50 p-5 text-center">
+            <p className="font-bold text-slate-700">No delivery activity yet</p>
+            <p className="mt-1 text-sm text-slate-500">Assignments, pickups, delivery verification, completion, and failures will appear here automatically.</p>
+          </div>
+        )}
         {activities.map((activity) => {
           const Icon = icons[activity.status];
           return (
