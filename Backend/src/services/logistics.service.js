@@ -1129,7 +1129,7 @@ function loadOrderForBatch(orderId) {
 }
 
 export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
-  if (!env.enableAutomatedOrderGrouping || !orderIds.length) return null;
+  if (!orderIds.length) return null;
 
   const orders = orderIds.map(loadOrderForBatch).filter(Boolean);
   if (!orders.length) return null;
@@ -1169,7 +1169,10 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
       ? serializeZone(db.prepare("SELECT * FROM delivery_zones WHERE id = ?").get(order.pickup_zone_id))
       : findZoneForText(order.store_pickup_location || order.nearest_landmark || order.store_campus || order.location_area, batchType === "local_market" ? "local_market" : "");
     const sourceArea = order.market_id || order.store_campus || order.location_area || order.campus || "";
-    const split = summary.requiresSeparateDelivery || !summary.canBatch;
+    const split =
+      !env.enableAutomatedOrderGrouping ||
+      summary.requiresSeparateDelivery ||
+      !summary.canBatch;
     const key = split
       ? `single:${order.id}`
       : [batchType, sourceArea || "general", sourceZone?.id || "zone", deliveryZone?.id || "delivery"].join(":");

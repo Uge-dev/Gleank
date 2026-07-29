@@ -10,10 +10,14 @@ import {
   FiPackage,
   FiPhone,
   FiShoppingBag,
+  FiTruck,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { useAuth } from "../context/AuthContext";
-import { getOrder } from "../services/order.service";
+import {
+  getOrder,
+  sellerConfirmOrder as confirmSellerOrder,
+} from "../services/order.service";
 import {
   initializeOrdersPayment,
   initializePayAtDeliveryPayment,
@@ -37,9 +41,21 @@ const timelineStatuses: OrderStatus[] = [
 const productFallback =
   "https://images.unsplash.com/photo-1472851294608-062f824d29cc?auto=format&fit=crop&w=900&q=80";
 
-function getStatusIndex(status: OrderStatus) {
-  const index = timelineStatuses.indexOf(status);
-  return index >= 0 ? index : 0;
+function timelineStageReached(order: GleencOrder, status: OrderStatus) {
+  if (status === "pending_payment") return true;
+  if (status === "paid") return order.paymentStatus === "paid";
+  if (status === "seller_confirmed") {
+    return (
+      Boolean(order.sellerConfirmedAt) ||
+      ["processing", "ready_for_delivery", "out_for_delivery", "delivered", "completed"].includes(
+        order.status,
+      )
+    );
+  }
+
+  const currentIndex = timelineStatuses.indexOf(order.status);
+  const stageIndex = timelineStatuses.indexOf(status);
+  return currentIndex >= stageIndex && currentIndex >= 0;
 }
 
 function formatDate(value: string) {
@@ -71,6 +87,9 @@ function OrderDetails() {
   const [error, setError] = useState("");
   const [isOpeningPayment, setIsOpeningPayment] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [sellerActionError, setSellerActionError] = useState("");
+  const [sellerActionNotice, setSellerActionNotice] = useState("");
+  const [isConfirmingOrder, setIsConfirmingOrder] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -121,6 +140,33 @@ function OrderDetails() {
     }
   }
 
+  async function handleSellerConfirmOrder() {
+    if (!order || isConfirmingOrder) return;
+
+    setSellerActionError("");
+    setSellerActionNotice("");
+    setIsConfirmingOrder(true);
+
+    try {
+      const response = await confirmSellerOrder(
+        order.id,
+        "Seller confirmed product availability from the order details page.",
+      );
+      setOrder(response.order);
+      setSellerActionNotice(
+        "Order confirmed. Continue to package preparation and rider assignment.",
+      );
+    } catch (requestError) {
+      setSellerActionError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The order could not be confirmed.",
+      );
+    } finally {
+      setIsConfirmingOrder(false);
+    }
+  }
+
   if (isLoading) {
     return <LoadingState message="Loading order details..." />;
   }
@@ -137,9 +183,16 @@ function OrderDetails() {
     );
   }
 
-  const activeIndex = getStatusIndex(order.status);
-  const showContinuePayment = canContinuePayment(order);
   const isSeller = user?.id === order.sellerId || user?.role === "seller";
+  const showContinuePayment = !isSeller && canContinuePayment(order);
+  const sellerConfirmed = Boolean(order.sellerConfirmedAt);
+  const sellerCanConfirm =
+    isSeller &&
+    !sellerConfirmed &&
+    !["cancelled", "disputed", "delivered", "completed"].includes(order.status) &&
+    (order.paymentStatus === "paid" ||
+      order.paymentMethod === "pay_on_delivery" ||
+      Boolean(order.sellerConfirmationRequired));
 
   return (
     <section className="page-shell order-details-page order-details-upgraded-page">
@@ -160,6 +213,12 @@ function OrderDetails() {
 
       {paymentNotice && <div className="order-details-payment-notice">{paymentNotice}</div>}
       {paymentError && <div className="order-details-payment-error">{paymentError}</div>}
+      {sellerActionNotice && (
+        <div className="order-details-payment-notice">{sellerActionNotice}</div>
+      )}
+      {sellerActionError && (
+        <div className="order-details-payment-error">{sellerActionError}</div>
+      )}
 
       <div className="order-details-grid">
         <main className="order-details-main-card">
@@ -180,21 +239,28 @@ function OrderDetails() {
             </div>
 
             <div className="order-timeline">
-              {timelineStatuses.map((status, index) => (
-                <div className="timeline-row" key={status}>
-                  <span className={index <= activeIndex ? "done" : ""}>
-                    {index <= activeIndex ? <FiCheck /> : <FiClock />}
-                  </span>
-                  <div>
-                    <h3>
-                      {status
-                        .replaceAll("_", " ")
-                        .replace(/\b\w/g, (letter) => letter.toUpperCase())}
-                    </h3>
-                    <p>{index <= activeIndex ? "This stage has been reached." : "Waiting for this stage."}</p>
+              {timelineStatuses.map((status) => {
+                const reached = timelineStageReached(order, status);
+                return (
+                  <div className="timeline-row" key={status}>
+                    <span className={reached ? "done" : ""}>
+                      {reached ? <FiCheck /> : <FiClock />}
+                    </span>
+                    <div>
+                      <h3>
+                        {status
+                          .replaceAll("_", " ")
+                          .replace(/\b\w/g, (letter) => letter.toUpperCase())}
+                      </h3>
+                      <p>
+                        {reached
+                          ? "This stage has been reached."
+                          : "Waiting for this stage."}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
@@ -301,6 +367,44 @@ function OrderDetails() {
               </button>
             )}
           </section>
+
+          {isSeller && (
+            <section className="seller-order-detail-actions">
+              <h2>Seller fulfilment</h2>
+              {sellerCanConfirm ? (
+                <>
+                  <p>
+                    Confirm that the ordered products are available before package
+                    preparation and rider dispatch can continue.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={isConfirmingOrder}
+                    onClick={() => void handleSellerConfirmOrder()}
+                  >
+                    <FiCheck />
+                    {isConfirmingOrder ? "Confirming..." : "Confirm order"}
+                  </button>
+                </>
+              ) : sellerConfirmed ? (
+                <>
+                  <p className="seller-order-detail-confirmed">
+                    <FiCheck /> Seller confirmed
+                  </p>
+                  <Link to={`/seller/orders?order=${encodeURIComponent(order.id)}`}>
+                    <FiTruck /> Prepare package / assign rider
+                  </Link>
+                </>
+              ) : (
+                <p>
+                  {order.paymentMethod === "pay_now" &&
+                  order.paymentStatus !== "paid"
+                    ? "Waiting for the buyer's payment confirmation."
+                    : "No seller action is available for this order status."}
+                </p>
+              )}
+            </section>
+          )}
 
           <Link className="order-message-link" to={`/messages?order=${order.id}`}>
             <FiMessageCircle /> {isSeller ? "Message buyer" : "Message seller"}

@@ -19,6 +19,7 @@ const PAYMENT_KEYWORD_PATTERN =
   /\b(?:cash|cash\s*on\s*delivery|bank\s*transfer|transfer|do\s*transfer|make\s*transfer|send\s*transfer|account\s*(?:number|no|details?)?|acct|account\s*details?|pay\s*me|pay\s*seller|pay\s*rider|pay\s*outside|pay\s*direct(?:ly)?|send\s*(?:money|payment|account|acct|number)|direct\s*payment|direct\s*transfer|outside\s*(?:the\s*)?(?:app|platform|gleenc)|off\s*platform|offline\s*payment|bypass\s*(?:app|gleenc|payment)|avoid\s*(?:fee|charges?|platform)|no\s*paystack|without\s*paystack|private\s*(?:deal|payment)|meet\s*and\s*pay|pay\s*on\s*arrival|pos|p\.?o\.?s\.?|ussd|bank\s*app|opay|o\s*pay|palmpay|palm\s*pay|moniepoint|monie\s*point|kuda|access\s*bank|gtbank|gt\s*bank|uba|zenith|first\s*bank|fidelity|fcmb|wema)\b/i;
 const HIGH_RISK_PAY_AT_DELIVERY_PATTERN =
   /\b(?:iphone|phone|smartphone|laptop|macbook|tablet|ipad|electronics?|gadget|jewelry|gold|watch|camera)\b/i;
+const PAYMENT_ON_DELIVERY_MAX_ORDER_KOBO = 100_000 * 100;
 
 function clean(value, max = 1600) {
   return String(value || "").trim().slice(0, max);
@@ -341,10 +342,10 @@ export function evaluatePayAtDeliveryEligibility(userId, { products = [], totalK
     };
   }
 
-  if (Number(totalKobo || 0) > env.payAtDeliveryMaxOrderValueKobo) {
+  if (Number(totalKobo || 0) >= PAYMENT_ON_DELIVERY_MAX_ORDER_KOBO) {
     return {
       eligible: false,
-      reason: "Pay at Delivery is not available for this order value. Please use Pay Now.",
+      reason: "Payment on Delivery is available only when the order subtotal is below ₦100,000. Please use Pay Now.",
     };
   }
 

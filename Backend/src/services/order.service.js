@@ -36,6 +36,8 @@ const SELLER_ALLOWED_STATUS = new Set([
   "disputed",
 ]);
 
+const FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO = 100_000 * 100;
+
 function safeJsonArray(value) {
   try {
     const parsed = JSON.parse(value || "[]");
@@ -539,12 +541,30 @@ export function createOrders(userId, input) {
       grouped.set(product.store_id, group);
     }
 
-    if (paymentMethod === "pay_on_delivery") {
-      const allProducts = Array.from(grouped.values()).flatMap((group) => group.products);
-      const totalKoboForEligibility = allProducts.reduce(
-        (total, item) => total + item.lineTotalKobo,
-        0,
+    const allProducts = Array.from(grouped.values()).flatMap((group) => group.products);
+    const totalKoboForEligibility = allProducts.reduce(
+      (total, item) => total + item.lineTotalKobo,
+      0,
+    );
+
+    if (
+      totalKoboForEligibility >= FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO &&
+      deliveryOption === "Delivery"
+    ) {
+      throw new HttpError(
+        422,
+        "Door step delivery is available only when the order subtotal is below ₦100,000. Choose Pickup for this order.",
       );
+    }
+
+    if (paymentMethod === "pay_on_delivery") {
+      if (totalKoboForEligibility >= FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO) {
+        throw new HttpError(
+          422,
+          "Payment on Delivery is available only when the order subtotal is below ₦100,000. Choose Pay Now for this order.",
+        );
+      }
+
       const eligibility = evaluatePayAtDeliveryEligibility(userId, {
         products: allProducts,
         totalKobo: totalKoboForEligibility,
@@ -594,10 +614,7 @@ export function createOrders(userId, input) {
           item.product.seller_confirmation_required ||
           item.product.availability_status === "confirm_before_payment",
       );
-      const initialStatus =
-        paymentMethod === "pay_on_delivery" || sellerConfirmationRequired
-          ? "seller_confirmed"
-          : "pending_payment";
+      const initialStatus = "pending_payment";
       const stage4Status = sellerConfirmationRequired
         ? "pending_seller_confirmation"
         : paymentMethod === "pay_on_delivery"
@@ -760,22 +777,45 @@ export function createOrders(userId, input) {
 }
 
 export function sellerConfirmOrder(user, orderId, note = "") {
-  const row = getOrderRowByIdForUser(user.user_id, orderId);
+  let row = getOrderRowByIdForUser(user.user_id, orderId);
   if (!row) throw new HttpError(404, "Order was not found.");
   if (user.role !== "admin" && row.seller_id !== user.user_id) {
     throw new HttpError(403, "Only the seller or admin can confirm this order.");
   }
-  if (row.payment_status === "paid") {
-    throw new HttpError(422, "This order payment is already confirmed.");
+
+  if (row.seller_confirmed_at) {
+    return getOrder(user.user_id, row.id);
+  }
+
+  const canConfirmBeforePayment =
+    row.payment_method === "pay_on_delivery" ||
+    Boolean(row.seller_confirmation_required);
+
+  if (row.payment_status !== "paid" && !canConfirmBeforePayment) {
+    throw new HttpError(
+      422,
+      "The buyer's payment must be confirmed before the seller can confirm this order.",
+    );
+  }
+
+  if (!row.pickup_task_id || !row.delivery_batch_id) {
+    createParentOrderForOrders({
+      buyerId: row.buyer_id,
+      orderIds: [row.id],
+    });
+    row = getOrderRowByIdForUser(user.user_id, orderId);
+    if (!row) throw new HttpError(404, "Order was not found after delivery setup.");
   }
 
   const now = new Date().toISOString();
   const nextStage4Status =
-    row.payment_method === "pay_on_delivery"
-      ? "seller_confirmed_waiting_rider"
+    row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
+      ? "seller_confirmed_package_pending"
       : "seller_confirmed_waiting_payment";
   const nextOrderStatus =
-    row.payment_method === "pay_on_delivery" ? "seller_confirmed" : "pending_payment";
+    row.payment_status === "paid" || row.payment_method === "pay_on_delivery"
+      ? "seller_confirmed"
+      : "pending_payment";
 
   db.prepare(`
     UPDATE orders

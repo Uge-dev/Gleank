@@ -37,6 +37,8 @@ const fallbackZones: DeliveryZone[] = [
   { id: "sports-complex", label: "Sports Complex" },
 ];
 
+const FLEXIBLE_CHECKOUT_MAX_ORDER = 100_000;
+
 function Checkout() {
   const { cartItems } = useCart();
   const { user, isAuthenticated } = useAuth();
@@ -73,14 +75,26 @@ function Checkout() {
   const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
   const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
+  const flexibleCheckoutEligible = cartSubtotal < FLEXIBLE_CHECKOUT_MAX_ORDER;
+  const doorStepDisabledReason = flexibleCheckoutEligible
+    ? ""
+    : "Door step delivery is available only when the order subtotal is below ₦100,000. Choose Pickup.";
   const payAtDeliveryDisabledReason =
-    user && !user.emailVerified
+    !flexibleCheckoutEligible
+      ? "Payment on Delivery is available only when the order subtotal is below ₦100,000. Choose Pay Now."
+      : user && !user.emailVerified
       ? "Verify your email before using Pay at Delivery, or choose Pay Now."
       : "";
 
   const sellerCount = useMemo(() => {
     return new Set(productCartItems.map((item) => item.sellerId)).size;
   }, [productCartItems]);
+
+  useEffect(() => {
+    if (flexibleCheckoutEligible) return;
+    if (deliveryOption === "Delivery") setDeliveryOption("Pickup");
+    if (paymentMethod === "pay_on_delivery") setPaymentMethod("pay_now");
+  }, [deliveryOption, flexibleCheckoutEligible, paymentMethod]);
 
   useEffect(() => {
     if (!campus.trim()) return;
@@ -194,6 +208,16 @@ function Checkout() {
 
     if (deliveryOption === "Delivery" && !deliveryZone) {
       setError("Select a door step delivery zone before payment.");
+      return;
+    }
+
+    if (deliveryOption === "Delivery" && !flexibleCheckoutEligible) {
+      setError(doorStepDisabledReason);
+      return;
+    }
+
+    if (paymentMethod === "pay_on_delivery" && !flexibleCheckoutEligible) {
+      setError(payAtDeliveryDisabledReason);
       return;
     }
 
@@ -440,11 +464,21 @@ function Checkout() {
               <button
                 type="button"
                 className={deliveryOption === "Delivery" ? "selected" : ""}
-                onClick={() => setDeliveryOption("Delivery")}
+                disabled={Boolean(doorStepDisabledReason)}
+                onClick={() => {
+                  if (!doorStepDisabledReason) setDeliveryOption("Delivery");
+                }}
+                title={
+                  doorStepDisabledReason ||
+                  "Deliver this order to your exact address"
+                }
               >
                 <FiTruck />
                 <strong>Door step delivery</strong>
-                <span>Send to your exact room, lodge, office, or landmark.</span>
+                <span>
+                  {doorStepDisabledReason ||
+                    "Send to your exact room, lodge, office, or landmark."}
+                </span>
               </button>
             </div>
 
@@ -550,7 +584,7 @@ function Checkout() {
               <div>
                 <h2>Payment option</h2>
                 <p>
-                  Pay now for protected payment, or use Pay at Delivery through
+                  Pay now for protected payment, or use Payment on Delivery through
                   Gleenc/Paystack when the rider reaches you. No cash handoff.
                 </p>
               </div>
@@ -577,7 +611,7 @@ function Checkout() {
                 title={payAtDeliveryDisabledReason || "Pay securely at delivery through Gleenc"}
               >
                 <FiTruck />
-                <strong>Pay at Delivery</strong>
+                <strong>Payment on Delivery</strong>
                 <span>
                   {payAtDeliveryDisabledReason ||
                     "Seller confirms, rider comes, you pay securely through Gleenc/Paystack when your rider arrives. No cash or direct transfer is allowed."}
@@ -664,7 +698,7 @@ function Checkout() {
             <p>
               {paymentMethod === "pay_now"
                 ? "Your order is created first, then payment is verified before sellers process it."
-                : "Your order goes to the seller first. The delivery code unlocks only after Gleenc/Paystack verifies payment."}
+                : "Your Payment on Delivery order goes to the seller first. The delivery code unlocks only after Gleenc/Paystack verifies payment."}
             </p>
           </div>
 
@@ -674,7 +708,9 @@ function Checkout() {
             ) : (
               <>
                 {paymentMethod === "pay_now" ? <FiCreditCard /> : <FiTruck />}
-                {paymentMethod === "pay_now" ? "Pay now" : "Place order"}
+                {paymentMethod === "pay_now"
+                  ? "Pay now"
+                  : "Place Payment on Delivery order"}
               </>
             )}
           </button>

@@ -877,6 +877,97 @@ test("public payment verification confirms local payment and protects buyer OTP"
     (order) => order.id === orderId,
   );
   assert.equal(sellerVisibleOrder.buyerPhone, "");
+  assert.equal(sellerVisibleOrder.status, "paid");
+  assert.equal(sellerVisibleOrder.sellerConfirmedAt, null);
+
+  const paidOrderConfirmation = await sellerAgent
+    .post(`/api/orders/${orderId}/seller-confirm`)
+    .send({ note: "Paid order stock confirmed by seller." });
+  assert.equal(paidOrderConfirmation.status, 200);
+  assert.equal(paidOrderConfirmation.body.order.status, "ready_for_delivery");
+  assert.equal(
+    paidOrderConfirmation.body.order.fulfillmentStatus,
+    "package_ready",
+  );
+  assert.ok(paidOrderConfirmation.body.order.sellerConfirmedAt);
+
+  const confirmedPickupTask = db
+    .prepare("SELECT * FROM pickup_tasks WHERE order_id = ?")
+    .get(orderId);
+  assert.ok(confirmedPickupTask?.id);
+  assert.equal(Number(confirmedPickupTask.seller_confirmed_availability), 1);
+
+  const paymentOnDeliveryOrder = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId, quantity: 1 }],
+      buyerName: "Payment Buyer",
+      buyerPhone: "08000000002",
+      campus: "FUPRE",
+      deliveryOption: "Delivery",
+      deliveryAddress: "Library road, FUPRE",
+      paymentMethod: "pay_on_delivery",
+    });
+  assert.equal(paymentOnDeliveryOrder.status, 201);
+  assert.equal(paymentOnDeliveryOrder.body.orders[0].status, "pending_payment");
+  assert.equal(paymentOnDeliveryOrder.body.orders[0].paymentMethod, "pay_on_delivery");
+  assert.equal(paymentOnDeliveryOrder.body.orders[0].sellerConfirmedAt, null);
+
+  const paymentOnDeliveryConfirmation = await sellerAgent
+    .post(`/api/orders/${paymentOnDeliveryOrder.body.orders[0].id}/seller-confirm`)
+    .send({ note: "Payment on Delivery stock confirmed." });
+  assert.equal(paymentOnDeliveryConfirmation.status, 200);
+  assert.equal(paymentOnDeliveryConfirmation.body.order.status, "seller_confirmed");
+  assert.ok(paymentOnDeliveryConfirmation.body.order.sellerConfirmedAt);
+
+  const highValueProductResponse = await sellerAgent
+    .post("/api/seller/products")
+    .field("name", "High Value Checkout Product")
+    .field("category", "Office equipment")
+    .field("description", "Product used to verify the one hundred thousand naira limit.")
+    .field("price", "100000")
+    .field("stock", "2")
+    .field("status", "active")
+    .field(
+      "retainedImageUrls",
+      JSON.stringify(["/uploads/high-value-checkout-product.jpg"]),
+    );
+  assert.equal(highValueProductResponse.status, 201);
+  const highValueProductId = highValueProductResponse.body.product.id;
+
+  const blockedHighValuePaymentOnDelivery = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId: highValueProductId, quantity: 1 }],
+      buyerName: "Payment Buyer",
+      buyerPhone: "08000000002",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_on_delivery",
+    });
+  assert.equal(blockedHighValuePaymentOnDelivery.status, 422);
+  assert.match(
+    blockedHighValuePaymentOnDelivery.body.message,
+    /Payment on Delivery.*below ₦100,000/i,
+  );
+
+  const blockedHighValueDoorstep = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId: highValueProductId, quantity: 1 }],
+      buyerName: "Payment Buyer",
+      buyerPhone: "08000000002",
+      campus: "FUPRE",
+      deliveryOption: "Delivery",
+      deliveryAddress: "Library road, FUPRE",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(blockedHighValueDoorstep.status, 422);
+  assert.match(
+    blockedHighValueDoorstep.body.message,
+    /Door step delivery.*below ₦100,000/i,
+  );
 
   const storeId = db.prepare("SELECT id FROM stores WHERE owner_id = ?").get(
     sellerRegister.body.user.id,

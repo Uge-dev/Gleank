@@ -1038,7 +1038,11 @@ export function SellerOrderReadinessPanel({
               .join(" · ");
 
             return (
-              <article className={`seller-order-task-card ${task.status}`} key={task.id}>
+              <article
+                className={`seller-order-task-card ${task.status}`}
+                id={`seller-pickup-task-${task.id}`}
+                key={task.id}
+              >
                 <div className="seller-order-task-top">
                   <div>
                     <span>Batch #{task.deliveryBatchId.slice(-6)}</span>

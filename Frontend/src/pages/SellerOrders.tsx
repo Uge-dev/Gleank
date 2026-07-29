@@ -22,6 +22,7 @@ import {
   sendDeliveryOfferToRider,
   startAutomaticDispatchForBatch,
 } from "../services/seller.service";
+import { sellerConfirmOrder } from "../services/order.service";
 import type {
   AvailableDeliveryRider,
   SellerPickupTask,
@@ -157,6 +158,31 @@ function SellerOrders() {
     }
   }
 
+  async function handleConfirmOrder(order: GleencOrder) {
+    setError("");
+    setNotice("");
+    setTaskActionId(`confirm-order-${order.id}`);
+
+    try {
+      await sellerConfirmOrder(
+        order.id,
+        "Seller confirmed product availability from Buyer Orders.",
+      );
+      setNotice(
+        "Order confirmed. Prepare the package; Gleenc will start rider matching when it is ready.",
+      );
+      await Promise.all([loadOrders(), loadPickupTasks()]);
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The order could not be confirmed.",
+      );
+    } finally {
+      setTaskActionId("");
+    }
+  }
+
   async function handleRejectPickupTask(task: SellerPickupTask) {
     if (!task.orderItems.length) {
       setError("This pickup task has no order items to reject.");
@@ -280,6 +306,15 @@ function SellerOrders() {
     }
   }
 
+  async function handleOpenManualDispatch(task: SellerPickupTask) {
+    await loadAvailableRiders(task.deliveryBatchId);
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`seller-pickup-task-${task.id}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
   if (isLoading) {
     return <LoadingState message="Loading buyer orders and dispatch readiness..." />;
   }
@@ -326,6 +361,21 @@ function SellerOrders() {
               const pickupTask = pickupTasks.find(
                 (task) => task.orderId === order.id,
               );
+              const sellerConfirmed =
+                Boolean(order.sellerConfirmedAt) ||
+                Boolean(pickupTask?.sellerConfirmedAvailability);
+              const orderClosed = [
+                "cancelled",
+                "disputed",
+                "delivered",
+                "completed",
+              ].includes(order.status);
+              const canConfirmOrder =
+                !orderClosed &&
+                !sellerConfirmed &&
+                (order.paymentStatus === "paid" ||
+                  order.paymentMethod === "pay_on_delivery" ||
+                  Boolean(order.sellerConfirmationRequired));
               const image = resolveMediaUrl(
                 firstItem?.productImageUrl,
                 orderImageFallback,
@@ -355,23 +405,64 @@ function SellerOrders() {
                 <div className="seller-orders-list-meta">
                   <strong>{formatNaira(order.total)}</strong>
                   <small>{formatDate(order.createdAt)}</small>
-                  {pickupTask &&
-                  !pickupTask.sellerConfirmedAvailability &&
-                  pickupTask.status !== "seller_rejected" ? (
+                  {canConfirmOrder ? (
                     <button
                       type="button"
                       className="seller-order-confirm-card-action"
-                      disabled={taskActionId === `confirm-${pickupTask.id}`}
-                      onClick={() => void handleConfirmPickupTask(pickupTask)}
+                      disabled={taskActionId === `confirm-order-${order.id}`}
+                      onClick={() => void handleConfirmOrder(order)}
                     >
                       <FiCheckCircle />
-                      {taskActionId === `confirm-${pickupTask.id}`
+                      {taskActionId === `confirm-order-${order.id}`
                         ? "Confirming..."
-                        : "Confirm availability"}
+                        : "Confirm order"}
                     </button>
-                  ) : pickupTask?.sellerConfirmedAvailability ? (
+                  ) : sellerConfirmed && !orderClosed ? (
                     <span className="seller-order-confirmed-card-label">
                       <FiCheckCircle /> Seller confirmed
+                    </span>
+                  ) : !orderClosed &&
+                    order.paymentMethod === "pay_now" &&
+                    order.paymentStatus !== "paid" ? (
+                    <span className="seller-order-payment-waiting-card-label">
+                      <FiClock /> Waiting for payment
+                    </span>
+                  ) : null}
+                  {sellerConfirmed &&
+                  pickupTask &&
+                  !pickupTask.sellerMarkedReady &&
+                  !pickupTask.assignedRiderId &&
+                  !orderClosed ? (
+                    <button
+                      type="button"
+                      className="seller-order-card-secondary-action"
+                      disabled={taskActionId === `ready-${pickupTask.id}`}
+                      onClick={() => void handleMarkPickupReady(pickupTask)}
+                    >
+                      <FiPackage />
+                      {taskActionId === `ready-${pickupTask.id}`
+                        ? "Updating..."
+                        : "Mark package ready"}
+                    </button>
+                  ) : null}
+                  {pickupTask?.sellerMarkedReady &&
+                  !pickupTask.assignedRiderId &&
+                  !orderClosed ? (
+                    <button
+                      type="button"
+                      className="seller-order-card-secondary-action"
+                      disabled={isLoadingRiders}
+                      onClick={() => void handleOpenManualDispatch(pickupTask)}
+                    >
+                      <FiTruck />
+                      {isLoadingRiders
+                        ? "Loading riders..."
+                        : "Assign rider manually"}
+                    </button>
+                  ) : null}
+                  {pickupTask?.assignedRiderId && !orderClosed ? (
+                    <span className="seller-order-rider-assigned-card-label">
+                      <FiTruck /> Rider assigned
                     </span>
                   ) : null}
                   <Link to={`/messages?order=${order.id}`}>

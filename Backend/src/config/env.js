@@ -222,7 +222,7 @@ export const env = {
   payAtDeliveryMinBuyerScore: numberFromEnv(process.env.PAY_AT_DELIVERY_MIN_BUYER_SCORE, 70),
   payAtDeliveryMaxOrderValueKobo: numberFromEnv(
     process.env.PAY_AT_DELIVERY_MAX_ORDER_VALUE_KOBO,
-    numberFromEnv(process.env.PAY_AT_DELIVERY_MAX_ORDER_VALUE, 50000) * 100,
+    numberFromEnv(process.env.PAY_AT_DELIVERY_MAX_ORDER_VALUE, 100000) * 100,
   ),
   payAtDeliveryDisableAfterFailures: numberFromEnv(
     process.env.PAY_AT_DELIVERY_DISABLE_AFTER_FAILURES,

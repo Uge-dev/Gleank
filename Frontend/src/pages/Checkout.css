@@ -214,6 +214,16 @@
   box-shadow: 0 12px 35px rgba(249, 115, 22, 0.13);
 }
 
+.delivery-choice-grid button:disabled,
+.payment-choice-grid button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  border-color: rgba(148, 163, 184, 0.35);
+  background: #f8fafc;
+  color: #64748b;
+  box-shadow: none;
+}
+
 .delivery-zone-card {
   display: grid;
   gap: 0.9rem;

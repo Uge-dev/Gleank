@@ -34345,6 +34345,59 @@ html[data-theme="dark"] .feed-source-tag small {
   font-size: 10px !important;
 }
 
+.seller-orders-list-meta .seller-order-confirm-card-action,
+.seller-orders-list-meta .seller-order-card-secondary-action,
+.seller-orders-list-meta .seller-order-confirmed-card-label,
+.seller-orders-list-meta .seller-order-payment-waiting-card-label,
+.seller-orders-list-meta .seller-order-rider-assigned-card-label {
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.seller-orders-list-meta .seller-order-confirm-card-action {
+  background: #ff3c00;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.seller-orders-list-meta .seller-order-card-secondary-action {
+  background: #111827;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.seller-orders-list-meta .seller-order-confirm-card-action:disabled,
+.seller-orders-list-meta .seller-order-card-secondary-action:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.seller-orders-list-meta .seller-order-confirmed-card-label {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.seller-orders-list-meta .seller-order-payment-waiting-card-label {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.seller-orders-list-meta .seller-order-rider-assigned-card-label {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .seller-order-readiness {
   gap: 10px !important;
 }
