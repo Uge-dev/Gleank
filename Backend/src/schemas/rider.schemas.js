@@ -73,6 +73,10 @@ export const riderLoginSchema = z.object({
 
 export const riderPresenceHeartbeatSchema = z.object({
   currentLocation: coordinate.optional(),
+  presenceSessionId: z.string().trim().min(8).max(160).regex(
+    /^[A-Za-z0-9._:-]+$/,
+    "Invalid rider presence session.",
+  ).optional(),
 });
 
 export const riderLocationSchema = z.object({

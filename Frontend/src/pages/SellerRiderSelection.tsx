@@ -96,8 +96,8 @@ export default function SellerRiderSelection() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const loadPage = useCallback(async () => {
-    setLoading(true);
+  const loadPage = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
 
     try {
@@ -147,12 +147,25 @@ export default function SellerRiderSelection() {
           : "The rider-selection page could not be loaded.",
       );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [mode, orderId]);
 
   useEffect(() => {
     void loadPage();
+    const refreshPresence = () => {
+      if (navigator.onLine && document.visibilityState === "visible") {
+        void loadPage(true);
+      }
+    };
+    const interval = window.setInterval(refreshPresence, 15_000);
+    window.addEventListener("focus", refreshPresence);
+    document.addEventListener("visibilitychange", refreshPresence);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshPresence);
+      document.removeEventListener("visibilitychange", refreshPresence);
+    };
   }, [loadPage]);
 
   const vehicleOptions = useMemo(

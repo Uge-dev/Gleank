@@ -92,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true;
     let heartbeatCount = 0;
+    let consecutiveHeartbeatFailures = 0;
 
     function setAutomaticAvailability(
       availability: Rider['availability'],
@@ -102,35 +103,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setApiConnected(connected);
     }
 
+    function applyHeartbeatResponse(
+      response: Awaited<ReturnType<typeof riderApi.presenceHeartbeat>>,
+    ) {
+      if (!active) return;
+      consecutiveHeartbeatFailures = 0;
+      setRider((current) => ({
+        ...(current || response.rider),
+        ...response.rider,
+        availability: 'online',
+        email: response.rider.email || current?.email || '',
+        profilePhoto: response.rider.profilePhoto || current?.profilePhoto || '',
+      }));
+      setApiConnected(true);
+    }
+
     async function sendHeartbeat(includeLocation = false) {
       if (!active || !navigator.onLine || document.visibilityState !== 'visible') {
         return;
       }
-      let location: Awaited<ReturnType<typeof currentBrowserLocation>> | undefined;
-      if (includeLocation) {
-        try {
-          location = await currentBrowserLocation();
-        } catch {
-          location = undefined;
-        }
-      }
+
       try {
-        const response = await riderApi.presenceHeartbeat(location);
-        if (!active) return;
-        setRider((current) => ({
-          ...(current || response.rider),
-          ...response.rider,
-          availability: 'online',
-          email: response.rider.email || current?.email || '',
-          profilePhoto: response.rider.profilePhoto || current?.profilePhoto || '',
-        }));
-        setApiConnected(true);
-      } catch {
+        // Mark the rider online immediately. GPS collection must never delay
+        // presence or block accepting an offer.
+        applyHeartbeatResponse(await riderApi.presenceHeartbeat());
+      } catch (error) {
         if (!navigator.onLine) {
           setAutomaticAvailability('offline', false);
-        } else if (active) {
+        } else if (
+          error instanceof ApiClientError &&
+          [401, 403].includes(Number(error.status || 0))
+        ) {
           setApiConnected(false);
+          void refreshSession().catch(() => undefined);
+        } else if (active) {
+          consecutiveHeartbeatFailures += 1;
+          if (consecutiveHeartbeatFailures >= 2) {
+            setApiConnected(false);
+          }
         }
+        return;
+      }
+
+      if (!includeLocation || !active || document.visibilityState !== 'visible') {
+        return;
+      }
+
+      try {
+        const location = await currentBrowserLocation();
+        if (!active || !navigator.onLine || document.visibilityState !== 'visible') {
+          return;
+        }
+        applyHeartbeatResponse(await riderApi.presenceHeartbeat(location));
+      } catch {
+        // Presence is already online. Location permission is tracked
+        // separately and must not turn a connected rider offline.
       }
     }
 
@@ -167,15 +194,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      riderApi.sendPresenceOfflineBeacon();
       active = false;
+      riderApi.sendPresenceOfflineBeacon();
       window.clearInterval(heartbeat);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [riderId]);
+  }, [refreshSession, riderId]);
 
   const value = useMemo<AuthContextValue>(() => ({
     rider,

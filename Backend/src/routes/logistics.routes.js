@@ -166,7 +166,7 @@ logisticsRouter.post("/dispatch/batches/:batchId/offer-next-rider", requireAuth,
 });
 
 logisticsRouter.post("/rider/dispatch/:dispatchId/accept", requireAuth, requireEmailVerified, requireRole("rider"), (req, res) => {
-  res.json(riderAcceptDispatch(req.auth, req.params.dispatchId));
+  res.json(riderAcceptDispatch(req.auth, req.params.dispatchId, req.body || {}));
 });
 
 logisticsRouter.post("/rider/dispatch/:dispatchId/reject", requireAuth, requireEmailVerified, requireRole("rider"), (req, res) => {

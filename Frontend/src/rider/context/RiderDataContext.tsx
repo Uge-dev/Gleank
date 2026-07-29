@@ -218,7 +218,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     void refresh();
     if (!shouldUseApi()) return undefined;
     const interval = window.setInterval(() => {
-      void refresh();
+      if (navigator.onLine && document.visibilityState === 'visible') {
+        void refresh();
+      }
     }, 15000);
     return () => window.clearInterval(interval);
   }, []);

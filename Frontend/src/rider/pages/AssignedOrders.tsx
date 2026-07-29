@@ -33,7 +33,11 @@ export default function AssignedOrders() {
   }, [assigned, category, channel]);
 
   async function loadDispatches() {
-    if (!shouldUseApi()) return;
+    if (
+      !shouldUseApi() ||
+      !navigator.onLine ||
+      document.visibilityState !== 'visible'
+    ) return;
     setDispatchLoading(true);
     try {
       const payload = await riderApi.activeDispatches();
@@ -61,13 +65,20 @@ export default function AssignedOrders() {
   }
 
   useEffect(() => {
-    loadDispatches();
+    void loadDispatches();
     const refreshOnFocus = () => void loadDispatches();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void loadDispatches();
+      }
+    };
     window.addEventListener('focus', refreshOnFocus);
-    const interval = window.setInterval(loadDispatches, 10000);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    const interval = window.setInterval(() => void loadDispatches(), 10000);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, []);
 

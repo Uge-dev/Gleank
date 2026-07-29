@@ -187,7 +187,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
   {
     code: "seller_identity_selfie",
     role: "seller",
-    level: 1,
+    level: 2,
     blocking: true,
     workflowType: "document",
     title: "Identity/selfie",
@@ -214,7 +214,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
   {
     code: "seller_payout_account",
     role: "seller",
-    level: 1,
+    level: 3,
     blocking: true,
     workflowType: "form",
     title: "Payout account",
@@ -224,7 +224,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     code: "seller_campus_identity",
     role: "seller",
     sellerTypes: ["campus"],
-    level: 1,
+    level: 2,
     blocking: true,
     workflowType: "document",
     title: "Campus identity",
@@ -244,7 +244,7 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     code: "seller_shop_identity",
     role: "seller",
     sellerTypes: ["local_market", "nearby"],
-    level: 1,
+    level: 2,
     blocking: true,
     workflowType: "document",
     title: "Shop/stall identity",
@@ -269,6 +269,15 @@ const ROLE_REQUIREMENT_DEFINITIONS = [
     workflowType: "document",
     title: "Used item authenticity",
     description: "Proof of ownership or authenticity for higher-risk used goods.",
+  },
+  {
+    code: "seller_operational_agreement",
+    role: "seller",
+    level: 3,
+    blocking: true,
+    workflowType: "form",
+    title: "Seller operating agreement",
+    description: "Agreement to Gleenc fulfilment, payment, product and marketplace rules.",
   },
 ];
 
@@ -839,6 +848,7 @@ const REQUIRED_SUBMISSION_FIELDS = {
     "weightLimit",
     "fragileCapability",
   ],
+  seller_operational_agreement: ["agreementAccepted"],
 };
 
 const DOCUMENT_REQUIRED_CODES = new Set([
@@ -846,6 +856,9 @@ const DOCUMENT_REQUIRED_CODES = new Set([
   "rider_identity_selfie",
   "rider_guarantor",
   "rider_vehicle_authorization",
+  "seller_identity_selfie",
+  "seller_campus_identity",
+  "seller_shop_identity",
 ]);
 
 const VERIFIED_PROVIDER_CODES = new Set([
@@ -1579,16 +1592,26 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
     return;
   }
 
+  const fullyVerified = Number(level) >= 3;
+  const stageStatus = fullyVerified ? "verified" : `stage_${level}_approved`;
+  const note = `Stage ${level} approved through requirement-based verification by ${adminId}.`;
+
   db.prepare(`
     UPDATE stores
-    SET verified = 1,
-        verification_status = 'verified',
+    SET verified = ?,
+        verification_status = ?,
         verification_note = ?,
-        verified_at = COALESCE(verified_at, ?),
+        verified_at = CASE
+          WHEN ? THEN COALESCE(verified_at, ?)
+          ELSE verified_at
+        END,
         updated_at = ?
     WHERE owner_id = ?
   `).run(
-    `Approved through requirement-based verification by ${adminId}.`,
+    fullyVerified ? 1 : 0,
+    stageStatus,
+    note,
+    fullyVerified ? 1 : 0,
     now,
     now,
     caseRow.user_id,
@@ -1596,15 +1619,21 @@ function syncLegacyApproval(caseRow, level, adminId, now = nowIso()) {
 
   db.prepare(`
     UPDATE seller_verification_profiles
-    SET status = 'verified',
-        admin_review_status = 'approved',
-        verified_at = COALESCE(verified_at, ?),
+    SET status = CASE WHEN ? THEN 'verified' ELSE status END,
+        admin_review_status = ?,
+        verified_at = CASE
+          WHEN ? THEN COALESCE(verified_at, ?)
+          ELSE verified_at
+        END,
         note = ?,
         updated_at = ?
     WHERE user_id = ?
   `).run(
+    fullyVerified ? 1 : 0,
+    fullyVerified ? "approved" : stageStatus,
+    fullyVerified ? 1 : 0,
     now,
-    `Approved through requirement-based verification by ${adminId}.`,
+    note,
     now,
     caseRow.user_id,
   );

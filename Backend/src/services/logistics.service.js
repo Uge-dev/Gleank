@@ -15,6 +15,7 @@ import { evaluateRiderEligibility } from "./verification.service.js";
 import { createDeliveryAssignmentConversation } from "./message.service.js";
 import {
   expireStaleRiderPresence,
+  heartbeatRiderPresence,
   isRiderPresenceOnline,
 } from "./rider-presence.service.js";
 
@@ -2897,8 +2898,9 @@ function createAssignmentsForBatch(batchId, riderId) {
   return created;
 }
 
-export function riderAcceptDispatch(auth, dispatchId) {
+export function riderAcceptDispatch(auth, dispatchId, input = {}) {
   const riderId = requireRider(auth);
+  heartbeatRiderPresence(auth, input);
   const initialAttempt = db.prepare(
     "SELECT * FROM dispatch_attempts WHERE id = ? AND rider_id = ?",
   ).get(dispatchId, riderId);

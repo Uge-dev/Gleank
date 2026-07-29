@@ -222,6 +222,21 @@ export function runRiderMigrations() {
     CREATE INDEX IF NOT EXISTS rider_presence_sessions_rider_idx
       ON rider_presence_sessions(rider_id, status, last_heartbeat_at);
 
+    CREATE TABLE IF NOT EXISTS rider_presence_instances (
+      presence_id TEXT PRIMARY KEY,
+      auth_session_id TEXT NOT NULL,
+      rider_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'online' CHECK (status IN ('online','offline')),
+      last_heartbeat_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (auth_session_id) REFERENCES sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY (rider_id) REFERENCES users(id) ON DELETE CASCADE
+    ) STRICT;
+
+    CREATE INDEX IF NOT EXISTS rider_presence_instances_rider_idx
+      ON rider_presence_instances(rider_id, status, last_heartbeat_at);
+
     CREATE TABLE IF NOT EXISTS rider_assignments (
       id TEXT PRIMARY KEY,
       order_id TEXT NOT NULL,
@@ -431,6 +446,18 @@ export function runRiderMigrations() {
         updated_at = ?
     WHERE availability = 'busy'
   `).run(new Date().toISOString());
+
+  db.prepare(`
+    INSERT INTO rider_presence_instances (
+      presence_id, auth_session_id, rider_id, status, last_heartbeat_at,
+      created_at, updated_at
+    )
+    SELECT session_id, session_id, rider_id, status, last_heartbeat_at,
+           created_at, updated_at
+    FROM rider_presence_sessions
+    WHERE 1 = 1
+    ON CONFLICT(presence_id) DO NOTHING
+  `).run();
 }
 
 runRiderMigrations();

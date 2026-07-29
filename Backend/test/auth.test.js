@@ -52,6 +52,9 @@ const { env } = await import("../src/config/env.js");
 const { assertSellerVerified } = await import(
   "../src/services/seller-verification.service.js"
 );
+const { expireStaleRiderPresence } = await import(
+  "../src/services/rider-presence.service.js"
+);
 const {
   backfillLegacyVerification,
   verificationRequirementDefinitions,
@@ -887,9 +890,6 @@ test("rider verification locks approved stages and requires admin-approved resub
   assert.ok(
     eligibilityResponse.body.blockingReasons.some((reason) => reason.code === "RIDER_OFFLINE"),
   );
-  assert.ok(
-    eligibilityResponse.body.blockingReasons.some((reason) => reason.code === "HEARTBEAT_STALE"),
-  );
 });
 
 test("verification definitions and legacy backfill are safe and idempotent", () => {
@@ -1659,7 +1659,11 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(offlineCandidate.vehicleType, "Bike");
   assert.equal(offlineCandidate.coverageArea, "FUPRE");
   assert.equal(offlineCandidate.eligibleForThisOrder, true);
-  assert.ok(offlineCandidate.compatibilityWarnings.includes("rider_busy"));
+  assert.ok(
+    offlineCandidate.compatibilityWarnings.includes(
+      "rider_has_active_delivery",
+    ),
+  );
   assert.equal(offlineCandidate.successfulDeliveries, 0);
 
   const sellerManualOffer = await sellerAgent
@@ -1677,28 +1681,17 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
 
   const offlineManualAccept = await manualRiderAgent.post(
     `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
-  );
-  assert.equal(offlineManualAccept.status, 422);
-  assert.match(offlineManualAccept.body.message, /online/i);
-
-  db.prepare(`
-    UPDATE rider_profiles
-    SET availability = 'online',
-        availability_mode = 'online_zone_only',
-        current_active_batch_count = 0,
-        updated_at = ?
-    WHERE user_id = ?
-  `).run(new Date().toISOString(), manualRiderId);
-
-  const manualAccept = await manualRiderAgent.post(
-    `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
-  );
-  assert.equal(manualAccept.status, 200);
-  assert.equal(manualAccept.body.batch.dispatchStatus, "rider_assigned");
+  ).send({ presenceSessionId: "manual-rider-tab" });
+  assert.equal(offlineManualAccept.status, 200);
+  assert.equal(offlineManualAccept.body.batch.dispatchStatus, "rider_assigned");
+  const onlineAfterAccept = db
+    .prepare("SELECT availability FROM rider_profiles WHERE user_id = ?")
+    .get(manualRiderId);
+  assert.equal(onlineAfterAccept.availability, "online");
 
   const repeatedManualAccept = await manualRiderAgent.post(
     `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
-  );
+  ).send({ presenceSessionId: "manual-rider-tab" });
   assert.equal(repeatedManualAccept.status, 200);
   assert.equal(repeatedManualAccept.body.alreadyAccepted, true);
 
@@ -1707,6 +1700,56 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   );
   assert.equal(manualDispatchesAfterAcceptance.status, 200);
   assert.equal(manualDispatchesAfterAcceptance.body.dispatches.length, 0);
+
+  const secondTabHeartbeat = await manualRiderAgent
+    .post("/api/rider/presence/heartbeat")
+    .send({ presenceSessionId: "manual-rider-second-tab" });
+  assert.equal(secondTabHeartbeat.status, 200);
+  assert.equal(secondTabHeartbeat.body.riderProfile.availability, "online");
+
+  const firstTabOffline = await manualRiderAgent
+    .post("/api/rider/presence/offline")
+    .send({ presenceSessionId: "manual-rider-tab" });
+  assert.equal(firstTabOffline.status, 204);
+  assert.equal(
+    db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
+      manualRiderId,
+    ).availability,
+    "online",
+  );
+
+  const secondTabOffline = await manualRiderAgent
+    .post("/api/rider/presence/offline")
+    .send({ presenceSessionId: "manual-rider-second-tab" });
+  assert.equal(secondTabOffline.status, 204);
+  assert.equal(
+    db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
+      manualRiderId,
+    ).availability,
+    "offline",
+  );
+
+  const riderRelogin = await request.agent(app)
+    .post("/api/rider/login")
+    .send({
+      email: "manual-choice-rider@gleank.local",
+      password: "CampusRider987!",
+    });
+  assert.equal(riderRelogin.status, 200);
+  assert.equal(riderRelogin.body.riderProfile.availability, "online");
+
+  db.prepare(`
+    UPDATE rider_presence_instances
+    SET last_heartbeat_at = ?
+    WHERE rider_id = ?
+  `).run(new Date(Date.now() - 120_000).toISOString(), manualRiderId);
+  expireStaleRiderPresence();
+  assert.equal(
+    db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
+      manualRiderId,
+    ).availability,
+    "offline",
+  );
 });
 
 test("critical webhook and admin fallback defaults are rejected", async () => {

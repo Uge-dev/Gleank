@@ -8,10 +8,14 @@ function normalizeApiBaseUrl(value: string) {
   if (typeof window !== 'undefined' && /^https?:\/\//i.test(base)) {
     try {
       const configured = new URL(base);
-      const isVercelApp = window.location.hostname.endsWith('.vercel.app');
-      const isRenderBackend = configured.hostname.endsWith('.onrender.com');
+      const isLocalFrontend =
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
 
-      if (isVercelApp && isRenderBackend && configured.origin !== window.location.origin) {
+      // Production rider authentication must travel through the same-origin
+      // /api proxy. Otherwise Safari and other browsers can withhold the
+      // httpOnly session cookie from a cross-site Render request.
+      if (!isLocalFrontend && configured.origin !== window.location.origin) {
         return '';
       }
     } catch {

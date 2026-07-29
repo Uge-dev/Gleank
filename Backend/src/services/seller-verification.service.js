@@ -865,6 +865,7 @@ function submitSellerVerificationStageRequirements(userId, stage) {
             campus: shared.campus,
             studentId: profile?.student_id || "",
           },
+          documentUrls: [profile?.identity_proof_url].filter(Boolean),
           provider: "seller_onboarding_stage_2",
         },
       );
@@ -875,7 +876,11 @@ function submitSellerVerificationStageRequirements(userId, stage) {
         userId,
         sellerType,
         "seller_shop_identity",
-        { payload: shared, provider: "seller_onboarding_stage_2" },
+        {
+          payload: shared,
+          documentUrls: [profile?.identity_proof_url].filter(Boolean),
+          provider: "seller_onboarding_stage_2",
+        },
       );
     }
 

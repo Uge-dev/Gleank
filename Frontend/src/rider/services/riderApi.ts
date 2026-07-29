@@ -1,6 +1,11 @@
 import { apiRequest, buildApiUrl } from './apiClient';
 import type { FullDeliveryOrder, NotificationItem, PrivateAssignment, ProofRecord, Rider, SafetyReportPayload } from '../types';
 
+const presenceSessionId =
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `rider-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 type BackendUser = {
   id?: string;
   name?: string;
@@ -621,18 +626,24 @@ export const riderApi = {
   ) {
     return apiRequest<BackendRiderAuthResponse>('/api/rider/presence/heartbeat', {
       method: 'POST',
-      body: JSON.stringify({ currentLocation }),
+      body: JSON.stringify({ currentLocation, presenceSessionId }),
     }).then(normalizeRider);
   },
   sendPresenceOfflineBeacon() {
     const url = buildApiUrl('/api/rider/presence/offline');
+    const body = JSON.stringify({ presenceSessionId });
     if (navigator.sendBeacon) {
-      return navigator.sendBeacon(url);
+      return navigator.sendBeacon(
+        url,
+        new Blob([body], { type: 'application/json' }),
+      );
     }
     void fetch(url, {
       method: 'POST',
       credentials: 'include',
       keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body,
     }).catch(() => undefined);
     return true;
   },
@@ -643,7 +654,10 @@ export const riderApi = {
     return apiRequest<{ dispatches: RiderDispatchOffer[] }>('/api/rider/dispatches/active');
   },
   acceptDispatch(dispatchId: string) {
-    return apiRequest<{ batch: unknown; assignments: BackendAssignment[] }>('/api/rider/dispatch/' + dispatchId + '/accept', { method: 'POST' })
+    return apiRequest<{ batch: unknown; assignments: BackendAssignment[] }>('/api/rider/dispatch/' + dispatchId + '/accept', {
+      method: 'POST',
+      body: JSON.stringify({ presenceSessionId }),
+    })
       .then((response) => ({
         batch: response.batch,
         assignments: (response.assignments || []).map(normalizeAssignment),
@@ -656,7 +670,10 @@ export const riderApi = {
     });
   },
   acceptAssignment(assignmentId: string) {
-    return apiRequest<{ assignment: BackendAssignment }>('/api/rider/assignments/' + assignmentId + '/accept', { method: 'POST' })
+    return apiRequest<{ assignment: BackendAssignment }>('/api/rider/assignments/' + assignmentId + '/accept', {
+      method: 'POST',
+      body: JSON.stringify({ presenceSessionId }),
+    })
       .then((response) => ({ assignment: normalizeAssignment(response.assignment) }));
   },
   verifyPickup(assignmentId: string, payload: PickupVerificationPayload) {

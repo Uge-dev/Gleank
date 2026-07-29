@@ -10,8 +10,21 @@ function riderIdFromAuth(auth) {
   return auth.user_id || auth.id || "";
 }
 
-function sessionIdFromAuth(auth) {
+function authSessionId(auth) {
   return String(auth?.session_id || "");
+}
+
+function cleanPresenceSessionId(value) {
+  const candidate = String(value || "").trim();
+  return /^[A-Za-z0-9._:-]{8,160}$/.test(candidate) ? candidate : "";
+}
+
+function sessionIdFromAuth(auth, presenceSessionId = "") {
+  const sessionId = authSessionId(auth);
+  const clientSessionId = cleanPresenceSessionId(presenceSessionId);
+  return sessionId && clientSessionId
+    ? `${sessionId}:${clientSessionId}`
+    : sessionId;
 }
 
 function presenceCutoff(now = Date.now()) {
@@ -24,7 +37,7 @@ function activePresenceExists(riderId, cutoff = presenceCutoff()) {
   return Boolean(
     db.prepare(`
       SELECT 1
-      FROM rider_presence_sessions
+      FROM rider_presence_instances
       WHERE rider_id = ?
         AND status = 'online'
         AND last_heartbeat_at > ?
@@ -60,21 +73,27 @@ function syncRiderAvailability(riderId, now = nowIso()) {
   return online ? "online" : "offline";
 }
 
-export function markRiderPresenceOnline(userId, sessionId) {
-  if (!userId || !sessionId) return "offline";
+export function markRiderPresenceOnline(
+  userId,
+  authSessionId,
+  presenceId = authSessionId,
+) {
+  if (!userId || !authSessionId || !presenceId) return "offline";
   const now = nowIso();
 
   transaction(() => {
     db.prepare(`
-      INSERT INTO rider_presence_sessions (
-        session_id, rider_id, status, last_heartbeat_at, created_at, updated_at
-      ) VALUES (?, ?, 'online', ?, ?, ?)
-      ON CONFLICT(session_id) DO UPDATE SET
+      INSERT INTO rider_presence_instances (
+        presence_id, auth_session_id, rider_id, status,
+        last_heartbeat_at, created_at, updated_at
+      ) VALUES (?, ?, ?, 'online', ?, ?, ?)
+      ON CONFLICT(presence_id) DO UPDATE SET
+        auth_session_id = excluded.auth_session_id,
         rider_id = excluded.rider_id,
         status = 'online',
         last_heartbeat_at = excluded.last_heartbeat_at,
         updated_at = excluded.updated_at
-    `).run(sessionId, userId, now, now, now);
+    `).run(presenceId, authSessionId, userId, now, now, now);
 
     db.prepare(`
       UPDATE rider_profiles
@@ -92,11 +111,25 @@ export function markRiderPresenceOnline(userId, sessionId) {
   return "online";
 }
 
-export function heartbeatRiderPresence(auth) {
+export function heartbeatRiderPresence(auth, input = {}) {
   const riderId = riderIdFromAuth(auth);
-  const sessionId = sessionIdFromAuth(auth);
-  if (!riderId || !sessionId) return "offline";
-  return markRiderPresenceOnline(riderId, sessionId);
+  const baseSessionId = authSessionId(auth);
+  const presenceId = sessionIdFromAuth(auth, input.presenceSessionId);
+  if (!riderId || !baseSessionId || !presenceId) return "offline";
+  const status = markRiderPresenceOnline(
+    riderId,
+    baseSessionId,
+    presenceId,
+  );
+
+  // Login/session restore creates a short-lived base presence entry so the
+  // rider becomes online immediately. Once a browser tab starts heartbeating,
+  // retire that base entry and let each visible tab own its own presence.
+  if (presenceId !== baseSessionId) {
+    markRiderPresenceOffline(riderId, baseSessionId);
+  }
+
+  return status;
 }
 
 export function markRiderPresenceOffline(userId, sessionId) {
@@ -106,13 +139,13 @@ export function markRiderPresenceOffline(userId, sessionId) {
   transaction(() => {
     if (sessionId) {
       db.prepare(`
-        UPDATE rider_presence_sessions
+        UPDATE rider_presence_instances
         SET status = 'offline', updated_at = ?
-        WHERE session_id = ? AND rider_id = ?
+        WHERE presence_id = ? AND rider_id = ?
       `).run(now, sessionId, userId);
     } else {
       db.prepare(`
-        UPDATE rider_presence_sessions
+        UPDATE rider_presence_instances
         SET status = 'offline', updated_at = ?
         WHERE rider_id = ?
       `).run(now, userId);
@@ -124,10 +157,16 @@ export function markRiderPresenceOffline(userId, sessionId) {
   return "offline";
 }
 
-export function markAuthenticatedRiderOffline(auth) {
+export function markAuthenticatedRiderOffline(auth, input = {}) {
   const riderId = riderIdFromAuth(auth);
   if (!riderId) return "offline";
-  return markRiderPresenceOffline(riderId, sessionIdFromAuth(auth));
+  if (input.allSessions) {
+    return markRiderPresenceOffline(riderId, "");
+  }
+  return markRiderPresenceOffline(
+    riderId,
+    sessionIdFromAuth(auth, input.presenceSessionId),
+  );
 }
 
 export function expireStaleRiderPresence(now = Date.now()) {
@@ -136,7 +175,7 @@ export function expireStaleRiderPresence(now = Date.now()) {
 
   return transaction(() => {
     const expired = db.prepare(`
-      UPDATE rider_presence_sessions
+      UPDATE rider_presence_instances
       SET status = 'offline', updated_at = ?
       WHERE status = 'online'
         AND last_heartbeat_at <= ?
@@ -150,10 +189,10 @@ export function expireStaleRiderPresence(now = Date.now()) {
       WHERE availability != 'offline'
         AND NOT EXISTS (
           SELECT 1
-          FROM rider_presence_sessions
-          WHERE rider_presence_sessions.rider_id = rider_profiles.user_id
-            AND rider_presence_sessions.status = 'online'
-            AND rider_presence_sessions.last_heartbeat_at > ?
+          FROM rider_presence_instances
+          WHERE rider_presence_instances.rider_id = rider_profiles.user_id
+            AND rider_presence_instances.status = 'online'
+            AND rider_presence_instances.last_heartbeat_at > ?
         )
     `).run(timestamp, cutoff);
 

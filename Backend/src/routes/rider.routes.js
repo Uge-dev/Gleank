@@ -182,7 +182,7 @@ riderRouter.post(
   locationLimiter,
   validate(riderPresenceHeartbeatSchema),
   (req, res) => {
-    heartbeatRiderPresence(req.auth);
+    heartbeatRiderPresence(req.auth, req.body);
     if (req.body.currentLocation) {
       upsertRiderLocation(req.auth, {
         currentLocation: req.body.currentLocation,
@@ -194,7 +194,9 @@ riderRouter.post(
 );
 
 riderRouter.post("/presence/offline", requireRole("rider"), (req, res) => {
-  markAuthenticatedRiderOffline(req.auth);
+  markAuthenticatedRiderOffline(req.auth, {
+    presenceSessionId: req.body?.presenceSessionId,
+  });
   res.status(204).end();
 });
 
@@ -250,7 +252,13 @@ riderRouter.get(
 );
 
 riderRouter.post("/assignments/:assignmentId/accept", requireRole("rider"), (req, res) => {
-  res.json({ assignment: acceptRiderAssignment(req.auth, req.params.assignmentId) });
+  res.json({
+    assignment: acceptRiderAssignment(
+      req.auth,
+      req.params.assignmentId,
+      req.body || {},
+    ),
+  });
 });
 
 riderRouter.post(

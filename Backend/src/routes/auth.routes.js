@@ -141,7 +141,7 @@ authRouter.post(
 );
 
 authRouter.post("/logout", (req, res) => {
-  markAuthenticatedRiderOffline(req.auth);
+  markAuthenticatedRiderOffline(req.auth, { allSessions: true });
   deleteSession(req.cookies?.[sessionCookieName]);
   res.clearCookie(sessionCookieName, sessionCookieOptions());
   res.status(204).end();

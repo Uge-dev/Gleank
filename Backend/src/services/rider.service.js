@@ -28,6 +28,7 @@ import {
 } from "./verification.service.js";
 import {
   expireStaleRiderPresence,
+  heartbeatRiderPresence,
   isRiderPresenceOnline,
   markAuthenticatedRiderOffline,
   markRiderPresenceOnline,
@@ -730,7 +731,7 @@ export async function loginRider(input, meta = {}) {
 }
 
 export function logoutRider(cookieToken, auth = null) {
-  markAuthenticatedRiderOffline(auth);
+  markAuthenticatedRiderOffline(auth, { allSessions: true });
   deleteSession(cookieToken);
 }
 
@@ -1085,8 +1086,9 @@ export function createRiderAssignment(auth, input) {
   };
 }
 
-export function acceptRiderAssignment(auth, assignmentId) {
+export function acceptRiderAssignment(auth, assignmentId, input = {}) {
   const riderId = requireRiderUser(auth);
+  heartbeatRiderPresence(auth, input);
   expireStaleRiderPresence();
   const profile = requireVerifiedRider(riderId);
   const row = assignmentByIdForRider(riderId, assignmentId);
