@@ -1,5 +1,5 @@
 import { completedOrders, fullOrders, mockRider, notifications as seedNotifications, privateAssignments } from '../data/mockData';
-import type { Availability, FullDeliveryOrder, NotificationItem, PrivateAssignment, ProofRecord, Rider, SafetyReportPayload } from '../types';
+import type { FullDeliveryOrder, NotificationItem, PrivateAssignment, ProofRecord, Rider, SafetyReportPayload } from '../types';
 
 interface LocalState {
   rider: Rider;
@@ -98,9 +98,6 @@ export const riderLocalStore = {
         maxPackageValue: 20000
       }
     })).rider;
-  },
-  updateAvailability(availability: Availability) {
-    return mutate((state) => ({ ...state, rider: { ...state.rider, availability } })).rider;
   },
   acceptAssignment(assignmentId: string) {
     const state = mutate((current) => {
