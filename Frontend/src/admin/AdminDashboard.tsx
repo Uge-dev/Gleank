@@ -67,9 +67,11 @@ import {
   type AdminPriceRange,
   type AdminProfile,
   type AdminVerificationCase,
+  type AdminVerificationRequirement,
   type AdminVerificationQueues,
   approveAdminVerificationLevel,
   reviewAdminVerificationRequirement,
+  reviewAdminVerificationResubmission,
   unlockAdminRiderCapacity,
   updateAdminPriceRange,
   updateAdminRecordFields,
@@ -420,6 +422,30 @@ function AdminSupportInbox({
   onReply: (conversation: AdminSupportConversation) => void;
   onMarkRead: (conversation: AdminSupportConversation) => void;
 }) {
+  const [activeConversationId, setActiveConversationId] = useState(
+    conversations[0]?.id || "",
+  );
+  const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
+  const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const activeConversation =
+    conversations.find((conversation) => conversation.id === activeConversationId) ||
+    conversations[0] ||
+    null;
+
+  useEffect(() => {
+    if (
+      activeConversationId &&
+      conversations.some((conversation) => conversation.id === activeConversationId)
+    ) {
+      return;
+    }
+    setActiveConversationId(conversations[0]?.id || "");
+  }, [activeConversationId, conversations]);
+
+  useEffect(() => {
+    threadEndRef.current?.scrollIntoView({ block: "end" });
+  }, [activeConversation?.id, activeConversation?.messages.length]);
+
   return (
     <section className="admin-panel-card admin-support-panel">
       <div className="admin-panel-head">
@@ -430,26 +456,86 @@ function AdminSupportInbox({
         <span>{conversations.length} conversations</span>
       </div>
 
-      <div className="admin-support-list">
-        {conversations.map((conversation) => (
-          <article className="admin-support-card" key={conversation.id}>
-            <div className="admin-support-card-head">
-              <div>
-                <span>{conversation.userRole}</span>
-                <h3>{conversation.userName}</h3>
-                <p>{conversation.userEmail} • {conversation.campus || "Campus not set"}</p>
-              </div>
+      <div className={`admin-support-workspace ${mobileConversationOpen ? "chat-open" : ""}`}>
+        <aside className="admin-support-conversations" aria-label="Support conversations">
+          {conversations.map((conversation) => (
+            <button
+              type="button"
+              key={conversation.id}
+              className={`admin-support-conversation ${
+                conversation.id === activeConversation?.id ? "active" : ""
+              }`}
+              onClick={() => {
+                setActiveConversationId(conversation.id);
+                setMobileConversationOpen(true);
+                if (conversation.unreadCount > 0) onMarkRead(conversation);
+              }}
+            >
+              <span className="admin-support-avatar">
+                {conversation.avatarUrl ? (
+                  <img src={apiUrl(conversation.avatarUrl)} alt="" />
+                ) : (
+                  conversation.userName.slice(0, 1).toUpperCase()
+                )}
+              </span>
+              <span className="admin-support-conversation-copy">
+                <span>
+                  <strong>{conversation.userName}</strong>
+                  <time>{formatAdminTime(conversation.lastMessageAt)}</time>
+                </span>
+                <small>{conversation.userRole} • {conversation.campus || "Location not set"}</small>
+                <p>{conversation.lastMessage || "Open this conversation"}</p>
+              </span>
+              {conversation.unreadCount > 0 ? (
+                <em>{conversation.unreadCount}</em>
+              ) : null}
+            </button>
+          ))}
 
-              <div className="admin-support-meta">
-                <StatusBadge status={conversation.status} />
-                {conversation.unreadCount > 0 ? <strong>{conversation.unreadCount} unread</strong> : null}
-                <small>{formatAdminTime(conversation.lastMessageAt)}</small>
-              </div>
+          {conversations.length === 0 ? (
+            <div className="admin-empty-state">
+              No support conversation matches your current search.
             </div>
+          ) : null}
+        </aside>
+
+        {activeConversation ? (
+          <article className="admin-support-chat">
+            <header className="admin-support-chat-head">
+              <button
+                type="button"
+                className="admin-support-chat-back"
+                aria-label="Back to support conversations"
+                onClick={() => setMobileConversationOpen(false)}
+              >
+                <FaUndo />
+              </button>
+              <span className="admin-support-avatar">
+                {activeConversation.avatarUrl ? (
+                  <img src={apiUrl(activeConversation.avatarUrl)} alt="" />
+                ) : (
+                  activeConversation.userName.slice(0, 1).toUpperCase()
+                )}
+              </span>
+              <div>
+                <h3>{activeConversation.userName}</h3>
+                <p>{activeConversation.userEmail} • {activeConversation.userRole}</p>
+              </div>
+              <div className="admin-support-meta">
+                <StatusBadge status={activeConversation.status} />
+                <button
+                  type="button"
+                  className="admin-support-read-btn"
+                  onClick={() => onMarkRead(activeConversation)}
+                >
+                  Mark read
+                </button>
+              </div>
+            </header>
 
             <div className="admin-support-thread">
-              {conversation.messages.length > 0 ? (
-                conversation.messages.map((message) => (
+              {activeConversation.messages.length > 0 ? (
+                activeConversation.messages.map((message) => (
                   <div
                     key={message.id}
                     className={
@@ -468,47 +554,52 @@ function AdminSupportInbox({
                   No messages in this support thread yet.
                 </div>
               )}
+              <div ref={threadEndRef} />
             </div>
 
-            <div className="admin-support-reply">
+            <form
+              className="admin-support-reply"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onReply(activeConversation);
+              }}
+            >
               <textarea
-                value={draftById[conversation.id] || ""}
-                onChange={(event) => onDraftChange(conversation.id, event.target.value)}
-                placeholder={`Reply to ${conversation.userName}...`}
-                rows={3}
-              />
-
-              <div>
-                <button
-                  type="button"
-                  className="admin-support-read-btn"
-                  onClick={() => onMarkRead(conversation)}
-                >
-                  Mark read
-                </button>
-
-                <button
-                  type="button"
-                  className="admin-support-send-btn"
-                  disabled={
-                    replyingConversationId === conversation.id ||
-                    !(draftById[conversation.id] || "").trim()
+                value={draftById[activeConversation.id] || ""}
+                onChange={(event) =>
+                  onDraftChange(activeConversation.id, event.target.value)
+                }
+                placeholder={`Message ${activeConversation.userName}...`}
+                rows={1}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if ((draftById[activeConversation.id] || "").trim()) {
+                      onReply(activeConversation);
+                    }
                   }
-                  onClick={() => onReply(conversation)}
-                >
-                  <FaPaperPlane />
-                  {replyingConversationId === conversation.id ? "Sending..." : "Send reply"}
-                </button>
-              </div>
-            </div>
+                }}
+              />
+              <button
+                type="submit"
+                className="admin-support-send-btn"
+                aria-label="Send reply"
+                disabled={
+                  replyingConversationId === activeConversation.id ||
+                  !(draftById[activeConversation.id] || "").trim()
+                }
+              >
+                <FaPaperPlane />
+              </button>
+            </form>
           </article>
-        ))}
-
-        {conversations.length === 0 ? (
-          <div className="admin-empty-state">
-            No support conversation matches your current search.
+        ) : (
+          <div className="admin-support-empty-chat">
+            <FaCommentDots />
+            <h3>Select a support conversation</h3>
+            <p>Choose a user on the left to read and reply to their messages.</p>
           </div>
-        ) : null}
+        )}
       </div>
     </section>
   );
@@ -768,8 +859,40 @@ function AdminDashboard() {
       await approveAdminVerificationLevel(
         row.id,
         stage.stage,
-        `Admin approved rider verification Stage ${stage.stage}.`,
+        `Admin approved ${row.role} verification Stage ${stage.stage}.`,
       );
+      await refreshVerificationQueues();
+      await loadAdminData(false);
+    } catch {
+      showAdminConnectionNotice();
+    }
+  }
+
+  async function decideVerificationResubmission(
+    requirement: AdminVerificationRequirement,
+    action: "approve" | "reject",
+  ) {
+    const requestRow = requirement.resubmissionRequest;
+    if (!requestRow || requestRow.status !== "pending") return;
+
+    const defaultFeedback =
+      action === "approve"
+        ? "Admin approved this request. The form is open for a corrected submission."
+        : "The approved information remains locked because this change was not approved.";
+    const feedback = window.prompt(
+      action === "approve"
+        ? `Review the reason and explain that the ${requirement.title} form will reopen:`
+        : `Explain why the ${requirement.title} form should remain locked:`,
+      defaultFeedback,
+    );
+    if (feedback === null || feedback.trim().length < 8) return;
+
+    setLoadError("");
+    try {
+      await reviewAdminVerificationResubmission(requestRow.id, {
+        action,
+        feedback: feedback.trim(),
+      });
       await refreshVerificationQueues();
       await loadAdminData(false);
     } catch {
@@ -1468,12 +1591,18 @@ function AdminDashboard() {
                 <div className="admin-mini-grid">
                   <MiniQueue title="New" value={verificationQueueCounts.newSubmissions || 0} helper="First-time submissions" tone="orange" />
                   <MiniQueue title="Resubmitted" value={verificationQueueCounts.resubmitted || 0} helper="Replacement versions" tone="blue" />
+                  <MiniQueue title="Reopen requests" value={verificationQueueCounts.resubmissionRequests || 0} helper="Approved forms waiting for admin" tone="orange" />
                   <MiniQueue title="Under review" value={verificationQueueCounts.underReview || 0} helper="Currently being checked" tone="blue" />
                   <MiniQueue title="Approved" value={verificationQueueCounts.completedApproved || 0} helper="Completed cases" tone="green" />
                 </div>
                 <div className="admin-card-grid">
                   {verificationCaseRows.map((row) => {
-                    const reviewable = row.requirements.find((requirement) => ["submitted", "under_review", "needs_information", "rejected"].includes(requirement.status));
+                    const reviewable = row.requirements.find((requirement) =>
+                      ["submitted", "under_review"].includes(requirement.status),
+                    );
+                    const pendingResubmission = row.requirements.find(
+                      (requirement) => requirement.resubmissionRequest?.status === "pending",
+                    );
                     const nextStage = nextVerificationStage(row);
                     return (
                       <article key={row.id} className="admin-record-card">
@@ -1488,6 +1617,28 @@ function AdminDashboard() {
                         </div>
                         {row.eligibility?.blockingReasons?.length ? (
                           <p className="admin-muted-text">{row.eligibility.blockingReasons.slice(0, 2).map((reason) => reason.message).join(" ")}</p>
+                        ) : null}
+                        {pendingResubmission ? (
+                          <div className="admin-card-note">
+                            <strong>Request to reopen {pendingResubmission.title}</strong>
+                            <p className="admin-muted-text">
+                              {pendingResubmission.resubmissionRequest?.reason}
+                            </p>
+                            <div className="admin-card-actions">
+                              <ActionButton
+                                tone="success"
+                                onClick={() => decideVerificationResubmission(pendingResubmission, "approve")}
+                              >
+                                Open form
+                              </ActionButton>
+                              <ActionButton
+                                tone="danger"
+                                onClick={() => decideVerificationResubmission(pendingResubmission, "reject")}
+                              >
+                                Keep locked
+                              </ActionButton>
+                            </div>
+                          </div>
                         ) : null}
                         {reviewable ? (
                           <div className="admin-card-actions">
@@ -1562,6 +1713,9 @@ function AdminDashboard() {
                 actions={(rider) => {
                   const riderCase = verificationQueues.cases.find((item) => item.role === "rider" && item.userId === rider.userId);
                   const nextStage = riderCase ? nextVerificationStage(riderCase) : undefined;
+                  const riderReviewable = riderCase?.requirements.find((requirement) =>
+                    ["submitted", "under_review"].includes(requirement.status),
+                  );
                   return (
                   <>
                     <ActionButton
@@ -1593,15 +1747,29 @@ function AdminDashboard() {
                     </ActionButton>
                     <ActionButton
                       tone="soft"
-                      onClick={() => changeRiderVerification(rider, "pending_review", "Admin needs more rider profile details before approval.", "flagged")}
+                      disabled={!riderReviewable}
+                      onClick={() => riderReviewable
+                        ? reviewVerificationRequirement(
+                            riderReviewable.id,
+                            "needs_information",
+                            "Please replace this requirement with clearer information.",
+                          )
+                        : undefined}
                     >
                       Needs Info
                     </ActionButton>
                     <ActionButton
                       tone="danger"
-                      onClick={() => changeRiderVerification(rider, "rejected", "Rider profile was rejected by admin review.", "flagged")}
+                      disabled={!riderReviewable}
+                      onClick={() => riderReviewable
+                        ? reviewVerificationRequirement(
+                            riderReviewable.id,
+                            "reject",
+                            "This verification requirement was rejected after admin review.",
+                          )
+                        : undefined}
                     >
-                      Reject
+                      Reject submission
                     </ActionButton>
                     <ActionButton
                       tone="danger"

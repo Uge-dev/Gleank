@@ -427,10 +427,18 @@ function requireRiderUser(auth) {
 function requireVerifiedRider(userId) {
   const profile = getRiderProfile(userId);
   if (!profile) throw new HttpError(404, "Rider profile was not found.");
-  if (profile.verification_status !== "verified") {
+  const verificationCase = ensureVerificationCase(userId, "rider");
+  if (
+    Number(verificationCase.current_verified_level || 0) < 1 &&
+    profile.verification_status !== "verified"
+  ) {
     throw new HttpError(403, "Your rider account must be verified before handling deliveries.");
   }
-  if (profile.safety_status === "suspended" || profile.verification_status === "suspended") {
+  if (
+    verificationCase.operational_status === "suspended" ||
+    profile.safety_status === "suspended" ||
+    profile.verification_status === "suspended"
+  ) {
     throw new HttpError(403, "Your rider account is currently suspended.");
   }
   return profile;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
-import { FiAlertTriangle, FiAward, FiCheckCircle, FiClock, FiFileText, FiRefreshCw, FiShield, FiUpload } from 'react-icons/fi';
+import { FiAlertTriangle, FiAward, FiCheckCircle, FiClock, FiFileText, FiLock, FiRefreshCw, FiShield, FiUpload } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
 import Card from '../components/ui/Card';
 import PageHeader from '../components/ui/PageHeader';
@@ -26,9 +26,7 @@ function statusTone(status: string) {
 }
 
 function nextAction(status: string) {
-  if (status === 'approved') return 'Replace';
   if (status === 'needs_information' || status === 'rejected') return 'Try Again';
-  if (status === 'submitted' || status === 'under_review') return 'Edit / Replace';
   return 'Submit';
 }
 
@@ -117,18 +115,24 @@ function RequirementCard({
   draft,
   onDraftChange,
   onSubmit,
+  onRequestResubmission,
   submitting,
+  requestingResubmission,
 }: {
   requirement: VerificationRequirement;
   draft: RequirementDraft;
   onDraftChange: (draft: RequirementDraft) => void;
   onSubmit: () => void;
+  onRequestResubmission: (reason: string) => void;
   submitting: boolean;
+  requestingResubmission: boolean;
 }) {
+  const [resubmissionReason, setResubmissionReason] = useState('');
   const fields = fieldsForRequirement(requirement);
   const fileFields = fileFieldsForRequirement(requirement);
   const isSystem = requirement.workflowType === 'system';
   const isProvider = requirement.workflowType === 'provider';
+  const pendingResubmission = requirement.resubmissionRequest?.status === 'pending';
 
   function updateField(key: string, value: string | boolean) {
     onDraftChange({ ...draft, payload: { ...draft.payload, [key]: value } });
@@ -184,7 +188,59 @@ function RequirementCard({
         </div>
       ) : null}
 
-      {isSystem ? (
+      {!requirement.previousStageApproved ? (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl bg-slate-100 px-4 py-4 text-sm font-bold leading-6 text-slate-600">
+          <FiLock className="mt-1 shrink-0" />
+          This form opens after Stage {requirement.requiredLevel - 1} is approved.
+        </div>
+      ) : requirement.status === 'approved' ? (
+        <div className="mt-4 space-y-3">
+          <div className="flex items-start gap-3 rounded-2xl bg-emerald-100 px-4 py-4 text-sm font-bold leading-6 text-emerald-800">
+            <FiLock className="mt-1 shrink-0" />
+            <span>
+              Approved and locked. The submitted form has been removed so approved information cannot be changed without admin permission.
+            </span>
+          </div>
+
+          {pendingResubmission ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm font-bold leading-6 text-amber-800">
+              <p>Your request is waiting for admin review.</p>
+              <p className="mt-2 text-amber-900">Reason: {requirement.resubmissionRequest?.reason}</p>
+            </div>
+          ) : requirement.canRequestResubmission ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="block text-sm font-black text-slate-800">
+                Why do you need to change this approved information?
+                <textarea
+                  value={resubmissionReason}
+                  onChange={(event) => setResubmissionReason(event.target.value)}
+                  rows={3}
+                  minLength={8}
+                  placeholder="Explain the correction or update you need to make."
+                  className="mt-2 w-full resize-y rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-950 outline-none focus:border-slate-950"
+                />
+              </label>
+              {requirement.resubmissionRequest?.status === 'rejected' ? (
+                <p className="mt-2 text-sm font-bold text-rose-700">
+                  Admin response: {requirement.resubmissionRequest.adminFeedback || 'The previous request was not opened.'}
+                </p>
+              ) : null}
+              <Button
+                icon={FiRefreshCw}
+                disabled={requestingResubmission || resubmissionReason.trim().length < 8}
+                onClick={() => onRequestResubmission(resubmissionReason.trim())}
+              >
+                {requestingResubmission ? 'Sending request...' : 'Request resubmission'}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : requirement.status === 'submitted' || requirement.status === 'under_review' ? (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl bg-amber-100 px-4 py-4 text-sm font-bold leading-6 text-amber-800">
+          <FiLock className="mt-1 shrink-0" />
+          Submitted and locked while admin reviews this information.
+        </div>
+      ) : isSystem ? (
         <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
           This requirement updates automatically from your account. If it is still incomplete, update the matching account detail first.
         </div>
@@ -192,7 +248,7 @@ function RequirementCard({
         <div className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-bold leading-6 text-slate-600">
           This advanced check must return a verified result from the configured identity provider. A note or static selfie cannot complete it.
         </div>
-      ) : (
+      ) : requirement.canSubmit ? (
         <form
           className="mt-4 grid gap-3"
           onSubmit={(event: FormEvent) => {
@@ -225,13 +281,14 @@ function RequirementCard({
               Guarantor consent has been confirmed.
             </label>
           ) : null}
-          {fileFields.map(([field, label]) => (
+          {fileFields.map(([field, label], index) => (
             <label key={field} className="block text-sm font-bold text-slate-700">
               {label}
               <input
                 type="file"
                 accept="image/*,application/pdf"
                 onChange={(event) => updateFile(field, event)}
+                required={index === 0}
                 className="mt-2 w-full rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-3 text-sm"
               />
             </label>
@@ -240,7 +297,7 @@ function RequirementCard({
             {submitting ? 'Submitting...' : nextAction(requirement.status)}
           </Button>
         </form>
-      )}
+      ) : null}
 
       {requirement.submissions?.length ? (
         <details className="mt-4 rounded-2xl bg-white px-4 py-3">
@@ -321,6 +378,20 @@ export default function VerificationCenter() {
       setNotice('Next-stage request sent to admin.');
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Upgrade request could not be sent.');
+    } finally {
+      setSavingCode('');
+    }
+  }
+
+  async function requestResubmission(requirement: VerificationRequirement, reason: string) {
+    setSavingCode(`resubmission:${requirement.id}`);
+    setError('');
+    setNotice('');
+    try {
+      setCenter(await riderApi.requestRequirementResubmission(requirement.id, reason));
+      setNotice(`${requirement.title} resubmission request sent to admin.`);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Resubmission request could not be sent.');
     } finally {
       setSavingCode('');
     }
@@ -445,7 +516,9 @@ export default function VerificationCenter() {
                       draft={drafts[requirement.code] || emptyDraft()}
                       onDraftChange={(draft) => setDrafts((current) => ({ ...current, [requirement.code]: draft }))}
                       onSubmit={() => submit(requirement)}
+                      onRequestResubmission={(reason) => requestResubmission(requirement, reason)}
                       submitting={savingCode === requirement.code}
+                      requestingResubmission={savingCode === `resubmission:${requirement.id}`}
                     />
                   ))}
                 </div>

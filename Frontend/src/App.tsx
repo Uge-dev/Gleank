@@ -9,6 +9,7 @@ import { SavedProvider } from "./context/SavedContext";
 import GleencNav from "./components/GleencNav";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedPage from "./components/ProtectedPage";
+import LocationPermissionNotice from "./components/LocationPermissionNotice";
 
 import Home from "./pages/Home";
 import Search from "./pages/Search";
@@ -95,6 +96,7 @@ function App() {
       <SavedProvider>
         <CartProvider>
           <div className="gleank-app">
+            <LocationPermissionNotice />
             <GleencNav />
             <CartDrawer />
 

@@ -499,7 +499,7 @@ test("buyer cannot access seller or rider operations", async () => {
   assert.equal(riderResponse.status, 403);
 });
 
-test("requirement verification supports independent rider resubmissions and liveness separation", async () => {
+test("rider verification locks approved stages and requires admin-approved resubmission", async () => {
   const riderAgent = request.agent(app);
 
   const registerResponse = await riderAgent
@@ -548,7 +548,7 @@ test("requirement verification supports independent rider resubmissions and live
   assert.equal(identitySelfie.latestSubmission.version, 1);
   assert.notEqual(liveFace.status, "approved");
 
-  const governmentResubmit = await riderAgent
+  const blockedFutureStage = await riderAgent
     .post("/api/verification/requirements/rider_government_id/submissions")
     .field("payload", JSON.stringify({ idType: "NIN", idNumberReference: "ending-1234" }))
     .attach("identityDocument", tinyPng, {
@@ -556,31 +556,7 @@ test("requirement verification supports independent rider resubmissions and live
       contentType: "image/png",
     });
 
-  assert.equal(governmentResubmit.status, 201);
-  const updatedGovernment = governmentResubmit.body.case.requirements.find((item) => item.code === "rider_government_id");
-  const updatedSelfie = governmentResubmit.body.case.requirements.find((item) => item.code === "rider_identity_selfie");
-  assert.equal(updatedGovernment.latestSubmission.version, 1);
-  assert.equal(updatedSelfie.latestSubmission.version, 1);
-
-  const secondGovernmentSubmission = await riderAgent
-    .post("/api/verification/requirements/rider_government_id/submissions")
-    .field(
-      "payload",
-      JSON.stringify({
-        idType: "NIN",
-        idNumberReference: "ending-5678",
-      }),
-    )
-    .attach("identityDocument", tinyPng, {
-      filename: "step2-rider-id-second-version.png",
-      contentType: "image/png",
-    });
-
-  assert.equal(secondGovernmentSubmission.status, 201);
-  const secondGovernment = secondGovernmentSubmission.body.case.requirements.find(
-    (item) => item.code === "rider_government_id",
-  );
-  assert.equal(secondGovernment.latestSubmission.version, 2);
+  assert.equal(blockedFutureStage.status, 403);
 
   for (const [code, payload] of [
     [
@@ -631,18 +607,12 @@ test("requirement verification supports independent rider resubmissions and live
   const adminQueues = await adminAgent.get("/api/verification/admin/queues?role=rider");
   assert.equal(adminQueues.status, 200);
   const adminCase = adminQueues.body.cases.find((item) => item.userId === riderId);
-  const adminGovernment = adminCase.requirements.find((item) => item.code === "rider_government_id");
   const adminLiveFace = adminCase.requirements.find((item) => item.code === "rider_live_face");
 
   const liveFaceApproveResponse = await adminAgent
     .patch(`/api/verification/admin/requirements/${adminLiveFace.id}/review`)
     .send({ action: "approve", feedback: "Attempting to approve static selfie as liveness." });
   assert.equal(liveFaceApproveResponse.status, 422);
-
-  const reviewResponse = await adminAgent
-    .patch(`/api/verification/admin/requirements/${adminGovernment.id}/review`)
-    .send({ action: "approve", feedback: "Government ID approved after admin review." });
-  assert.equal(reviewResponse.status, 200);
 
   const stageApproveResponse = await adminAgent
     .patch(`/api/verification/admin/cases/${adminCase.id}/level`)
@@ -653,6 +623,105 @@ test("requirement verification supports independent rider resubmissions and live
   const profile = db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(riderId);
   assert.equal(profile.verification_status, "verified");
   assert.equal(profile.availability, "offline");
+
+  const governmentSubmit = await riderAgent
+    .post("/api/verification/requirements/rider_government_id/submissions")
+    .field("actorRole", "rider")
+    .field("payload", JSON.stringify({ idType: "NIN", idNumberReference: "ending-1234" }))
+    .attach("identityDocument", tinyPng, {
+      filename: "step2-rider-id-replacement.png",
+      contentType: "image/png",
+    });
+  assert.equal(governmentSubmit.status, 201);
+  const submittedGovernment = governmentSubmit.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(submittedGovernment.latestSubmission.version, 1);
+  assert.equal(submittedGovernment.isLocked, true);
+
+  const blockedDuringReview = await riderAgent
+    .post("/api/verification/requirements/rider_government_id/submissions")
+    .field("actorRole", "rider")
+    .field("payload", JSON.stringify({ idType: "NIN", idNumberReference: "ending-5678" }))
+    .attach("identityDocument", tinyPng, {
+      filename: "step2-rider-id-second-version.png",
+      contentType: "image/png",
+    });
+  assert.equal(blockedDuringReview.status, 409);
+
+  const reviewResponse = await adminAgent
+    .patch(`/api/verification/admin/requirements/${submittedGovernment.id}/review`)
+    .send({ action: "approve", feedback: "Government ID approved after admin review." });
+  assert.equal(reviewResponse.status, 200);
+  const approvedGovernment = reviewResponse.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(approvedGovernment.status, "approved");
+  assert.equal(approvedGovernment.isLocked, true);
+  assert.equal(approvedGovernment.canRequestResubmission, true);
+
+  const blockedApprovedEdit = await riderAgent
+    .post("/api/verification/requirements/rider_government_id/submissions")
+    .field("actorRole", "rider")
+    .field("payload", JSON.stringify({ idType: "NIN", idNumberReference: "ending-9999" }))
+    .attach("identityDocument", tinyPng, {
+      filename: "step2-rider-id-blocked-approved.png",
+      contentType: "image/png",
+    });
+  assert.equal(blockedApprovedEdit.status, 409);
+
+  const resubmissionRequest = await riderAgent
+    .post(`/api/verification/requirements/${approvedGovernment.id}/resubmission-request`)
+    .send({
+      actorRole: "rider",
+      reason: "My ID reference was entered incorrectly and needs to be replaced.",
+    });
+  assert.equal(resubmissionRequest.status, 201);
+  const requestedGovernment = resubmissionRequest.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(requestedGovernment.status, "approved");
+  assert.equal(requestedGovernment.isLocked, true);
+  assert.equal(requestedGovernment.resubmissionRequest.status, "pending");
+
+  const resubmissionQueues = await adminAgent.get("/api/verification/admin/queues?role=rider");
+  const queuedCase = resubmissionQueues.body.queues.resubmissionRequests.find(
+    (item) => item.userId === riderId,
+  );
+  const queuedGovernment = queuedCase.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  const reopenResponse = await adminAgent
+    .patch(
+      `/api/verification/admin/resubmission-requests/${queuedGovernment.resubmissionRequest.id}`,
+    )
+    .send({
+      action: "approve",
+      feedback: "Reason accepted. Upload the corrected government identity document.",
+    });
+  assert.equal(reopenResponse.status, 200);
+  const reopenedGovernment = reopenResponse.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(reopenedGovernment.status, "needs_information");
+  assert.equal(reopenedGovernment.isLocked, false);
+  assert.equal(reopenedGovernment.canSubmit, true);
+
+  const correctedGovernmentSubmit = await riderAgent
+    .post("/api/verification/requirements/rider_government_id/submissions")
+    .field("actorRole", "rider")
+    .field("payload", JSON.stringify({ idType: "NIN", idNumberReference: "ending-5678" }))
+    .attach("identityDocument", tinyPng, {
+      filename: "step2-rider-id-corrected.png",
+      contentType: "image/png",
+    });
+  assert.equal(correctedGovernmentSubmit.status, 201);
+  const correctedGovernment = correctedGovernmentSubmit.body.case.requirements.find(
+    (item) => item.code === "rider_government_id",
+  );
+  assert.equal(correctedGovernment.latestSubmission.version, 2);
+  assert.equal(correctedGovernment.status, "submitted");
+  assert.equal(correctedGovernment.resubmissionRequest.status, "completed");
 
   const eligibilityResponse = await riderAgent.get("/api/rider/eligibility");
   assert.equal(eligibilityResponse.status, 200);
@@ -892,6 +961,31 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     WHERE user_id = ?
   `).run(now, now, riderId);
 
+  const sellerLocation = await sellerAgent
+    .post("/api/location/presence")
+    .send({
+      permissionStatus: "granted",
+      source: "browser_login",
+      currentLocation: { lat: 5.5701, lng: 5.8298, accuracyMeters: 20 },
+    });
+  assert.equal(sellerLocation.status, 200);
+  const buyerLocation = await buyerAgent
+    .post("/api/location/presence")
+    .send({
+      permissionStatus: "granted",
+      source: "browser_login",
+      currentLocation: { lat: 5.575, lng: 5.835, accuracyMeters: 18 },
+    });
+  assert.equal(buyerLocation.status, 200);
+  const riderLocation = await riderAgent
+    .post("/api/location/presence")
+    .send({
+      permissionStatus: "granted",
+      source: "browser_login",
+      currentLocation: { lat: 5.568, lng: 5.827, accuracyMeters: 12 },
+    });
+  assert.equal(riderLocation.status, 200);
+
   const orderResponse = await buyerAgent
     .post("/api/orders")
     .send({
@@ -905,8 +999,16 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   });
   assert.equal(orderResponse.status, 201);
   const orderId = orderResponse.body.orders[0].id;
-  const orderRow = db.prepare("SELECT delivery_batch_id FROM orders WHERE id = ?").get(orderId);
+  const orderRow = db
+    .prepare(
+      "SELECT delivery_batch_id, pickup_lat, pickup_lng, delivery_lat, delivery_lng FROM orders WHERE id = ?",
+    )
+    .get(orderId);
   assert.ok(orderRow?.delivery_batch_id);
+  assert.equal(Number(orderRow.pickup_lat), 5.5701);
+  assert.equal(Number(orderRow.pickup_lng), 5.8298);
+  assert.equal(Number(orderRow.delivery_lat), 5.575);
+  assert.equal(Number(orderRow.delivery_lng), 5.835);
 
   const blockedStart = await sellerAgent.post(`/api/dispatch/batches/${orderRow.delivery_batch_id}/start`);
   assert.equal(blockedStart.status, 422);
@@ -941,31 +1043,36 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     });
   assert.equal(readyResponse.status, 200);
 
-  const candidateResponse = await sellerAgent.get(`/api/dispatch/batches/${batchId}/rider-candidates`);
-  assert.equal(candidateResponse.status, 200);
-  assert.equal(candidateResponse.body.riders.length, 1);
-  assert.equal(candidateResponse.body.riders[0].id, riderId);
-  assert.equal(candidateResponse.body.riders[0].phone, undefined);
-  assert.match(candidateResponse.body.riders[0].privacyNote, /Private phone/);
-
-  const offerResponse = await sellerAgent
-    .post(`/api/dispatch/batches/${batchId}/offers`)
-    .send({ riderId });
-  assert.equal(offerResponse.status, 201);
-  assert.equal(offerResponse.body.attempt.status, "offered");
-  assert.equal(offerResponse.body.attempt.offerWindowSeconds, 90);
-
-  const secondOffer = await sellerAgent
-    .post(`/api/dispatch/batches/${batchId}/offers`)
-    .send({ riderId });
-  assert.equal(secondOffer.status, 409);
-
   const riderDispatches = await riderAgent.get("/api/rider/dispatches/active");
   assert.equal(riderDispatches.status, 200);
   assert.equal(riderDispatches.body.dispatches.length, 1);
-  assert.equal(riderDispatches.body.dispatches[0].batch.pickupTasks[0].pickupLandmark, "Pickup details unlock after acceptance");
+  const automaticOffer = riderDispatches.body.dispatches[0];
+  assert.equal(automaticOffer.riderId, riderId);
+  assert.equal(automaticOffer.status, "offered");
+  assert.equal(automaticOffer.assignmentMode, "automatic");
+  assert.equal(automaticOffer.offerWindowSeconds, 90);
+  assert.equal(automaticOffer.safeRiderSnapshot.phone, undefined);
+  assert.equal(typeof automaticOffer.safeRiderSnapshot.distanceToPickupKm, "number");
+  assert.match(automaticOffer.safeRiderSnapshot.privacyNote, /Private phone/);
+  assert.equal(
+    automaticOffer.batch.pickupTasks[0].pickupLandmark,
+    "Pickup details unlock after acceptance",
+  );
 
-  const acceptResponse = await riderAgent.post(`/api/rider/dispatch/${offerResponse.body.attempt.id}/accept`);
+  const candidateResponse = await sellerAgent.get(
+    `/api/dispatch/batches/${batchId}/rider-candidates`,
+  );
+  assert.equal(candidateResponse.status, 200);
+  assert.equal(candidateResponse.body.riders.length, 0);
+
+  const manualOfferWhileAutomaticPending = await sellerAgent
+    .post(`/api/dispatch/batches/${batchId}/offers`)
+    .send({ riderId });
+  assert.equal(manualOfferWhileAutomaticPending.status, 409);
+
+  const acceptResponse = await riderAgent.post(
+    `/api/rider/dispatch/${automaticOffer.id}/accept`,
+  );
   assert.equal(acceptResponse.status, 200);
   assert.equal(acceptResponse.body.assignments.length, 1);
   assert.equal(acceptResponse.body.batch.dispatchStatus, "rider_assigned");
@@ -979,6 +1086,115 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       AND seller_id = ?
   `).get(`delivery_assignment:${assignmentId}`, riderId, sellerId);
   assert.ok(deliveryConversation?.id);
+
+  const manualRiderAgent = request.agent(app);
+  const manualRiderRegister = await manualRiderAgent
+    .post("/api/rider/register")
+    .field("name", "Manual Choice Rider")
+    .field("email", "manual-choice-rider@gleank.local")
+    .field("password", "CampusRider987!")
+    .field("phone", "08000000041")
+    .field("campus", "FUPRE")
+    .field("vehicleType", "Bike")
+    .field("vehiclePlate", "MAN-400")
+    .field("coverageArea", "FUPRE")
+    .field("homeAddress", "Manual rider address")
+    .field("gpsPermissionStatus", "gps_enabled")
+    .field("transportType", "motorcycle")
+    .field("maxPackageSize", "small_medium")
+    .field("maxWeightClass", "up_to_medium")
+    .field("fragileHandlingAbility", "can_handle_fragile")
+    .field("deliveryBagType", "medium_delivery_bag")
+    .attach("identityDocument", tinyPng, {
+      filename: "manual-rider-id.png",
+      contentType: "image/png",
+    })
+    .attach("selfie", tinyPng, {
+      filename: "manual-rider-selfie.png",
+      contentType: "image/png",
+    });
+  assert.equal(manualRiderRegister.status, 201);
+  const manualRiderId = manualRiderRegister.body.user.id;
+  const manualNow = new Date().toISOString();
+  db.prepare(
+    "UPDATE users SET phone_verified = 1, phone_verified_at = ?, email_verified = 1, email_verified_at = ? WHERE id = ?",
+  ).run(manualNow, manualNow, manualRiderId);
+  db.prepare(`
+    UPDATE rider_profiles
+    SET verification_status = 'verified',
+        verification_level = 1,
+        availability = 'online',
+        availability_mode = 'online_gps_active',
+        gps_permission_status = 'gps_enabled',
+        service_zone_ids = '["zone_fupre"]',
+        current_zone_id = 'zone_fupre',
+        last_location_at = ?,
+        can_receive_auto_dispatch = 0,
+        current_active_batch_count = 0,
+        updated_at = ?
+    WHERE user_id = ?
+  `).run(manualNow, manualNow, manualRiderId);
+
+  const manualOrderResponse = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId, quantity: 1 }],
+      buyerName: "Step Three Buyer",
+      buyerPhone: "08000000032",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(manualOrderResponse.status, 201);
+  const manualOrderId = manualOrderResponse.body.orders[0].id;
+
+  const manualPayment = await buyerAgent
+    .post("/api/payments/initialize")
+    .send({ purpose: "store_order", targetId: manualOrderId });
+  assert.equal(manualPayment.status, 201);
+  const manualPaymentVerify = await request(app)
+    .post("/api/payments/public/verify")
+    .send({ reference: manualPayment.body.payment.reference });
+  assert.equal(manualPaymentVerify.status, 200);
+
+  const manualOrderItem = db
+    .prepare("SELECT id FROM order_items WHERE order_id = ? LIMIT 1")
+    .get(manualOrderId);
+  const manualConfirm = await sellerAgent
+    .post(`/api/seller/order-items/${manualOrderItem.id}/confirm-availability`)
+    .send({ note: "Available for manual rider selection." });
+  assert.equal(manualConfirm.status, 200);
+  const manualBatchId = manualConfirm.body.pickupTask.deliveryBatchId;
+  const manualReady = await sellerAgent
+    .post(`/api/seller/pickup-tasks/${manualConfirm.body.pickupTask.id}/mark-ready`)
+    .send({
+      packageSize: "small",
+      packageWeightClass: "light",
+      handlingClass: "not_fragile",
+      pickupPointConfirmed: true,
+    });
+  assert.equal(manualReady.status, 200);
+
+  const manualCandidates = await sellerAgent.get(
+    `/api/dispatch/batches/${manualBatchId}/rider-candidates`,
+  );
+  assert.equal(manualCandidates.status, 200);
+  assert.ok(
+    manualCandidates.body.riders.some((rider) => rider.id === manualRiderId),
+  );
+
+  const sellerManualOffer = await sellerAgent
+    .post(`/api/dispatch/batches/${manualBatchId}/offers`)
+    .send({ riderId: manualRiderId });
+  assert.equal(sellerManualOffer.status, 201);
+  assert.equal(sellerManualOffer.body.attempt.assignmentMode, "manual");
+
+  const manualAccept = await manualRiderAgent.post(
+    `/api/rider/dispatch/${sellerManualOffer.body.attempt.id}/accept`,
+  );
+  assert.equal(manualAccept.status, 200);
+  assert.equal(manualAccept.body.batch.dispatchStatus, "rider_assigned");
 });
 
 test("critical webhook and admin fallback defaults are rejected", async () => {

@@ -6,7 +6,9 @@ import {
   approveCaseLevel,
   backfillLegacyVerification,
   getVerificationCenter,
+  requestRequirementResubmission,
   requestVerificationLevel,
+  reviewRequirementResubmission,
   reviewRequirement,
   setCaseOperationalStatus,
   submitRequirement,
@@ -81,6 +83,7 @@ verificationRouter.post(
       provider: req.body?.provider,
       providerReference: req.body?.providerReference,
       providerStatus: req.body?.providerStatus,
+      actorRole: req.body?.actorRole || req.body?.role,
     });
     res.status(201).json(result);
   }),
@@ -88,6 +91,16 @@ verificationRouter.post(
 
 verificationRouter.post("/level-requests", (req, res) => {
   res.status(201).json(requestVerificationLevel(req.auth, req.body || {}));
+});
+
+verificationRouter.post("/requirements/:requirementId/resubmission-request", (req, res) => {
+  res.status(201).json(
+    requestRequirementResubmission(
+      req.auth,
+      req.params.requirementId,
+      req.body || {},
+    ),
+  );
 });
 
 verificationRouter.get("/admin/queues", requireRole("admin"), (req, res) => {
@@ -107,6 +120,20 @@ verificationRouter.patch(
   requireRole("admin"),
   (req, res) => {
     res.json(reviewRequirement(req.auth, req.params.requirementId, req.body || {}));
+  },
+);
+
+verificationRouter.patch(
+  "/admin/resubmission-requests/:requestId",
+  requireRole("admin"),
+  (req, res) => {
+    res.json(
+      reviewRequirementResubmission(
+        req.auth,
+        req.params.requestId,
+        req.body || {},
+      ),
+    );
   },
 );
 

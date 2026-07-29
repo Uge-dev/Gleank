@@ -4,6 +4,7 @@ import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { evaluatePayAtDeliveryEligibility } from "./payment-protection.service.js";
+import { getAccountLocationPresence } from "./location.service.js";
 import {
   createDispute,
   createReturnRequest,
@@ -451,6 +452,7 @@ export function createOrders(userId, input) {
   const deliveryAddress = String(input?.deliveryAddress || "").trim().slice(0, 240);
   const pickupLocation = String(input?.pickupLocation || "").trim().slice(0, 240);
   const note = String(input?.note || "").trim().slice(0, 1000);
+  const buyerPresence = getAccountLocationPresence(userId);
 
   if (!buyerName || !buyerPhone || !campus) {
     throw new HttpError(422, "Please provide your name, phone number, and campus.");
@@ -493,7 +495,9 @@ export function createOrders(userId, input) {
         .prepare(`
           SELECT products.*, stores.owner_id AS seller_id,
                  stores.name AS store_name, stores.slug AS store_slug,
-                 stores.phone AS seller_phone
+                 stores.phone AS seller_phone,
+                 stores.pickup_lat AS seller_pickup_lat,
+                 stores.pickup_lng AS seller_pickup_lng
           FROM products
           JOIN stores ON stores.id = products.store_id
           WHERE products.id = ?
@@ -518,6 +522,8 @@ export function createOrders(userId, input) {
         storeId: product.store_id,
         sellerId: product.seller_id,
         storeName: product.store_name,
+        pickupLat: product.seller_pickup_lat ?? null,
+        pickupLng: product.seller_pickup_lng ?? null,
         products: [],
       };
 
@@ -554,6 +560,17 @@ export function createOrders(userId, input) {
     const output = [];
 
     for (const group of grouped.values()) {
+      const sellerPresence = getAccountLocationPresence(group.sellerId);
+      const pickupLat = group.pickupLat ?? sellerPresence?.lat ?? null;
+      const pickupLng = group.pickupLng ?? sellerPresence?.lng ?? null;
+      const deliveryLat =
+        deliveryOption === "Delivery" && buyerPresence?.permissionStatus === "granted"
+          ? buyerPresence.lat
+          : null;
+      const deliveryLng =
+        deliveryOption === "Delivery" && buyerPresence?.permissionStatus === "granted"
+          ? buyerPresence.lng
+          : null;
       const subtotalKobo = group.products.reduce(
         (total, item) => total + item.lineTotalKobo,
         0,
@@ -604,10 +621,11 @@ export function createOrders(userId, input) {
           payment_method, stage4_status, stage4_payment_status, fulfillment_status,
           seller_confirmation_required, payout_status, stock_reserved,
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
-          campus, delivery_option, delivery_address, pickup_location, note,
+          campus, delivery_option, delivery_address, pickup_location,
+          pickup_lat, pickup_lng, delivery_lat, delivery_lng, note,
           verification_code, package_tag_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -632,6 +650,10 @@ export function createOrders(userId, input) {
         deliveryOption,
         deliveryAddress,
         pickupLocation,
+        pickupLat,
+        pickupLng,
+        deliveryLat,
+        deliveryLng,
         note,
         generateVerificationCode(),
         generatePackageTagCode(),

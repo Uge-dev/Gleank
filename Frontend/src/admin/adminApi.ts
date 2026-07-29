@@ -422,6 +422,14 @@ export type AdminVerificationRequirement = {
   requiredLevel: number;
   blocking: boolean;
   adminFeedback?: string;
+  resubmissionRequest?: {
+    id: string;
+    reason: string;
+    status: "pending" | "approved" | "rejected" | "completed" | "cancelled";
+    adminFeedback?: string;
+    reviewedAt?: string | null;
+    createdAt: string;
+  } | null;
   latestSubmission?: {
     id: string;
     version: number;
@@ -541,6 +549,19 @@ export async function reviewAdminVerificationRequirement(
 ) {
   return request<{ case: AdminVerificationCase }>(
     `/verification/admin/requirements/${encodeURIComponent(requirementId)}/review`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function reviewAdminVerificationResubmission(
+  requestId: string,
+  input: { action: "approve" | "reject"; feedback?: string },
+) {
+  return request<{ case: AdminVerificationCase }>(
+    `/verification/admin/resubmission-requests/${encodeURIComponent(requestId)}`,
     {
       method: "PATCH",
       body: JSON.stringify(input),

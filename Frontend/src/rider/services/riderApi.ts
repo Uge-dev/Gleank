@@ -435,6 +435,18 @@ export type VerificationRequirement = {
   requiredLevel: number;
   blocking: boolean;
   adminFeedback?: string;
+  isLocked: boolean;
+  previousStageApproved: boolean;
+  canSubmit: boolean;
+  canRequestResubmission: boolean;
+  resubmissionRequest?: {
+    id: string;
+    reason: string;
+    status: 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
+    adminFeedback?: string;
+    reviewedAt?: string | null;
+    createdAt: string;
+  } | null;
   latestSubmission?: {
     id: string;
     version: number;
@@ -728,6 +740,7 @@ export const riderApi = {
   submitVerificationRequirement(code: string, payload: Record<string, unknown>, files: Record<string, File | null> = {}) {
     const formData = new FormData();
     formData.append('payload', JSON.stringify(payload));
+    formData.append('actorRole', 'rider');
     Object.entries(files).forEach(([field, file]) => {
       if (file) formData.append(field, file);
     });
@@ -741,8 +754,19 @@ export const riderApi = {
   requestVerificationLevel(level: number, reason = '') {
     return apiRequest<VerificationCenterResponse>('/api/verification/level-requests', {
       method: 'POST',
-      body: JSON.stringify({ level, reason }),
+      body: JSON.stringify({ level, reason, actorRole: 'rider' }),
     });
+  },
+  requestRequirementResubmission(requirementId: string, reason: string) {
+    return apiRequest<VerificationCenterResponse>(
+      '/api/verification/requirements/' +
+        encodeURIComponent(requirementId) +
+        '/resubmission-request',
+      {
+        method: 'POST',
+        body: JSON.stringify({ reason, actorRole: 'rider' }),
+      },
+    );
   },
   submitCashReconciliation(orderIds: string[], note?: string) {
     return apiRequest<{ orders: FullDeliveryOrder[] }>('/api/rider/cash-reconciliation', { method: 'POST', body: JSON.stringify({ orderIds, note }) });

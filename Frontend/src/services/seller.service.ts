@@ -76,6 +76,7 @@ export type AvailableDeliveryRider = {
   name: string;
   displayName?: string;
   dispatchScore?: number;
+  distanceToPickupKm?: number | null;
   matchSummary?: string;
   availabilityMode?: string;
   privacyNote?: string;

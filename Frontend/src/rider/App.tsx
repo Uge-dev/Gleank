@@ -22,6 +22,7 @@ import Settings from './pages/Settings';
 import VerificationCenter from './pages/VerificationCenter';
 import SafetyCenter from './pages/SafetyCenter';
 import NotFound from './pages/NotFound';
+import LocationPermissionNotice from '../components/LocationPermissionNotice';
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { rider, loading } = useAuth();
@@ -42,8 +43,10 @@ function ProtectedRoute({ children }: { children: ReactElement }) {
 
 export default function App() {
   return (
-    <AnimatePresence mode="wait">
-      <Routes>
+    <>
+      <LocationPermissionNotice />
+      <AnimatePresence mode="wait">
+        <Routes>
         <Route path="/" element={<Navigate to="/rider" replace />} />
         <Route path="/rider/login" element={<Login />} />
         <Route path="/rider/signup" element={<Signup />} />
@@ -75,7 +78,8 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFound />} />
-      </Routes>
-    </AnimatePresence>
+        </Routes>
+      </AnimatePresence>
+    </>
   );
 }

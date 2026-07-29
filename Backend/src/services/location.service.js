@@ -65,6 +65,92 @@ function serializeLocation(row, type = "delivery") {
   };
 }
 
+function serializePresence(row) {
+  if (!row) return null;
+  return {
+    userId: row.user_id,
+    role: row.role,
+    lat: row.lat ?? null,
+    lng: row.lng ?? null,
+    accuracyMeters: row.accuracy_meters ?? null,
+    permissionStatus: row.permission_status || "unknown",
+    source: row.source || "browser_login",
+    capturedAt: row.captured_at || null,
+    updatedAt: row.updated_at,
+  };
+}
+
+export function getAccountLocationPresence(userId) {
+  return serializePresence(
+    db.prepare("SELECT * FROM account_location_presence WHERE user_id = ?").get(userId),
+  );
+}
+
+export function upsertAccountLocationPresence(auth, input = {}) {
+  const userId = requireRole(auth, ["buyer", "seller", "rider"]);
+  const role = auth.role;
+  const permissionStatus = clean(input.permissionStatus || input.permission, 40).toLowerCase();
+  if (!["prompt", "granted", "denied", "unavailable"].includes(permissionStatus)) {
+    throw new HttpError(422, "Choose a valid browser location permission status.");
+  }
+
+  const location = input.currentLocation || input.location || input;
+  const lat = numberOrNull(location.lat);
+  const lng = numberOrNull(location.lng || location.lon);
+  if (permissionStatus === "granted" && (lat === null || lng === null)) {
+    throw new HttpError(422, "Latitude and longitude are required after location permission is granted.");
+  }
+
+  const now = nowIso();
+  db.prepare(`
+    INSERT INTO account_location_presence (
+      user_id, role, lat, lng, accuracy_meters, permission_status,
+      source, captured_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(user_id) DO UPDATE SET
+      role = excluded.role,
+      lat = CASE WHEN excluded.permission_status = 'granted' THEN excluded.lat ELSE account_location_presence.lat END,
+      lng = CASE WHEN excluded.permission_status = 'granted' THEN excluded.lng ELSE account_location_presence.lng END,
+      accuracy_meters = CASE
+        WHEN excluded.permission_status = 'granted' THEN excluded.accuracy_meters
+        ELSE account_location_presence.accuracy_meters
+      END,
+      permission_status = excluded.permission_status,
+      source = excluded.source,
+      captured_at = CASE
+        WHEN excluded.permission_status = 'granted' THEN excluded.captured_at
+        ELSE account_location_presence.captured_at
+      END,
+      updated_at = excluded.updated_at
+  `).run(
+    userId,
+    role,
+    lat,
+    lng,
+    numberOrNull(location.accuracyMeters || location.accuracy),
+    permissionStatus,
+    clean(input.source || "browser_login", 40),
+    permissionStatus === "granted" ? now : null,
+    now,
+  );
+
+  if (role === "rider" && permissionStatus === "granted") {
+    upsertRiderLocation(auth, {
+      currentLocation: {
+        lat,
+        lng,
+        accuracyMeters: numberOrNull(location.accuracyMeters || location.accuracy),
+        source: "browser_login",
+      },
+    });
+  }
+
+  return {
+    presence: getAccountLocationPresence(userId),
+    routingReady: permissionStatus === "granted" && lat !== null && lng !== null,
+  };
+}
+
 async function fetchGeoapify(path, params) {
   if (!canUseGeoapify()) return null;
 

@@ -14,6 +14,7 @@ const backendRoot = path.resolve(
 
 const tableOrder = [
   "users",
+  "account_location_presence",
   "sessions",
   "notifications",
   "password_reset_tokens",
@@ -58,6 +59,13 @@ const tableOrder = [
   "seller_subscription_events",
   "platform_fee_rules",
   "payment_transactions",
+  "verification_cases",
+  "verification_requirements",
+  "verification_submissions",
+  "verification_reviews",
+  "verification_level_requests",
+  "verification_resubmission_requests",
+  "verification_audit_events",
 ];
 
 function resolveSqlitePath() {

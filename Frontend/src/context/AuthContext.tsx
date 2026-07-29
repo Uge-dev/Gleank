@@ -15,6 +15,7 @@ import {
 } from "../services/auth.service";
 import { ApiError } from "../lib/api";
 import type { RegisterInput } from "../services/auth.service";
+import { requestLocationAfterLogin } from "../services/location-presence.service";
 import type { AuthUser, SellerStore, UserRole } from "../types/domain";
 
 type AuthState = {
@@ -108,6 +109,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async login(input) {
         const session = await loginRequest(input);
         setSession(session.user, session.store);
+        if (session.user.role !== "admin") {
+          void requestLocationAfterLogin(session.user.role);
+        }
         return session.user;
       },
       async register(input) {

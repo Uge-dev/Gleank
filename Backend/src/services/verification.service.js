@@ -328,6 +328,45 @@ function normalizeRole(role) {
   return cleanRole;
 }
 
+function roleFromRequirementCode(code) {
+  const normalizedCode = clean(code, 120);
+  if (normalizedCode.startsWith("rider_")) return "rider";
+  if (normalizedCode.startsWith("seller_")) return "seller";
+  return "";
+}
+
+function accountSupportsVerificationRole(userId, role) {
+  if (role === "rider") return Boolean(getRiderProfile(userId));
+  if (role === "seller") return Boolean(getStore(userId));
+  return false;
+}
+
+function resolveActorVerificationRole(auth, requestedRole = "", requirementCode = "") {
+  const userId = requireAuth(auth);
+  const sessionRole = clean(auth.role, 20);
+  const codeRole = roleFromRequirementCode(requirementCode);
+  const explicitRole = ["seller", "rider"].includes(clean(requestedRole, 20))
+    ? clean(requestedRole, 20)
+    : "";
+  const targetRole = codeRole || explicitRole || (["seller", "rider"].includes(sessionRole) ? sessionRole : "");
+
+  if (!targetRole) {
+    throw new HttpError(422, "Verification is available for sellers and riders.");
+  }
+  if (codeRole && explicitRole && codeRole !== explicitRole) {
+    throw new HttpError(422, "This verification submission does not match the selected account type.");
+  }
+  if (["seller", "rider"].includes(sessionRole) && sessionRole !== targetRole) {
+    if (!accountSupportsVerificationRole(userId, targetRole)) {
+      throw new HttpError(403, `This verification center requires a ${targetRole} account.`);
+    }
+  } else if (sessionRole !== targetRole && !accountSupportsVerificationRole(userId, targetRole)) {
+    throw new HttpError(403, `This verification center requires a ${targetRole} account.`);
+  }
+
+  return targetRole;
+}
+
 function normalizeSellerType(value) {
   const sellerType = clean(value || "campus", 60);
   if (sellerType === "local") return "local_market";
@@ -661,6 +700,23 @@ function serializeReview(row) {
   };
 }
 
+function serializeResubmissionRequest(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    requirementId: row.requirement_id,
+    caseId: row.case_id,
+    userId: row.user_id,
+    reason: row.reason || "",
+    status: row.status,
+    adminFeedback: row.admin_feedback || "",
+    reviewedBy: row.reviewed_by || null,
+    reviewedAt: row.reviewed_at || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function serializeRequirement(row, { includeHistory = false } = {}) {
   if (!row) return null;
   const latestSubmission = row.latest_submission_id
@@ -681,6 +737,22 @@ function serializeRequirement(row, { includeHistory = false } = {}) {
         .all(row.id)
         .map(serializeReview)
     : [];
+  const resubmissionRequest = db
+    .prepare(`
+      SELECT *
+      FROM verification_resubmission_requests
+      WHERE requirement_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `)
+    .get(row.id);
+  const caseRow = db
+    .prepare("SELECT current_verified_level FROM verification_cases WHERE id = ?")
+    .get(row.case_id);
+  const previousStageApproved =
+    Number(row.required_level || 1) === 1 ||
+    Number(caseRow?.current_verified_level || 0) >= Number(row.required_level || 1) - 1;
+  const statusLocksSubmission = ["submitted", "under_review", "approved"].includes(row.status);
 
   return {
     id: row.id,
@@ -702,6 +774,17 @@ function serializeRequirement(row, { includeHistory = false } = {}) {
     metadata: parseJson(row.metadata_json, {}),
     latestSubmission: serializeSubmission(latestSubmission),
     latestReview: serializeReview(latestReview),
+    resubmissionRequest: serializeResubmissionRequest(resubmissionRequest),
+    isLocked: statusLocksSubmission,
+    previousStageApproved,
+    canSubmit:
+      previousStageApproved &&
+      !statusLocksSubmission &&
+      !["system", "provider"].includes(row.workflow_type),
+    canRequestResubmission:
+      row.status === "approved" &&
+      !["system", "provider"].includes(row.workflow_type) &&
+      (!resubmissionRequest || !["pending", "approved"].includes(resubmissionRequest.status)),
     submissions,
     reviews,
     createdAt: row.created_at,
@@ -945,15 +1028,13 @@ function serializeCase(row, { includeHistory = false, includeEligibility = false
 
 export function getVerificationCenter(auth, options = {}) {
   const ownUserId = requireAuth(auth);
-  const requestedRole = normalizeRole(options.role || auth.role);
+  const requestedRole = auth.role === "admin"
+    ? normalizeRole(options.role)
+    : resolveActorVerificationRole(auth, options.role || auth.role);
   const targetUserId = clean(options.userId || ownUserId, 140);
 
   if (targetUserId !== ownUserId && auth.role !== "admin") {
     throw new HttpError(403, "You cannot open another account's verification.");
-  }
-
-  if (auth.role !== "admin" && auth.role !== requestedRole) {
-    throw new HttpError(403, `This verification center requires a ${requestedRole} account.`);
   }
 
   const caseRow = ensureVerificationCase(targetUserId, requestedRole, options);
@@ -970,9 +1051,9 @@ export function getVerificationCenter(auth, options = {}) {
   };
 }
 
-function requireRequirementForActor(auth, code) {
+function requireRequirementForActor(auth, code, requestedRole = "") {
   const userId = requireAuth(auth);
-  const role = normalizeRole(auth.role);
+  const role = resolveActorVerificationRole(auth, requestedRole, code);
   const caseRow = ensureVerificationCase(userId, role);
   const requirement = db
     .prepare("SELECT * FROM verification_requirements WHERE case_id = ? AND code = ?")
@@ -982,7 +1063,21 @@ function requireRequirementForActor(auth, code) {
 }
 
 export function submitRequirement(auth, code, input = {}) {
-  const { userId, caseRow, requirement } = requireRequirementForActor(auth, code);
+  const { userId, caseRow, requirement } = requireRequirementForActor(
+    auth,
+    code,
+    input.actorRole || input.role,
+  );
+  if (
+    input.allowFutureStage !== true &&
+    Number(requirement.required_level || 1) > 1 &&
+    Number(caseRow.current_verified_level || 0) < Number(requirement.required_level || 1) - 1
+  ) {
+    throw new HttpError(
+      403,
+      `Stage ${Number(requirement.required_level || 1) - 1} must be approved before this requirement opens.`,
+    );
+  }
   if (requirement.workflow_type === "system") {
     throw new HttpError(422, "This requirement is updated automatically from account data.");
   }
@@ -992,6 +1087,15 @@ export function submitRequirement(auth, code, input = {}) {
       isDojahConfigured()
         ? "Start live-face verification through the provider workflow."
         : "Live-face verification is not configured yet, so this requirement remains incomplete.",
+    );
+  }
+  if (["submitted", "under_review"].includes(requirement.status)) {
+    throw new HttpError(409, "This requirement is locked while admin review is active.");
+  }
+  if (requirement.status === "approved") {
+    throw new HttpError(
+      409,
+      "This approved requirement is locked. Request resubmission and wait for admin to reopen it.",
     );
   }
 
@@ -1063,10 +1167,18 @@ export function submitRequirement(auth, code, input = {}) {
       WHERE id = ?
     `).run(submissionId, now, requirement.id);
 
+    db.prepare(`
+      UPDATE verification_resubmission_requests
+      SET status = 'completed',
+          updated_at = ?
+      WHERE requirement_id = ?
+        AND status = 'approved'
+    `).run(now, requirement.id);
+
     addAuditEvent({
       caseId: caseRow.id,
       actorId: userId,
-      actorRole: auth.role,
+      actorRole: caseRow.role,
       eventType: nextVersion > 1 ? "requirement_resubmitted" : "requirement_submitted",
       requirementCode: requirement.code,
       previousStatus: requirement.status,
@@ -1087,18 +1199,21 @@ export function submitRequirement(auth, code, input = {}) {
   createNotificationForUsers(getAdminIds(), {
     type: "admin",
     title: stageState?.approvalReady
-      ? `${auth.role === "rider" ? "Rider" : "Seller"} Stage ${stageState.stage} ready for approval`
+      ? `${caseRow.role === "rider" ? "Rider" : "Seller"} Stage ${stageState.stage} ready for approval`
       : nextVersion > 1
         ? "Verification resubmitted"
         : "New verification submission",
     body: stageState?.approvalReady
-      ? `${auth.name || `A ${auth.role}`} completed every Stage ${stageState.stage} requirement.`
+      ? `${auth.name || `A ${caseRow.role}`} completed every Stage ${stageState.stage} requirement.`
       : `${auth.name || "A user"} submitted ${requirement.title} for review.`,
     actionLabel: "Review",
     actionPath: "/admin",
   });
 
-  return getVerificationCenter(auth, { role: auth.role, includeHistory: true });
+  return getVerificationCenter(
+    { ...auth, role: caseRow.role },
+    { role: caseRow.role, includeHistory: true },
+  );
 }
 
 export function submitRequirementForUser(userId, role, code, input = {}) {
@@ -1109,7 +1224,10 @@ export function submitRequirementForUser(userId, role, code, input = {}) {
     user_id: user.id,
     role: normalizeRole(role),
     name: user.name,
-  }, code, input);
+  }, code, {
+    ...input,
+    allowFutureStage: true,
+  });
 }
 
 function requireCase(caseId) {
@@ -1122,6 +1240,190 @@ function requirementById(requirementId) {
   const requirement = db.prepare("SELECT * FROM verification_requirements WHERE id = ?").get(requirementId);
   if (!requirement) throw new HttpError(404, "Verification requirement was not found.");
   return requirement;
+}
+
+export function requestRequirementResubmission(auth, requirementId, input = {}) {
+  const userId = requireAuth(auth);
+  const requirement = requirementById(requirementId);
+  const caseRow = requireCase(requirement.case_id);
+  const role = resolveActorVerificationRole(
+    auth,
+    input.actorRole || input.role || caseRow.role,
+    requirement.code,
+  );
+
+  if (caseRow.user_id !== userId || caseRow.role !== role) {
+    throw new HttpError(403, "You cannot request changes to another account's verification.");
+  }
+  if (requirement.status !== "approved") {
+    throw new HttpError(422, "Resubmission can only be requested for an approved, locked requirement.");
+  }
+  if (["system", "provider"].includes(requirement.workflow_type)) {
+    throw new HttpError(
+      422,
+      "This requirement is updated through its account or verification-provider workflow.",
+    );
+  }
+
+  const reason = clean(input.reason, 1000);
+  if (reason.length < 8) {
+    throw new HttpError(422, "Explain clearly why this approved information needs to be changed.");
+  }
+  const existing = db.prepare(`
+    SELECT *
+    FROM verification_resubmission_requests
+    WHERE requirement_id = ? AND status = 'pending'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(requirement.id);
+  if (existing) {
+    throw new HttpError(409, "A resubmission request is already waiting for admin review.");
+  }
+
+  const now = nowIso();
+  const requestId = createId("vrs");
+  transaction(() => {
+    db.prepare(`
+      INSERT INTO verification_resubmission_requests (
+        id, requirement_id, case_id, user_id, reason, status,
+        admin_feedback, reviewed_by, reviewed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'pending', '', NULL, NULL, ?, ?)
+    `).run(requestId, requirement.id, caseRow.id, userId, reason, now, now);
+
+    addAuditEvent({
+      caseId: caseRow.id,
+      actorId: userId,
+      actorRole: role,
+      eventType: "resubmission_unlock_requested",
+      requirementCode: requirement.code,
+      previousStatus: requirement.status,
+      newStatus: requirement.status,
+      summary: reason,
+      metadata: { requestId },
+    });
+  });
+
+  createNotificationForUsers(getAdminIds(), {
+    type: "admin",
+    title: `${role === "rider" ? "Rider" : "Seller"} requested verification resubmission`,
+    body: `${auth.name || "A user"} wants to update ${requirement.title}: ${reason}`,
+    actionLabel: "Review request",
+    actionPath: "/admin",
+  });
+
+  return getVerificationCenter(
+    { ...auth, role },
+    { role, includeHistory: true },
+  );
+}
+
+export function reviewRequirementResubmission(auth, requestId, input = {}) {
+  const adminId = requireAdmin(auth);
+  const action = clean(input.action, 40);
+  if (!["approve", "reject"].includes(action)) {
+    throw new HttpError(422, "Choose approve or reject for this resubmission request.");
+  }
+  const row = db.prepare(`
+    SELECT verification_resubmission_requests.*,
+           verification_requirements.code AS requirement_code,
+           verification_requirements.title AS requirement_title,
+           verification_requirements.status AS requirement_status
+    FROM verification_resubmission_requests
+    JOIN verification_requirements
+      ON verification_requirements.id = verification_resubmission_requests.requirement_id
+    WHERE verification_resubmission_requests.id = ?
+  `).get(clean(requestId, 140));
+  if (!row) throw new HttpError(404, "Verification resubmission request was not found.");
+  if (row.status !== "pending") {
+    throw new HttpError(409, "This resubmission request has already been reviewed.");
+  }
+
+  const caseRow = requireCase(row.case_id);
+  const feedback = clean(
+    input.feedback ||
+      input.reason ||
+      (action === "approve"
+        ? "Admin reopened this requirement for resubmission."
+        : "Admin kept the approved information locked."),
+    1000,
+  );
+  if (action === "reject" && feedback.length < 8) {
+    throw new HttpError(422, "Give a clear reason for keeping this requirement locked.");
+  }
+
+  const now = nowIso();
+  transaction(() => {
+    db.prepare(`
+      UPDATE verification_resubmission_requests
+      SET status = ?,
+          admin_feedback = ?,
+          reviewed_by = ?,
+          reviewed_at = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(action === "approve" ? "approved" : "rejected", feedback, adminId, now, now, row.id);
+
+    if (action === "approve") {
+      assertTransition(row.requirement_status, "needs_information");
+      const reviewId = createId("vrev");
+      db.prepare(`
+        INSERT INTO verification_reviews (
+          id, requirement_id, submission_id, case_id, admin_id, action,
+          previous_status, new_status, feedback, metadata_json, created_at
+        ) VALUES (
+          ?, ?, (SELECT latest_submission_id FROM verification_requirements WHERE id = ?),
+          ?, ?, 'needs_information', ?, 'needs_information', ?, ?, ?
+        )
+      `).run(
+        reviewId,
+        row.requirement_id,
+        row.requirement_id,
+        row.case_id,
+        adminId,
+        row.requirement_status,
+        feedback,
+        safeJson({ resubmissionRequestId: row.id, riderRequested: caseRow.role === "rider" }),
+        now,
+      );
+      db.prepare(`
+        UPDATE verification_requirements
+        SET status = 'needs_information',
+            latest_review_id = ?,
+            review_result = 'needs_information',
+            admin_feedback = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(reviewId, feedback, now, row.requirement_id);
+      refreshCaseStatus(row.case_id);
+    }
+
+    addAuditEvent({
+      caseId: row.case_id,
+      actorId: adminId,
+      actorRole: "admin",
+      eventType: action === "approve"
+        ? "resubmission_unlock_approved"
+        : "resubmission_unlock_rejected",
+      requirementCode: row.requirement_code,
+      previousStatus: row.requirement_status,
+      newStatus: action === "approve" ? "needs_information" : row.requirement_status,
+      summary: feedback,
+      metadata: { requestId: row.id },
+    });
+  });
+
+  notifyCaseUser(
+    caseRow,
+    action === "approve" ? "Verification form reopened" : "Verification remains locked",
+    `${row.requirement_title}: ${feedback}`,
+  );
+
+  return {
+    case: serializeCase(requireCase(row.case_id), {
+      includeHistory: true,
+      includeEligibility: true,
+    }),
+  };
 }
 
 function notifyCaseUser(caseRow, title, body) {
@@ -1144,6 +1446,33 @@ export function reviewRequirement(auth, requirementId, input = {}) {
   const feedback = clean(input.feedback || input.reason || "", 1000);
   if (["needs_information", "reject"].includes(action) && feedback.length < 8) {
     throw new HttpError(422, "Give a clear reason before requesting correction or rejecting.");
+  }
+  if (
+    action === "approve" &&
+    !["submitted", "under_review"].includes(requirement.status)
+  ) {
+    throw new HttpError(
+      422,
+      "Only a complete submitted requirement can be approved. Reopen it and wait for a new submission first.",
+    );
+  }
+  if (action === "approve") {
+    const submission = requirement.latest_submission_id
+      ? db.prepare("SELECT * FROM verification_submissions WHERE id = ?").get(requirement.latest_submission_id)
+      : null;
+    const completion = evaluateSubmissionCompleteness(requirement, {
+      payload: parseJson(submission?.payload_json, {}),
+      documentUrls: parseJson(submission?.document_urls, []),
+      provider: submission?.provider || "",
+      providerStatus: submission?.provider_status || "",
+    });
+    if (!submission || !completion.complete) {
+      throw new HttpError(
+        422,
+        `Complete every required field before approving ${requirement.title}.`,
+        { missingFields: completion.missing },
+      );
+    }
   }
   if (requirement.code === "rider_live_face" && action === "approve") {
     const submission = requirement.latest_submission_id
@@ -1438,7 +1767,7 @@ export function approveCaseLevel(auth, caseId, input = {}) {
 
 export function requestVerificationLevel(auth, input = {}) {
   const userId = requireAuth(auth);
-  const role = normalizeRole(auth.role);
+  const role = resolveActorVerificationRole(auth, input.actorRole || input.role || auth.role);
   const caseRow = ensureVerificationCase(userId, role);
   const requestedLevel = Math.min(
     3,
@@ -1616,20 +1945,21 @@ export function evaluateRiderEligibility(userId, options = {}) {
     accountActive: Boolean(user?.is_active),
     emailVerified: Boolean(user?.email_verified),
     phoneVerified: Boolean(user?.phone_verified || user?.phone || profile?.phone),
-    requiredVerificationApproved: (
-      Number(caseRow?.current_verified_level || profile?.verification_level || 0) >= requiredLevel &&
-      ["approved", "restricted"].includes(caseRow?.overall_status || "")
-    ) || profile?.verification_status === "verified",
+    requiredVerificationApproved:
+      Number(caseRow?.current_verified_level || profile?.verification_level || 0) >= requiredLevel ||
+      profile?.verification_status === "verified",
     operationallyActive: caseRow?.operational_status === "active" || (profile?.verification_status === "verified" && profile?.safety_status !== "suspended"),
     safetyClear: Boolean(profile && profile.safety_status !== "suspended" && profile.verification_status !== "suspended"),
     manuallyOnline: profile?.availability === "online",
-    recentHeartbeat: heartbeatSeconds <= Number(options.heartbeatSeconds || 90),
+    recentHeartbeat: heartbeatSeconds <= Number(options.heartbeatSeconds || 180),
     locationPermission: profile?.gps_permission_status === "gps_enabled" || String(profile?.availability_mode || "").includes("gps"),
     capacityReady,
     zoneReady,
     workloadReady: Number(activeWorkload || 0) < Number(options.maxActiveAssignments || 2),
     deliveryLimitReady: highValueAllowed,
-    autoDispatchEnabled: profile?.can_receive_auto_dispatch !== 0,
+    autoDispatchEnabled:
+      options.requireAutoDispatch === false ||
+      profile?.can_receive_auto_dispatch !== 0,
   };
 
   const blockingReasons = [];
@@ -1651,7 +1981,11 @@ export function evaluateRiderEligibility(userId, options = {}) {
   add(checks.zoneReady, "SERVICE_ZONE_MISSING", "Select at least one working zone.");
   add(checks.workloadReady, "WORKLOAD_LIMIT", "Finish current deliveries before taking another assignment.");
   add(checks.deliveryLimitReady, "DELIVERY_LIMIT", "This package is above your current verification limit.");
-  add(checks.autoDispatchEnabled, "AUTO_DISPATCH_DISABLED", "Auto-dispatch is disabled for this rider.");
+  add(
+    checks.autoDispatchEnabled,
+    "AUTO_DISPATCH_DISABLED",
+    "Auto-dispatch is disabled for this rider.",
+  );
 
   return {
     eligible: blockingReasons.length === 0,
@@ -1689,6 +2023,7 @@ export function adminListVerificationQueues(auth, filters = {}) {
     underReview: [],
     needsInformation: [],
     resubmitted: [],
+    resubmissionRequests: [],
     upgradeRequests: [],
     expiring: [],
     rejected: [],
@@ -1703,6 +2038,9 @@ export function adminListVerificationQueues(auth, filters = {}) {
     }
     if (requirements.some((requirement) => requirement.status === "submitted" && Number(requirement.latestSubmission?.version || 1) > 1)) {
       queues.resubmitted.push(item);
+    }
+    if (requirements.some((requirement) => requirement.resubmissionRequest?.status === "pending")) {
+      queues.resubmissionRequests.push(item);
     }
     if (requirements.some((requirement) => requirement.status === "under_review")) queues.underReview.push(item);
     if (requirements.some((requirement) => requirement.status === "needs_information")) queues.needsInformation.push(item);

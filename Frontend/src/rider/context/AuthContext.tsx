@@ -5,6 +5,7 @@ import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import { riderLocalStore } from '../services/riderLocalStore';
 import type { Availability, Rider } from '../types';
+import { requestLocationAfterLogin } from '../../services/location-presence.service';
 
 interface AuthContextValue {
   rider: Rider | null;
@@ -127,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.login(email, password);
           setRider(response.rider);
           setApiConnected(true);
+          void requestLocationAfterLogin('rider');
           return response.rider;
         }
         if (shouldUseMock()) {

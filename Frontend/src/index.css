@@ -909,8 +909,8 @@ img {
 
 .feed-layout {
   display: grid;
-  grid-template-columns: minmax(0, 20px) 40px;
-  gap: 4px;
+  grid-template-columns: minmax(0, 620px) 340px;
+  gap: 64px;
   align-items: start;
 }
 
@@ -1502,7 +1502,7 @@ img {
 
   .guest-feed-header,
   .feed-layout {
-    grid-template-columns: 0.5fr;
+    grid-template-columns: 1fr;
   }
 
   .feed-right-panel {
@@ -34325,7 +34325,7 @@ html[data-theme="dark"] .feed-source-tag small {
 }
 
 .seller-order-task-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
   gap: 10px !important;
 }
 
@@ -34903,20 +34903,16 @@ html[data-theme="dark"] .feed-source-tag small {
   }
 }
 
-
-/* Desktop Home feed alignment — including Chrome at 110% zoom */
+/* =========================================================
+   HOME DESKTOP RIGHT PANEL — FIXED BESIDE THE FEED
+   Keeps the marketplace and seller cards in the viewport
+   while product posts scroll. Mobile remains unchanged.
+========================================================= */
 @media (min-width: 1181px) {
-  /* Align the fixed top navigation with the resized sidebar */
-  .for-you-fixed-tabs {
-    left: 220px !important;
-  }
-
-  /* Push the first feed post completely below the fixed navigation */
   .guest-feed-page {
     padding: 76px clamp(24px, 2.25vw, 34px) 72px !important;
   }
 
-  /* Reduce the space between the product feed and right-side cards */
   .feed-layout {
     grid-template-columns:
       minmax(0, 590px)
@@ -34931,9 +34927,6 @@ html[data-theme="dark"] .feed-source-tag small {
     min-width: 0 !important;
   }
 
-  /* Position the right cards naturally beside the feed */
- /* Keep Home right-side cards fixed while feed posts scroll */
-@media (min-width: 1181px) {
   .feed-right-panel {
     position: fixed !important;
     top: 76px !important;
@@ -34967,4 +34960,66 @@ html[data-theme="dark"] .feed-source-tag small {
     display: none;
   }
 }
+/* Login location permission feedback */
+.location-permission-notice {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  z-index: 5000;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, calc(100vw - 28px));
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
+  transform: translateX(-50%);
+}
+
+.location-permission-notice.granted {
+  border-color: rgba(5, 150, 105, 0.24);
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.location-permission-notice.denied,
+.location-permission-notice.unavailable {
+  border-color: rgba(217, 119, 6, 0.24);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.location-permission-notice > svg {
+  width: 20px;
+  height: 20px;
+}
+
+.location-permission-notice p {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.location-permission-notice button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  place-items: center;
+}
+
+@media (max-width: 720px) {
+  .location-permission-notice {
+    top: 14px;
+  }
 }

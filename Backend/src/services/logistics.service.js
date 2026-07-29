@@ -1091,10 +1091,20 @@ function loadOrderForBatch(orderId) {
     SELECT orders.*, stores.name AS store_name, stores.seller_type, stores.market_id,
            stores.campus AS store_campus, stores.location_area, stores.pickup_location AS store_pickup_location,
            stores.nearest_landmark, stores.pickup_zone_id, stores.pickup_lat, stores.pickup_lng,
+           COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS route_pickup_lat,
+           COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS route_pickup_lng,
+           COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
+           COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
            users.name AS seller_name, users.phone AS seller_user_phone
     FROM orders
     JOIN stores ON stores.id = orders.store_id
     JOIN users ON users.id = orders.seller_id
+    LEFT JOIN account_location_presence AS seller_presence
+      ON seller_presence.user_id = orders.seller_id
+      AND seller_presence.permission_status = 'granted'
+    LEFT JOIN account_location_presence AS buyer_presence
+      ON buyer_presence.user_id = orders.buyer_id
+      AND buyer_presence.permission_status = 'granted'
     WHERE orders.id = ?
   `).get(orderId);
 
@@ -1225,6 +1235,22 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
     `).run(createId("bps"), batchId, JSON.stringify(summary), now, now);
 
     group.orders.forEach(({ order }, index) => {
+      db.prepare(`
+        UPDATE orders
+        SET pickup_lat = COALESCE(pickup_lat, ?),
+            pickup_lng = COALESCE(pickup_lng, ?),
+            delivery_lat = COALESCE(delivery_lat, ?),
+            delivery_lng = COALESCE(delivery_lng, ?),
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        order.route_pickup_lat ?? order.pickup_lat ?? null,
+        order.route_pickup_lng ?? order.pickup_lng ?? null,
+        order.route_delivery_lat ?? order.delivery_lat ?? null,
+        order.route_delivery_lng ?? order.delivery_lng ?? null,
+        now,
+        order.id,
+      );
       const codes = ensureOrderStage2Codes(order.id);
       const pickupOtp = codes?.sellerPickupCode || generateOtp();
       const taskId = createId("put");
@@ -1698,6 +1724,15 @@ function maybeMarkBatchReady(batchId) {
     note: "All active sellers marked their package ready for dispatch.",
     statusAfter: "ready_for_dispatch",
   });
+
+  try {
+    offerNextRiderForBatch(batchId, { internal: true });
+  } catch (error) {
+    console.error("Automatic rider selection could not start for ready batch:", {
+      batchId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 export function syncOrderReadinessForDispatch(orderId) {
@@ -1968,15 +2003,16 @@ function riderVehicleCapability(transportType = "motorcycle") {
   return "motorcycle_or_above";
 }
 
-function riderCanHandle(rider, batch) {
+function riderCanHandle(rider, batch, { assignmentMode = "automatic" } = {}) {
   const eligibility = evaluateRiderEligibility(rider.rider_id || rider.user_id, {
     packageValueKobo: batch.package_value_kobo,
     highValue: batch.risk_level === "high" || batch.risk_level === "critical",
     maxActiveAssignments: 1,
+    requireAutoDispatch: assignmentMode === "automatic",
   });
   if (!eligibility.eligible) return false;
   const capacity = serializeCapacity(rider);
-  if (!capacity?.canReceiveAutoDispatch) return false;
+  if (assignmentMode === "automatic" && !capacity?.canReceiveAutoDispatch) return false;
   if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") return false;
   if (Number(capacity.currentActiveBatchCount || 0) > 0 || rider.availability === "busy") return false;
   if (rank(riderCapacityValue(capacity.maxPackageSize, "size"), SIZE_ORDER) < rank(batch.package_size_summary, SIZE_ORDER)) return false;
@@ -1993,6 +2029,54 @@ function riderCanHandle(rider, batch) {
   return true;
 }
 
+function routeCoordinatesForBatch(batchId) {
+  return db.prepare(`
+    SELECT
+      COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS pickup_lat,
+      COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS pickup_lng,
+      COALESCE(orders.delivery_lat, buyer_presence.lat) AS delivery_lat,
+      COALESCE(orders.delivery_lng, buyer_presence.lng) AS delivery_lng
+    FROM pickup_tasks
+    JOIN orders ON orders.id = pickup_tasks.order_id
+    JOIN stores ON stores.id = orders.store_id
+    LEFT JOIN account_location_presence AS seller_presence
+      ON seller_presence.user_id = orders.seller_id
+      AND seller_presence.permission_status = 'granted'
+    LEFT JOIN account_location_presence AS buyer_presence
+      ON buyer_presence.user_id = orders.buyer_id
+      AND buyer_presence.permission_status = 'granted'
+    WHERE pickup_tasks.delivery_batch_id = ?
+      AND pickup_tasks.status != 'seller_rejected'
+    ORDER BY pickup_tasks.pickup_sequence ASC
+    LIMIT 1
+  `).get(batchId);
+}
+
+function haversineDistanceKm(lat1, lng1, lat2, lng2) {
+  const values = [lat1, lng1, lat2, lng2].map(Number);
+  if (!values.every(Number.isFinite)) return null;
+  const [fromLat, fromLng, toLat, toLng] = values;
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const dLat = toRadians(toLat - fromLat);
+  const dLng = toRadians(toLng - fromLng);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRadians(fromLat)) *
+      Math.cos(toRadians(toLat)) *
+      Math.sin(dLng / 2) ** 2;
+  const bounded = Math.min(1, Math.max(0, a));
+  return 6371 * 2 * Math.atan2(Math.sqrt(bounded), Math.sqrt(1 - bounded));
+}
+
+function riderDistanceToPickup(rider, batch) {
+  return haversineDistanceKm(
+    rider.current_lat ?? rider.last_known_latitude,
+    rider.current_lng ?? rider.last_known_longitude,
+    batch.route_pickup_lat,
+    batch.route_pickup_lng,
+  );
+}
+
 function dispatchScore(rider, batch) {
   const capacity = serializeCapacity(rider);
   let score = 50;
@@ -2006,17 +2090,24 @@ function dispatchScore(rider, batch) {
   score -= Number(capacity.currentActiveBatchCount || 0) * 20;
   score -= Number(capacity.rejectionRate || 0) * 15;
   if (batch.risk_level === "high") score -= 4;
+  const distanceKm = riderDistanceToPickup(rider, batch);
+  if (distanceKm !== null) {
+    score += Math.max(0, 30 - Math.min(distanceKm, 30) * 2);
+  }
   return Number(score.toFixed(2));
 }
 
 function publicRiderSnapshot(rider, batch, score = null) {
   const capacity = serializeCapacity(rider);
   const safeName = clean(rider.name || "Verified rider", 80);
+  const distanceKm = riderDistanceToPickup(rider, batch);
   return {
     id: rider.rider_id || rider.user_id,
     name: safeName,
     displayName: safeName,
     dispatchScore: score == null ? dispatchScore(rider, batch) : score,
+    distanceToPickupKm:
+      distanceKm === null ? null : Number(distanceKm.toFixed(2)),
     availabilityMode: capacity.availabilityMode,
     currentZoneId: capacity.currentZoneId,
     transportType: capacity.transportType,
@@ -2030,6 +2121,7 @@ function publicRiderSnapshot(rider, batch, score = null) {
     reliabilityScore: capacity.reliabilityScore,
     matchSummary: [
       capacity.transportType,
+      distanceKm === null ? "" : `${distanceKm.toFixed(1)} km from pickup`,
       capacity.currentZoneId && capacity.currentZoneId === batch.source_zone_id ? "near pickup zone" : "",
       capacity.gpsPermissionStatus === "gps_enabled" ? "GPS enabled" : "zone dispatch",
     ].filter(Boolean).join(" · "),
@@ -2037,7 +2129,12 @@ function publicRiderSnapshot(rider, batch, score = null) {
   };
 }
 
-function riderBatchDiagnostics(rider, batch, attemptedRiderIds = new Set()) {
+function riderBatchDiagnostics(
+  rider,
+  batch,
+  attemptedRiderIds = new Set(),
+  { assignmentMode = "automatic" } = {},
+) {
   const reasons = [];
   const riderId = rider.rider_id || rider.user_id;
   const capacity = serializeCapacity(rider);
@@ -2045,6 +2142,7 @@ function riderBatchDiagnostics(rider, batch, attemptedRiderIds = new Set()) {
     packageValueKobo: batch.package_value_kobo,
     highValue: batch.risk_level === "high" || batch.risk_level === "critical",
     maxActiveAssignments: 1,
+    requireAutoDispatch: assignmentMode === "automatic",
   });
 
   if (attemptedRiderIds.has(riderId)) reasons.push("already_contacted_for_this_batch");
@@ -2052,7 +2150,9 @@ function riderBatchDiagnostics(rider, batch, attemptedRiderIds = new Set()) {
     reasons.push(...(verification.blockingReasons || []).map((reason) => reason.code || "rider_not_eligible"));
     if (!verification.blockingReasons?.length) reasons.push("rider_not_eligible");
   }
-  if (!capacity?.canReceiveAutoDispatch) reasons.push("auto_dispatch_disabled");
+  if (assignmentMode === "automatic" && !capacity?.canReceiveAutoDispatch) {
+    reasons.push("auto_dispatch_disabled");
+  }
   if (!["online", "online_gps_active", "online_zone_only"].includes(capacity.availabilityMode) && rider.availability !== "online") {
     reasons.push("rider_offline");
   }
@@ -2089,8 +2189,21 @@ function riderBatchDiagnostics(rider, batch, attemptedRiderIds = new Set()) {
   };
 }
 
-function listRiderCandidatesForBatchInternal(batchId, { includeExcluded = false } = {}) {
-  const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+function listRiderCandidatesForBatchInternal(
+  batchId,
+  { includeExcluded = false, assignmentMode = "automatic" } = {},
+) {
+  const storedBatch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
+  const routeCoordinates = routeCoordinatesForBatch(batchId) || {};
+  const batch = storedBatch
+    ? {
+        ...storedBatch,
+        route_pickup_lat: routeCoordinates.pickup_lat ?? null,
+        route_pickup_lng: routeCoordinates.pickup_lng ?? null,
+        route_delivery_lat: routeCoordinates.delivery_lat ?? null,
+        route_delivery_lng: routeCoordinates.delivery_lng ?? null,
+      }
+    : null;
   if (!batch) throw new HttpError(404, "Delivery batch was not found.");
   const attempted = new Set(
     db.prepare("SELECT rider_id FROM dispatch_attempts WHERE delivery_batch_id = ?").all(batchId).map((row) => row.rider_id),
@@ -2103,7 +2216,9 @@ function listRiderCandidatesForBatchInternal(batchId, { includeExcluded = false 
       AND users.is_active = 1
       AND rider_profiles.safety_status = 'normal'
   `).all();
-  const diagnostics = riders.map((rider) => riderBatchDiagnostics(rider, batch, attempted));
+  const diagnostics = riders.map((rider) =>
+    riderBatchDiagnostics(rider, batch, attempted, { assignmentMode }),
+  );
   const candidates = diagnostics
     .filter((item) => item.eligible)
     .sort((a, b) => b.score - a.score);
@@ -2159,7 +2274,10 @@ export function listRiderCandidatesForBatch(auth, batchId) {
   advanceDueReadinessAndDispatch();
   advanceExpiredDispatchAttempts();
   assertBatchReadyForRiderOffer(batchId);
-  const { batch, candidates, excluded } = listRiderCandidatesForBatchInternal(batchId, { includeExcluded: auth.role === "admin" });
+  const { batch, candidates, excluded } = listRiderCandidatesForBatchInternal(batchId, {
+    includeExcluded: auth.role === "admin",
+    assignmentMode: "manual",
+  });
   const safeCandidates = candidates.map((candidate) => publicRiderSnapshot(candidate.rider, batch, candidate.score));
   const safeExcluded = auth.role === "admin"
     ? excluded.map((candidate) => ({
@@ -2200,6 +2318,14 @@ export function startDispatchForBatch(auth, batchId) {
 
 function createDispatchOfferForCandidate(batch, candidate, { internal = false, assignmentMode = "automatic", actor = null } = {}) {
   const batchId = batch.id;
+  const routeCoordinates = routeCoordinatesForBatch(batchId) || {};
+  const scoringBatch = {
+    ...batch,
+    route_pickup_lat: routeCoordinates.pickup_lat ?? null,
+    route_pickup_lng: routeCoordinates.pickup_lng ?? null,
+    route_delivery_lat: routeCoordinates.delivery_lat ?? null,
+    route_delivery_lng: routeCoordinates.delivery_lng ?? null,
+  };
   const existingOpen = db.prepare(`
     SELECT * FROM dispatch_attempts
     WHERE delivery_batch_id = ? AND status = 'offered'
@@ -2221,7 +2347,7 @@ function createDispatchOfferForCandidate(batch, candidate, { internal = false, a
   const attemptId = createId("dsp");
   const attemptNumber = Number(batch.dispatch_attempt_count || 0) + 1;
   const riderId = candidate.rider.rider_id || candidate.rider.user_id;
-  const riderSnapshot = publicRiderSnapshot(candidate.rider, batch, candidate.score);
+  const riderSnapshot = publicRiderSnapshot(candidate.rider, scoringBatch, candidate.score);
   const expiresAt = buildDispatchExpiresAt(now, windowSeconds);
 
   db.prepare(`
@@ -2363,7 +2489,9 @@ export function sendDeliveryOfferToRider(auth, batchId, input = {}) {
 
   const riderId = clean(input.riderId, 140);
   if (!riderId) throw new HttpError(422, "Select a rider before sending a delivery offer.");
-  const { candidates } = listRiderCandidatesForBatchInternal(batchId);
+  const { candidates } = listRiderCandidatesForBatchInternal(batchId, {
+    assignmentMode: "manual",
+  });
   const candidate = candidates.find((item) => item.riderId === riderId);
   if (!candidate) throw new HttpError(422, "This rider is no longer eligible for this delivery batch.");
   return createDispatchOfferForCandidate(batch, candidate, { assignmentMode: "manual", actor: auth });
@@ -2384,12 +2512,22 @@ function createAssignmentsForBatch(batchId, riderId) {
   const tasks = db.prepare(`
     SELECT pickup_tasks.*, orders.*, stores.name AS store_name, stores.whatsapp_phone, stores.phone AS store_phone,
            stores.allow_rider_whatsapp_contact, users.name AS seller_name, users.phone AS seller_user_phone,
+           COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS route_pickup_lat,
+           COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS route_pickup_lng,
+           COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
+           COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
            delivery_tasks.delivery_otp_hash
     FROM pickup_tasks
     JOIN orders ON orders.id = pickup_tasks.order_id
     JOIN stores ON stores.id = orders.store_id
     JOIN users ON users.id = orders.seller_id
     JOIN delivery_tasks ON delivery_tasks.delivery_batch_id = pickup_tasks.delivery_batch_id
+    LEFT JOIN account_location_presence AS seller_presence
+      ON seller_presence.user_id = orders.seller_id
+      AND seller_presence.permission_status = 'granted'
+    LEFT JOIN account_location_presence AS buyer_presence
+      ON buyer_presence.user_id = orders.buyer_id
+      AND buyer_presence.permission_status = 'granted'
     WHERE pickup_tasks.delivery_batch_id = ?
       AND pickup_tasks.status != 'seller_rejected'
     ORDER BY pickup_tasks.pickup_sequence ASC
@@ -2438,11 +2576,11 @@ function createAssignmentsForBatch(batchId, riderId) {
       task.pickup_otp_hash,
       task.delivery_otp_hash,
       task.pickup_location || task.store_pickup_location || task.pickup_landmark || "",
-      task.pickup_lat || null,
-      task.pickup_lng || null,
+      task.route_pickup_lat ?? task.pickup_lat ?? null,
+      task.route_pickup_lng ?? task.pickup_lng ?? null,
       task.delivery_address || task.pickup_location || "",
-      task.delivery_lat || null,
-      task.delivery_lng || null,
+      task.route_delivery_lat ?? task.delivery_lat ?? null,
+      task.route_delivery_lng ?? task.delivery_lng ?? null,
       task.seller_name || task.store_name || "Seller",
       task.seller_user_phone || task.store_phone || "",
       task.whatsapp_phone || task.store_phone || "",

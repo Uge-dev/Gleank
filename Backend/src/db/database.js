@@ -1774,6 +1774,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS verification_level_requests_role_idx
     ON verification_level_requests(role, status, created_at);
 
+  CREATE TABLE IF NOT EXISTS verification_resubmission_requests (
+    id TEXT PRIMARY KEY,
+    requirement_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'cancelled')),
+    admin_feedback TEXT NOT NULL DEFAULT '',
+    reviewed_by TEXT,
+    reviewed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (requirement_id) REFERENCES verification_requirements(id) ON DELETE CASCADE,
+    FOREIGN KEY (case_id) REFERENCES verification_cases(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS verification_resubmission_requirement_idx
+    ON verification_resubmission_requests(requirement_id, status, created_at);
+  CREATE INDEX IF NOT EXISTS verification_resubmission_case_idx
+    ON verification_resubmission_requests(case_id, status, created_at);
+
   CREATE TABLE IF NOT EXISTS verification_audit_events (
     id TEXT PRIMARY KEY,
     case_id TEXT,
@@ -1794,6 +1818,23 @@ db.exec(`
     ON verification_audit_events(case_id, created_at);
   CREATE INDEX IF NOT EXISTS verification_audit_events_actor_idx
     ON verification_audit_events(actor_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS account_location_presence (
+    user_id TEXT PRIMARY KEY,
+    role TEXT NOT NULL CHECK (role IN ('buyer', 'seller', 'rider')),
+    lat REAL,
+    lng REAL,
+    accuracy_meters REAL,
+    permission_status TEXT NOT NULL DEFAULT 'unknown'
+      CHECK (permission_status IN ('unknown', 'prompt', 'granted', 'denied', 'unavailable')),
+    source TEXT NOT NULL DEFAULT 'browser_login',
+    captured_at TEXT,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS account_location_presence_role_idx
+    ON account_location_presence(role, permission_status, updated_at);
 `);
 
 export function transaction(callback) {
