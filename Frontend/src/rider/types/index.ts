@@ -217,6 +217,41 @@ export interface RiderDashboardStats {
   payoutPending: number;
 }
 
+export interface RouteCoordinate {
+  lat: number;
+  lng: number;
+}
+
+export interface RouteGeometry {
+  type: 'LineString' | 'MultiLineString';
+  coordinates: number[][] | number[][][];
+}
+
+export interface RouteInstruction {
+  id: string;
+  text: string;
+  distanceMeters: number;
+  durationSeconds: number;
+  coordinate: RouteCoordinate | null;
+}
+
+export interface RiderRouteEstimate {
+  provider: string;
+  source: string;
+  mode: string;
+  origin: RouteCoordinate;
+  destination: RouteCoordinate;
+  distanceMeters: number;
+  distanceKm: number;
+  durationSeconds: number;
+  durationMinutes: number;
+  trafficDurationMinutes: number;
+  geometry: RouteGeometry;
+  instructions: RouteInstruction[];
+  calculatedAt: string;
+  cached: boolean;
+}
+
 export interface SafetyReportPayload {
   assignmentId?: string;
   orderId?: string;

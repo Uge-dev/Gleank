@@ -34,7 +34,10 @@ export const config = {
       '/api',
   ),
   riderApiMode: (import.meta.env.VITE_RIDER_API_MODE || 'api') as 'mock' | 'api' | 'hybrid',
-  apiTimeoutMs: Number(import.meta.env.VITE_API_TIMEOUT_MS || 30000)
+  apiTimeoutMs: Number(import.meta.env.VITE_API_TIMEOUT_MS || 30000),
+  mapStyleUrl:
+    String(import.meta.env.VITE_MAP_STYLE_URL || '').trim() ||
+    'https://tiles.openfreemap.org/styles/liberty',
 };
 
 export function shouldUseApi() {

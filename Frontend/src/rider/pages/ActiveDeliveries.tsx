@@ -30,10 +30,6 @@ export default function ActiveDeliveries() {
             const nextPath = pickupDone && order
               ? `/rider/delivery/${order.id}`
               : `/rider/verify/${assignment.id}`;
-            const navigationTarget = pickupDone && order
-              ? order.deliveryAddress
-              : assignment.pickupLocation;
-
             return (
               <Card key={assignment.id} className="p-5">
                 <div className="flex items-start justify-between gap-4">
@@ -61,13 +57,9 @@ export default function ActiveDeliveries() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <a
-                    target="_blank"
-                    rel="noreferrer"
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(navigationTarget)}`}
-                  >
+                  <Link to={`/rider/navigate/${assignment.id}`}>
                     <Button variant="secondary" icon={FiNavigation} fullWidth>Navigate</Button>
-                  </a>
+                  </Link>
                   <Link to={nextPath}>
                     <Button icon={pickupDone ? FiTruck : FiPackage} fullWidth>
                       {pickupDone ? 'Continue delivery' : 'Verify pickup'}

@@ -33,6 +33,7 @@ import {
   markAuthenticatedRiderOffline,
   markRiderPresenceOnline,
 } from "./rider-presence.service.js";
+import { calculateRoute } from "./location.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
@@ -1339,69 +1340,119 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
   return serializeAssignment(assignmentByIdForRider(riderId, assignmentId));
 }
 
-async function googleRouteEstimate({ origin, destination }) {
-  const apiKey = process.env.GOOGLE_ROUTES_API_KEY || process.env.GOOGLE_MAPS_SERVER_API_KEY || "";
-  if (!apiKey) {
-    if (env.isProduction || process.env.REQUIRE_GOOGLE_ROUTES === "true") {
-      throw new HttpError(500, "Google Routes API key is not configured on the backend.");
-    }
-    const km = Number((distanceMeters(origin, destination) / 1000).toFixed(2));
-    return {
-      distanceKm: km,
-      durationMinutes: Math.max(1, Math.ceil((km / 18) * 60)),
-      trafficDurationMinutes: Math.max(1, Math.ceil((km / 14) * 60)),
-      source: "haversine_development_fallback",
-      rawResponse: {},
-    };
-  }
+function geoapifyModeForRider(profile) {
+  const transport = `${profile?.transport_type || ""} ${profile?.vehicle_type || ""}`.toLowerCase();
+  if (/(walk|foot)/.test(transport)) return "walk";
+  if (/(bicycle|cycle)/.test(transport)) return "bicycle";
+  if (/(scooter|moped)/.test(transport)) return "scooter";
+  if (/(car|van|truck)/.test(transport)) return "drive";
+  return "motorcycle";
+}
 
-  const response = await fetch("https://routes.googleapis.com/directions/v2:computeRoutes", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": "routes.distanceMeters,routes.duration,routes.staticDuration",
-    },
-    body: JSON.stringify({
-      origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } },
-      destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } },
-      travelMode: "TWO_WHEELER",
-      routingPreference: "TRAFFIC_AWARE",
-      computeAlternativeRoutes: false,
-      units: "METRIC",
-    }),
+function cachedRiderRoute(riderId, assignmentId, target, origin) {
+  const row = db.prepare(`
+    SELECT *
+    FROM rider_route_estimates
+    WHERE rider_id = ?
+      AND assignment_id = ?
+      AND target = ?
+      AND source = 'geoapify_routing_api'
+    ORDER BY calculated_at DESC
+    LIMIT 1
+  `).get(riderId, assignmentId, target);
+  if (!row) return null;
+
+  const ageMs = Date.now() - new Date(row.calculated_at).getTime();
+  const originMovedMeters = distanceMeters(origin, {
+    lat: row.origin_lat,
+    lng: row.origin_lng,
   });
+  if (ageMs > 120_000 || originMovedMeters >= 100) return null;
 
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new HttpError(response.status || 502, body?.error?.message || "Google route calculation failed.", body);
+  try {
+    const saved = JSON.parse(row.raw_response || "{}");
+    if (
+      !saved?.geometry ||
+      !["LineString", "MultiLineString"].includes(saved.geometry.type)
+    ) {
+      return null;
+    }
+    return {
+      ...saved,
+      origin,
+      destination: {
+        lat: row.destination_lat,
+        lng: row.destination_lng,
+      },
+      distanceKm: Number(row.distance_km || 0),
+      durationMinutes: Number(row.duration_minutes || 0),
+      trafficDurationMinutes: Number(
+        row.traffic_duration_minutes || row.duration_minutes || 0,
+      ),
+      source: row.source,
+      calculatedAt: row.calculated_at,
+      cached: true,
+    };
+  } catch {
+    return null;
   }
-  const route = body?.routes?.[0];
-  if (!route) throw new HttpError(502, "Google route calculation returned no route.");
-  const distanceKm = Number(((Number(route.distanceMeters || 0)) / 1000).toFixed(2));
-  const durationSeconds = Number(String(route.duration || "0s").replace("s", "")) || 0;
-  const staticSeconds = Number(String(route.staticDuration || "0s").replace("s", "")) || durationSeconds;
-  return {
-    distanceKm,
-    durationMinutes: Math.max(1, Math.ceil(staticSeconds / 60)),
-    trafficDurationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
-    source: "google_routes_api",
-    rawResponse: body,
-  };
 }
 
 export async function getRouteEstimate(auth, assignmentId, query) {
   const riderId = requireRiderUser(auth);
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
+  if (!["accepted", "arrived_pickup", "picked_up", "out_for_delivery"].includes(row.status)) {
+    throw new HttpError(422, "Accept this delivery before opening navigation.");
+  }
+  if (
+    query.target === "delivery" &&
+    !["picked_up", "out_for_delivery"].includes(row.status)
+  ) {
+    throw new HttpError(
+      403,
+      "The buyer delivery location unlocks after seller pickup verification.",
+    );
+  }
+
   const origin = { lat: query.lat, lng: query.lng };
   const destination = query.target === "delivery"
     ? { lat: row.delivery_lat, lng: row.delivery_lng }
     : { lat: row.pickup_lat, lng: row.pickup_lng };
-  if (destination.lat == null || destination.lng == null) throw new HttpError(422, "Delivery location coordinates are missing.");
+  if (destination.lat == null || destination.lng == null) {
+    throw new HttpError(
+      422,
+      `${query.target === "delivery" ? "Buyer delivery" : "Seller pickup"} map coordinates are missing. Save the exact map pin and try again.`,
+    );
+  }
 
-  const result = await googleRouteEstimate({ origin, destination });
+  const cached = cachedRiderRoute(
+    riderId,
+    assignmentId,
+    query.target,
+    origin,
+  );
+  if (cached) {
+    return {
+      [query.target === "delivery" ? "routeToDelivery" : "routeToPickup"]: cached,
+    };
+  }
+
+  const profile = getRiderProfile(riderId);
+  const result = await calculateRoute({
+    from: origin,
+    to: destination,
+    mode: geoapifyModeForRider(profile),
+  });
   const now = nowIso();
+  const storedRoute = {
+    provider: result.provider,
+    mode: result.mode,
+    distanceMeters: result.distanceMeters,
+    durationSeconds: result.durationSeconds,
+    geometry: result.geometry,
+    instructions: result.instructions,
+  };
   db.prepare(`
     INSERT INTO rider_route_estimates (
       id, rider_id, assignment_id, target, origin_lat, origin_lng, destination_lat, destination_lng,
@@ -1410,17 +1461,24 @@ export async function getRouteEstimate(auth, assignmentId, query) {
   `).run(
     createId("rre"), riderId, assignmentId, query.target, origin.lat, origin.lng,
     destination.lat, destination.lng, result.distanceKm, result.durationMinutes,
-    result.trafficDurationMinutes, result.source, JSON.stringify(result.rawResponse || {}), now,
+    result.durationMinutes, result.source, JSON.stringify(storedRoute), now,
   );
   return {
     [query.target === "delivery" ? "routeToDelivery" : "routeToPickup"]: {
       origin,
       destination,
+      provider: result.provider,
+      mode: result.mode,
+      distanceMeters: result.distanceMeters,
       distanceKm: result.distanceKm,
+      durationSeconds: result.durationSeconds,
       durationMinutes: result.durationMinutes,
-      trafficDurationMinutes: result.trafficDurationMinutes,
+      trafficDurationMinutes: result.durationMinutes,
+      geometry: result.geometry,
+      instructions: result.instructions,
       source: result.source,
       calculatedAt: now,
+      cached: false,
     },
   };
 }

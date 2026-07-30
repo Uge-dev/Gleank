@@ -71,13 +71,9 @@ export default function DeliveryDetails() {
               <a href={`tel:${order.customerPhone}`}>
                 <Button variant="secondary" icon={FiPhoneCall} fullWidth>Call buyer</Button>
               </a>
-              <a
-                target="_blank"
-                rel="noreferrer"
-                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.deliveryAddress)}`}
-              >
+              <Link to={`/rider/navigate/${order.assignmentId}`}>
                 <Button variant="secondary" icon={FiMapPin} fullWidth>Navigate</Button>
-              </a>
+              </Link>
             </div>
           </Card>
 

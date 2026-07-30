@@ -35495,11 +35495,7 @@ html[data-theme="dark"] .feed-source-tag small {
   }
 }
 
-/* =========================================================
-   HOME DESKTOP RIGHT PANEL — FIXED BESIDE THE FEED
-   Keeps the marketplace and seller cards in the viewport
-   while product posts scroll. Mobile remains unchanged.
-========================================================= */
+
 @media (min-width: 1181px) {
   .guest-feed-page {
     padding: 76px clamp(24px, 2.25vw, 34px) 72px !important;

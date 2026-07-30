@@ -1,9 +1,13 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { requireAuth } from "../middleware/auth.js";
+import { validate } from "../middleware/validate.js";
+import { locationRouteSchema } from "../schemas/location.schemas.js";
 import {
   geocodeLocation,
   getAccountLocationPresence,
   reverseGeocodeLocation,
+  routeLocation,
   upsertAccountLocationPresence,
 } from "../services/location.service.js";
 
@@ -12,6 +16,13 @@ export const locationRouter = Router();
 const asyncRoute = (handler) => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next);
 };
+
+const routeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
 
 locationRouter.use(requireAuth);
 
@@ -22,6 +33,15 @@ locationRouter.post("/geocode", asyncRoute(async (req, res) => {
 locationRouter.post("/reverse-geocode", asyncRoute(async (req, res) => {
   res.json(await reverseGeocodeLocation(req.body || {}));
 }));
+
+locationRouter.post(
+  "/route",
+  routeLimiter,
+  validate(locationRouteSchema),
+  asyncRoute(async (req, res) => {
+    res.json(await routeLocation(req.body || {}));
+  }),
+);
 
 locationRouter.get("/presence", (req, res) => {
   res.json({

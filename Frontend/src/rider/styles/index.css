@@ -95,6 +95,93 @@ button, input, select, textarea {
   content: '';
 }
 
+.gleenc-map-shell {
+  position: relative;
+  min-height: 28rem;
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 1.75rem;
+  background: #dfe9ec;
+  box-shadow: var(--color-shadow-card);
+}
+
+.gleenc-map-canvas {
+  width: 100%;
+  min-height: 28rem;
+  height: min(62vh, 42rem);
+}
+
+.gleenc-map-recenter {
+  position: absolute;
+  right: 0.9rem;
+  bottom: 2.4rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 999px;
+  padding: 0.7rem 0.9rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+}
+
+.gleenc-map-marker {
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 3px solid #ffffff;
+  border-radius: 999px 999px 999px 0.4rem;
+  background: #ff3c00;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.3);
+  transform: rotate(-45deg);
+}
+
+.gleenc-map-marker--rider {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-width: 4px;
+  border-radius: 999px;
+  background: #0ea5e9;
+  transform: none;
+}
+
+.gleenc-map-marker--delivery {
+  background: #0f172a;
+}
+
+.gleenc-map-marker__dot {
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 999px;
+  background: #fbe703;
+  transform: rotate(45deg);
+}
+
+.gleenc-map-marker--rider .gleenc-map-marker__dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  background: #ffffff;
+  transform: none;
+}
+
+html[data-theme="dark"] .gleenc-map-shell,
+html.dark .gleenc-map-shell {
+  border-color: var(--color-border-soft, rgba(148, 163, 184, 0.16));
+  background: var(--color-bg-surface-2, #182033);
+}
+
+html[data-theme="dark"] .gleenc-map-recenter,
+html.dark .gleenc-map-recenter {
+  border-color: var(--color-border-soft, rgba(148, 163, 184, 0.16));
+  background: rgba(17, 24, 39, 0.94);
+  color: #f8fafc;
+}
+
 @keyframes shimmer {
   100% { transform: translateX(100%); }
 }

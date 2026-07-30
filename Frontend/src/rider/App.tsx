@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import type { ReactElement } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
@@ -23,6 +24,8 @@ import VerificationCenter from './pages/VerificationCenter';
 import SafetyCenter from './pages/SafetyCenter';
 import NotFound from './pages/NotFound';
 import LocationPermissionNotice from '../components/LocationPermissionNotice';
+
+const Navigation = lazy(() => import('./pages/Navigation'));
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { rider, loading } = useAuth();
@@ -69,6 +72,20 @@ export default function App() {
           <Route path="verify/:assignmentId" element={<DeliveryVerification />} />
           <Route path="verify" element={<DeliveryVerification />} />
           <Route path="delivery/:orderId" element={<DeliveryDetails />} />
+          <Route
+            path="navigate/:assignmentId"
+            element={
+              <Suspense
+                fallback={
+                  <main className="grid min-h-[24rem] place-items-center">
+                    <p className="font-bold text-slate-600">Loading map...</p>
+                  </main>
+                }
+              >
+                <Navigation />
+              </Suspense>
+            }
+          />
           <Route path="completed" element={<CompletedDeliveries />} />
           <Route path="earnings" element={<Earnings />} />
           <Route path="notifications" element={<Notifications />} />

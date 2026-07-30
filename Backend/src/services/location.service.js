@@ -31,6 +31,68 @@ function canUseGeoapify() {
   return env.mapProvider === "geoapify" && Boolean(env.geoapifyApiKey);
 }
 
+const GEOAPIFY_ROUTE_MODES = new Set([
+  "drive",
+  "motorcycle",
+  "scooter",
+  "bicycle",
+  "walk",
+  "light_truck",
+]);
+
+function routePoint(value, label) {
+  const lat = numberOrNull(value?.lat);
+  const lng = numberOrNull(value?.lng ?? value?.lon);
+  if (lat === null || lng === null) {
+    throw new HttpError(422, `${label} latitude and longitude are required.`);
+  }
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new HttpError(422, `${label} coordinates are invalid.`);
+  }
+  return { lat, lng };
+}
+
+function routeMode(value) {
+  const mode = clean(value || "motorcycle", 40).toLowerCase();
+  return GEOAPIFY_ROUTE_MODES.has(mode) ? mode : "motorcycle";
+}
+
+function routeInstructions(feature) {
+  const geometry = feature?.geometry;
+  const legs = Array.isArray(feature?.properties?.legs)
+    ? feature.properties.legs
+    : [];
+  const lineCoordinates = geometry?.type === "MultiLineString"
+    ? geometry.coordinates
+    : geometry?.type === "LineString"
+      ? [geometry.coordinates]
+      : [];
+
+  return legs.flatMap((leg, legIndex) => {
+    const legCoordinates = Array.isArray(lineCoordinates[legIndex])
+      ? lineCoordinates[legIndex]
+      : [];
+    return (Array.isArray(leg?.steps) ? leg.steps : [])
+      .map((step, stepIndex) => {
+        const text = clean(step?.instruction?.text, 300);
+        if (!text) return null;
+        const coordinate = Array.isArray(legCoordinates[step?.from_index])
+          ? legCoordinates[step.from_index]
+          : null;
+        return {
+          id: `${legIndex}-${stepIndex}`,
+          text,
+          distanceMeters: Number(step?.distance || 0),
+          durationSeconds: Number(step?.time || 0),
+          coordinate: coordinate
+            ? { lng: Number(coordinate[0]), lat: Number(coordinate[1]) }
+            : null,
+        };
+      })
+      .filter(Boolean);
+  });
+}
+
 function fallbackLocation(input = {}) {
   return {
     provider: "manual",
@@ -173,6 +235,108 @@ async function fetchGeoapify(path, params) {
   } catch {
     return null;
   }
+}
+
+export async function calculateRoute(input = {}) {
+  if (!canUseGeoapify()) {
+    throw new HttpError(
+      503,
+      "Navigation is not configured yet. Add the Geoapify settings to the backend environment.",
+    );
+  }
+
+  const origin = routePoint(input.from || input.origin, "Starting point");
+  const destination = routePoint(input.to || input.destination, "Destination");
+  const mode = routeMode(input.mode);
+  const url = new URL(`${env.geoapifyBaseUrl}/routing`);
+  url.searchParams.set(
+    "waypoints",
+    `${origin.lat},${origin.lng}|${destination.lat},${destination.lng}`,
+  );
+  url.searchParams.set("mode", mode);
+  url.searchParams.set("type", "balanced");
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("format", "geojson");
+  url.searchParams.set("details", "instruction_details");
+  if (!["walk", "bicycle"].includes(mode)) {
+    url.searchParams.set("traffic", "approximated");
+  }
+  url.searchParams.set("apiKey", env.geoapifyApiKey);
+
+  let response;
+  let body;
+  try {
+    response = await fetch(url, {
+      headers: { Accept: "application/geo+json, application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    body = await response.json().catch(() => ({}));
+  } catch {
+    throw new HttpError(
+      503,
+      "Navigation could not connect right now. Please check your connection and try again.",
+    );
+  }
+
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new HttpError(
+        503,
+        "Navigation is temporarily busy. Please wait a moment and refresh the route.",
+      );
+    }
+    if ([401, 403].includes(response.status)) {
+      throw new HttpError(
+        503,
+        "Navigation is not configured correctly on the backend.",
+      );
+    }
+    throw new HttpError(
+      response.status >= 500 ? 503 : 422,
+      "A road route could not be calculated for these locations.",
+    );
+  }
+
+  const feature = Array.isArray(body?.features) ? body.features[0] : null;
+  const geometry = feature?.geometry;
+  if (
+    !feature ||
+    !geometry ||
+    !["LineString", "MultiLineString"].includes(geometry.type) ||
+    !Array.isArray(geometry.coordinates)
+  ) {
+    throw new HttpError(
+      422,
+      "No road route was found. Confirm both saved map pins and try again.",
+    );
+  }
+
+  const distanceMeters = Number(feature.properties?.distance || 0);
+  const durationSeconds = Number(feature.properties?.time || 0);
+
+  return {
+    provider: "geoapify",
+    source: "geoapify_routing_api",
+    mode,
+    origin,
+    destination,
+    distanceMeters,
+    distanceKm: Number((distanceMeters / 1000).toFixed(2)),
+    durationSeconds,
+    durationMinutes: Math.max(1, Math.ceil(durationSeconds / 60)),
+    geometry: {
+      type: geometry.type,
+      coordinates: geometry.coordinates,
+    },
+    instructions: routeInstructions(feature),
+  };
+}
+
+export async function routeLocation(input = {}) {
+  return {
+    route: await calculateRoute(input),
+  };
 }
 
 function geoFeatureToLocation(feature, input = {}) {

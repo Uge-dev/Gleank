@@ -8,6 +8,7 @@ import type {
   ProofRecord,
   Rider,
   RiderDashboardStats,
+  RiderRouteEstimate,
   SafetyReportPayload,
 } from '../types';
 
@@ -885,6 +886,32 @@ export const riderApi = {
       location: unknown;
       lastLocationAt: string | null;
     }>('/api/rider/location/status');
+  },
+  routeEstimate(
+    assignmentId: string,
+    currentLocation: { lat: number; lng: number },
+    target: 'pickup' | 'delivery',
+  ) {
+    const query = new URLSearchParams({
+      lat: String(currentLocation.lat),
+      lng: String(currentLocation.lng),
+      target,
+    });
+    return apiRequest<{
+      routeToPickup?: RiderRouteEstimate;
+      routeToDelivery?: RiderRouteEstimate;
+    }>(
+      `/api/rider/assignments/${encodeURIComponent(assignmentId)}/route-estimate?${query.toString()}`,
+      { timeoutMs: 25_000 },
+    ).then((response) => {
+      const route = target === 'delivery'
+        ? response.routeToDelivery
+        : response.routeToPickup;
+      if (!route) {
+        throw new Error('The route response was incomplete. Please refresh the route.');
+      }
+      return route;
+    });
   },
   eligibility() {
     return apiRequest<NonNullable<VerificationCase['eligibility']>>('/api/rider/eligibility');
