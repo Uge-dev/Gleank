@@ -85,6 +85,9 @@ export async function apiRequest<T>(
   if (init.body && !isFormData && !headers.has("content-type")) {
     headers.set("content-type", "application/json");
   }
+  if (!headers.has("X-Gleenc-Portal")) {
+    headers.set("X-Gleenc-Portal", "user");
+  }
 
   let response: Response;
 

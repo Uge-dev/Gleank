@@ -47,6 +47,7 @@ import {
 } from "./adminData";
 import {
   adminLogin,
+  adminLogout,
   clearAdminToken,
   createAdminPriceRange,
   deleteAdminRecord,
@@ -753,8 +754,8 @@ function AdminDashboard() {
     );
   }, [data.supportConversations, search]);
 
-  function logout() {
-    clearAdminToken();
+  async function logout() {
+    await adminLogout().catch(() => clearAdminToken());
     setLogoutModalOpen(false);
     setIsLoggedIn(false);
   }

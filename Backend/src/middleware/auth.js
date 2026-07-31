@@ -1,15 +1,67 @@
-import { sessionCookieName, verifySessionToken } from "../lib/session.js";
+import {
+  sessionCookieNameForPortal,
+  verifySessionToken,
+} from "../lib/session.js";
 import { HttpError } from "../lib/http-error.js";
 import { assertRole, normalizeRole } from "../lib/roles.js";
 import { assertSellerSubscriptionActive } from "../services/subscription.service.js";
 import { assertSellerVerified } from "../services/seller-verification.service.js";
 
 export function optionalAuth(req, _res, next) {
-  const token = req.cookies?.[sessionCookieName];
+  const requestedPortal = String(
+    req.get("x-gleenc-portal") || req.query?.portal || "",
+  ).toLowerCase();
+  const requestPath = String(req.originalUrl || req.path || "").split("?")[0];
+  const sharedRiderPath = [
+    "/api/location",
+    "/api/verification",
+    "/api/notifications",
+    "/api/security",
+    "/api/kyc",
+  ].some((prefix) => requestPath.startsWith(prefix));
+  const sharedAdminPath =
+    requestPath === "/api/zones" ||
+    requestPath.startsWith("/api/zones/") ||
+    requestPath === "/api/package-rules" ||
+    requestPath.startsWith("/api/package-rules/") ||
+    requestPath.startsWith("/api/verification/admin/") ||
+    requestPath === "/api/verification/admin/queues";
+  const riderPath = requestPath.startsWith("/api/rider") || sharedRiderPath;
+  const adminPath = requestPath.startsWith("/api/admin") || sharedAdminPath;
+  let portal = adminPath
+    ? "admin"
+    : requestPath.startsWith("/api/rider")
+      ? "rider"
+      : "user";
+
+  // A portal header can select only APIs explicitly owned or shared by that
+  // portal. It cannot turn a rider/admin cookie into a general shopping
+  // session, even if a request is crafted outside the frontend.
+  if (requestedPortal === "rider" && riderPath) portal = "rider";
+  if (requestedPortal === "admin" && adminPath) portal = "admin";
+  if (requestedPortal === "user" && !requestPath.startsWith("/api/admin") && !requestPath.startsWith("/api/rider")) {
+    portal = "user";
+  }
+
+  // A few shared APIs are legitimately used by the rider portal. Allow a
+  // rider-only browser session to use them without ever treating that rider as
+  // a buyer/seller on /auth, /orders, /seller, or other general-account APIs.
+  if (
+    portal === "user" &&
+    sharedRiderPath &&
+    !req.cookies?.[sessionCookieNameForPortal("user")] &&
+    req.cookies?.[sessionCookieNameForPortal("rider")]
+  ) {
+    portal = "rider";
+  }
+
+  const token = req.cookies?.[sessionCookieNameForPortal(portal)];
   try {
-    req.auth = token ? verifySessionToken(token) : null;
+    req.auth = token ? verifySessionToken(token, portal) : null;
+    req.authPortal = req.auth ? portal : null;
   } catch {
     req.auth = null;
+    req.authPortal = null;
   }
   next();
 }

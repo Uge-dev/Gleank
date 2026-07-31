@@ -626,6 +626,11 @@ test("rider account cannot be silently converted to seller", async () => {
 
   assert.equal(registerResponse.status, 201);
   assert.equal(registerResponse.body.user.role, "rider");
+  assert.ok(
+    registerResponse.headers["set-cookie"]?.some((cookie) =>
+      cookie.includes("gleank_rider_session="),
+    ),
+  );
 
   const dashboardResponse = await riderAgent.get("/api/rider/dashboard");
   assert.equal(dashboardResponse.status, 200);
@@ -633,7 +638,7 @@ test("rider account cannot be silently converted to seller", async () => {
   const sellerStartResponse = await riderAgent
     .post("/api/seller/onboarding/start")
     .send({ storeName: "Should Not Convert Rider" });
-  assert.equal(sellerStartResponse.status, 403);
+  assert.equal(sellerStartResponse.status, 401);
 
   const sessionResponse = await riderAgent.get("/api/rider/session");
   assert.equal(sessionResponse.status, 200);
@@ -654,6 +659,11 @@ test("buyer cannot access seller or rider operations", async () => {
     });
 
   assert.equal(registerResponse.status, 201);
+  assert.ok(
+    registerResponse.headers["set-cookie"]?.some((cookie) =>
+      cookie.includes("gleank_session="),
+    ),
+  );
 
   const sellerResponse = await buyerAgent
     .post("/api/seller/onboarding/start")
@@ -661,7 +671,78 @@ test("buyer cannot access seller or rider operations", async () => {
   assert.equal(sellerResponse.status, 403);
 
   const riderResponse = await buyerAgent.get("/api/rider/dashboard");
-  assert.equal(riderResponse.status, 403);
+  assert.equal(riderResponse.status, 401);
+});
+
+test("buyer, rider, and admin sessions remain isolated in one browser", async () => {
+  const browser = request.agent(app);
+  const buyerRegistration = await browser
+    .post("/api/auth/register")
+    .send({
+      name: "Portal Isolation Buyer",
+      email: "portal-isolation-buyer@gleank.local",
+      password: "PortalBuyer123!",
+      role: "buyer",
+      campus: "Warri",
+    });
+  assert.equal(buyerRegistration.status, 201);
+
+  const riderRegistration = await browser
+    .post("/api/rider/register")
+    .field("name", "Portal Isolation Rider")
+    .field("email", "portal-isolation-rider@gleank.local")
+    .field("password", "PortalRider123!")
+    .field("phone", "08000000061")
+    .field("campus", "Warri")
+    .field("vehicleType", "Bike")
+    .field("vehiclePlate", "ISO-601")
+    .field("coverageArea", "Warri")
+    .field("homeAddress", "Warri, Delta State")
+    .field("gpsPermissionStatus", "gps_enabled")
+    .attach("identityDocument", tinyPng, {
+      filename: "portal-rider-id.png",
+      contentType: "image/png",
+    })
+    .attach("selfie", tinyPng, {
+      filename: "portal-rider-selfie.png",
+      contentType: "image/png",
+    });
+  assert.equal(riderRegistration.status, 201);
+
+  const adminEmail = "portal-isolation-admin@gleank.local";
+  const adminPassword = "PortalAdmin123!";
+  await createAdminAgent(adminEmail, adminPassword);
+  const adminLogin = await browser
+    .post("/api/admin/login")
+    .send({ email: adminEmail, password: adminPassword });
+  assert.equal(adminLogin.status, 200);
+
+  const userSession = await browser
+    .get("/api/auth/me")
+    .set("X-Gleenc-Portal", "user");
+  assert.equal(userSession.status, 200);
+  assert.equal(userSession.body.user.email, "portal-isolation-buyer@gleank.local");
+
+  const riderSession = await browser
+    .get("/api/rider/session")
+    .set("X-Gleenc-Portal", "rider");
+  assert.equal(riderSession.status, 200);
+  assert.equal(riderSession.body.user.email, "portal-isolation-rider@gleank.local");
+
+  const adminSession = await browser
+    .get("/api/admin/profile")
+    .set("X-Gleenc-Portal", "admin");
+  assert.equal(adminSession.status, 200);
+  assert.equal(adminSession.body.admin.email, adminEmail);
+
+  const userSessionAfterAdminRefresh = await browser
+    .get("/api/auth/me")
+    .set("X-Gleenc-Portal", "user");
+  assert.equal(userSessionAfterAdminRefresh.status, 200);
+  assert.equal(
+    userSessionAfterAdminRefresh.body.user.email,
+    "portal-isolation-buyer@gleank.local",
+  );
 });
 
 test("rider verification locks approved stages and requires admin-approved resubmission", async () => {
@@ -1122,9 +1203,23 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .send({ note: "This seller is the buyer, not the fulfilment seller." });
   assert.equal(purchasingSellerCannotFulfilOwnPurchase.status, 403);
 
+  const confirmationWithoutPickupPin = await sellerAgent
+    .post(`/api/orders/${orderId}/seller-confirm`)
+    .send({ note: "Missing the verified pickup pin." });
+  assert.equal(confirmationWithoutPickupPin.status, 422);
+  assert.match(confirmationWithoutPickupPin.body.message, /precise location/i);
+
   const paidOrderConfirmation = await sellerAgent
     .post(`/api/orders/${orderId}/seller-confirm`)
-    .send({ note: "Paid order stock confirmed by seller." });
+    .send({
+      note: "Paid order stock confirmed by seller.",
+      sellerLocation: {
+        lat: 5.5737,
+        lng: 5.8446,
+        accuracyMeters: 12,
+        address: "FUPRE, Ugbomro, Delta State, Nigeria",
+      },
+    });
   assert.equal(paidOrderConfirmation.status, 200);
   assert.equal(paidOrderConfirmation.body.order.status, "ready_for_delivery");
   assert.equal(
@@ -1138,6 +1233,12 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .get(orderId);
   assert.ok(confirmedPickupTask?.id);
   assert.equal(Number(confirmedPickupTask.seller_confirmed_availability), 1);
+  const paidConfirmedCoordinates = db
+    .prepare("SELECT pickup_location, pickup_lat, pickup_lng FROM orders WHERE id = ?")
+    .get(orderId);
+  assert.equal(paidConfirmedCoordinates.pickup_location, "FUPRE, Ugbomro, Delta State, Nigeria");
+  assert.equal(Number(paidConfirmedCoordinates.pickup_lat), 5.5737);
+  assert.equal(Number(paidConfirmedCoordinates.pickup_lng), 5.8446);
 
   const paymentOnDeliveryOrder = await buyerAgent
     .post("/api/orders")
@@ -1148,6 +1249,11 @@ test("public payment verification confirms local payment and protects buyer OTP"
       campus: "FUPRE",
       deliveryOption: "Delivery",
       deliveryAddress: "Library road, FUPRE",
+      deliveryDetails: "Engineering Faculty reception",
+      deliveryLandmark: "Beside the main library",
+      nearestBusStop: "FUPRE Main Gate",
+      deliveryLat: 5.5662,
+      deliveryLng: 5.8461,
       paymentMethod: "pay_on_delivery",
     });
   assert.equal(paymentOnDeliveryOrder.status, 201);
@@ -1167,7 +1273,15 @@ test("public payment verification confirms local payment and protects buyer OTP"
 
   const paymentOnDeliveryConfirmation = await sellerAgent
     .post(`/api/orders/${paymentOnDeliveryOrder.body.orders[0].id}/seller-confirm`)
-    .send({ note: "Payment on Delivery stock confirmed." });
+    .send({
+      note: "Payment on Delivery stock confirmed.",
+      sellerLocation: {
+        lat: 5.5737,
+        lng: 5.8446,
+        accuracyMeters: 12,
+        address: "FUPRE, Ugbomro, Delta State, Nigeria",
+      },
+    });
   assert.equal(paymentOnDeliveryConfirmation.status, 200);
   assert.equal(
     paymentOnDeliveryConfirmation.body.order.status,
@@ -1486,8 +1600,13 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       buyerName: "Step Three Buyer",
       buyerPhone: "08000000032",
       campus: "FUPRE",
-      deliveryOption: "Pickup",
-      pickupLocation: "FUPRE main gate",
+      deliveryOption: "Delivery",
+      deliveryAddress: "Engineering Faculty, FUPRE, Delta State, Nigeria",
+      deliveryDetails: "Reception desk, ground floor",
+      deliveryLandmark: "Beside the main library",
+      nearestBusStop: "FUPRE Main Gate",
+      deliveryLat: 5.575,
+      deliveryLng: 5.835,
       paymentMethod: "pay_now",
   });
   assert.equal(orderResponse.status, 201);
@@ -1567,6 +1686,16 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     "08000000030",
   );
   assert.ok(automaticOffer.batch.pickupTasks[0].pickupLocation);
+  assert.equal(
+    automaticOffer.batch.pickupTasks[0].firstProduct.name,
+    "Step Three Package",
+  );
+  assert.equal(
+    automaticOffer.batch.pickupTasks[0].firstProduct.imageUrl,
+    "/uploads/step-three-package.jpg",
+  );
+  assert.equal(automaticOffer.batch.pickupTasks[0].packageSize, "small");
+  assert.equal(automaticOffer.batch.pickupTasks[0].packageWeightClass, "light");
   assert.equal(automaticOffer.batch.pickupTasks[0].orderId, undefined);
   assert.equal(automaticOffer.batch.pickupTasks[0].orderItems, undefined);
 
@@ -1636,6 +1765,8 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   assert.equal(typeof acceptedAssignment.pickupPoint.lng, "number");
   assert.match(acceptedAssignment.packageSummary, /small/i);
   assert.match(acceptedAssignment.packageSummary, /light/i);
+  assert.equal(acceptedAssignment.buyerPhone, "");
+  assert.equal(acceptedAssignment.deliveryDetails, "");
 
   const assignmentId = acceptResponse.body.assignments[0].id;
   const deliveryConversation = db.prepare(`
@@ -1673,6 +1804,17 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     });
   assert.equal(pickupResponse.status, 200);
   assert.equal(pickupResponse.body.assignment.status, "picked_up");
+
+  const riderDashboardAfterPickup = await riderAgent.get(
+    "/api/rider/dashboard",
+  );
+  const pickedUpAssignment = riderDashboardAfterPickup.body.assignments.find(
+    (assignment) => assignment.id === assignmentId,
+  );
+  assert.equal(pickedUpAssignment.buyerPhone, "08000000032");
+  assert.equal(pickedUpAssignment.deliveryDetails, "Reception desk, ground floor");
+  assert.equal(pickedUpAssignment.deliveryLandmark, "Beside the main library");
+  assert.equal(pickedUpAssignment.nearestBusStop, "FUPRE Main Gate");
 
   const orderForDeliveryCode = db
     .prepare("SELECT verification_code FROM orders WHERE id = ?")
@@ -1923,7 +2065,7 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
   );
 
   const generalSessionCheck = await manualRiderAgent.get("/api/auth/me");
-  assert.equal(generalSessionCheck.status, 200);
+  assert.equal(generalSessionCheck.status, 401);
   assert.equal(
     db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
       manualRiderId,
@@ -1945,6 +2087,19 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     SET last_heartbeat_at = ?
     WHERE rider_id = ?
   `).run(new Date(Date.now() - 120_000).toISOString(), manualRiderId);
+  expireStaleRiderPresence();
+  assert.equal(
+    db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(
+      manualRiderId,
+    ).availability,
+    "online",
+  );
+
+  db.prepare(`
+    UPDATE rider_presence_instances
+    SET last_heartbeat_at = ?
+    WHERE rider_id = ?
+  `).run(new Date(Date.now() - 16 * 60_000).toISOString(), manualRiderId);
   expireStaleRiderPresence();
   assert.equal(
     db.prepare("SELECT availability FROM rider_profiles WHERE user_id = ?").get(

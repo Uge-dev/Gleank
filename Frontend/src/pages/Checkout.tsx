@@ -24,6 +24,10 @@ import {
   type CheckoutGroupingPreview,
 } from "../services/logistics.service";
 import { formatNaira } from "../utils/price";
+import {
+  geocodeAddress,
+  type GeocodedLocation,
+} from "../services/stage3.service";
 import "./Checkout.css";
 
 const fallbackZones: DeliveryZone[] = [
@@ -47,7 +51,11 @@ function Checkout() {
   const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery">("Pickup");
   const [paymentMethod, setPaymentMethod] = useState<"pay_now" | "pay_on_delivery">("pay_now");
   const [campus, setCampus] = useState(user?.campus || "FUPRE");
-  const [deliveryZone, setDeliveryZone] = useState("");
+  const [addressQuery, setAddressQuery] = useState("");
+  const [addressSuggestions, setAddressSuggestions] = useState<GeocodedLocation[]>([]);
+  const [selectedDeliveryLocation, setSelectedDeliveryLocation] = useState<GeocodedLocation | null>(null);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [addressSearchError, setAddressSearchError] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
   const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
@@ -72,7 +80,10 @@ function Checkout() {
     [productCartItems],
   );
 
-  const selectedLocation = deliveryOption === "Delivery" ? deliveryZone : pickupLocation;
+  const selectedLocation =
+    deliveryOption === "Delivery"
+      ? selectedDeliveryLocation?.formattedAddress || ""
+      : pickupLocation;
   const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
   const flexibleCheckoutEligible = cartSubtotal < FLEXIBLE_CHECKOUT_MAX_ORDER;
@@ -116,6 +127,55 @@ function Checkout() {
       active = false;
     };
   }, [campus]);
+
+  useEffect(() => {
+    if (deliveryOption !== "Delivery") {
+      setAddressSuggestions([]);
+      setAddressSearchError("");
+      return;
+    }
+
+    const query = addressQuery.trim();
+    if (query.length < 3 || selectedDeliveryLocation?.formattedAddress === query) {
+      setAddressSuggestions([]);
+      setAddressSearchError("");
+      return;
+    }
+
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setIsSearchingAddress(true);
+      setAddressSearchError("");
+      void geocodeAddress({ text: query, autocomplete: true })
+        .then((response) => {
+          if (!active) return;
+          const validSuggestions = (response.results || []).filter(
+            (result) => result.lat != null && result.lng != null,
+          );
+          setAddressSuggestions(validSuggestions);
+          if (!validSuggestions.length) {
+            setAddressSearchError("No matching Nigerian location was found. Add a nearby town, state, or landmark.");
+          }
+        })
+        .catch((requestError) => {
+          if (!active) return;
+          setAddressSuggestions([]);
+          setAddressSearchError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Location suggestions could not be loaded.",
+          );
+        })
+        .finally(() => {
+          if (active) setIsSearchingAddress(false);
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [addressQuery, deliveryOption, selectedDeliveryLocation]);
 
   useEffect(() => {
     if (!campus.trim() || !selectedLocation) {
@@ -202,12 +262,22 @@ function Checkout() {
     const formData = new FormData(event.currentTarget);
     const buyerName = String(formData.get("buyerName") || "").trim();
     const buyerPhone = String(formData.get("buyerPhone") || "").trim();
-    const preciseDeliveryAddress = String(formData.get("deliveryAddress") || "").trim();
+    const deliveryDetails = String(formData.get("deliveryDetails") || "").trim();
+    const deliveryLandmark = String(formData.get("deliveryLandmark") || "").trim();
+    const nearestBusStop = String(formData.get("nearestBusStop") || "").trim();
     const selectedPickupLocation = String(formData.get("pickupLocation") || "").trim();
     const note = String(formData.get("note") || "").trim();
 
-    if (deliveryOption === "Delivery" && !deliveryZone) {
-      setError("Select a door step delivery zone before payment.");
+    if (deliveryOption === "Delivery" && !selectedDeliveryLocation) {
+      setError("Search for your location and select one of the Nigerian address suggestions.");
+      return;
+    }
+
+    if (
+      deliveryOption === "Delivery" &&
+      (!deliveryDetails || !deliveryLandmark || !nearestBusStop)
+    ) {
+      setError("Enter the exact delivery details, a landmark, and the nearest bus stop.");
       return;
     }
 
@@ -257,21 +327,31 @@ function Checkout() {
     setIsSubmitting(true);
 
     try {
-      const selectedZone = zones.find((zone) => zone.id === deliveryZone)?.label || deliveryZone;
       const selectedPickup =
         zones.find((zone) => zone.id === selectedPickupLocation)?.label ||
         selectedPickupLocation;
       const deliveryAddress =
         deliveryOption === "Delivery"
-          ? [selectedZone, preciseDeliveryAddress].filter(Boolean).join(" - ")
+          ? selectedDeliveryLocation?.formattedAddress || addressQuery.trim()
           : "";
+      const deliveryArea =
+        selectedDeliveryLocation?.area ||
+        selectedDeliveryLocation?.campus ||
+        campus ||
+        "Nigeria";
 
       const response = await createOrders({
         buyerName,
         buyerPhone,
-        campus,
+        campus: deliveryArea,
+        deliveryArea,
         deliveryOption,
         deliveryAddress,
+        deliveryDetails,
+        deliveryLandmark,
+        nearestBusStop,
+        deliveryLat: selectedDeliveryLocation?.lat ?? null,
+        deliveryLng: selectedDeliveryLocation?.lng ?? null,
         pickupLocation: deliveryOption === "Pickup" ? selectedPickup : "",
         note,
         paymentMethod,
@@ -427,17 +507,18 @@ function Checkout() {
               </label>
               <label>
                 <span>Phone number</span>
-                <input name="buyerPhone" defaultValue={user?.phone || ""} required />
-              </label>
-              <label className="span-2">
-                <span>Campus</span>
                 <input
-                  name="campus"
-                  value={campus}
-                  onChange={(event) => setCampus(event.target.value)}
+                  name="buyerPhone"
+                  type="tel"
+                  inputMode="tel"
+                  defaultValue={user?.phone || ""}
+                  placeholder="Example: 08012345678"
                   required
                 />
               </label>
+              <p className="checkout-contact-privacy span-2">
+                The rider sees this phone number only after the seller pickup code is verified.
+              </p>
             </div>
           </section>
 
@@ -446,7 +527,7 @@ function Checkout() {
               <FiMapPin />
               <div>
                 <h2>Delivery method</h2>
-                <p>Pickup uses approved campus points. Door step delivery allows exact location and costs more.</p>
+                <p>Choose an approved pickup point or enter any supported delivery location in Nigeria.</p>
               </div>
             </div>
 
@@ -477,7 +558,7 @@ function Checkout() {
                 <strong>Door step delivery</strong>
                 <span>
                   {doorStepDisabledReason ||
-                    "Send to your exact room, lodge, office, or landmark."}
+                    "Search anywhere in Nigeria, then add exact directions and landmarks."}
                 </span>
               </button>
             </div>
@@ -522,30 +603,77 @@ function Checkout() {
               </div>
             ) : (
               <div className="delivery-zone-card">
-                <label>
-                  <span>Door step delivery zone</span>
-                  <select
-                    value={deliveryZone}
-                    onChange={(event) => setDeliveryZone(event.target.value)}
+                <label className="checkout-address-search">
+                  <span>Search delivery location in Nigeria</span>
+                  <input
+                    value={addressQuery}
+                    onChange={(event) => {
+                      setAddressQuery(event.target.value);
+                      setSelectedDeliveryLocation(null);
+                    }}
+                    placeholder="Example: Airport Road, Warri, Delta State"
+                    autoComplete="off"
                     required
-                  >
-                    <option value="">Select a campus zone</option>
-                    {zones.map((zone) => (
-                      <option key={zone.id} value={zone.id}>
-                        {zone.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  {isSearchingAddress ? (
+                    <small className="checkout-address-status">Finding nearby addresses...</small>
+                  ) : null}
+                  {addressSuggestions.length > 0 ? (
+                    <div className="checkout-address-suggestions" role="listbox">
+                      {addressSuggestions.map((suggestion, index) => (
+                        <button
+                          key={`${suggestion.formattedAddress}-${index}`}
+                          type="button"
+                          role="option"
+                          onClick={() => {
+                            setSelectedDeliveryLocation(suggestion);
+                            setAddressQuery(suggestion.formattedAddress);
+                            setCampus(suggestion.area || suggestion.campus || "Nigeria");
+                            setAddressSuggestions([]);
+                            setAddressSearchError("");
+                          }}
+                        >
+                          <FiMapPin />
+                          <span>
+                            <strong>{suggestion.formattedAddress}</strong>
+                            <small>{suggestion.area || "Nigeria"}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {addressSearchError ? (
+                    <small className="checkout-address-error">{addressSearchError}</small>
+                  ) : null}
                 </label>
 
                 <label>
-                  <span>Exact door step details</span>
+                  <span>Exact house, room, shop or office</span>
                   <input
-                    name="deliveryAddress"
-                    placeholder="Example: Hostel B, Room 204 / beside library stairs"
+                    name="deliveryDetails"
+                    placeholder="Example: No. 12, second floor, blue gate"
                     required
                   />
                 </label>
+
+                <div className="checkout-field-grid checkout-address-detail-grid">
+                  <label>
+                    <span>Nearest landmark</span>
+                    <input
+                      name="deliveryLandmark"
+                      placeholder="Example: Beside First Bank"
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>Nearest bus stop</span>
+                    <input
+                      name="nearestBusStop"
+                      placeholder="Example: PTI Junction"
+                      required
+                    />
+                  </label>
+                </div>
 
                 <div className="delivery-quote-box">
                   <FiNavigation />
@@ -555,7 +683,9 @@ function Checkout() {
                         ? "Calculating delivery fee..."
                         : deliveryQuote
                           ? `${deliveryQuote.label} • ${formatNaira(deliveryQuote.fee)}`
-                          : "Select a door step delivery zone"}
+                          : selectedDeliveryLocation
+                            ? "Location pin selected"
+                            : "Select an address suggestion"}
                     </strong>
                     <p>
                       {quoteError ||

@@ -183,7 +183,7 @@ export const env = {
   riderLocationRefreshMs: numberFromEnv(process.env.RIDER_LOCATION_REFRESH_MS, 30000),
   riderPresenceTimeoutMs: numberFromEnv(
     process.env.RIDER_PRESENCE_TIMEOUT_MS,
-    75000,
+    900000,
   ),
   riderPresenceSweepMs: numberFromEnv(
     process.env.RIDER_PRESENCE_SWEEP_MS,

@@ -15,8 +15,9 @@ import { deleteUploadedFiles, fileUrl, upload } from "../middleware/upload.js";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import {
   createSession,
+  adminSessionCookieName,
+  deleteSession,
   deleteSessionsForUser,
-  sessionCookieName,
   sessionCookieOptions,
 } from "../lib/session.js";
 import { safeErrorMessage, shouldLogTechnicalError } from "../lib/safe-error-message.js";
@@ -187,7 +188,7 @@ router.post("/login", adminLoginLimiter, async (req, res) => {
 
   deleteSessionsForUser(adminProfile.id);
   const session = createSession(adminProfile.id, requestMeta(req));
-  res.cookie(sessionCookieName, session.token, sessionCookieOptions());
+  res.cookie(adminSessionCookieName, session.token, sessionCookieOptions());
   logAdminAudit({
     adminId: adminProfile.id,
     action: "admin_login",
@@ -203,6 +204,12 @@ router.post("/login", adminLoginLimiter, async (req, res) => {
     token: "session",
     admin: serializeAdminProfile(adminProfile),
   });
+});
+
+router.post("/logout", (req, res) => {
+  deleteSession(req.cookies?.[adminSessionCookieName]);
+  res.clearCookie(adminSessionCookieName, sessionCookieOptions());
+  res.status(204).end();
 });
 
 router.get("/overview", requireAdmin, (_req, res) => {

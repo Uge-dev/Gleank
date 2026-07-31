@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Navigate, Routes, Route, useLocation } from "react-router-dom";
 
 import { applyTheme, getSavedTheme, watchSystemTheme } from "./utils/theme";
 
@@ -76,6 +76,15 @@ function App() {
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
   const isRiderRoute = location.pathname.startsWith("/rider");
+  const shouldRestoreRiderPortal =
+    location.pathname === "/" &&
+    typeof window !== "undefined" &&
+    (window.sessionStorage.getItem("gleenc-current-portal") ||
+      window.localStorage.getItem("gleenc-last-portal")) === "rider";
+
+  if (shouldRestoreRiderPortal) {
+    return <Navigate to="/rider" replace />;
+  }
 
   if (isAdminRoute) {
     return (

@@ -112,7 +112,13 @@ export function submitManualKyc(formData: FormData) {
   });
 }
 
-export function geocodeAddress(input: { text?: string; address?: string; area?: string; campus?: string }) {
+export function geocodeAddress(input: {
+  text?: string;
+  address?: string;
+  area?: string;
+  campus?: string;
+  autocomplete?: boolean;
+}) {
   return apiRequest<{
     provider: "manual" | "geoapify";
     fallback: boolean;

@@ -59,6 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await riderApi.session();
       setRider(response.rider);
       setApiConnected(true);
+      window.localStorage.setItem('gleenc-last-portal', 'rider');
+      window.sessionStorage.setItem('gleenc-current-portal', 'rider');
     } catch (error) {
       setApiConnected(false);
       if (error instanceof ApiClientError && [401, 403].includes(Number(error.status || 0))) {
@@ -92,14 +94,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true;
     let heartbeatCount = 0;
-    let consecutiveHeartbeatFailures = 0;
-    let hiddenOfflineTimer: number | null = null;
-
-    function cancelHiddenOffline() {
-      if (hiddenOfflineTimer === null) return;
-      window.clearTimeout(hiddenOfflineTimer);
-      hiddenOfflineTimer = null;
-    }
 
     function setAutomaticAvailability(
       availability: Rider['availability'],
@@ -114,7 +108,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       response: Awaited<ReturnType<typeof riderApi.presenceHeartbeat>>,
     ) {
       if (!active) return;
-      consecutiveHeartbeatFailures = 0;
       setRider((current) => ({
         ...(current || response.rider),
         ...response.rider,
@@ -126,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     async function sendHeartbeat(includeLocation = false) {
-      if (!active || !navigator.onLine || document.visibilityState !== 'visible') {
+      if (!active || !navigator.onLine) {
         return;
       }
 
@@ -144,10 +137,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setApiConnected(false);
           void refreshSession().catch(() => undefined);
         } else if (active) {
-          consecutiveHeartbeatFailures += 1;
-          if (consecutiveHeartbeatFailures >= 2) {
-            setAutomaticAvailability('offline', false);
-          }
+          // A backend timeout must not be presented as the rider intentionally
+          // going offline while the device still has internet access.
+          setApiConnected(false);
         }
         return;
       }
@@ -169,7 +161,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     function handleOnline() {
-      cancelHiddenOffline();
       void sendHeartbeat(true);
     }
 
@@ -178,31 +169,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     function handleVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-        cancelHiddenOffline();
-        // Browser GPS/permission prompts can briefly hide the document even
-        // though the rider did not leave Gleenc. Give those prompts a short
-        // grace period, then close only this tab's presence if it stays hidden.
-        hiddenOfflineTimer = window.setTimeout(() => {
-          hiddenOfflineTimer = null;
-          if (!active || document.visibilityState !== 'hidden') return;
-          setAutomaticAvailability('offline', navigator.onLine);
-          riderApi.sendPresenceOfflineBeacon();
-        }, 5_000);
-        return;
-      }
-      cancelHiddenOffline();
-      void sendHeartbeat(true);
-    }
-
-    function handlePageHide() {
-      cancelHiddenOffline();
-      setAutomaticAvailability('offline', navigator.onLine);
-      riderApi.sendPresenceOfflineBeacon();
+      // Switching tabs or backgrounding the installed rider PWA is not an
+      // offline action. Send a heartbeat before throttling and refresh with GPS
+      // when the rider returns to the screen.
+      void sendHeartbeat(document.visibilityState === 'visible');
     }
 
     function handleFocus() {
-      cancelHiddenOffline();
       void sendHeartbeat(true);
     }
 
@@ -214,18 +187,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('focus', handleFocus);
-    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       active = false;
-      cancelHiddenOffline();
-      riderApi.sendPresenceOfflineBeacon();
       window.clearInterval(heartbeat);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [refreshSession, riderId]);
@@ -242,6 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.login(email, password);
           setRider(response.rider);
           setApiConnected(true);
+          window.localStorage.setItem('gleenc-last-portal', 'rider');
+          window.sessionStorage.setItem('gleenc-current-portal', 'rider');
           void requestLocationAfterLogin('rider');
           return response.rider;
         }
@@ -265,6 +236,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const response = await riderApi.signup(payload);
           setRider(response.rider);
           setApiConnected(true);
+          window.localStorage.setItem('gleenc-last-portal', 'rider');
+          window.sessionStorage.setItem('gleenc-current-portal', 'rider');
           void requestLocationAfterLogin('rider');
           return response.rider;
         }
@@ -287,6 +260,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setRider(null);
       setApiConnected(false);
+      window.localStorage.removeItem('gleenc-last-portal');
+      window.sessionStorage.removeItem('gleenc-current-portal');
     },
     refreshSession,
     updateRiderLocally(patch: Partial<Rider>) {

@@ -10,9 +10,15 @@ export type CreateOrderInput = {
   buyerName: string;
   buyerPhone: string;
   campus: string;
+  deliveryArea?: string;
   deliveryOption: "Pickup" | "Delivery";
   paymentMethod?: "pay_now" | "pay_on_delivery";
   deliveryAddress: string;
+  deliveryDetails?: string;
+  deliveryLandmark?: string;
+  nearestBusStop?: string;
+  deliveryLat?: number | null;
+  deliveryLng?: number | null;
   pickupLocation: string;
   note?: string;
   items: CreateOrderItemInput[];
@@ -59,12 +65,48 @@ export function payOrder(id: string, reference = "") {
   );
 }
 
-export function sellerConfirmOrder(id: string, note = "") {
+function captureSellerLocation() {
+  return new Promise<
+    { lat: number; lng: number; accuracyMeters: number; address?: string } | null
+  >((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => resolve({
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracyMeters: position.coords.accuracy,
+      }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 },
+    );
+  });
+}
+
+export async function sellerConfirmOrder(id: string, note = "") {
+  const sellerLocation = await captureSellerLocation();
+  if (sellerLocation) {
+    try {
+      const result = await apiRequest<{
+        location?: { formattedAddress?: string; address?: string };
+      }>("/location/reverse-geocode", {
+        method: "POST",
+        body: JSON.stringify({ lat: sellerLocation.lat, lng: sellerLocation.lng }),
+      });
+      sellerLocation.address =
+        result.location?.formattedAddress || result.location?.address || "";
+    } catch {
+      // Coordinates are still authoritative when a readable address cannot be
+      // resolved at this moment.
+    }
+  }
   return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}/seller-confirm`,
     {
       method: "POST",
-      body: JSON.stringify({ note }),
+      body: JSON.stringify({ note, sellerLocation }),
     },
   );
 }

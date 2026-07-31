@@ -1114,8 +1114,8 @@ function loadOrderForBatch(orderId) {
     SELECT orders.*, stores.name AS store_name, stores.seller_type, stores.market_id,
            stores.campus AS store_campus, stores.location_area, stores.pickup_location AS store_pickup_location,
            stores.nearest_landmark, stores.pickup_zone_id, stores.pickup_lat, stores.pickup_lng,
-           COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS route_pickup_lat,
-           COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS route_pickup_lng,
+           COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS route_pickup_lat,
+           COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS route_pickup_lng,
            COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
            COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
            users.name AS seller_name, users.phone AS seller_user_phone
@@ -1263,10 +1263,10 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
     group.orders.forEach(({ order }, index) => {
       db.prepare(`
         UPDATE orders
-        SET pickup_lat = COALESCE(pickup_lat, ?),
-            pickup_lng = COALESCE(pickup_lng, ?),
-            delivery_lat = COALESCE(delivery_lat, ?),
-            delivery_lng = COALESCE(delivery_lng, ?),
+        SET pickup_lat = COALESCE(?, pickup_lat),
+            pickup_lng = COALESCE(?, pickup_lng),
+            delivery_lat = COALESCE(?, delivery_lat),
+            delivery_lng = COALESCE(?, delivery_lng),
             updated_at = ?
         WHERE id = ?
       `).run(
@@ -1406,6 +1406,29 @@ Math.round(deliveryFeeKobo / pickupCount),
 export function ensureOrderDeliverySetup(orderId) {
   let order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
   if (!order) throw new HttpError(404, "Order was not found.");
+
+  const pickupSnapshot = db.prepare(`
+    SELECT account_location_presence.lat AS presence_lat,
+           account_location_presence.lng AS presence_lng,
+           stores.pickup_lat AS store_lat,
+           stores.pickup_lng AS store_lng
+    FROM orders
+    JOIN stores ON stores.id = orders.store_id
+    LEFT JOIN account_location_presence
+      ON account_location_presence.user_id = orders.seller_id
+      AND account_location_presence.permission_status = 'granted'
+    WHERE orders.id = ?
+  `).get(order.id);
+  const snapshotLat = pickupSnapshot?.presence_lat ?? pickupSnapshot?.store_lat ?? order.pickup_lat ?? null;
+  const snapshotLng = pickupSnapshot?.presence_lng ?? pickupSnapshot?.store_lng ?? order.pickup_lng ?? null;
+  if (snapshotLat != null && snapshotLng != null) {
+    db.prepare(`
+      UPDATE orders
+      SET pickup_lat = ?, pickup_lng = ?, updated_at = ?
+      WHERE id = ?
+    `).run(snapshotLat, snapshotLng, nowIso(), order.id);
+    order = db.prepare("SELECT * FROM orders WHERE id = ?").get(order.id);
+  }
 
   const linkedTask = db.prepare(`
     SELECT pickup_tasks.id AS pickup_task_id,
@@ -2193,8 +2216,8 @@ function riderCanHandle(rider, batch, { assignmentMode = "automatic" } = {}) {
 function routeCoordinatesForBatch(batchId) {
   return db.prepare(`
     SELECT
-      COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS pickup_lat,
-      COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS pickup_lng,
+      COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS pickup_lat,
+      COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS pickup_lng,
       COALESCE(orders.delivery_lat, buyer_presence.lat) AS delivery_lat,
       COALESCE(orders.delivery_lng, buyer_presence.lng) AS delivery_lng
     FROM pickup_tasks
@@ -2798,8 +2821,8 @@ function createAssignmentsForBatch(batchId, riderId) {
   const tasks = db.prepare(`
     SELECT pickup_tasks.*, orders.*, stores.name AS store_name, stores.whatsapp_phone, stores.phone AS store_phone,
            stores.allow_rider_whatsapp_contact, users.name AS seller_name, users.phone AS seller_user_phone,
-           COALESCE(orders.pickup_lat, stores.pickup_lat, seller_presence.lat) AS route_pickup_lat,
-           COALESCE(orders.pickup_lng, stores.pickup_lng, seller_presence.lng) AS route_pickup_lng,
+           COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS route_pickup_lat,
+           COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS route_pickup_lng,
            COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
            COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
            delivery_tasks.delivery_otp_hash
@@ -2835,11 +2858,12 @@ function createAssignmentsForBatch(batchId, riderId) {
         seller_allows_whatsapp, status, dispatch_timeout_seconds, dispatch_expires_at,
         dispatch_timeout_policy, payment_status, payment_confirmed_at, pickup_code_hash,
         delivery_code_hash, pickup_address, pickup_lat, pickup_lng, delivery_address,
-        delivery_lat, delivery_lng, seller_name, seller_phone, seller_whatsapp, buyer_name,
+        delivery_details, delivery_landmark, delivery_bus_stop, delivery_lat, delivery_lng,
+        seller_name, seller_phone, seller_whatsapp, buyer_name,
         buyer_phone, package_summary, package_tag_code, package_value_kobo, delivery_fee_kobo,
         accepted_at,
         delivery_batch_id, pickup_task_id, created_at, updated_at
-      ) VALUES (?, ?, 'store_order', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'store_order', ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       assignmentId,
       task.order_id,
@@ -2865,6 +2889,9 @@ function createAssignmentsForBatch(batchId, riderId) {
       task.route_pickup_lat ?? task.pickup_lat ?? null,
       task.route_pickup_lng ?? task.pickup_lng ?? null,
       task.delivery_address || task.pickup_location || "",
+      task.delivery_details || "",
+      task.delivery_landmark || "",
+      task.delivery_bus_stop || "",
       task.route_delivery_lat ?? task.delivery_lat ?? null,
       task.route_delivery_lng ?? task.delivery_lng ?? null,
       task.seller_name || task.store_name || "Seller",
@@ -3169,6 +3196,7 @@ export function listRiderDispatches(auth) {
                  COALESCE(NULLIF(users.name, ''), NULLIF(stores.name, ''), 'Seller') AS seller_name,
                  COALESCE(NULLIF(users.phone, ''), NULLIF(stores.phone, ''), '') AS seller_phone,
                  COALESCE(
+                   NULLIF(orders.pickup_location, ''),
                    NULLIF(stores.pickup_location, ''),
                    NULLIF(stores.nearest_landmark, ''),
                    NULLIF(pickup_tasks.pickup_landmark, ''),
@@ -3191,6 +3219,9 @@ export function listRiderDispatches(auth) {
           ...batch,
           pickupTasks: (batch.pickupTasks || []).map((task) => {
             const detail = sellerPickupDetailsByTask.get(task.id);
+            const firstProduct = Array.isArray(task.orderItems)
+              ? task.orderItems[0]
+              : null;
             return {
               id: task.id,
               sellerName: detail?.seller_name || task.sellerName || "Seller",
@@ -3201,6 +3232,17 @@ export function listRiderDispatches(auth) {
                 "Pickup location unavailable",
               pickupSequence: task.pickupSequence,
               status: task.status,
+              firstProduct: firstProduct
+                ? {
+                    name: firstProduct.name || "Product",
+                    imageUrl: firstProduct.imageUrl || "",
+                    quantity: Number(firstProduct.quantity || 1),
+                  }
+                : null,
+              packageSize: task.packageSize || batch.packageSizeSummary || "",
+              packageWeightClass:
+                task.packageWeightClass || batch.weightClassSummary || "",
+              handlingClass: task.handlingClass || batch.fragilitySummary || "",
             };
           }),
           deliveryTask: batch.deliveryTask

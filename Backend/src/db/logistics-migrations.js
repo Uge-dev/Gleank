@@ -512,6 +512,8 @@ export function runLogisticsMigrations() {
   ensureColumn("orders", "delivery_zone_id", "TEXT");
   ensureColumn("orders", "delivery_area", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("orders", "delivery_landmark", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("orders", "delivery_details", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("orders", "delivery_bus_stop", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("orders", "seller_confirmation_deadline_at", "TEXT");
   ensureColumn("orders", "package_ready_at", "TEXT");
   ensureColumn("orders", "auto_dispatch_status", "TEXT NOT NULL DEFAULT 'not_started'");

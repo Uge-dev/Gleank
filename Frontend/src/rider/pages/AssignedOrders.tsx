@@ -1,4 +1,4 @@
-import { FiClock, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
+import { FiClock, FiCopy, FiInfo, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
 import { useEffect, useState } from 'react';
 import { useRiderData } from '../context/RiderDataContext';
 import AssignmentCard from '../components/rider/AssignmentCard';
@@ -6,10 +6,12 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import PageHeader from '../components/ui/PageHeader';
+import Modal from '../components/ui/Modal';
 import { shouldUseApi } from '../config/env';
 import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import type { RiderDispatchOffer } from '../services/riderApi';
+import { apiUrl } from '../../lib/api';
 
 export default function AssignedOrders() {
   const { assignments, refresh } = useRiderData();
@@ -17,6 +19,8 @@ export default function AssignedOrders() {
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [dispatchAction, setDispatchAction] = useState('');
   const [dispatchError, setDispatchError] = useState('');
+  const [detailOffer, setDetailOffer] = useState<RiderDispatchOffer | null>(null);
+  const [copiedPhone, setCopiedPhone] = useState('');
   const assigned = assignments.filter((item) =>
     ['assigned', 'accepted', 'arrived_at_pickup'].includes(item.status),
   );
@@ -24,16 +28,16 @@ export default function AssignedOrders() {
   async function loadDispatches() {
     if (
       !shouldUseApi() ||
-      !navigator.onLine ||
-      document.visibilityState !== 'visible'
+      !navigator.onLine
     ) return;
 
     setDispatchLoading(true);
     try {
       const payload = await riderApi.activeDispatches();
-      setDispatches(
-        (payload.dispatches || []).filter((offer) => offer.status === 'offered'),
+      const nextDispatches = (payload.dispatches || []).filter(
+        (offer) => offer.status === 'offered',
       );
+      setDispatches(nextDispatches);
       setDispatchError('');
     } catch (requestError) {
       if (requestError instanceof ApiClientError && requestError.status === 403) {
@@ -176,6 +180,15 @@ export default function AssignedOrders() {
 
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
                     <Button
+                      variant="secondary"
+                      icon={FiInfo}
+                      onClick={() => setDetailOffer(offer)}
+                      className="sm:col-span-2"
+                      fullWidth
+                    >
+                      Order Details
+                    </Button>
+                    <Button
                       icon={FiTruck}
                       disabled={dispatchAction === offer.id}
                       onClick={() => acceptDispatch(offer.id)}
@@ -218,6 +231,90 @@ export default function AssignedOrders() {
           message="Keep the rider app open. New jobs appear automatically."
         />
       ) : null}
+
+      <Modal
+        open={Boolean(detailOffer)}
+        title="Order details"
+        message="Review the product and seller pickup information before accepting."
+        cancelLabel="Close"
+        onClose={() => {
+          setDetailOffer(null);
+          setCopiedPhone('');
+        }}
+      >
+        <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
+          {(detailOffer?.batch?.pickupTasks || []).map((task) => {
+            const phone = task.sellerPhone || '';
+            const image = task.firstProduct?.imageUrl
+              ? apiUrl(task.firstProduct.imageUrl)
+              : '';
+            return (
+              <article key={task.id} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex gap-3">
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={task.firstProduct?.name || 'Product'}
+                      className="h-20 w-20 shrink-0 rounded-xl object-cover"
+                    />
+                  ) : (
+                    <div className="grid h-20 w-20 shrink-0 place-items-center rounded-xl bg-slate-100 text-xs font-bold text-slate-400">
+                      Product
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="font-black text-slate-950">
+                      {task.firstProduct?.name || 'Delivery product'}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Qty {task.firstProduct?.quantity || 1}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-black uppercase text-slate-600">
+                      <span className="rounded-full bg-slate-100 px-2 py-1">
+                        {task.packageSize || detailOffer?.batch?.packageSizeSummary || 'size pending'}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-1">
+                        {task.packageWeightClass || detailOffer?.batch?.weightClassSummary || 'weight pending'}
+                      </span>
+                      <span className="rounded-full bg-slate-100 px-2 py-1">
+                        {task.handlingClass || detailOffer?.batch?.fragilitySummary || 'normal handling'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-slate-50 p-3">
+                  <p className="text-sm font-black text-slate-900">{task.sellerName || 'Seller'}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">
+                    <FiMapPin className="mr-1 inline" />
+                    {task.pickupLocation || 'Pickup location unavailable'}
+                  </p>
+                  {phone ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <a
+                        href={`tel:${phone}`}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 py-2 text-sm font-bold text-white"
+                      >
+                        <FiPhone /> Call seller
+                      </a>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-800"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(phone);
+                          setCopiedPhone(phone);
+                        }}
+                      >
+                        <FiCopy /> {copiedPhone === phone ? 'Copied' : 'Copy phone'}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -30,6 +30,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!isFormData && options.body && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
+  headers.set('X-Gleenc-Portal', 'rider');
 
   try {
     const response = await fetch(buildApiUrl(path), {

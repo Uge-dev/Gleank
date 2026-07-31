@@ -63,6 +63,21 @@ export default function DeliveryDetails() {
                 {order.deliveryNotes ? (
                   <p className="mt-2 text-sm text-slate-500">{order.deliveryNotes}</p>
                 ) : null}
+                {order.deliveryDetails ? (
+                  <p className="mt-2 text-sm font-semibold text-slate-600">
+                    Exact point: {order.deliveryDetails}
+                  </p>
+                ) : null}
+                {order.deliveryLandmark ? (
+                  <p className="mt-2 text-sm font-semibold text-slate-600">
+                    Landmark: {order.deliveryLandmark}
+                  </p>
+                ) : null}
+                {order.nearestBusStop ? (
+                  <p className="mt-1 text-sm font-semibold text-slate-600">
+                    Nearest bus stop: {order.nearestBusStop}
+                  </p>
+                ) : null}
               </div>
               <StatusBadge value={order.status} />
             </div>

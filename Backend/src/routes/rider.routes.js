@@ -3,7 +3,10 @@ import rateLimit from "express-rate-limit";
 import { requireAuth, requireEmailVerified, requireRole } from "../middleware/auth.js";
 import { validate } from "../middleware/validate.js";
 import { fileUrl, upload } from "../middleware/upload.js";
-import { sessionCookieName, sessionCookieOptions } from "../lib/session.js";
+import {
+  riderSessionCookieName,
+  sessionCookieOptions,
+} from "../lib/session.js";
 import {
   acceptRiderAssignment,
   adminListRiders,
@@ -123,7 +126,7 @@ riderRouter.post(
   validate(riderRegisterSchema),
   asyncRoute(async (req, res) => {
     const result = await registerRider(req.body, requestMeta(req));
-    res.cookie(sessionCookieName, result.session.token, sessionCookieOptions());
+    res.cookie(riderSessionCookieName, result.session.token, sessionCookieOptions());
     res.status(201).json({
       success: true,
       message: "Rider account created. Verify your email to continue.",
@@ -147,7 +150,7 @@ riderRouter.post(
   validate(riderLoginSchema),
   asyncRoute(async (req, res) => {
     const result = await loginRider(req.body, requestMeta(req));
-    res.cookie(sessionCookieName, result.session.token, sessionCookieOptions());
+    res.cookie(riderSessionCookieName, result.session.token, sessionCookieOptions());
     res.json({
       success: true,
       message: "Rider login successful.",

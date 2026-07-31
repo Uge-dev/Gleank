@@ -54,7 +54,7 @@ orderRouter.post("/:id/seller-confirm", (req, res) => {
     order: sellerConfirmOrder(
       req.auth,
       req.params.id,
-      String(req.body?.note || ""),
+      req.body || {},
     ),
   });
 });

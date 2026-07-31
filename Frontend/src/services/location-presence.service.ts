@@ -55,12 +55,14 @@ function browserLocation() {
 
 async function syncPermissionStatus(
   permissionStatus: "denied" | "unavailable",
+  role: string,
 ) {
   try {
     await apiRequest<{ presence: AccountLocationPresence | null }>(
       "/location/presence",
       {
         method: "POST",
+        headers: role === "rider" ? { "X-Gleenc-Portal": "rider" } : undefined,
         body: JSON.stringify({
           permissionStatus,
           source: "browser_login",
@@ -85,7 +87,7 @@ export async function requestLocationAfterLogin(role: string) {
       "code" in error &&
       Number((error as { code?: unknown }).code) === 1;
     const permissionStatus = denied ? "denied" : "unavailable";
-    await syncPermissionStatus(permissionStatus);
+    await syncPermissionStatus(permissionStatus, role);
     notifyLocationStatus(
       permissionStatus,
       denied
@@ -101,6 +103,7 @@ export async function requestLocationAfterLogin(role: string) {
       routingReady: boolean;
     }>("/location/presence", {
       method: "POST",
+      headers: role === "rider" ? { "X-Gleenc-Portal": "rider" } : undefined,
       body: JSON.stringify({
         permissionStatus: "granted",
         source: "browser_login",

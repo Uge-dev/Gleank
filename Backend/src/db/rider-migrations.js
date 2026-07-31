@@ -395,6 +395,9 @@ export function runRiderMigrations() {
   ensureColumn("rider_assignments", "market_name", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("rider_assignments", "campus_name", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("rider_assignments", "pickup_landmark", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "delivery_details", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "delivery_landmark", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("rider_assignments", "delivery_bus_stop", "TEXT NOT NULL DEFAULT ''");
   ensureColumn("rider_assignments", "seller_allows_whatsapp", "INTEGER NOT NULL DEFAULT 1");
   ensureColumn("rider_assignments", "dispatch_timeout_seconds", "INTEGER NOT NULL DEFAULT 600");
   ensureColumn("rider_assignments", "dispatch_expires_at", "TEXT");

@@ -358,12 +358,15 @@ export async function geocodeLocation(input = {}) {
   const text = clean(input.text || input.address || input.query, 500);
   if (!text) throw new HttpError(422, "Enter an address or area to search.");
 
-  const data = await fetchGeoapify("/geocode/search", {
-    text,
-    country: clean(input.country || "Nigeria", 80),
-    limit: input.limit || 5,
-    lang: "en",
-  });
+  const data = await fetchGeoapify(
+    input.autocomplete ? "/geocode/autocomplete" : "/geocode/search",
+    {
+      text,
+      filter: "countrycode:ng",
+      limit: input.limit || 5,
+      lang: "en",
+    },
+  );
 
   const features = Array.isArray(data?.features) ? data.features : [];
 

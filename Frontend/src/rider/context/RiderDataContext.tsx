@@ -129,15 +129,15 @@ function scheduleRiderDispatchBeep(audio: AudioContext) {
   try {
     const startAt = audio.currentTime + 0.02;
     [0, 0.24, 0.48].forEach((offset, index) => {
-    const oscillator = audio.createOscillator();
-    const gain = audio.createGain();
-    oscillator.type = 'sine';
+      const oscillator = audio.createOscillator();
+      const gain = audio.createGain();
+      oscillator.type = index === 1 ? 'square' : 'sine';
       oscillator.frequency.value = index === 1 ? 1046 : 880;
-    gain.gain.value = 0.0001;
-    oscillator.connect(gain);
-    gain.connect(audio.destination);
+      gain.gain.value = 0.0001;
+      oscillator.connect(gain);
+      gain.connect(audio.destination);
       oscillator.start(startAt + offset);
-      gain.gain.exponentialRampToValueAtTime(0.2, startAt + offset + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.42, startAt + offset + 0.02);
       gain.gain.exponentialRampToValueAtTime(0.0001, startAt + offset + 0.18);
       oscillator.stop(startAt + offset + 0.2);
     });
@@ -149,6 +149,26 @@ function scheduleRiderDispatchBeep(audio: AudioContext) {
 function showRiderNotification(title: string, body: string) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission === 'granted') {
+    if ('serviceWorker' in navigator) {
+      void navigator.serviceWorker.getRegistration()
+        .then((registration) => {
+          if (!registration) {
+            new Notification(title, { body, tag: 'gleenc-rider-dispatch' });
+            return;
+          }
+          return registration.showNotification(title, {
+            body,
+            tag: 'gleenc-rider-dispatch',
+            icon: '/glc%20red%20yel%20logo.png',
+            badge: '/glc%20red%20yel%20logo.png',
+            data: { url: '/rider/assignments' },
+          });
+        })
+        .catch(() => {
+          new Notification(title, { body, tag: 'gleenc-rider-dispatch' });
+        });
+      return;
+    }
     new Notification(title, { body, tag: 'gleenc-rider-dispatch' });
   }
 }
@@ -214,11 +234,17 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     if (alertedEventIdsRef.current.has(alertId)) return;
     alertedEventIdsRef.current.add(alertId);
     playDispatchAlert();
+    if ('vibrate' in navigator) {
+      navigator.vibrate([180, 80, 180, 80, 260]);
+    }
     showRiderNotification(title, body);
   }
 
   useEffect(() => {
     function unlockAudio() {
+      if ('Notification' in window && Notification.permission === 'default') {
+        void Notification.requestPermission();
+      }
       const audio = getAudioContext();
       if (!audio || audio.state === 'running') return;
       void audio.resume()

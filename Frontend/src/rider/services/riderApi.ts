@@ -83,6 +83,9 @@ type BackendAssignment = {
   deliveryPoint?: BackendPoint;
   pickupLocation?: string;
   deliveryLocation?: string;
+  deliveryDetails?: string;
+  deliveryLandmark?: string;
+  nearestBusStop?: string;
   sellerName?: string;
   sellerPhone?: string;
   sellerWhatsApp?: string;
@@ -171,6 +174,14 @@ export type RiderDispatchOffer = {
       pickupLocation?: string;
       pickupSequence?: number;
       status?: string;
+      firstProduct?: {
+        name?: string;
+        imageUrl?: string;
+        quantity?: number;
+      } | null;
+      packageSize?: string;
+      packageWeightClass?: string;
+      handlingClass?: string;
     }>;
   };
 };
@@ -258,6 +269,9 @@ function normalizeAssignment(row: BackendAssignment): PrivateAssignment {
     pickupLat: row.pickupPoint?.lat ?? null,
     pickupLng: row.pickupPoint?.lng ?? null,
     deliveryLocation,
+    deliveryDetails: row.deliveryDetails || '',
+    deliveryLandmark: row.deliveryLandmark || '',
+    nearestBusStop: row.nearestBusStop || '',
     deliveryLat: row.deliveryPoint?.lat ?? null,
     deliveryLng: row.deliveryPoint?.lng ?? null,
     packageSummary: row.packageSummary || 'Gleenc delivery package',
@@ -338,8 +352,14 @@ function normalizeOrder(row: BackendAssignment): FullDeliveryOrder {
     deliveryFee,
     platformFee: 0,
     riderEarning,
-    deliveryAddress: row.deliveryLocation || row.deliveryPoint?.address || 'Delivery address unavailable',
+    deliveryAddress:
+      row.deliveryLocation ||
+      row.deliveryPoint?.address ||
+      'Delivery address unavailable',
     deliveryNotes: row.packageSummary || '',
+    deliveryDetails: row.deliveryDetails || '',
+    deliveryLandmark: row.deliveryLandmark || '',
+    nearestBusStop: row.nearestBusStop || '',
     packageTagCode: row.packageTagCode || '',
     sellerPickupCodeVerifiedAt: row.sellerPickupCodeVerifiedAt || null,
     buyerDeliveryCodeVerifiedAt: row.buyerDeliveryCodeVerifiedAt || null,
@@ -733,24 +753,6 @@ export const riderApi = {
       body: JSON.stringify({ currentLocation, presenceSessionId }),
     }).then(normalizeRider);
   },
-  sendPresenceOfflineBeacon() {
-    const url = buildApiUrl('/api/rider/presence/offline');
-    const body = JSON.stringify({ presenceSessionId });
-    if (navigator.sendBeacon) {
-      return navigator.sendBeacon(
-        url,
-        new Blob([body], { type: 'application/json' }),
-      );
-    }
-    void fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      keepalive: true,
-      headers: { 'Content-Type': 'application/json' },
-      body,
-    }).catch(() => undefined);
-    return true;
-  },
   dashboard() {
     return apiRequest<BackendDashboardResponse>('/api/rider/dashboard').then(normalizeDashboard);
   },
@@ -765,7 +767,7 @@ export const riderApi = {
       return () => undefined;
     }
 
-    const stream = new EventSource(buildApiUrl('/api/notifications/stream'), {
+    const stream = new EventSource(buildApiUrl('/api/notifications/stream?portal=rider'), {
       withCredentials: true,
     });
     stream.addEventListener('notification', (event) => {

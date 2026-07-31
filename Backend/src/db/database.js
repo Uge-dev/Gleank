@@ -1177,6 +1177,9 @@ ensureColumn("orders", "seller_confirmation_required", "INTEGER NOT NULL DEFAULT
 ensureColumn("orders", "seller_confirmed_at", "TEXT");
 ensureColumn("orders", "seller_rejected_at", "TEXT");
 ensureColumn("orders", "seller_rejection_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "delivery_details", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "delivery_landmark", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "delivery_bus_stop", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "return_window_ends_at", "TEXT");
 ensureColumn("orders", "buyer_confirmed_at", "TEXT");
 ensureColumn("orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");

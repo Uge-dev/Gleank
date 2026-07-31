@@ -91,6 +91,9 @@ export interface PrivateAssignment {
   pickupLat?: number | null;
   pickupLng?: number | null;
   deliveryLocation: string;
+  deliveryDetails?: string;
+  deliveryLandmark?: string;
+  nearestBusStop?: string;
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   packageSummary?: string;
@@ -163,6 +166,9 @@ export interface FullDeliveryOrder {
   riderEarning: number;
   deliveryAddress: string;
   deliveryNotes: string;
+  deliveryDetails?: string;
+  deliveryLandmark?: string;
+  nearestBusStop?: string;
   status: AssignmentStatus;
   paymentLink?: string;
   paymentReference?: string;

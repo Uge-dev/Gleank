@@ -59,6 +59,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  headers.set("X-Gleenc-Portal", "admin");
 
   let response: Response;
 
@@ -81,6 +82,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(cleanErrorMessage(error.message, response.status, "Admin request could not be completed."));
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   return response.json() as Promise<T>;
 }
 
@@ -91,6 +96,14 @@ export async function adminLogin(payload: AdminLoginPayload) {
   });
   setAdminToken("session");
   return result;
+}
+
+export async function adminLogout() {
+  try {
+    await request<void>("/admin/logout", { method: "POST" });
+  } finally {
+    clearAdminToken();
+  }
 }
 
 export async function fetchAdminProfile() {

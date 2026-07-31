@@ -4,7 +4,7 @@ import "../db/rider-migrations.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
-import { createSession, deleteSession, sessionCookieOptions, sessionCookieName } from "../lib/session.js";
+import { deleteSession, riderSessionCookieName, sessionCookieOptions } from "../lib/session.js";
 import { serializeUser } from "../lib/serializers.js";
 import { loginUser, registerUser } from "./auth.service.js";
 import {
@@ -397,6 +397,9 @@ function serializeAssignment(row, { revealPrivate = false } = {}) {
       lat: reveal ? row.delivery_lat : null,
       lng: reveal ? row.delivery_lng : null,
     },
+    deliveryDetails: reveal ? row.delivery_details || "" : "",
+    deliveryLandmark: reveal ? row.delivery_landmark || "" : "",
+    nearestBusStop: reveal ? row.delivery_bus_stop || "" : "",
     deliveryLocation: reveal ? row.delivery_address : "Delivery details locked until seller pickup",
     sellerName: row.seller_name,
     sellerPhone: row.seller_phone,
@@ -1152,11 +1155,12 @@ export function createRiderAssignment(auth, input) {
         seller_allows_whatsapp,
         status, dispatch_timeout_seconds, dispatch_expires_at, dispatch_timeout_policy,
         payment_status, payment_confirmed_at, pickup_code_hash, delivery_code_hash,
-        pickup_address, pickup_lat, pickup_lng, delivery_address, delivery_lat, delivery_lng,
+        pickup_address, pickup_lat, pickup_lng, delivery_address,
+        delivery_details, delivery_landmark, delivery_bus_stop, delivery_lat, delivery_lng,
         seller_name, seller_phone, seller_whatsapp, buyer_name, buyer_phone, package_summary,
         package_tag_code, package_value_kobo, delivery_fee_kobo,
         delivery_batch_id, pickup_task_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       input.orderId,
@@ -1184,6 +1188,9 @@ export function createRiderAssignment(auth, input) {
       pickupPoint.lat,
       pickupPoint.lng,
       deliveryPoint.address,
+      input.deliveryDetails || order.delivery_details || "",
+      input.deliveryLandmark || order.delivery_landmark || "",
+      input.nearestBusStop || order.delivery_bus_stop || "",
       deliveryPoint.lat,
       deliveryPoint.lng,
       input.sellerName || order.seller_name || "Seller",
@@ -1925,7 +1932,7 @@ export function markRiderNotificationRead(auth, notificationId) {
 }
 
 export function cookieConfig() {
-  return { sessionCookieName, sessionCookieOptions: sessionCookieOptions() };
+  return { sessionCookieName: riderSessionCookieName, sessionCookieOptions: sessionCookieOptions() };
 }
 
 export function adminListRiders(auth, status = "") {

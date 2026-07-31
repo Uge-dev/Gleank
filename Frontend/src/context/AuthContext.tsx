@@ -35,6 +35,7 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const legacyUserKey = "gleank_user";
+const lastPortalKey = "gleenc-last-portal";
 const clientAuthStorageKeys = [
   legacyUserKey,
   "gleenc-rider-dashboard-state-v4",
@@ -51,6 +52,8 @@ function clearClientAuthStorage() {
 
 function syncLegacyUser(user: AuthUser | null) {
   if (user) {
+    localStorage.setItem(lastPortalKey, "user");
+    sessionStorage.setItem("gleenc-current-portal", "user");
     localStorage.setItem(
       legacyUserKey,
       JSON.stringify({
@@ -60,6 +63,9 @@ function syncLegacyUser(user: AuthUser | null) {
     );
   } else {
     clearClientAuthStorage();
+    if (sessionStorage.getItem("gleenc-current-portal") === "user") {
+      sessionStorage.removeItem("gleenc-current-portal");
+    }
   }
 
   window.dispatchEvent(new Event("gleank-auth-change"));

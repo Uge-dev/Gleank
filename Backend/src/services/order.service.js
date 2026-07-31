@@ -4,7 +4,10 @@ import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { evaluatePayAtDeliveryEligibility } from "./payment-protection.service.js";
-import { getAccountLocationPresence } from "./location.service.js";
+import {
+  getAccountLocationPresence,
+  upsertAccountLocationPresence,
+} from "./location.service.js";
 import {
   createDispute,
   createReturnRequest,
@@ -53,6 +56,14 @@ function safeJsonArray(value) {
 
 function firstImage(value) {
   return safeJsonArray(value)[0] || null;
+}
+
+function coordinateOrNull(value, min, max) {
+  if (value === undefined || value === null || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max
+    ? number
+    : null;
 }
 
 function inventoryUnavailableMessage(product, quantity) {
@@ -223,6 +234,9 @@ function serializeOrder(row, items = [], events = []) {
     campus: row.campus || "",
     deliveryOption: row.delivery_option,
     deliveryAddress: row.delivery_address || "",
+    deliveryDetails: row.delivery_details || "",
+    deliveryLandmark: row.delivery_landmark || "",
+    nearestBusStop: row.delivery_bus_stop || "",
     pickupLocation: row.pickup_location || "",
     note: row.note || "",
     verificationCode:
@@ -477,18 +491,23 @@ export function createOrders(userId, input) {
 
   const buyerName = String(input?.buyerName || "").trim().slice(0, 120);
   const buyerPhone = String(input?.buyerPhone || "").trim().slice(0, 40);
-  const campus = String(input?.campus || "").trim().slice(0, 120);
+  const campus = String(input?.deliveryArea || input?.campus || "Nigeria").trim().slice(0, 120);
   const deliveryOption =
     input?.deliveryOption === "Delivery" ? "Delivery" : "Pickup";
   const paymentMethod =
     input?.paymentMethod === "pay_on_delivery" ? "pay_on_delivery" : "pay_now";
   const deliveryAddress = String(input?.deliveryAddress || "").trim().slice(0, 240);
+  const deliveryDetails = String(input?.deliveryDetails || "").trim().slice(0, 300);
+  const deliveryLandmark = String(input?.deliveryLandmark || "").trim().slice(0, 240);
+  const deliveryBusStop = String(input?.nearestBusStop || input?.deliveryBusStop || "").trim().slice(0, 180);
+  const requestedDeliveryLat = coordinateOrNull(input?.deliveryLat, -90, 90);
+  const requestedDeliveryLng = coordinateOrNull(input?.deliveryLng, -180, 180);
   const pickupLocation = String(input?.pickupLocation || "").trim().slice(0, 240);
   const note = String(input?.note || "").trim().slice(0, 1000);
   const buyerPresence = getAccountLocationPresence(userId);
 
   if (!buyerName || !buyerPhone || !campus) {
-    throw new HttpError(422, "Please provide your name, phone number, and campus.");
+    throw new HttpError(422, "Please provide your name, phone number, and delivery area.");
   }
 
   if (deliveryOption === "Delivery" && !deliveryAddress) {
@@ -607,20 +626,48 @@ export function createOrders(userId, input) {
       }
     }
 
+    if (
+      deliveryOption === "Delivery" &&
+      (!deliveryDetails || !deliveryLandmark || !deliveryBusStop)
+    ) {
+      throw new HttpError(
+        422,
+        "Enter the exact delivery details, a nearby landmark, and the nearest bus stop.",
+      );
+    }
+
+    if (
+      deliveryOption === "Delivery" &&
+      (requestedDeliveryLat === null || requestedDeliveryLng === null)
+    ) {
+      throw new HttpError(
+        422,
+        "Select a suggested Nigerian delivery location so the rider receives an exact map pin.",
+      );
+    }
+
     const now = new Date().toISOString();
     const output = [];
 
     for (const group of grouped.values()) {
       const sellerPresence = getAccountLocationPresence(group.sellerId);
-      const pickupLat = group.pickupLat ?? sellerPresence?.lat ?? null;
-      const pickupLng = group.pickupLng ?? sellerPresence?.lng ?? null;
+      const pickupLat =
+        sellerPresence?.permissionStatus === "granted"
+          ? sellerPresence.lat
+          : group.pickupLat ?? null;
+      const pickupLng =
+        sellerPresence?.permissionStatus === "granted"
+          ? sellerPresence.lng
+          : group.pickupLng ?? null;
       const deliveryLat =
-        deliveryOption === "Delivery" && buyerPresence?.permissionStatus === "granted"
-          ? buyerPresence.lat
+        deliveryOption === "Delivery"
+          ? requestedDeliveryLat ??
+            (buyerPresence?.permissionStatus === "granted" ? buyerPresence.lat : null)
           : null;
       const deliveryLng =
-        deliveryOption === "Delivery" && buyerPresence?.permissionStatus === "granted"
-          ? buyerPresence.lng
+        deliveryOption === "Delivery"
+          ? requestedDeliveryLng ??
+            (buyerPresence?.permissionStatus === "granted" ? buyerPresence.lng : null)
           : null;
       const subtotalKobo = group.products.reduce(
         (total, item) => total + item.lineTotalKobo,
@@ -669,11 +716,12 @@ export function createOrders(userId, input) {
           payment_method, stage4_status, stage4_payment_status, fulfillment_status,
           seller_confirmation_required, payout_status, stock_reserved,
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
-          campus, delivery_option, delivery_address, pickup_location,
+          campus, delivery_option, delivery_address, delivery_details,
+          delivery_landmark, delivery_bus_stop, pickup_location,
           pickup_lat, pickup_lng, delivery_lat, delivery_lng, note,
           verification_code, package_tag_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -697,6 +745,9 @@ export function createOrders(userId, input) {
         campus,
         deliveryOption,
         deliveryAddress,
+        deliveryDetails,
+        deliveryLandmark,
+        deliveryBusStop,
         pickupLocation,
         pickupLat,
         pickupLng,
@@ -804,11 +855,71 @@ export function createOrders(userId, input) {
     .map((row) => hydrateOrder(row, userId));
 }
 
-export function sellerConfirmOrder(user, orderId, note = "") {
+export function sellerConfirmOrder(user, orderId, input = {}) {
+  const note = typeof input === "string" ? input : String(input?.note || "");
   let row = getOrderRowByIdForUser(user.user_id, orderId);
   if (!row) throw new HttpError(404, "Order was not found.");
   if (user.role !== "admin" && row.seller_id !== user.user_id) {
     throw new HttpError(403, "Only the seller or admin can confirm this order.");
+  }
+
+  const sellerLocation = typeof input === "object" ? input?.sellerLocation : null;
+  if (
+    user.role === "seller" &&
+    (
+      coordinateOrNull(sellerLocation?.lat, -90, 90) === null ||
+      coordinateOrNull(sellerLocation?.lng, -180, 180) === null
+    )
+  ) {
+    throw new HttpError(
+      422,
+      "Enable precise location before confirming this order so the rider receives the correct seller pickup pin.",
+    );
+  }
+  if (
+    user.role === "seller" &&
+    sellerLocation &&
+    coordinateOrNull(sellerLocation.lat, -90, 90) !== null &&
+    coordinateOrNull(sellerLocation.lng, -180, 180) !== null
+  ) {
+    upsertAccountLocationPresence(user, {
+      permissionStatus: "granted",
+      source: "seller_order_confirmation",
+      currentLocation: sellerLocation,
+    });
+    const verifiedAddress = String(sellerLocation.address || "").trim().slice(0, 240);
+    const verifiedLat = coordinateOrNull(sellerLocation.lat, -90, 90);
+    const verifiedLng = coordinateOrNull(sellerLocation.lng, -180, 180);
+    const locationUpdatedAt = new Date().toISOString();
+    db.prepare(`
+      UPDATE orders
+      SET pickup_lat = ?, pickup_lng = ?,
+          pickup_location = CASE WHEN ? != '' THEN ? ELSE pickup_location END,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      verifiedLat,
+      verifiedLng,
+      verifiedAddress,
+      verifiedAddress,
+      locationUpdatedAt,
+      row.id,
+    );
+    db.prepare(`
+      UPDATE stores
+      SET pickup_lat = ?, pickup_lng = ?,
+          pickup_location = CASE WHEN ? != '' THEN ? ELSE pickup_location END,
+          updated_at = ?
+      WHERE owner_id = ?
+    `).run(
+      verifiedLat,
+      verifiedLng,
+      verifiedAddress,
+      verifiedAddress,
+      locationUpdatedAt,
+      user.user_id,
+    );
+    row = getOrderRowByIdForUser(user.user_id, orderId);
   }
 
   if (row.seller_confirmed_at) {

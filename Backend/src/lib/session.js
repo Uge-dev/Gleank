@@ -5,6 +5,34 @@ import { db } from "../db/database.js";
 import { createId } from "./ids.js";
 
 export const sessionCookieName = "gleank_session";
+export const riderSessionCookieName = "gleank_rider_session";
+export const adminSessionCookieName = "gleank_admin_session";
+
+const PORTAL_COOKIE_NAMES = {
+  user: sessionCookieName,
+  rider: riderSessionCookieName,
+  admin: adminSessionCookieName,
+};
+
+const PORTAL_ROLES = {
+  user: new Set(["buyer", "seller"]),
+  rider: new Set(["rider"]),
+  admin: new Set(["admin"]),
+};
+
+function normalizePortal(value) {
+  return Object.hasOwn(PORTAL_COOKIE_NAMES, value) ? value : "user";
+}
+
+export function sessionPortalForRole(role) {
+  if (role === "rider") return "rider";
+  if (role === "admin") return "admin";
+  return "user";
+}
+
+export function sessionCookieNameForPortal(portal = "user") {
+  return PORTAL_COOKIE_NAMES[normalizePortal(portal)];
+}
 
 function hashToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -15,6 +43,11 @@ function clean(value, max = 500) {
 }
 
 export function createSession(userId, meta = {}) {
+  const userRole = db.prepare("SELECT role FROM users WHERE id = ?").get(userId)?.role;
+  const portal = normalizePortal(meta.portal || sessionPortalForRole(userRole));
+  if (!PORTAL_ROLES[portal].has(userRole)) {
+    throw new Error("The account role does not match the requested login portal.");
+  }
   const sessionId = createId("ses");
   const now = new Date().toISOString();
   const expiresAt = new Date(
@@ -25,12 +58,13 @@ export function createSession(userId, meta = {}) {
     {
       sub: userId,
       sid: sessionId,
+      portal,
     },
     env.jwtSecret,
     {
       expiresIn: `${env.sessionDays}d`,
       issuer: "gleank-api",
-      audience: "gleank-web",
+      audience: `gleank-${portal}`,
     },
   );
 
@@ -53,11 +87,14 @@ export function createSession(userId, meta = {}) {
   return { id: sessionId, token, expiresAt };
 }
 
-export function verifySessionToken(token) {
+export function verifySessionToken(token, expectedPortal = "user") {
+  const portal = normalizePortal(expectedPortal);
   const payload = jwt.verify(token, env.jwtSecret, {
     issuer: "gleank-api",
-    audience: "gleank-web",
+    audience: `gleank-${portal}`,
   });
+
+  if (payload.portal !== portal) return null;
 
   const session = db
     .prepare(`
@@ -78,6 +115,7 @@ export function verifySessionToken(token) {
   if (
     !session ||
     !session.is_active ||
+    !PORTAL_ROLES[portal].has(session.role) ||
     new Date(session.expires_at).getTime() <= Date.now()
   ) {
     return null;
@@ -97,7 +135,7 @@ export function deleteSession(token) {
   try {
     const payload = jwt.verify(token, env.jwtSecret, {
       issuer: "gleank-api",
-      audience: "gleank-web",
+      audience: ["gleank-user", "gleank-rider", "gleank-admin"],
     });
     db.prepare("UPDATE sessions SET revoked_at = ? WHERE id = ?").run(
       new Date().toISOString(),
