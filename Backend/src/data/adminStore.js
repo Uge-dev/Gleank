@@ -769,9 +769,22 @@ function buildFeedback() {
     }));
 }
 
-function supportAdminRow() {
+function supportAdminRow(preferredAdminId = "") {
+  if (preferredAdminId) {
+    const preferredAdmin = db
+      .prepare("SELECT * FROM users WHERE id = ? AND role = 'admin' LIMIT 1")
+      .get(preferredAdminId);
+    if (preferredAdmin) return preferredAdmin;
+  }
+
   const existingAdmin = db
-    .prepare("SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+    .prepare(`
+      SELECT * FROM users
+      WHERE role = 'admin'
+      ORDER BY CASE WHEN avatar_url IS NOT NULL AND avatar_url != '' THEN 0 ELSE 1 END,
+               created_at ASC
+      LIMIT 1
+    `)
     .get();
 
   if (existingAdmin) return existingAdmin;
@@ -803,7 +816,10 @@ function mapSupportRole(role) {
 
 function buildSupportConversations() {
   const messages = db.prepare(`
-    SELECT messages.*, users.name AS sender_name, users.role AS sender_role
+    SELECT messages.*,
+           users.name AS sender_name,
+           users.role AS sender_role,
+           users.avatar_url AS sender_avatar_url
     FROM messages
     JOIN users ON users.id = messages.sender_id
     WHERE messages.conversation_id = ?
@@ -839,6 +855,7 @@ function buildSupportConversations() {
         senderId: message.sender_id,
         senderName: message.sender_name || "Gleenc user",
         senderRole: mapSupportRole(message.sender_role),
+        avatarUrl: message.sender_avatar_url || "",
         body: message.body,
         isAdmin: message.sender_role === "admin",
         createdAt: message.created_at,
@@ -997,13 +1014,13 @@ export function markSupportConversationRead(conversationId) {
   return getAdminDataset();
 }
 
-export function sendAdminSupportMessage(conversationId, input) {
+export function sendAdminSupportMessage(adminId, conversationId, input) {
   const body = cleanSupportBody(input?.body);
   if (!body) throw new HttpError(422, "Message cannot be empty.");
 
   transaction(() => {
     const conversation = markSupportConversationReadInternal(conversationId);
-    const admin = supportAdminRow();
+    const admin = supportAdminRow(adminId);
     const now = new Date().toISOString();
 
     db.prepare(`

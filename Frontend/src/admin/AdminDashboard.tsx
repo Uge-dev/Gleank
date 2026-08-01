@@ -100,6 +100,15 @@ type AdminTab =
 
 type AdminCollection = keyof Omit<AdminDataset, "overview">;
 
+type AdminAlert = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  tab: AdminTab;
+  conversationId?: string;
+};
+
 type TableColumn<T> = {
   label: string;
   render: (item: T) => string | number | JSX.Element | boolean;
@@ -415,6 +424,9 @@ function AdminSupportInbox({
   onDraftChange,
   onReply,
   onMarkRead,
+  adminAvatarUrl,
+  preferredConversationId,
+  onPreferredConversationHandled,
 }: {
   conversations: AdminSupportConversation[];
   draftById: Record<string, string>;
@@ -422,6 +434,9 @@ function AdminSupportInbox({
   onDraftChange: (conversationId: string, value: string) => void;
   onReply: (conversation: AdminSupportConversation) => void;
   onMarkRead: (conversation: AdminSupportConversation) => void;
+  adminAvatarUrl: string | null;
+  preferredConversationId: string;
+  onPreferredConversationHandled: () => void;
 }) {
   const [activeConversationId, setActiveConversationId] = useState(
     conversations[0]?.id || "",
@@ -442,6 +457,17 @@ function AdminSupportInbox({
     }
     setActiveConversationId(conversations[0]?.id || "");
   }, [activeConversationId, conversations]);
+
+  useEffect(() => {
+    if (
+      preferredConversationId &&
+      conversations.some((conversation) => conversation.id === preferredConversationId)
+    ) {
+      setActiveConversationId(preferredConversationId);
+      setMobileConversationOpen(true);
+      onPreferredConversationHandled();
+    }
+  }, [conversations, onPreferredConversationHandled, preferredConversationId]);
 
   useEffect(() => {
     threadEndRef.current?.scrollIntoView({ block: "end" });
@@ -536,20 +562,41 @@ function AdminSupportInbox({
 
             <div className="admin-support-thread">
               {activeConversation.messages.length > 0 ? (
-                activeConversation.messages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={
-                      message.isAdmin
-                        ? "admin-support-message admin"
-                        : "admin-support-message"
-                    }
-                  >
-                    <strong>{message.senderName}</strong>
-                    <p>{message.body}</p>
-                    <time>{formatAdminTime(message.createdAt)}</time>
-                  </div>
-                ))
+                activeConversation.messages.map((message) => {
+                  const avatarUrl = message.isAdmin
+                    ? adminAvatarUrl || message.avatarUrl
+                    : message.avatarUrl || activeConversation.avatarUrl;
+
+                  return (
+                    <div
+                      key={message.id}
+                      className={
+                        message.isAdmin
+                          ? "admin-support-message-row admin"
+                          : "admin-support-message-row"
+                      }
+                    >
+                      <span className="admin-support-message-avatar">
+                        {avatarUrl ? (
+                          <img src={apiUrl(avatarUrl)} alt="" />
+                        ) : (
+                          message.senderName.slice(0, 1).toUpperCase()
+                        )}
+                      </span>
+                      <div
+                        className={
+                          message.isAdmin
+                            ? "admin-support-message admin"
+                            : "admin-support-message"
+                        }
+                      >
+                        <strong>{message.senderName}</strong>
+                        <p>{message.body}</p>
+                        <time>{formatAdminTime(message.createdAt)}</time>
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <div className="admin-support-empty">
                   No messages in this support thread yet.
@@ -632,7 +679,18 @@ function AdminDashboard() {
     avatarUrl: null,
   });
   const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
+  const [notificationOpen, setNotificationOpen] = useState(false);
+  const [supportConversationToOpen, setSupportConversationToOpen] = useState("");
+  const [locallyReadAlertIds, setLocallyReadAlertIds] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(window.localStorage.getItem("gleenc-admin-read-alerts") || "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
+  const notificationPanelRef = useRef<HTMLDivElement | null>(null);
 
   const showAdminConnectionNotice = useCallback(() => {
     setLoadError("Admin data could not refresh. Please check your connection and try again.");
@@ -701,14 +759,42 @@ function AdminDashboard() {
     if (!isLoggedIn) return;
     void loadAdminData();
 
-    const refreshTimer = window.setInterval(() => {
-      void loadAdminData(false);
-    }, 10000);
+    const refresh = () => void loadAdminData(false);
+    const refreshTimer = window.setInterval(refresh, 5000);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [isLoggedIn, loadAdminData]);
+
+  useEffect(() => {
+    if (!notificationOpen) return;
+
+    function closeOnOutsideClick(event: MouseEvent) {
+      if (!notificationPanelRef.current?.contains(event.target as Node)) {
+        setNotificationOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setNotificationOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [notificationOpen]);
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
@@ -753,6 +839,102 @@ function AdminDashboard() {
       JSON.stringify(conversation).toLowerCase().includes(keyword),
     );
   }, [data.supportConversations, search]);
+
+  const adminAlerts = useMemo<AdminAlert[]>(() => {
+    const alerts: AdminAlert[] = [];
+    const locallyRead = new Set(locallyReadAlertIds);
+
+    for (const conversation of data.supportConversations) {
+      if (conversation.unreadCount <= 0) continue;
+      alerts.push({
+        id: `support:${conversation.id}:${conversation.lastMessageAt}`,
+        title: `New support message from ${conversation.userName}`,
+        message: conversation.lastMessage || "Open the support conversation.",
+        createdAt: conversation.lastMessageAt,
+        tab: "support",
+        conversationId: conversation.id,
+      });
+    }
+
+    for (const dispute of data.disputes) {
+      if (!["open", "reviewing"].includes(String(dispute.status))) continue;
+      const id = `dispute:${dispute.id}:${dispute.status}`;
+      if (locallyRead.has(id)) continue;
+      alerts.push({
+        id,
+        title: `Dispute requires review`,
+        message: `${dispute.buyer || "Buyer"} and ${dispute.seller || "seller"}: ${dispute.message || "Open dispute"}`,
+        createdAt: dispute.createdAt,
+        tab: "disputes",
+      });
+    }
+
+    for (const seller of data.sellers) {
+      if (String(seller.verificationStatus) !== "pending") continue;
+      const id = `seller:${seller.id}:${seller.verificationStatus}`;
+      if (locallyRead.has(id)) continue;
+      alerts.push({
+        id,
+        title: "Seller verification pending",
+        message: `${seller.storeName} submitted by ${seller.ownerName} needs review.`,
+        createdAt: seller.joined,
+        tab: "sellers",
+      });
+    }
+
+    for (const item of data.usedItems) {
+      if (String(item.status) !== "pending") continue;
+      const id = `used:${item.id}:${item.status}`;
+      if (locallyRead.has(id)) continue;
+      alerts.push({
+        id,
+        title: "Used-market listing pending",
+        message: `${item.name} by ${item.uploader} needs approval.`,
+        createdAt: item.dateSubmitted,
+        tab: "marketplace",
+      });
+    }
+
+    return alerts
+      .sort((first, second) => String(second.createdAt).localeCompare(String(first.createdAt)))
+      .slice(0, 30);
+  }, [data.disputes, data.sellers, data.supportConversations, data.usedItems, locallyReadAlertIds]);
+
+  function rememberReadAlerts(ids: string[]) {
+    const next = Array.from(new Set([...locallyReadAlertIds, ...ids])).slice(-300);
+    setLocallyReadAlertIds(next);
+    window.localStorage.setItem("gleenc-admin-read-alerts", JSON.stringify(next));
+  }
+
+  async function openAdminAlert(alert: AdminAlert) {
+    if (alert.conversationId) {
+      setSupportConversationToOpen(alert.conversationId);
+      const conversation = data.supportConversations.find(
+        (item) => item.id === alert.conversationId,
+      );
+      if (conversation) await markSupportRead(conversation);
+    } else {
+      rememberReadAlerts([alert.id]);
+    }
+
+    setActiveTab(alert.tab);
+    setSearch("");
+    setSidebarOpen(false);
+    setNotificationOpen(false);
+  }
+
+  async function markAllAdminAlertsRead() {
+    const supportAlerts = adminAlerts.filter((alert) => alert.conversationId);
+    const localAlerts = adminAlerts.filter((alert) => !alert.conversationId);
+
+    rememberReadAlerts(localAlerts.map((alert) => alert.id));
+    await Promise.allSettled(
+      supportAlerts.map((alert) =>
+        markAdminSupportConversationRead(alert.conversationId || ""),
+      ),
+    );
+    await loadAdminData(false);
+  }
 
   async function logout() {
     await adminLogout().catch(() => clearAdminToken());
@@ -1123,10 +1305,63 @@ function AdminDashboard() {
               <FaSearch />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users, sellers, orders..." />
             </div>
-            <button className="admin-notification" type="button" title="Notifications">
-              <FaBell />
-              <span>{data.overview.openDisputes + data.overview.unreadSupport}</span>
-            </button>
+            <div className="admin-notification-wrap" ref={notificationPanelRef}>
+              <button
+                className="admin-notification"
+                type="button"
+                title="Notifications"
+                aria-label="Open admin notifications"
+                aria-expanded={notificationOpen}
+                onClick={() => {
+                  setNotificationOpen((open) => !open);
+                  void loadAdminData(false);
+                }}
+              >
+                <FaBell />
+                {adminAlerts.length > 0 ? <span>{adminAlerts.length}</span> : null}
+              </button>
+
+              {notificationOpen ? (
+                <section className="admin-notification-panel" aria-label="Admin notifications">
+                  <header>
+                    <div>
+                      <strong>Notifications</strong>
+                      <small>Updates refresh automatically</small>
+                    </div>
+                    {adminAlerts.length > 0 ? (
+                      <button type="button" onClick={() => void markAllAdminAlertsRead()}>
+                        Mark all read
+                      </button>
+                    ) : null}
+                  </header>
+                  <div className="admin-notification-list">
+                    {adminAlerts.length > 0 ? (
+                      adminAlerts.map((alert) => (
+                        <button
+                          type="button"
+                          key={alert.id}
+                          className="admin-notification-item"
+                          onClick={() => void openAdminAlert(alert)}
+                        >
+                          <span><FaBell /></span>
+                          <div>
+                            <strong>{alert.title}</strong>
+                            <p>{alert.message}</p>
+                            <time>{formatAdminTime(alert.createdAt)}</time>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="admin-notification-empty">
+                        <FaCheckCircle />
+                        <strong>You are caught up</strong>
+                        <p>No unread admin alerts right now.</p>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              ) : null}
+            </div>
             <input
               ref={adminAvatarInputRef}
               className="admin-profile-input"
@@ -1841,6 +2076,9 @@ function AdminDashboard() {
               onDraftChange={updateSupportDraft}
               onReply={(conversation) => void replyToSupportConversation(conversation)}
               onMarkRead={(conversation) => void markSupportRead(conversation)}
+              adminAvatarUrl={adminProfile.avatarUrl}
+              preferredConversationId={supportConversationToOpen}
+              onPreferredConversationHandled={() => setSupportConversationToOpen("")}
             />
           ) : null}
 

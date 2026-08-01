@@ -55,18 +55,46 @@ function formatChatTime(value?: string | null) {
 }
 
 function conversationName(conversation: GleencConversation) {
-  if (conversation.contextType === "support") return "Gleenc Support";
-  return (
-    conversation.otherUserName ||
-    conversation.storeName ||
-    conversation.sellerName ||
-    "Gleenc user"
-  );
+  if (conversation.contextType === "support") {
+    return conversation.otherUserName || "Gleenc Support";
+  }
+
+  return conversation.otherUserName || "Gleenc user";
 }
 
 function conversationHandle(conversation: GleencConversation) {
-  if (conversation.contextType === "support") return "support";
-  return conversation.storeSlug || conversation.contextType.replaceAll("_", "-");
+  if (conversation.contextType === "support") return "gleenc-support";
+  if (conversation.otherUserRole === "seller" && conversation.storeSlug) {
+    return conversation.storeSlug;
+  }
+
+  return conversation.otherUserRole === "buyer"
+    ? "buyer-account"
+    : conversation.otherUserRole.replaceAll("_", "-");
+}
+
+function conversationIdentityLine(conversation: GleencConversation) {
+  if (conversation.contextType === "support") return "Official Gleenc admin support";
+
+  if (conversation.otherUserRole === "seller") {
+    const storeIdentity = conversation.storeName ||
+      (conversation.storeSlug ? `@${conversation.storeSlug}` : "Seller account");
+    return conversation.storeSlug && conversation.storeName
+      ? `${conversation.storeName} • @${conversation.storeSlug}`
+      : storeIdentity;
+  }
+
+  if (conversation.otherUserRole === "rider") return "Gleenc rider";
+  if (conversation.otherUserRole === "admin") return "Gleenc administrator";
+  return "Buyer account";
+}
+
+function conversationProfileHref(conversation: GleencConversation) {
+  if (conversation.contextType === "support") return "/help";
+  if (conversation.otherUserRole === "seller" && conversation.storeSlug) {
+    return `/stores/${conversation.storeSlug}`;
+  }
+  return "/messages";
 }
 
 function conversationAvatar(conversation: GleencConversation) {
@@ -75,15 +103,16 @@ function conversationAvatar(conversation: GleencConversation) {
 }
 
 function conversationImage(conversation: GleencConversation) {
-  return resolveMediaUrl(
-    conversation.storeLogoUrl || conversation.listingImageUrl,
-    "",
-  );
+  const profileImage = conversation.otherUserAvatarUrl;
+  const sellerFallback =
+    conversation.otherUserRole === "seller" ? conversation.storeLogoUrl : null;
+
+  return resolveMediaUrl(profileImage || sellerFallback, "");
 }
 
 function conversationCampus(conversation: GleencConversation) {
   if (conversation.contextType === "support") return "Admin support";
-  return conversation.storeCampus || "Campus chat";
+  return conversationIdentityLine(conversation);
 }
 
 function conversationIsActive(conversation: GleencConversation) {
@@ -333,7 +362,7 @@ function Messages() {
       if (activeFilter === "Unread") return conversation.unreadCount > 0;
       if (activeFilter === "Orders") return Boolean(conversation.orderId);
       if (activeFilter === "Support") return conversation.contextType === "support";
-      if (activeFilter === "Sellers") return conversation.contextType !== "support";
+      if (activeFilter === "Sellers") return conversation.otherUserRole === "seller";
 
       return true;
     });
@@ -493,7 +522,9 @@ function Messages() {
                         <time>{formatChatTime(conversation.lastMessageAt)}</time>
                       </div>
 
-                      <p>@{conversationHandle(conversation)}</p>
+                      <p className="conversation-account-line">
+                        {conversationIdentityLine(conversation)}
+                      </p>
 
                       <span>
                         {conversation.lastMessageBody ||
@@ -537,13 +568,7 @@ function Messages() {
               </button>
 
               <Link
-                to={
-                  activeConversation.contextType === "support"
-                    ? "/help"
-                    : activeConversation.storeSlug
-                      ? `/stores/${activeConversation.storeSlug}`
-                      : "/messages"
-                }
+                to={conversationProfileHref(activeConversation)}
                 className="chat-seller-main"
               >
                 <div className="chat-seller-avatar">
@@ -567,11 +592,7 @@ function Messages() {
 
               <div className="chat-header-actions">
                 <Link
-                  to={
-                    activeConversation.storeSlug
-                      ? `/stores/${activeConversation.storeSlug}`
-                      : "/profile"
-                  }
+                  to={conversationProfileHref(activeConversation)}
                   aria-label="View profile"
                 >
                   <FiUser />
@@ -608,53 +629,61 @@ function Messages() {
                 <span>{isLoadingMessages ? "Syncing..." : "Live chat"}</span>
               </div>
 
-              {messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={
-                    message.senderId === user?.id
-                      ? "message-bubble-row mine"
-                      : "message-bubble-row"
-                  }
-                >
-                  <div className="message-bubble">
-                    {message.senderId !== user?.id && (
-                      <strong>{message.senderName}</strong>
-                    )}
-                    {message.body && <p>{message.body}</p>}
-                    {message.attachmentUrl && (
-                      <img
-                        className="chat-attachment-image"
-                        src={resolveMediaUrl(message.attachmentUrl, "")}
-                        alt="Message attachment"
-                      />
-                    )}
-                    <span className="message-meta-line">
-                      <time>{formatChatTime(message.createdAt)}</time>
-                      {(() => {
-                        const tickState = getMessageTickState(message, user?.id);
+              {messages.map((message) => {
+                const isMine = message.senderId === user?.id;
+                const senderAvatar = resolveMediaUrl(message.senderAvatarUrl, "");
 
-                        if (!tickState) return null;
+                return (
+                  <div
+                    key={message.id}
+                    className={isMine ? "message-bubble-row mine" : "message-bubble-row"}
+                  >
+                    {!isMine && (
+                      <span className="message-sender-avatar" aria-hidden="true">
+                        {senderAvatar ? (
+                          <img src={senderAvatar} alt="" />
+                        ) : (
+                          message.senderName.slice(0, 1).toUpperCase()
+                        )}
+                      </span>
+                    )}
+                    <div className="message-bubble">
+                      {!isMine && <strong>{message.senderName}</strong>}
+                      {message.body && <p>{message.body}</p>}
+                      {message.attachmentUrl && (
+                        <img
+                          className="chat-attachment-image"
+                          src={resolveMediaUrl(message.attachmentUrl, "")}
+                          alt="Message attachment"
+                        />
+                      )}
+                      <span className="message-meta-line">
+                        <time>{formatChatTime(message.createdAt)}</time>
+                        {(() => {
+                          const tickState = getMessageTickState(message, user?.id);
 
-                        return (
-                          <span
-                            className={`message-tick-status ${tickState}`}
-                            aria-label={
-                              tickState === "read"
-                                ? "Message read"
-                                : tickState === "delivered"
-                                  ? "Message delivered"
-                                  : "Message sent"
-                            }
-                          >
-                            {tickState === "offline" ? "✓" : "✓✓"}
-                          </span>
-                        );
-                      })()}
-                    </span>
+                          if (!tickState) return null;
+
+                          return (
+                            <span
+                              className={`message-tick-status ${tickState}`}
+                              aria-label={
+                                tickState === "read"
+                                  ? "Message read"
+                                  : tickState === "delivered"
+                                    ? "Message delivered"
+                                    : "Message sent"
+                              }
+                            >
+                              {tickState === "offline" ? "✓" : "✓✓"}
+                            </span>
+                          );
+                        })()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               <div ref={messageEndRef} />
             </div>

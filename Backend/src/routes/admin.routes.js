@@ -249,7 +249,11 @@ router.post("/profile/avatar", requireAdmin, upload.single("avatar"), (req, res)
 
 router.post("/support/:conversationId/messages", requireAdmin, (req, res) => {
   try {
-    const data = sendAdminSupportMessage(req.params.conversationId, req.body);
+    const data = sendAdminSupportMessage(
+      req.auth.user_id,
+      req.params.conversationId,
+      req.body,
+    );
     res.status(201).json({ success: true, data });
   } catch (error) {
     sendAdminError(res, error, "Could not send support reply.");

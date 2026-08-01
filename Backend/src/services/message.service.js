@@ -17,7 +17,23 @@ function parseImages(value) {
   }
 }
 
-function serializeConversation(row) {
+function serializeConversation(row, viewerUserId) {
+  const viewerIsBuyer = row.buyer_id === viewerUserId;
+  const otherUserId = viewerIsBuyer ? row.seller_id : row.buyer_id;
+  const otherUserName = viewerIsBuyer ? row.seller_name : row.buyer_name;
+  const otherUserRole = viewerIsBuyer ? row.seller_role : row.buyer_role;
+  const otherUserAvatarUrl = viewerIsBuyer
+    ? row.context_type === "support"
+      ? row.support_admin_avatar_url || row.seller_avatar_url
+      : row.seller_avatar_url
+    : row.buyer_avatar_url;
+  const storePrefix = viewerIsBuyer ? "seller" : "buyer";
+  const storeName = row[`${storePrefix}_store_name`] || "";
+  const storeSlug = row[`${storePrefix}_store_slug`] || "";
+  const storeLogoUrl = row[`${storePrefix}_store_logo_url`] || null;
+  const storeCampus = row[`${storePrefix}_store_campus`] || "";
+  const storeCategory = row[`${storePrefix}_store_category`] || "";
+
   return {
     id: row.id,
     contextType: row.context_type,
@@ -28,17 +44,20 @@ function serializeConversation(row) {
     sellerId: row.seller_id,
     buyerName: row.buyer_name || "",
     sellerName: row.seller_name || "",
+    otherUserId,
     otherUserName:
       row.context_type === "support"
-        ? "Gleenc Support"
-        : row.other_user_name || "",
+        ? otherUserName || "Gleenc Support"
+        : otherUserName || "Gleenc user",
+    otherUserRole: otherUserRole || "buyer",
+    otherUserAvatarUrl: otherUserAvatarUrl || null,
     listingName: row.listing_name || "",
     listingImageUrl: parseImages(row.listing_image_urls)[0] || null,
-    storeName: row.store_name || "",
-    storeSlug: row.store_slug || "",
-    storeLogoUrl: row.store_logo_url || null,
-    storeCampus: row.store_campus || "",
-    storeCategory: row.store_category || "",
+    storeName,
+    storeSlug,
+    storeLogoUrl,
+    storeCampus,
+    storeCategory,
     unreadCount: Number(row.unread_count || 0),
     lastMessageBody: row.last_message_body || "",
     lastMessageAt: row.last_message_at || null,
@@ -51,18 +70,72 @@ function conversationSelect(extraWhere = "") {
   return `
     SELECT conversations.*,
            buyer.name AS buyer_name,
+           buyer.role AS buyer_role,
+           buyer.avatar_url AS buyer_avatar_url,
            seller.name AS seller_name,
-           CASE
-             WHEN conversations.buyer_id = ? THEN seller.name
-             ELSE buyer.name
-           END AS other_user_name,
+           seller.role AS seller_role,
+           seller.avatar_url AS seller_avatar_url,
+           (
+             SELECT avatar_url
+             FROM users support_admin
+             WHERE support_admin.role = 'admin'
+               AND support_admin.avatar_url IS NOT NULL
+               AND support_admin.avatar_url != ''
+             ORDER BY support_admin.updated_at DESC
+             LIMIT 1
+           ) AS support_admin_avatar_url,
            used_listings.name AS listing_name,
            used_listings.image_urls AS listing_image_urls,
-           stores.name AS store_name,
-           stores.slug AS store_slug,
-           stores.logo_url AS store_logo_url,
-           stores.campus AS store_campus,
-           stores.category AS store_category,
+           (
+             SELECT name FROM stores
+             WHERE owner_id = conversations.buyer_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS buyer_store_name,
+           (
+             SELECT slug FROM stores
+             WHERE owner_id = conversations.buyer_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS buyer_store_slug,
+           (
+             SELECT logo_url FROM stores
+             WHERE owner_id = conversations.buyer_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS buyer_store_logo_url,
+           (
+             SELECT campus FROM stores
+             WHERE owner_id = conversations.buyer_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS buyer_store_campus,
+           (
+             SELECT category FROM stores
+             WHERE owner_id = conversations.buyer_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS buyer_store_category,
+           (
+             SELECT name FROM stores
+             WHERE owner_id = conversations.seller_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS seller_store_name,
+           (
+             SELECT slug FROM stores
+             WHERE owner_id = conversations.seller_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS seller_store_slug,
+           (
+             SELECT logo_url FROM stores
+             WHERE owner_id = conversations.seller_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS seller_store_logo_url,
+           (
+             SELECT campus FROM stores
+             WHERE owner_id = conversations.seller_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS seller_store_campus,
+           (
+             SELECT category FROM stores
+             WHERE owner_id = conversations.seller_id AND status = 'active'
+             ORDER BY updated_at DESC LIMIT 1
+           ) AS seller_store_category,
            (
              SELECT COUNT(*)
              FROM messages
@@ -74,14 +147,19 @@ function conversationSelect(extraWhere = "") {
     JOIN users buyer ON buyer.id = conversations.buyer_id
     JOIN users seller ON seller.id = conversations.seller_id
     LEFT JOIN used_listings ON used_listings.id = conversations.listing_id
-    LEFT JOIN stores ON stores.owner_id = conversations.seller_id
     ${extraWhere}
   `;
 }
 
 function getSupportAdmin() {
   const existingAdmin = db
-    .prepare("SELECT * FROM users WHERE role = 'admin' ORDER BY created_at ASC LIMIT 1")
+    .prepare(`
+      SELECT * FROM users
+      WHERE role = 'admin'
+      ORDER BY CASE WHEN avatar_url IS NOT NULL AND avatar_url != '' THEN 0 ELSE 1 END,
+               created_at ASC
+      LIMIT 1
+    `)
     .get();
 
   if (existingAdmin) return existingAdmin;
@@ -112,6 +190,8 @@ function serializeMessage(row) {
     conversationId: row.conversation_id,
     senderId: row.sender_id,
     senderName: row.sender_name || "Gleenc user",
+    senderRole: row.sender_role || "buyer",
+    senderAvatarUrl: row.sender_avatar_url || null,
     body: row.body,
     attachmentUrl: row.attachment_url || null,
     isRead: Boolean(row.is_read),
@@ -125,7 +205,7 @@ function conversationRow(userId, conversationId) {
       WHERE conversations.id = ?
         AND (conversations.buyer_id = ? OR conversations.seller_id = ?)
     `))
-    .get(userId, userId, conversationId, userId, userId);
+    .get(userId, conversationId, userId, userId);
 }
 
 function conversationSortValue(row) {
@@ -558,8 +638,8 @@ export function listConversations(userId) {
       ORDER BY COALESCE(conversations.last_message_at, conversations.updated_at) DESC
       LIMIT 100
     `))
-    .all(userId, userId, userId, userId)
-    .map(serializeConversation);
+    .all(userId, userId, userId)
+    .map((row) => serializeConversation(row, userId));
 
   return dedupeSerializedConversations(conversations);
 }
@@ -582,7 +662,7 @@ export function getUnreadMessageCount(userId) {
 export function getConversation(userId, conversationId) {
   const row = conversationRow(userId, conversationId);
   if (!row) throw new HttpError(404, "Conversation was not found.");
-  return serializeConversation(row);
+  return serializeConversation(row, userId);
 }
 
 export function listMessages(userId, conversationId) {
@@ -596,7 +676,10 @@ export function listMessages(userId, conversationId) {
 
   return db
     .prepare(`
-      SELECT messages.*, users.name AS sender_name
+      SELECT messages.*,
+             users.name AS sender_name,
+             users.role AS sender_role,
+             users.avatar_url AS sender_avatar_url
       FROM messages
       JOIN users ON users.id = messages.sender_id
       WHERE messages.conversation_id = ?
@@ -641,7 +724,9 @@ export function sendMessage(userId, conversationId, input) {
   `).run(previewBody, now, now, conversationId);
 
   if (recipientId && recipientId !== userId) {
-    const sender = db.prepare("SELECT name FROM users WHERE id = ?").get(userId);
+    const sender = db
+      .prepare("SELECT name, avatar_url FROM users WHERE id = ?")
+      .get(userId);
     createNotification({
       userId: recipientId,
       type: "message",
@@ -651,7 +736,7 @@ export function sendMessage(userId, conversationId, input) {
       actionPath: conversation.contextType === "used_order" || conversation.contextType === "used_listing"
         ? `/used-messages?conversation=${conversation.id}`
         : `/messages`,
-      imageUrl: conversation.storeLogoUrl || conversation.listingImageUrl || "",
+      imageUrl: sender?.avatar_url || conversation.storeLogoUrl || conversation.listingImageUrl || "",
     });
   }
 

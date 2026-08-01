@@ -396,3 +396,54 @@ html[data-theme="dark"] .order-action-row a:last-child {
   font-size: 14px;
   font-weight: 650;
 }
+
+/* Live order counters */
+.orders-heading-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.orders-heading-title-row h1 {
+  min-width: 0;
+}
+
+.orders-total-counter {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  background: var(--brand-green, #ff3c00);
+  font-size: 14px;
+  font-weight: 950;
+  box-shadow: 0 10px 24px rgba(255, 60, 0, 0.2);
+}
+
+.orders-upgraded-page .orders-filter-bar button {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 7px !important;
+}
+
+.orders-upgraded-page .orders-filter-bar button small {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main, #0f172a);
+  background: var(--soft-bg, #eef2f7);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.orders-upgraded-page .orders-filter-bar button.active small {
+  color: var(--brand-green, #ff3c00);
+  background: #ffffff;
+}

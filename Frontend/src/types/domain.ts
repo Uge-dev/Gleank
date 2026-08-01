@@ -595,7 +595,10 @@ export type GleencConversation = {
   sellerId: string;
   buyerName: string;
   sellerName: string;
+  otherUserId: string;
   otherUserName: string;
+  otherUserRole: UserRole;
+  otherUserAvatarUrl: string | null;
   listingName: string;
   listingImageUrl: string | null;
   storeName: string;
@@ -615,6 +618,8 @@ export type GleencMessage = {
   conversationId: string;
   senderId: string;
   senderName: string;
+  senderRole: UserRole;
+  senderAvatarUrl: string | null;
   body: string;
   attachmentUrl: string | null;
   isRead: boolean;

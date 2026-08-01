@@ -36295,3 +36295,51 @@ html[data-theme="dark"] .seller-rider-controls select {
     grid-template-columns: 1fr;
   }
 }
+
+/* Account-aware chat identities and uploaded profile images */
+.conversation-account-line {
+  margin: 3px 0 0 !important;
+  color: var(--text-muted, #64748b) !important;
+  font-size: 12px !important;
+  font-weight: 750 !important;
+  line-height: 1.35 !important;
+}
+
+.message-bubble-row {
+  display: flex !important;
+  align-items: flex-end !important;
+  gap: 7px !important;
+}
+
+.message-bubble-row.mine {
+  justify-content: flex-end !important;
+}
+
+.message-sender-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.message-sender-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 640px) {
+  .message-sender-avatar {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+  }
+}

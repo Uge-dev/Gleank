@@ -111,6 +111,23 @@ function Orders() {
     };
   }, []);
 
+  const orderCounts = useMemo(() => {
+    const counts: Record<FilterStatus, number> = {
+      All: orders.length,
+      Pending: 0,
+      Confirmed: 0,
+      Preparing: 0,
+      Delivered: 0,
+      Cancelled: 0,
+    };
+
+    for (const order of orders) {
+      counts[statusGroup(order.status)] += 1;
+    }
+
+    return counts;
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     if (activeFilter === "All") return orders;
     return orders.filter((order) => statusGroup(order.status) === activeFilter);
@@ -147,7 +164,12 @@ function Orders() {
     <section className="page-shell orders-page orders-upgraded-page">
       <div className="orders-page-heading">
         <span>Purchases you made</span>
-        <h1>Your Orders</h1>
+        <div className="orders-heading-title-row">
+          <h1>Your Orders</h1>
+          <strong className="orders-total-counter" aria-label={`${orders.length} total orders`}>
+            {orders.length}
+          </strong>
+        </div>
         <p>Track items you bought from other sellers.</p>
       </div>
 
@@ -159,7 +181,8 @@ function Orders() {
             type="button"
             onClick={() => setActiveFilter(status)}
           >
-            {status}
+            <span>{status}</span>
+            <small>{orderCounts[status]}</small>
           </button>
         ))}
       </div>

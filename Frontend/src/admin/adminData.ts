@@ -312,6 +312,7 @@ export type AdminSupportMessage = {
   senderId: string;
   senderName: string;
   senderRole: "user" | "seller" | "admin";
+  avatarUrl: string;
   body: string;
   isAdmin: boolean;
   createdAt: string;
