@@ -314,7 +314,6 @@ function ProductDetails() {
   const specs = [
     { label: "Category", value: product.category },
     { label: "Store", value: product.store.name },
-    { label: "Campus", value: product.store.campus },
     { label: "Stock", value: `${product.stock} available` },
     { label: "Listing", value: product.status.replaceAll("_", " ") },
     { label: "Store status", value: product.store.status },
@@ -339,7 +338,7 @@ function ProductDetails() {
 
             <h1>{product.name}</h1>
             <p className="product-category-line">
-              {product.category} • {product.store.campus} •{" "}
+              {product.category} •{" "}
               {inStock ? `${product.stock} In stock` : "Out of stock"}
             </p>
             {product.deliveryReadiness?.label && (
@@ -432,7 +431,7 @@ function ProductDetails() {
               onClick={() =>
                 requireAuth(() =>
                   navigate(
-                    `/messages?seller=${encodeURIComponent(product.store.slug)}&name=${encodeURIComponent(product.store.name)}`,
+                    `/messages?seller=${encodeURIComponent(product.store.slug)}&product=${encodeURIComponent(product.id)}`,
                   ),
                 )
               }
@@ -512,8 +511,8 @@ function ProductDetails() {
                 </button>
               </div>
               <div className="delivery-details">
-                <span>Campus</span>
-                <strong>{product.store.campus}</strong>
+                <span>Seller</span>
+                <strong>{product.store.name}</strong>
                 <span>Selected option</span>
                 <strong>{deliveryMode}</strong>
                 <span>Seller contact</span>

@@ -33,7 +33,7 @@ function UsedProductCard({ product, onRequireAuth }: UsedProductCardProps) {
         </div>
 
         <p>
-          {product.category} • {product.campus}
+          {product.category}
         </p>
 
         <div className="used-condition-row">

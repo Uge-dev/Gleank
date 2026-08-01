@@ -703,7 +703,7 @@ export function createOrders(userId, input) {
         paymentMethod === "pay_on_delivery"
           ? "Buyer selected Pay at Delivery. Payment must still be completed through Gleenc/Paystack before the delivery code unlocks."
           : sellerConfirmationRequired
-            ? "This order needs seller availability confirmation before payment can continue."
+            ? "You can pay now. The seller must still confirm availability before fulfilment starts."
             : "Your order has been created and is waiting for payment.";
 
       for (const item of group.products) {
@@ -863,7 +863,41 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
     throw new HttpError(403, "Only the seller or admin can confirm this order.");
   }
 
-  const sellerLocation = typeof input === "object" ? input?.sellerLocation : null;
+  let sellerLocation = typeof input === "object" ? input?.sellerLocation : null;
+  const savedLocation = user.role === "seller"
+    ? db.prepare(`
+        SELECT pickup_lat, pickup_lng,
+               COALESCE(
+                 NULLIF(street, ''),
+                 NULLIF(pickup_location, ''),
+                 NULLIF(nearest_marketplace, ''),
+                 NULLIF(nearest_campus, ''),
+                 NULLIF(location_area, ''),
+                 NULLIF(campus, '')
+               ) AS address
+        FROM stores
+        WHERE owner_id = ?
+      `).get(user.user_id)
+    : null;
+  if (
+    user.role === "seller" &&
+    (
+      coordinateOrNull(sellerLocation?.lat, -90, 90) === null ||
+      coordinateOrNull(sellerLocation?.lng, -180, 180) === null
+    )
+  ) {
+    if (
+      coordinateOrNull(savedLocation?.pickup_lat, -90, 90) !== null &&
+      coordinateOrNull(savedLocation?.pickup_lng, -180, 180) !== null
+    ) {
+      sellerLocation = {
+        lat: savedLocation.pickup_lat,
+        lng: savedLocation.pickup_lng,
+        address: savedLocation.address || "",
+        source: "saved_seller_pickup",
+      };
+    }
+  }
   if (
     user.role === "seller" &&
     (
@@ -887,7 +921,9 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
       source: "seller_order_confirmation",
       currentLocation: sellerLocation,
     });
-    const verifiedAddress = String(sellerLocation.address || "").trim().slice(0, 240);
+    const verifiedAddress = String(
+      sellerLocation.address || savedLocation?.address || row.pickup_location || "",
+    ).trim().slice(0, 240);
     const verifiedLat = coordinateOrNull(sellerLocation.lat, -90, 90);
     const verifiedLng = coordinateOrNull(sellerLocation.lng, -180, 180);
     const locationUpdatedAt = new Date().toISOString();
@@ -1132,7 +1168,7 @@ export function getOrderPaymentState(userId, orderId) {
     canPayNow:
       order.paymentStatus === "unpaid" &&
       order.paymentMethod === "pay_now" &&
-      !order.sellerConfirmationRequired,
+      !["delivered", "completed", "cancelled", "disputed"].includes(order.status),
     canPayAtDelivery:
       order.paymentStatus === "unpaid" &&
       order.paymentMethod === "pay_on_delivery" &&

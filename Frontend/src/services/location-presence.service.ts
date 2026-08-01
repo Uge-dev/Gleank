@@ -1,6 +1,9 @@
 import { apiRequest } from "../lib/api";
 
 type LocationRole = "buyer" | "seller" | "rider";
+const LOCATION_CACHE_KEY = "gleenc-location-cache-v1";
+const LOCATION_CACHE_COOKIE = "gleenc_location_cache_at";
+const LOCATION_CACHE_TTL_MS = 15 * 60 * 1000;
 
 export type AccountLocationPresence = {
   userId: string;
@@ -53,6 +56,40 @@ function browserLocation() {
   });
 }
 
+function cachedBrowserLocation() {
+  try {
+    const cached = JSON.parse(window.localStorage.getItem(LOCATION_CACHE_KEY) || "null") as {
+      lat?: number;
+      lng?: number;
+      accuracyMeters?: number;
+      capturedAt?: number;
+    } | null;
+    if (
+      cached &&
+      Number.isFinite(cached.lat) &&
+      Number.isFinite(cached.lng) &&
+      Number(cached.capturedAt || 0) + LOCATION_CACHE_TTL_MS > Date.now() &&
+      document.cookie
+        .split(";")
+        .map((part) => part.trim())
+        .some((part) => {
+          if (!part.startsWith(`${LOCATION_CACHE_COOKIE}=`)) return false;
+          const capturedAt = Number(part.slice(LOCATION_CACHE_COOKIE.length + 1));
+          return Number.isFinite(capturedAt) && capturedAt + LOCATION_CACHE_TTL_MS > Date.now();
+        })
+    ) {
+      return {
+        lat: Number(cached.lat),
+        lng: Number(cached.lng),
+        accuracyMeters: Number(cached.accuracyMeters || 0),
+      };
+    }
+  } catch {
+    // A malformed browser cache is ignored and replaced by a fresh reading.
+  }
+  return null;
+}
+
 async function syncPermissionStatus(
   permissionStatus: "denied" | "unavailable",
   role: string,
@@ -79,7 +116,19 @@ export async function requestLocationAfterLogin(role: string) {
 
   let currentLocation: Awaited<ReturnType<typeof browserLocation>>;
   try {
-    currentLocation = await browserLocation();
+    currentLocation = cachedBrowserLocation() || await browserLocation();
+    const capturedAt = Date.now();
+    window.localStorage.setItem(
+      LOCATION_CACHE_KEY,
+      JSON.stringify({ ...currentLocation, capturedAt }),
+    );
+    document.cookie = [
+      `${LOCATION_CACHE_COOKIE}=${capturedAt}`,
+      `Max-Age=${Math.floor(LOCATION_CACHE_TTL_MS / 1000)}`,
+      "Path=/",
+      "SameSite=Lax",
+      window.location.protocol === "https:" ? "Secure" : "",
+    ].filter(Boolean).join("; ");
   } catch (error) {
     const denied =
       typeof error === "object" &&

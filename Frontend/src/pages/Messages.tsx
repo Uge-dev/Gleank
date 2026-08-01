@@ -22,7 +22,12 @@ import {
   getConversations,
   sendConversationMessage,
 } from "../services/message.service";
-import type { GleencConversation, GleencMessage } from "../types/domain";
+import type {
+  GleencConversation,
+  GleencMessage,
+  GleencMessageContext,
+} from "../types/domain";
+import type { MessagePortal } from "../services/message.service";
 import { resolveMediaUrl } from "../utils/media";
 
 type MessageFilter = "All" | "Unread" | "Orders" | "Sellers" | "Support";
@@ -54,6 +59,14 @@ function formatChatTime(value?: string | null) {
   }).format(date);
 }
 
+function formatContextPrice(priceKobo: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(Number(priceKobo || 0) / 100);
+}
+
 function conversationName(conversation: GleencConversation) {
   if (conversation.contextType === "support") {
     return conversation.otherUserName || "Gleenc Support";
@@ -64,6 +77,7 @@ function conversationName(conversation: GleencConversation) {
 
 function conversationHandle(conversation: GleencConversation) {
   if (conversation.contextType === "support") return "gleenc-support";
+  if (conversation.otherUserRole === "rider") return "rider";
   if (conversation.otherUserRole === "seller" && conversation.storeSlug) {
     return conversation.storeSlug;
   }
@@ -84,7 +98,7 @@ function conversationIdentityLine(conversation: GleencConversation) {
       : storeIdentity;
   }
 
-  if (conversation.otherUserRole === "rider") return "Gleenc rider";
+  if (conversation.otherUserRole === "rider") return "@rider";
   if (conversation.otherUserRole === "admin") return "Gleenc administrator";
   return "Buyer account";
 }
@@ -108,11 +122,6 @@ function conversationImage(conversation: GleencConversation) {
     conversation.otherUserRole === "seller" ? conversation.storeLogoUrl : null;
 
   return resolveMediaUrl(profileImage || sellerFallback, "");
-}
-
-function conversationCampus(conversation: GleencConversation) {
-  if (conversation.contextType === "support") return "Admin support";
-  return conversationIdentityLine(conversation);
 }
 
 function conversationIsActive(conversation: GleencConversation) {
@@ -181,9 +190,18 @@ function getMessageTickState(message: GleencMessage, currentUserId?: string) {
   return "delivered";
 }
 
-function Messages() {
+type MessageWorkspaceProps = {
+  currentUserId?: string;
+  portal?: MessagePortal;
+  messagesPath?: string;
+};
+
+export function MessageWorkspace({
+  currentUserId,
+  portal = "user",
+  messagesPath = "/messages",
+}: MessageWorkspaceProps) {
   const [searchParams] = useSearchParams();
-  const { user } = useAuth();
   const [conversationList, setConversationList] = useState<
     GleencConversation[]
   >([]);
@@ -192,6 +210,7 @@ function Messages() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<MessageFilter>("All");
   const [messageText, setMessageText] = useState("");
+  const [draftContext, setDraftContext] = useState<GleencMessageContext | null>(null);
   const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -207,7 +226,7 @@ function Messages() {
 
   const loadConversations = useCallback(
     async (preferredConversationId = "") => {
-      const response = await getConversations();
+      const response = await getConversations(portal);
       setConversationList(response.conversations);
 
       setActiveConversationId((current) => {
@@ -225,7 +244,7 @@ function Messages() {
         return response.conversations[0]?.id || "";
       });
     },
-    [],
+    [portal],
   );
 
   useEffect(() => {
@@ -260,11 +279,20 @@ function Messages() {
   useEffect(() => {
     const sellerSlug = searchParams.get("seller")?.trim() || "";
     const orderId = searchParams.get("order")?.trim() || "";
+    const productId = searchParams.get("product")?.trim() || "";
+    const listingId = searchParams.get("listing")?.trim() || "";
+    const requestedConversationId = searchParams.get("conversation")?.trim() || "";
     const supportRequested = searchParams.get("support") === "1";
     const contextKey = supportRequested
       ? "support"
+      : requestedConversationId
+        ? `conversation:${requestedConversationId}`
       : orderId
         ? `order:${orderId}`
+        : productId
+          ? `product:${productId}`
+          : listingId
+            ? `listing:${listingId}`
         : sellerSlug
           ? `store:${sellerSlug}`
           : "";
@@ -272,16 +300,42 @@ function Messages() {
     if (!contextKey || openedContextRef.current === contextKey) return;
     openedContextRef.current = contextKey;
 
+    if (requestedConversationId) {
+      void loadConversations(requestedConversationId)
+        .then(() => {
+          setActiveConversationId(requestedConversationId);
+          setMobileChatOpen(true);
+        })
+        .catch((requestError) => {
+          openedContextRef.current = "";
+          setError(requestError instanceof Error ? requestError.message : "Conversation could not be opened.");
+        });
+      return;
+    }
+
     const input = supportRequested
       ? { contextType: "support" as const }
       : orderId
         ? { contextType: "order" as const, contextId: orderId }
+        : productId
+          ? { contextType: "product" as const, contextId: productId }
+          : listingId
+            ? { contextType: "used_listing" as const, contextId: listingId }
         : { contextType: "store" as const, contextId: sellerSlug };
 
-    void createConversation(input)
+    void createConversation(input, portal)
       .then(async (response) => {
         await loadConversations(response.conversation.id);
         setActiveConversationId(response.conversation.id);
+        setDraftContext(response.draftContext || null);
+        if (response.draftContext) {
+          const amount = new Intl.NumberFormat("en-NG", {
+            style: "currency",
+            currency: "NGN",
+            maximumFractionDigits: 0,
+          }).format(response.draftContext.priceKobo / 100);
+          setMessageText(`I'm interested in ${response.draftContext.name} (${amount}).`);
+        }
         setMobileChatOpen(true);
       })
       .catch((requestError) => {
@@ -292,7 +346,7 @@ function Messages() {
             : "Conversation could not be started.",
         );
       });
-  }, [loadConversations, searchParams]);
+  }, [loadConversations, portal, searchParams]);
 
   const activeConversation = useMemo(() => {
     return conversationList.find(
@@ -300,16 +354,16 @@ function Messages() {
     );
   }, [activeConversationId, conversationList]);
 
-  const loadMessages = useCallback(async (conversationId: string) => {
-    setIsLoadingMessages(true);
+  const loadMessages = useCallback(async (conversationId: string, silent = false) => {
+    if (!silent) setIsLoadingMessages(true);
 
     try {
-      const response = await getConversationMessages(conversationId);
+      const response = await getConversationMessages(conversationId, portal);
       setMessages(response.messages);
     } finally {
-      setIsLoadingMessages(false);
+      if (!silent) setIsLoadingMessages(false);
     }
-  }, []);
+  }, [portal]);
 
   useEffect(() => {
     if (!activeConversationId) {
@@ -329,7 +383,9 @@ function Messages() {
     });
 
     const timer = window.setInterval(() => {
-      void loadMessages(activeConversationId).catch(() => undefined);
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void loadMessages(activeConversationId, true).catch(() => undefined);
+      }
     }, 2500);
 
     return () => {
@@ -373,6 +429,7 @@ function Messages() {
     setMobileChatOpen(true);
     setEmojiOpen(false);
     setSelectedAttachment(null);
+    setDraftContext(null);
   }
 
   function addEmoji(emoji: string) {
@@ -394,10 +451,13 @@ function Messages() {
         activeConversation.id,
         cleanMessage,
         selectedAttachment,
+        draftContext,
+        portal,
       );
       setMessages((current) => [...current, response.message]);
       setMessageText("");
       setSelectedAttachment(null);
+      setDraftContext(null);
       setEmojiOpen(false);
       await loadConversations(activeConversation.id);
     } catch (requestError) {
@@ -432,7 +492,7 @@ function Messages() {
           message="When you message sellers, buyers, or Gleenc support, your conversations will appear here."
           actionLabel="Chat with support"
           onAction={() => {
-            window.location.href = "/messages?support=1";
+            window.location.href = `${messagesPath}?support=1`;
           }}
         />
       </section>
@@ -586,7 +646,7 @@ function Messages() {
 
                 <div>
                   <h2>{conversationName(activeConversation)}</h2>
-                  <p>Polling live • {conversationCampus(activeConversation)}</p>
+                  <p>Live chat • {conversationIdentityLine(activeConversation)}</p>
                 </div>
               </Link>
 
@@ -630,7 +690,7 @@ function Messages() {
               </div>
 
               {messages.map((message) => {
-                const isMine = message.senderId === user?.id;
+                const isMine = message.senderId === currentUserId;
                 const senderAvatar = resolveMediaUrl(message.senderAvatarUrl, "");
 
                 return (
@@ -648,7 +708,28 @@ function Messages() {
                       </span>
                     )}
                     <div className="message-bubble">
-                      {!isMine && <strong>{message.senderName}</strong>}
+                      {!isMine && (
+                        <strong>
+                          {message.senderName}{message.senderRole === "rider" ? " • @rider" : ""}
+                        </strong>
+                      )}
+                      {message.context && (
+                        <Link className="message-product-context" to={message.context.href}>
+                          {message.context.imageUrl ? (
+                            <img
+                              src={resolveMediaUrl(message.context.imageUrl, chatFallback)}
+                              alt={message.context.name}
+                            />
+                          ) : (
+                            <span><FiShoppingBag /></span>
+                          )}
+                          <span>
+                            <small>{message.context.type === "product" ? "Product" : "Used item"}</small>
+                            <strong>{message.context.name}</strong>
+                            <em>{formatContextPrice(message.context.priceKobo)}</em>
+                          </span>
+                        </Link>
+                      )}
                       {message.body && <p>{message.body}</p>}
                       {message.attachmentUrl && (
                         <img
@@ -660,7 +741,7 @@ function Messages() {
                       <span className="message-meta-line">
                         <time>{formatChatTime(message.createdAt)}</time>
                         {(() => {
-                          const tickState = getMessageTickState(message, user?.id);
+                          const tickState = getMessageTickState(message, currentUserId);
 
                           if (!tickState) return null;
 
@@ -689,6 +770,22 @@ function Messages() {
             </div>
 
             <div className="chat-input-panel">
+              {draftContext && (
+                <div className="chat-draft-context">
+                  <img
+                    src={resolveMediaUrl(draftContext.imageUrl, chatFallback)}
+                    alt={draftContext.name}
+                  />
+                  <span>
+                    <small>Ready to send</small>
+                    <strong>{draftContext.name}</strong>
+                    <em>{formatContextPrice(draftContext.priceKobo)}</em>
+                  </span>
+                  <button type="button" onClick={() => setDraftContext(null)}>
+                    Remove
+                  </button>
+                </div>
+              )}
               <input
                 ref={attachmentInputRef}
                 type="file"
@@ -746,7 +843,7 @@ function Messages() {
                 className="chat-send-button"
                 onClick={() => void sendMessage()}
                 aria-label="Send message"
-                disabled={isSending || (!messageText.trim() && !selectedAttachment)}
+                disabled={isSending || (!messageText.trim() && !selectedAttachment && !draftContext)}
               >
                 <FiSend />
               </button>
@@ -778,6 +875,11 @@ function Messages() {
       </div>
     </section>
   );
+}
+
+function Messages() {
+  const { user } = useAuth();
+  return <MessageWorkspace currentUserId={user?.id} />;
 }
 
 export default Messages;

@@ -323,7 +323,7 @@ export type AdminSupportConversation = {
   userId: string;
   userName: string;
   userEmail: string;
-  userRole: "user" | "seller" | "admin";
+  userRole: "user" | "seller" | "rider" | "admin";
   campus: string;
   avatarUrl: string;
   lastMessage: string;

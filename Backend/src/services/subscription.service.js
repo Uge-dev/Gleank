@@ -141,7 +141,7 @@ export function serializeSubscription(row) {
   if (!row) {
     return {
       id: "",
-      planName: "Campus Seller Monthly",
+      planName: "Seller Monthly",
       amountKobo: env.sellerMonthlyFeeKobo,
       amount: env.sellerMonthlyFeeKobo / 100,
       status: lifecycle.status,
@@ -231,7 +231,7 @@ export function ensureSellerSubscription(userId) {
       current_period_start, current_period_end, next_renewal_at,
       grace_period_ends_at, last_payment_at, last_payment_reference,
       created_at, updated_at
-    ) VALUES (?, ?, ?, 'Campus Seller Monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, 'Seller Monthly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     userId,

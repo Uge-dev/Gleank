@@ -5,6 +5,7 @@ import { validate } from "../middleware/validate.js";
 import { locationRouteSchema } from "../schemas/location.schemas.js";
 import {
   geocodeLocation,
+  getLocationCatalog,
   getAccountLocationPresence,
   reverseGeocodeLocation,
   routeLocation,
@@ -24,13 +25,24 @@ const routeLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const geocodeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+});
+
 locationRouter.use(requireAuth);
 
-locationRouter.post("/geocode", asyncRoute(async (req, res) => {
+locationRouter.get("/catalog", (_req, res) => {
+  res.json(getLocationCatalog());
+});
+
+locationRouter.post("/geocode", geocodeLimiter, asyncRoute(async (req, res) => {
   res.json(await geocodeLocation(req.body || {}));
 }));
 
-locationRouter.post("/reverse-geocode", asyncRoute(async (req, res) => {
+locationRouter.post("/reverse-geocode", geocodeLimiter, asyncRoute(async (req, res) => {
   res.json(await reverseGeocodeLocation(req.body || {}));
 }));
 

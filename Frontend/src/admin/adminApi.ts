@@ -124,6 +124,19 @@ export async function fetchAdminDataset(): Promise<AdminDataset> {
   return request<AdminDataset>("/admin/overview");
 }
 
+export function subscribeToAdminNotifications(onChange: () => void) {
+  if (typeof window === "undefined" || !("EventSource" in window)) {
+    return () => undefined;
+  }
+
+  const stream = new EventSource(`${API_BASE}/notifications/stream?portal=admin`, {
+    withCredentials: true,
+  });
+  stream.addEventListener("notification", onChange);
+  stream.addEventListener("unread-count", onChange);
+  return () => stream.close();
+}
+
 export type AdminDispatchBatch = {
   id: string;
   parentOrderId?: string | null;

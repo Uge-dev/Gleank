@@ -113,10 +113,27 @@ test("seller can register and load workspace", async () => {
       role: "seller",
       campus: "FUPRE",
       storeName: "Test Campus Store",
+      sellerType: "campus",
+      country: "Nigeria",
+      state: "Delta",
+      city: "Effurun",
+      nearestCampus: "Federal University of Petroleum Resources, Effurun (FUPRE)",
+      nearestMarketplace: "Effurun Main Market",
+      street: "Main Gate Road, Effurun",
+      pickupPlaceId: "test-fupre-main-gate",
+      pickupLat: 5.5702,
+      pickupLng: 5.8385,
+      locationVerifiedAt: "2026-08-01T12:00:00.000Z",
     });
 
   assert.equal(registerResponse.status, 201);
   assert.ok(registerResponse.headers["set-cookie"]?.[0].includes("gleank_session"));
+  assert.equal(registerResponse.body.store.state, "Delta");
+  assert.equal(registerResponse.body.store.city, "Effurun");
+  assert.equal(registerResponse.body.store.nearestMarketplace, "Effurun Main Market");
+  assert.equal(registerResponse.body.store.pickupPlaceId, "test-fupre-main-gate");
+  assert.equal(registerResponse.body.store.pickupLat, 5.5702);
+  assert.equal(registerResponse.body.store.pickupLng, 5.8385);
 
   const workspaceResponse = await agent.get("/api/seller/workspace");
   assert.equal(workspaceResponse.status, 200);
@@ -177,6 +194,8 @@ test("seller can register and load workspace", async () => {
   assert.equal(updatedWorkspaceResponse.status, 200);
   assert.equal(updatedWorkspaceResponse.body.products.length, 1);
   assert.equal(updatedWorkspaceResponse.body.services.length, 1);
+  assert.equal(updatedWorkspaceResponse.body.store.pickupLat, 5.5702);
+  assert.equal(updatedWorkspaceResponse.body.store.pickupLng, 5.8385);
 
   const searchResponse = await request(app)
     .get("/api/stores")
@@ -419,6 +438,16 @@ test("seller verification advances through three admin-approved stages", async (
       fullName: "Three Stage Seller",
       phone: "08000000071",
       campus: "FUPRE",
+      country: "Nigeria",
+      state: "Delta",
+      city: "Effurun",
+      nearestCampus: "FUPRE",
+      nearestMarketplace: "Effurun Main Market",
+      street: "Main Gate Road, Effurun",
+      pickupPlaceId: "test-place-fupre-main-gate",
+      pickupLat: 5.5701,
+      pickupLng: 5.8298,
+      locationVerifiedAt: new Date().toISOString(),
       locationArea: "FUPRE campus",
       pickupLocation: "Main gate seller pickup desk",
       nearestLandmark: "FUPRE library",
@@ -1261,6 +1290,19 @@ test("public payment verification confirms local payment and protects buyer OTP"
   assert.equal(paymentOnDeliveryOrder.body.orders[0].paymentMethod, "pay_on_delivery");
   assert.equal(paymentOnDeliveryOrder.body.orders[0].sellerConfirmedAt, null);
 
+  const blockedDirectPaymentOnDelivery = await buyerAgent
+    .post("/api/payments/initialize")
+    .send({
+      purpose: "store_order",
+      targetId: paymentOnDeliveryOrder.body.orders[0].id,
+    });
+  assert.equal(blockedDirectPaymentOnDelivery.status, 422);
+
+  const blockedEarlyPaymentOnDelivery = await buyerAgent
+    .post("/api/payments/pay-at-delivery/initialize")
+    .send({ orderId: paymentOnDeliveryOrder.body.orders[0].id });
+  assert.equal(blockedEarlyPaymentOnDelivery.status, 422);
+
   const stalePaymentOnDeliverySetup = db
     .prepare(
       "SELECT delivery_batch_id, pickup_task_id FROM orders WHERE id = ?",
@@ -1288,6 +1330,10 @@ test("public payment verification confirms local payment and protects buyer OTP"
     "ready_for_delivery",
   );
   assert.ok(paymentOnDeliveryConfirmation.body.order.sellerConfirmedAt);
+  const allowedPaymentOnDelivery = await buyerAgent
+    .post("/api/payments/pay-at-delivery/initialize")
+    .send({ orderId: paymentOnDeliveryOrder.body.orders[0].id });
+  assert.equal(allowedPaymentOnDelivery.status, 201);
   const paymentOnDeliveryTask = db
     .prepare("SELECT * FROM pickup_tasks WHERE order_id = ?")
     .get(paymentOnDeliveryOrder.body.orders[0].id);
@@ -1351,7 +1397,7 @@ test("public payment verification confirms local payment and protects buyer OTP"
     .field("name", "High Value Checkout Product")
     .field("category", "Office equipment")
     .field("description", "Product used to verify the one hundred thousand naira limit.")
-    .field("price", "100000")
+    .field("price", "1000000")
     .field("stock", "2")
     .field("status", "active")
     .field(
@@ -1360,6 +1406,14 @@ test("public payment verification confirms local payment and protects buyer OTP"
     );
   assert.equal(highValueProductResponse.status, 201);
   const highValueProductId = highValueProductResponse.body.product.id;
+  db.prepare(`
+    UPDATE products
+    SET status = 'active',
+        moderation_status = 'auto_approved',
+        availability_status = 'confirm_before_payment',
+        seller_confirmation_required = 1
+    WHERE id = ?
+  `).run(highValueProductId);
 
   const blockedHighValuePaymentOnDelivery = await buyerAgent
     .post("/api/orders")
@@ -1395,9 +1449,58 @@ test("public payment verification confirms local payment and protects buyer OTP"
     /Door step delivery.*below ₦100,000/i,
   );
 
+  const highValuePayNowOrder = await buyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId: highValueProductId, quantity: 1 }],
+      buyerName: "Payment Buyer",
+      buyerPhone: "08000000002",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(highValuePayNowOrder.status, 201);
+  assert.equal(highValuePayNowOrder.body.orders[0].sellerConfirmationRequired, true);
+  const sellerActionCountBeforePayment = await sellerAgent.get(
+    "/api/seller/orders/actionable-count",
+  );
+  assert.equal(sellerActionCountBeforePayment.status, 200);
+  assert.ok(sellerActionCountBeforePayment.body.count > 0);
+  const highValuePayment = await buyerAgent
+    .post("/api/payments/initialize")
+    .send({
+      purpose: "store_order",
+      targetId: highValuePayNowOrder.body.orders[0].id,
+    });
+  assert.equal(highValuePayment.status, 201);
+
   const storeId = db.prepare("SELECT id FROM stores WHERE owner_id = ?").get(
     sellerRegister.body.user.id,
   ).id;
+  const nearbyBuyerPresence = await buyerAgent
+    .post("/api/location/presence")
+    .send({
+      permissionStatus: "granted",
+      source: "nearby_privacy_test",
+      currentLocation: { lat: 5.575, lng: 5.84, accuracyMeters: 20 },
+    });
+  assert.equal(nearbyBuyerPresence.status, 200);
+  const publicNearbyStoreResponse = await buyerAgent.get(
+    "/api/market/nearby?q=Payment%20Test%20Store",
+  );
+  assert.equal(publicNearbyStoreResponse.status, 200);
+  const publicNearbyStore = publicNearbyStoreResponse.body.sellers.find(
+    (store) => store.id === storeId,
+  );
+  assert.ok(publicNearbyStore);
+  assert.equal(publicNearbyStore.pickupLat, null);
+  assert.equal(publicNearbyStore.pickupLng, null);
+  assert.equal(publicNearbyStore.pickupPlaceId, "");
+  assert.equal(publicNearbyStore.street, "");
+  assert.equal(publicNearbyStore.ownerEmail, "");
+  assert.equal(publicNearbyStore.ownerPhone, "");
+  assert.equal(typeof publicNearbyStore.distanceKm, "number");
   const orderConversation = await buyerAgent
     .post("/api/messages/conversations")
     .send({ contextType: "order", contextId: orderId });
@@ -1410,6 +1513,70 @@ test("public payment verification confirms local payment and protects buyer OTP"
     storeConversation.body.conversation.id,
     orderConversation.body.conversation.id,
   );
+  const productConversation = await buyerAgent
+    .post("/api/messages/conversations")
+    .send({ contextType: "product", contextId: productId });
+  assert.equal(productConversation.status, 201);
+  assert.equal(
+    productConversation.body.conversation.id,
+    orderConversation.body.conversation.id,
+  );
+  assert.equal(productConversation.body.draftContext.id, productId);
+  assert.equal(productConversation.body.draftContext.name, "Payment Test Product");
+  assert.equal(productConversation.body.draftContext.priceKobo, 1050000);
+
+  const productMessage = await buyerAgent
+    .post(`/api/messages/conversations/${orderConversation.body.conversation.id}/messages`)
+    .field("body", "I'm interested in this product.")
+    .field("contextType", "product")
+    .field("contextId", productId);
+  assert.equal(productMessage.status, 201);
+  assert.equal(productMessage.body.message.context.id, productId);
+  assert.equal(productMessage.body.message.context.name, "Payment Test Product");
+
+  const foreignProduct = db.prepare(`
+    SELECT products.id
+    FROM products
+    JOIN stores ON stores.id = products.store_id
+    WHERE stores.owner_id != ?
+      AND products.status IN ('active', 'out_of_stock')
+    ORDER BY products.created_at ASC
+    LIMIT 1
+  `).get(sellerRegister.body.user.id);
+  assert.ok(foreignProduct?.id);
+  const blockedForeignProductContext = await buyerAgent
+    .post(`/api/messages/conversations/${orderConversation.body.conversation.id}/messages`)
+    .field("body", "Attempted unrelated product context.")
+    .field("contextType", "product")
+    .field("contextId", foreignProduct.id);
+  assert.equal(blockedForeignProductContext.status, 404);
+
+  db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(
+    "/uploads/payment-buyer-avatar.jpg",
+    buyerRegister.body.user.id,
+  );
+  const sellerInbox = await sellerAgent.get("/api/messages/conversations");
+  assert.equal(sellerInbox.status, 200);
+  const buyerConversation = sellerInbox.body.conversations.find(
+    (conversation) => conversation.id === orderConversation.body.conversation.id,
+  );
+  assert.equal(buyerConversation.otherUserName, "Payment Buyer");
+  assert.equal(
+    buyerConversation.otherUserAvatarUrl,
+    "/uploads/payment-buyer-avatar.jpg",
+  );
+  const directConversationCount = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM conversations
+    WHERE context_type != 'support'
+      AND ((buyer_id = ? AND seller_id = ?) OR (buyer_id = ? AND seller_id = ?))
+  `).get(
+    buyerRegister.body.user.id,
+    sellerRegister.body.user.id,
+    sellerRegister.body.user.id,
+    buyerRegister.body.user.id,
+  );
+  assert.equal(directConversationCount.count, 1);
   const sellerConversation = await sellerAgent
     .post("/api/messages/conversations")
     .send({ contextType: "order", contextId: orderId });
@@ -1777,6 +1944,26 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       AND seller_id = ?
   `).get(`delivery_assignment:${assignmentId}`, riderId, sellerId);
   assert.ok(deliveryConversation?.id);
+
+  db.prepare("UPDATE users SET avatar_url = ? WHERE id = ?").run(
+    "/uploads/step-three-rider-avatar.jpg",
+    riderId,
+  );
+  const riderConversationView = await riderAgent
+    .get(`/api/messages/conversations/${deliveryConversation.id}`)
+    .set("X-Gleenc-Portal", "rider");
+  assert.equal(riderConversationView.status, 200);
+  assert.equal(riderConversationView.body.conversation.otherUserName, "Step Three Seller");
+  const sellerConversationView = await sellerAgent.get(
+    `/api/messages/conversations/${deliveryConversation.id}`,
+  );
+  assert.equal(sellerConversationView.status, 200);
+  assert.equal(sellerConversationView.body.conversation.otherUserName, "Step Three Rider");
+  assert.equal(sellerConversationView.body.conversation.otherUserRole, "rider");
+  assert.equal(
+    sellerConversationView.body.conversation.otherUserAvatarUrl,
+    "/uploads/step-three-rider-avatar.jpg",
+  );
 
   db.prepare(
     "UPDATE rider_assignments SET delivery_fee_kobo = 250000 WHERE id = ?",

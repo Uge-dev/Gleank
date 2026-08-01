@@ -24,7 +24,7 @@ function SearchSellerCard({ seller, onRequireAuth }: SearchSellerCardProps) {
             <h3>{seller.storeName}</h3>
             <p>@{seller.username}</p>
             <small>
-              {seller.category} • {seller.campus}
+              {seller.category}
             </small>
           </div>
         </div>

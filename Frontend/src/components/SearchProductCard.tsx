@@ -20,7 +20,7 @@ function SearchProductCard({ product, onRequireAuth }: SearchProductCardProps) {
         <h3>{product.name}</h3>
 
         <p>
-          {product.category} • {product.campus}
+          {product.category}
         </p>
 
        <Link to={`/stores/${product.sellerId}`} className="seller-name-link">

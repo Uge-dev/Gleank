@@ -1311,7 +1311,7 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
       db.prepare(`
         UPDATE orders
         SET parent_order_id = ?, delivery_batch_id = ?, pickup_task_id = ?,
-            delivery_zone_id = ?, delivery_area = ?, delivery_landmark = ?,
+            delivery_zone_id = ?, delivery_area = ?,
             seller_confirmation_deadline_at = ?, package_ready_at = COALESCE(package_ready_at, ?),
             seller_ready_at = COALESCE(seller_ready_at, ?),
             seller_ready_status = ?,
@@ -1327,12 +1327,11 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
         taskId,
         deliveryZone?.id || null,
         clean(order.campus || ""),
-        clean(order.delivery_address || order.pickup_location || ""),
-       deadline,
-readiness.readyAt,
-readiness.readyAt,
-readiness.readyAt ? "scheduled" : "immediate",
-Math.round(deliveryFeeKobo / pickupCount),
+        deadline,
+        readiness.readyAt,
+        readiness.readyAt,
+        readiness.readyAt ? "scheduled" : "immediate",
+        Math.round(deliveryFeeKobo / pickupCount),
         Math.round(deliveryFeeKobo / pickupCount),
         now,
         order.id,
@@ -2820,6 +2819,13 @@ function createAssignmentsForBatch(batchId, riderId) {
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(batchId);
   const tasks = db.prepare(`
     SELECT pickup_tasks.*, orders.*, stores.name AS store_name, stores.whatsapp_phone, stores.phone AS store_phone,
+           stores.pickup_location AS store_pickup_location,
+           stores.street AS store_street,
+           stores.location_area AS store_location_area,
+           stores.nearest_marketplace AS store_nearest_marketplace,
+           stores.nearest_campus AS store_nearest_campus,
+           stores.city AS store_city,
+           stores.state AS store_state,
            stores.allow_rider_whatsapp_contact, users.name AS seller_name, users.phone AS seller_user_phone,
            COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS route_pickup_lat,
            COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS route_pickup_lng,
@@ -2885,7 +2891,16 @@ function createAssignmentsForBatch(batchId, riderId) {
       task.payment_status === "paid" ? now : null,
       task.pickup_otp_hash,
       task.delivery_otp_hash,
-      task.pickup_location || task.store_pickup_location || task.pickup_landmark || "",
+      task.pickup_location ||
+        task.store_street ||
+        task.store_pickup_location ||
+        task.pickup_landmark ||
+        task.store_nearest_marketplace ||
+        task.store_nearest_campus ||
+        task.store_location_area ||
+        [task.store_city, task.store_state].filter(Boolean).join(", ") ||
+        task.campus ||
+        "Pickup location unavailable",
       task.route_pickup_lat ?? task.pickup_lat ?? null,
       task.route_pickup_lng ?? task.pickup_lng ?? null,
       task.delivery_address || task.pickup_location || "",

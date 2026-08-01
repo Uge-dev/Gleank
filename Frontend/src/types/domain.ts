@@ -47,7 +47,7 @@ export type SellerStore = {
   verificationStatus?: "draft" | "pending_verification" | "verified" | "rejected" | "suspended";
   verificationNote?: string;
   verifiedAt?: string | null;
-  sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+  sellerType?: "used_market" | "campus" | "local_market";
   operatingHours?: string;
   whatsappPhone?: string;
   allowRiderWhatsAppContact?: boolean;
@@ -65,6 +65,14 @@ export type SellerStore = {
   marketAssociationId?: string;
   internalGleencShopCode?: string;
   pickupInstruction?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  nearestCampus?: string;
+  nearestMarketplace?: string;
+  street?: string;
+  pickupPlaceId?: string;
+  locationVerifiedAt?: string | null;
   kycProvider?: string;
   kycStatus?: string;
   kycLevel?: number;
@@ -613,6 +621,15 @@ export type GleencConversation = {
   updatedAt: string;
 };
 
+export type GleencMessageContext = {
+  type: "product" | "used_listing";
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  priceKobo: number;
+  href: string;
+};
+
 export type GleencMessage = {
   id: string;
   conversationId: string;
@@ -622,6 +639,7 @@ export type GleencMessage = {
   senderAvatarUrl: string | null;
   body: string;
   attachmentUrl: string | null;
+  context: GleencMessageContext | null;
   isRead: boolean;
   createdAt: string;
 };
@@ -641,7 +659,15 @@ export type SellerVerificationProfile = {
   fullName: string;
   phone: string;
   campus: string;
-  sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+  country?: string;
+  state?: string;
+  city?: string;
+  nearestCampus?: string;
+  nearestMarketplace?: string;
+  street?: string;
+  pickupPlaceId?: string;
+  locationVerifiedAt?: string | null;
+  sellerType?: "used_market" | "campus" | "local_market";
   locationArea?: string;
   pickupLocation?: string;
   nearestLandmark?: string;

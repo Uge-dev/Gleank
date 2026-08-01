@@ -70,10 +70,14 @@ function formatDate(value: string) {
 }
 
 function canContinuePayment(order: GleencOrder) {
-  return (
-    order.paymentStatus === "unpaid" &&
-    !["delivered", "completed", "cancelled", "disputed"].includes(order.status)
-  );
+  if (
+    order.paymentStatus !== "unpaid" ||
+    ["delivered", "completed", "cancelled", "disputed"].includes(order.status)
+  ) {
+    return false;
+  }
+  if (order.paymentMethod === "pay_now") return true;
+  return ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status);
 }
 
 function OrderDetails() {

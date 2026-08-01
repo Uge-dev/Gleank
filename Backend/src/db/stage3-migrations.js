@@ -46,6 +46,80 @@ function ensureKycColumns(table) {
   ensureColumn(table, "profile_completion_percent", "INTEGER NOT NULL DEFAULT 0");
 }
 
+function directConversationKey(firstUserId, secondUserId) {
+  return `direct:${[String(firstUserId || ""), String(secondUserId || "")].sort().join(":")}`;
+}
+
+function supportConversationKey(buyerId, sellerId) {
+  return `support:${String(buyerId || "")}:${String(sellerId || "")}`;
+}
+
+function migrateCanonicalConversations() {
+  if (!tableExists("conversations")) return;
+
+  ensureColumn("conversations", "conversation_key", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("messages", "context_type", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("messages", "context_id", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("messages", "context_snapshot", "TEXT NOT NULL DEFAULT '{}'");
+
+  const rows = db.prepare(`
+    SELECT conversations.*,
+           (SELECT COUNT(*) FROM messages WHERE messages.conversation_id = conversations.id) AS message_count
+    FROM conversations
+    ORDER BY message_count DESC,
+             COALESCE(last_message_at, updated_at, created_at) DESC
+  `).all();
+  const canonicalByKey = new Map();
+
+  for (const row of rows) {
+    const key = row.context_type === "support"
+      ? supportConversationKey(row.buyer_id, row.seller_id)
+      : directConversationKey(row.buyer_id, row.seller_id);
+    const canonical = canonicalByKey.get(key);
+
+    if (!canonical) {
+      canonicalByKey.set(key, row);
+      db.prepare("UPDATE conversations SET conversation_key = ? WHERE id = ?").run(key, row.id);
+      continue;
+    }
+
+    db.prepare("UPDATE messages SET conversation_id = ? WHERE conversation_id = ?")
+      .run(canonical.id, row.id);
+    if (tableExists("used_market_orders")) {
+      db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE conversation_id = ?")
+        .run(canonical.id, row.id);
+    }
+    if (tableExists("admin_conversation_access_logs")) {
+      db.prepare("UPDATE admin_conversation_access_logs SET conversation_id = ? WHERE conversation_id = ?")
+        .run(canonical.id, row.id);
+    }
+    db.prepare("DELETE FROM conversations WHERE id = ?").run(row.id);
+  }
+
+  for (const canonical of canonicalByKey.values()) {
+    const latest = db.prepare(`
+      SELECT body, created_at
+      FROM messages
+      WHERE conversation_id = ?
+      ORDER BY created_at DESC
+      LIMIT 1
+    `).get(canonical.id);
+    if (latest) {
+      db.prepare(`
+        UPDATE conversations
+        SET last_message_body = ?, last_message_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(latest.body || "Sent a product", latest.created_at, latest.created_at, canonical.id);
+    }
+  }
+
+  safeExec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS conversations_pair_unique_idx
+    ON conversations(conversation_key)
+    WHERE conversation_key != ''
+  `);
+}
+
 export function runStage3Migrations() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS kyc_verifications (
@@ -264,6 +338,28 @@ export function runStage3Migrations() {
   ensureColumn("seller_verification_profiles", "resubmission_requested_at", "TEXT");
   ensureColumn("seller_verification_profiles", "admin_review_status", "TEXT NOT NULL DEFAULT 'not_started'");
 
+  for (const table of ["stores", "seller_verification_profiles"]) {
+    ensureColumn(table, "country", "TEXT NOT NULL DEFAULT 'Nigeria'");
+    ensureColumn(table, "state", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "city", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "nearest_campus", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "nearest_marketplace", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "street", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "pickup_place_id", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "location_verified_at", "TEXT");
+  }
+
+  for (const table of ["seller_pickup_locations", "delivery_locations"]) {
+    ensureColumn(table, "country", "TEXT NOT NULL DEFAULT 'Nigeria'");
+    ensureColumn(table, "state", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "city", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "nearest_campus", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "nearest_marketplace", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "street", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "place_id", "TEXT NOT NULL DEFAULT ''");
+    ensureColumn(table, "verified_at", "TEXT");
+  }
+
   ensureColumn("rider_profiles", "phone_verification_status", "TEXT NOT NULL DEFAULT 'not_started'");
   ensureColumn("rider_profiles", "documents_review_status", "TEXT NOT NULL DEFAULT 'not_started'");
   ensureColumn("rider_profiles", "liveness_review_status", "TEXT NOT NULL DEFAULT 'not_started'");
@@ -295,4 +391,11 @@ export function runStage3Migrations() {
   safeExec("CREATE INDEX IF NOT EXISTS orders_buyer_stage3_idx ON orders(buyer_id, created_at)");
   safeExec("CREATE INDEX IF NOT EXISTS orders_seller_stage3_idx ON orders(seller_id, created_at)");
   safeExec("CREATE INDEX IF NOT EXISTS orders_rider_stage3_idx ON orders(assigned_rider_id, created_at)");
+
+  // "Nearby" is a discovery mode, not a seller account type. Preserve old
+  // accounts by migrating the legacy value to the general campus workflow.
+  safeExec("UPDATE stores SET seller_type = 'campus' WHERE seller_type = 'nearby'");
+  safeExec("UPDATE seller_verification_profiles SET seller_type = 'campus' WHERE seller_type = 'nearby'");
+  safeExec("CREATE INDEX IF NOT EXISTS stores_structured_location_idx ON stores(state, city, nearest_campus, nearest_marketplace)");
+  migrateCanonicalConversations();
 }

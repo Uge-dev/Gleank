@@ -26,14 +26,6 @@ function initials(value: string) {
     .toUpperCase();
 }
 
-function productSourceLabel(product: MarketProduct) {
-  const sellerType = product.store?.sellerType;
-  if (sellerType === "local_market") return "Local Market";
-  if (sellerType === "nearby") return "Nearby Market";
-  if (sellerType === "used_market") return "Used Market";
-  return "Campus Market";
-}
-
 export function MarketProductCard({
   product,
   sourceLabel,
@@ -42,8 +34,6 @@ export function MarketProductCard({
   sourceLabel?: string;
 }) {
   const image = firstImage(product.imageUrls);
-  const campus = product.storeCampus || product.store?.campus || "Gleenc";
-  const source = sourceLabel || productSourceLabel(product);
   const stockLabel =
     product.status === "out_of_stock" || Number(product.stock || 0) <= 0
       ? "Out of stock"
@@ -57,10 +47,10 @@ export function MarketProductCard({
       </div>
 
       <div className="market-live-body">
-        <span className="market-source-pill"><i /> {source}</span>
+        {sourceLabel ? <span className="market-source-pill"><i /> {sourceLabel}</span> : null}
         <h3>{product.name}</h3>
         <p>
-          {product.category} • {campus} • {stockLabel}
+          {product.category} • {stockLabel}
         </p>
         <small className="market-product-seller">
           {product.storeName || product.store?.name || "Seller"}
@@ -91,7 +81,10 @@ export function MarketStoreCard({ store }: { store: MarketStore }) {
         <div>
           <h3>{store.name}</h3>
           <p>
-            {store.category} • {store.campus || "Gleenc"}
+            {store.category}
+            {store.distanceKm !== null && store.distanceKm !== undefined
+              ? ` • ${store.distanceKm.toFixed(1)} km away`
+              : ""}
           </p>
         </div>
       </div>

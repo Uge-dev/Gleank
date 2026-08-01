@@ -139,7 +139,7 @@ function CartDrawer() {
                       </Link>
 
                       <p>
-                        {item.sellerName} • {item.campus}
+                        {item.sellerName}
                       </p>
                       {item.itemType === "used_listing" ? (
                         <small className="cart-market-kind">Used Market</small>

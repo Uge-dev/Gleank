@@ -324,16 +324,16 @@ export default function VerificationCenter() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
-  const requirements = center?.case.requirements || [];
   const levelGroups = useMemo(() => {
     const groups = new Map<number, VerificationRequirement[]>();
+    const requirements = center?.case.requirements || [];
     requirements.forEach((requirement) => {
       const level = requirement.requiredLevel || 1;
       if (level > 3) return;
       groups.set(level, [...(groups.get(level) || []), requirement]);
     });
     return Array.from(groups.entries()).sort(([a], [b]) => a - b);
-  }, [requirements]);
+  }, [center]);
 
   async function load() {
     setLoading(true);

@@ -99,6 +99,14 @@ export function serializeStore(row) {
     marketAssociationId: row.market_association_id || "",
     internalGleencShopCode: row.internal_gleenc_shop_code || "",
     pickupInstruction: row.pickup_instruction || "",
+    country: row.country || "Nigeria",
+    state: row.state || "",
+    city: row.city || "",
+    nearestCampus: row.nearest_campus || row.campus || "",
+    nearestMarketplace: row.nearest_marketplace || "",
+    street: row.street || row.pickup_location || "",
+    pickupPlaceId: row.pickup_place_id || "",
+    locationVerifiedAt: row.location_verified_at || null,
     kycProvider: row.kyc_provider || "manual",
     kycStatus: row.kyc_status || "not_started",
     kycLevel: Number(row.kyc_level || 0),
@@ -110,6 +118,25 @@ export function serializeStore(row) {
     pickupLng: row.pickup_lng === null || row.pickup_lng === undefined ? null : Number(row.pickup_lng),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+export function serializePublicStore(row) {
+  const store = row && Object.hasOwn(row, "ownerId")
+    ? { ...row }
+    : serializeStore(row);
+  if (!store) return null;
+
+  return {
+    ...store,
+    phone: "",
+    whatsappPhone: "",
+    pickupLocation: "",
+    nearestLandmark: "",
+    street: "",
+    pickupPlaceId: "",
+    pickupLat: null,
+    pickupLng: null,
   };
 }
 

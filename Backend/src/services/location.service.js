@@ -2,6 +2,7 @@ import { db } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import { nigeriaLocationCatalog } from "../data/nigeria-location-catalog.js";
 import {
   expireStaleRiderPresence,
   isRiderPresenceOnline,
@@ -100,6 +101,10 @@ function fallbackLocation(input = {}) {
     address: clean(input.address || input.text || "", 500),
     area: clean(input.area || input.city || input.campus, 160),
     campus: clean(input.campus, 120),
+    placeId: clean(input.placeId, 300),
+    country: clean(input.country || "Nigeria", 80),
+    state: clean(input.state, 120),
+    city: clean(input.city, 120),
     lat: numberOrNull(input.lat),
     lng: numberOrNull(input.lng || input.lon),
     confidence: 0,
@@ -166,6 +171,12 @@ export function upsertAccountLocationPresence(auth, input = {}) {
   if (permissionStatus === "granted" && (lat === null || lng === null)) {
     throw new HttpError(422, "Latitude and longitude are required after location permission is granted.");
   }
+  if (
+    permissionStatus === "granted" &&
+    (lat < -90 || lat > 90 || lng < -180 || lng > 180)
+  ) {
+    throw new HttpError(422, "The supplied location coordinates are outside the valid map range.");
+  }
 
   const now = nowIso();
   db.prepare(`
@@ -229,7 +240,7 @@ async function fetchGeoapify(path, params) {
   url.searchParams.set("apiKey", env.geoapifyApiKey);
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(12_000) });
     if (!response.ok) return null;
     return await response.json();
   } catch {
@@ -347,6 +358,10 @@ function geoFeatureToLocation(feature, input = {}) {
     address: props.formatted || props.address_line1 || clean(input.text || input.address, 500),
     area: props.suburb || props.district || props.city || props.county || clean(input.area, 160),
     campus: clean(input.campus, 120),
+    placeId: clean(props.place_id, 300),
+    country: clean(props.country || "Nigeria", 80),
+    state: clean(props.state, 120),
+    city: clean(props.city || props.town || props.village || props.county, 120),
     lat: numberOrNull(props.lat ?? feature?.geometry?.coordinates?.[1]),
     lng: numberOrNull(props.lon ?? feature?.geometry?.coordinates?.[0]),
     confidence: Number(props.rank?.confidence || 0),
@@ -354,9 +369,64 @@ function geoFeatureToLocation(feature, input = {}) {
   };
 }
 
+const geocodeCache = new Map();
+const GEOCODE_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function readGeocodeCache(key) {
+  const cached = geocodeCache.get(key);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    if (cached) geocodeCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeGeocodeCache(key, value) {
+  if (geocodeCache.size >= 300) {
+    const oldest = geocodeCache.keys().next().value;
+    if (oldest) geocodeCache.delete(oldest);
+  }
+  geocodeCache.set(key, { value, expiresAt: Date.now() + GEOCODE_CACHE_TTL_MS });
+  return value;
+}
+
+export function getLocationCatalog() {
+  const markets = db.prepare(`
+    SELECT id, name, state, city, area, latitude, longitude
+    FROM markets
+    WHERE status = 'active'
+    ORDER BY name ASC
+    LIMIT 300
+  `).all().map((row) => ({
+    id: row.id,
+    name: row.name,
+    state: row.state || "",
+    city: row.city || row.area || "",
+    lat: row.latitude ?? null,
+    lng: row.longitude ?? null,
+  }));
+  const sellerCampuses = db.prepare(`
+    SELECT DISTINCT COALESCE(NULLIF(nearest_campus, ''), NULLIF(campus, '')) AS name
+    FROM stores
+    WHERE status = 'active'
+      AND COALESCE(NULLIF(nearest_campus, ''), NULLIF(campus, '')) IS NOT NULL
+    LIMIT 200
+  `).all().map((row) => row.name).filter(Boolean);
+
+  return {
+    country: nigeriaLocationCatalog.country,
+    states: nigeriaLocationCatalog.states,
+    campuses: [...new Set([...nigeriaLocationCatalog.campuses, ...sellerCampuses])],
+    marketplaces: markets,
+  };
+}
+
 export async function geocodeLocation(input = {}) {
   const text = clean(input.text || input.address || input.query, 500);
   if (!text) throw new HttpError(422, "Enter an address or area to search.");
+  const cacheKey = `search:${text.toLowerCase()}:${Boolean(input.autocomplete)}:${Number(input.limit || 5)}`;
+  const cached = readGeocodeCache(cacheKey);
+  if (cached) return cached;
 
   const data = await fetchGeoapify(
     input.autocomplete ? "/geocode/autocomplete" : "/geocode/search",
@@ -371,25 +441,31 @@ export async function geocodeLocation(input = {}) {
   const features = Array.isArray(data?.features) ? data.features : [];
 
   if (features.length === 0) {
-    return {
+    return writeGeocodeCache(cacheKey, {
       provider: canUseGeoapify() ? "geoapify" : "manual",
       fallback: true,
       results: [fallbackLocation({ ...input, text })],
-    };
+    });
   }
 
-  return {
+  return writeGeocodeCache(cacheKey, {
     provider: "geoapify",
     fallback: false,
     results: features.map((feature) => geoFeatureToLocation(feature, input)),
-  };
+  });
 }
 
 export async function reverseGeocodeLocation(input = {}) {
   const lat = numberOrNull(input.lat);
   const lng = numberOrNull(input.lng || input.lon);
   if (lat === null || lng === null) throw new HttpError(422, "Latitude and longitude are required.");
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    throw new HttpError(422, "The supplied coordinates are outside the valid map range.");
+  }
 
+  const cacheKey = `reverse:${lat.toFixed(5)}:${lng.toFixed(5)}`;
+  const cached = readGeocodeCache(cacheKey);
+  if (cached) return cached;
   const data = await fetchGeoapify("/geocode/reverse", {
     lat,
     lon: lng,
@@ -399,13 +475,13 @@ export async function reverseGeocodeLocation(input = {}) {
 
   const feature = Array.isArray(data?.features) ? data.features[0] : null;
 
-  return {
+  return writeGeocodeCache(cacheKey, {
     provider: feature ? "geoapify" : "manual",
     fallback: !feature,
     location: feature
       ? geoFeatureToLocation(feature, input)
       : fallbackLocation({ ...input, lat, lng }),
-  };
+  });
 }
 
 export function upsertSellerPickupLocation(auth, input = {}) {

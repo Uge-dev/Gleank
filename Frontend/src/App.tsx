@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Routes, Route, useLocation } from "react-router-dom";
 
 import { applyTheme, getSavedTheme, watchSystemTheme } from "./utils/theme";
@@ -11,53 +11,52 @@ import CartDrawer from "./components/CartDrawer";
 import ProtectedPage from "./components/ProtectedPage";
 import LocationPermissionNotice from "./components/LocationPermissionNotice";
 
-import Home from "./pages/Home";
-import Search from "./pages/Search";
-import Market from "./pages/Market";
-import CampusMarket from "./pages/CampusMarket";
-import LocalMarkets from "./pages/LocalMarkets";
-import LocalMarketDetails from "./pages/LocalMarketDetails";
-import NearbySellers from "./pages/NearbySellers";
-import MarketSearchResults from "./pages/MarketSearchResults";
+const Home = lazy(() => import("./pages/Home"));
+const Search = lazy(() => import("./pages/Search"));
+const Market = lazy(() => import("./pages/Market"));
+const CampusMarket = lazy(() => import("./pages/CampusMarket"));
+const LocalMarkets = lazy(() => import("./pages/LocalMarkets"));
+const LocalMarketDetails = lazy(() => import("./pages/LocalMarketDetails"));
+const NearbySellers = lazy(() => import("./pages/NearbySellers"));
+const MarketSearchResults = lazy(() => import("./pages/MarketSearchResults"));
+const UsedMarket = lazy(() => import("./pages/UsedMarket"));
+const SubmitUsedProduct = lazy(() => import("./pages/SubmitUsedProduct"));
+const UsedProductDetails = lazy(() => import("./pages/UsedProductDetails"));
+const UsedCheckout = lazy(() => import("./pages/UsedCheckout"));
+const UsedOrderDetails = lazy(() => import("./pages/UsedOrderDetails"));
+const UsedMarketDashboard = lazy(() => import("./pages/UsedMarketDashboard"));
+const ProductDetails = lazy(() => import("./pages/ProductDetails"));
+const SellerStore = lazy(() => import("./pages/SellerStore"));
+const Messages = lazy(() => import("./pages/Messages"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const Create = lazy(() => import("./pages/Create"));
+const Orders = lazy(() => import("./pages/Orders"));
+const SellerOrders = lazy(() => import("./pages/SellerOrders"));
+const SellerRiderSelection = lazy(() => import("./pages/SellerRiderSelection"));
+const OrderDetails = lazy(() => import("./pages/OrderDetails"));
+const OrderSuccess = lazy(() => import("./pages/OrderSuccess"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Profile = lazy(() => import("./pages/Profile"));
+const More = lazy(() => import("./pages/More"));
+const Cart = lazy(() => import("./pages/Cart"));
+const Saved = lazy(() => import("./pages/Saved"));
+const Checkout = lazy(() => import("./pages/Checkout"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+const AccountSecurity = lazy(() => import("./pages/AccountSecurity"));
+const SellerOnboarding = lazy(() => import("./pages/SellerOnboarding"));
+const SellerSubscription = lazy(() => import("./pages/SellerSubscription"));
+const Help = lazy(() => import("./pages/Help"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const AdminDashboard = lazy(() => import("./admin/AdminDashboard"));
+const PaymentCallback = lazy(() => import("./pages/PaymentCallback"));
+const RiderModule = lazy(() => import("./rider/RiderModule"));
 
-import UsedMarket from "./pages/UsedMarket";
-import SubmitUsedProduct from "./pages/SubmitUsedProduct";
-import UsedProductDetails from "./pages/UsedProductDetails";
-import UsedCheckout from "./pages/UsedCheckout";
-import UsedOrderDetails from "./pages/UsedOrderDetails";
-import UsedMarketDashboard from "./pages/UsedMarketDashboard";
-import UsedMessages from "./pages/UsedMessages";
-
-import ProductDetails from "./pages/ProductDetails";
-import SellerStore from "./pages/SellerStore";
-
-import Messages from "./pages/Messages";
-import Notifications from "./pages/Notifications";
-import Create from "./pages/Create";
-import Orders from "./pages/Orders";
-import SellerOrders from "./pages/SellerOrders";
-import SellerRiderSelection from "./pages/SellerRiderSelection";
-import OrderDetails from "./pages/OrderDetails";
-import OrderSuccess from "./pages/OrderSuccess";
-import Dashboard from "./pages/Dashboard";
-import Profile from "./pages/Profile";
-import More from "./pages/More";
-import Cart from "./pages/Cart";
-import Saved from "./pages/Saved";
-import Checkout from "./pages/Checkout";
-
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import ForgotPassword from "./pages/ForgotPassword";
-import VerifyEmail from "./pages/VerifyEmail";
-import AccountSecurity from "./pages/AccountSecurity";
-import SellerOnboarding from "./pages/SellerOnboarding";
-import SellerSubscription from "./pages/SellerSubscription";
-import Help from "./pages/Help";
-import NotFound from "./pages/NotFound";
-import AdminDashboard from "./admin/AdminDashboard";
-import PaymentCallback from "./pages/PaymentCallback";
-import RiderModule from "./rider/RiderModule";
+function RouteFallback() {
+  return <div className="app-route-loading" role="status">Loading page...</div>;
+}
 
 function AccountOrders() {
   const { user } = useAuth();
@@ -89,16 +88,18 @@ function App() {
   if (isAdminRoute) {
     return (
       <div className="gleank-app admin-app-shell">
-        <Routes>
-          <Route path="/admin/*" element={<AdminDashboard />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </Suspense>
       </div>
     );
   }
 
   if (isRiderRoute) {
-    return <RiderModule />;
+    return <Suspense fallback={<RouteFallback />}><RiderModule /></Suspense>;
   }
 
   return (
@@ -111,7 +112,8 @@ function App() {
             <CartDrawer />
 
             <main className="gleank-main">
-              <Routes>
+              <Suspense fallback={<RouteFallback />}>
+                <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
           <Route path="/market" element={<Market />} />
@@ -159,7 +161,7 @@ function App() {
             path="/used-messages"
             element={
               <ProtectedPage>
-                <UsedMessages />
+                <Navigate to="/messages" replace />
               </ProtectedPage>
             }
           />
@@ -317,7 +319,8 @@ function App() {
           <Route path="/help" element={<Help />} />
 
           <Route path="*" element={<NotFound />} />
-              </Routes>
+                </Routes>
+              </Suspense>
             </main>
           </div>
         </CartProvider>

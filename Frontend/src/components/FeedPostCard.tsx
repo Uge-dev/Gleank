@@ -356,7 +356,7 @@ const cardSwipeStartRef = useRef<{
       <div>
         <h3>{storeName}</h3>
         <p>
-          @{username} • {campus}
+          @{username}
         </p>
       </div>
     </>
@@ -505,7 +505,7 @@ const cardSwipeStartRef = useRef<{
           <h4>{productName}</h4>
 
           <p>
-            {category} • {campus} • {stockLabel}
+            {category} • {stockLabel}
           </p>
         </div>
 

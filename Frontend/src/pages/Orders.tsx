@@ -74,7 +74,15 @@ function formatDate(value: string) {
 }
 
 function canContinuePayment(order: GleencOrder) {
-  return order.paymentStatus === "unpaid" || order.status === "pending_payment";
+  if (
+    order.paymentStatus !== "unpaid" ||
+    ["delivered", "completed", "cancelled", "disputed"].includes(order.status)
+  ) {
+    return false;
+  }
+
+  if (order.paymentMethod === "pay_now") return true;
+  return ["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status);
 }
 
 function Orders() {
@@ -166,8 +174,8 @@ function Orders() {
         <span>Purchases you made</span>
         <div className="orders-heading-title-row">
           <h1>Your Orders</h1>
-          <strong className="orders-total-counter" aria-label={`${orders.length} total orders`}>
-            {orders.length}
+          <strong className="orders-total-counter" aria-label={`${orderCounts.Pending} pending orders`}>
+            {orderCounts.Pending}
           </strong>
         </div>
         <p>Track items you bought from other sellers.</p>

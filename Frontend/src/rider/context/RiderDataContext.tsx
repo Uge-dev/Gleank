@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shouldUseApi, shouldUseMock } from '../config/env';
 import { deliveryActivities, earningsSummary, completedOrders as seedCompletedOrders } from '../data/mockData';
@@ -195,6 +195,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [apiConnected, setApiConnected] = useState(false);
   const hydratedRef = useRef(false);
+  const refreshInFlightRef = useRef(false);
   const knownAssignmentIdsRef = useRef<Set<string>>(new Set(initial.assignments.map((item) => item.id)));
   const knownNotificationIdsRef = useRef<Set<string>>(new Set(initial.notifications.map((item) => item.id)));
   const knownDispatchOfferIdsRef = useRef<Set<string>>(new Set());
@@ -202,16 +203,16 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const pendingSoundRef = useRef(false);
 
-  function getAudioContext() {
+  const getAudioContext = useCallback(() => {
     if (typeof window === 'undefined') return null;
     if (audioContextRef.current) return audioContextRef.current;
     const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return null;
     audioContextRef.current = new AudioContextClass();
     return audioContextRef.current;
-  }
+  }, []);
 
-  function playDispatchAlert() {
+  const playDispatchAlert = useCallback(() => {
     const audio = getAudioContext();
     if (!audio) return;
     if (audio.state === 'running') {
@@ -227,9 +228,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
         scheduleRiderDispatchBeep(audio);
       })
       .catch(() => undefined);
-  }
+  }, [getAudioContext]);
 
-  function alertNewDispatch(id: string, title: string, body: string) {
+  const alertNewDispatch = useCallback((id: string, title: string, body: string) => {
     const alertId = id || `${title}:${body}`;
     if (alertedEventIdsRef.current.has(alertId)) return;
     alertedEventIdsRef.current.add(alertId);
@@ -238,7 +239,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       navigator.vibrate([180, 80, 180, 80, 260]);
     }
     showRiderNotification(title, body);
-  }
+  }, [playDispatchAlert]);
 
   useEffect(() => {
     function unlockAudio() {
@@ -264,9 +265,9 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       void audioContextRef.current?.close().catch(() => undefined);
       audioContextRef.current = null;
     };
-  }, []);
+  }, [getAudioContext]);
 
-  function applyStateFromLocal() {
+  const applyStateFromLocal = useCallback(() => {
     const state = riderLocalStore.load();
     setAssignments(state.assignments);
     setOrders(state.orders);
@@ -283,9 +284,18 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       highRiskTasks: state.assignments.filter((item) => item.riskLevel === 'high').length,
     });
     setUnlockedOrderIds(state.unlockedOrderIds);
-  }
+  }, [
+    setActivities,
+    setAssignments,
+    setCompleted,
+    setEarnings,
+    setNotifications,
+    setOrders,
+    setStats,
+    setUnlockedOrderIds,
+  ]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!shouldUseApi()) {
       if (shouldUseMock()) {
         applyStateFromLocal();
@@ -302,10 +312,15 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       }
       return;
     }
-    setLoading(true);
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    const isInitialLoad = !hydratedRef.current;
+    if (isInitialLoad) setLoading(true);
     try {
-      const payload = await riderApi.dashboard();
-      const dispatchPayload = await riderApi.activeDispatches().catch(() => ({ dispatches: [] }));
+      const [payload, dispatchPayload] = await Promise.all([
+        riderApi.dashboard(),
+        riderApi.activeDispatches().catch(() => ({ dispatches: [] })),
+      ]);
       const nextAssignments = payload.assignments;
       const nextNotifications = payload.notifications;
       const nextDispatchOffers = dispatchPayload.dispatches || [];
@@ -363,13 +378,14 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       setApiConnected(true);
     } catch {
       setApiConnected(false);
-      if (shouldUseMock()) {
+      if (!hydratedRef.current && shouldUseMock()) {
         applyStateFromLocal();
       }
     } finally {
-      setLoading(false);
+      refreshInFlightRef.current = false;
+      if (isInitialLoad) setLoading(false);
     }
-  }
+  }, [alertNewDispatch, applyStateFromLocal]);
 
   useEffect(() => {
     if (!rider?.id) {
@@ -384,6 +400,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       setUnlockedOrderIds(empty.unlockedOrderIds);
       setApiConnected(false);
       hydratedRef.current = false;
+      refreshInFlightRef.current = false;
       return undefined;
     }
 
@@ -411,7 +428,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', refreshWhenActive);
       document.removeEventListener('visibilitychange', refreshWhenActive);
     };
-  }, [rider?.id]);
+  }, [refresh, rider?.id]);
 
   useEffect(() => {
     if (!rider?.id || !shouldUseApi()) return undefined;
@@ -431,7 +448,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
         void refresh();
       },
     });
-  }, [rider?.id]);
+  }, [alertNewDispatch, refresh, rider?.id]);
 
   function updateAssignmentStatus(assignmentId: string, status: AssignmentStatus) {
     setAssignments((current) => current.map((item) => (item.id === assignmentId ? { ...item, status } : item)));
@@ -663,7 +680,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
       riderLocalStore.submitCashReconciliation(orderIds, note);
       applyStateFromLocal();
     }
-  }), [activities, apiConnected, assignments, completed, earnings, loading, notifications, orders, stats, unlockedOrderIds]);
+  }), [activities, apiConnected, applyStateFromLocal, assignments, completed, earnings, loading, notifications, orders, refresh, stats, unlockedOrderIds]);
 
   return <RiderDataContext.Provider value={value}>{children}</RiderDataContext.Provider>;
 }

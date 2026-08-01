@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   FiAlertCircle,
   FiArrowLeft,
@@ -9,6 +9,7 @@ import {
   FiExternalLink,
   FiFileText,
   FiLock,
+  FiMapPin,
   FiShield,
   FiShoppingBag,
 } from "react-icons/fi";
@@ -23,6 +24,12 @@ import {
 } from "../services/seller-verification.service";
 import { savePayoutAccount } from "../services/trust.service";
 import { initializeSellerSubscriptionPayment } from "../services/payment.service";
+import {
+  geocodeSellerLocation,
+  getLocationCatalog,
+  type GeocodedSellerLocation,
+  type LocationCatalog,
+} from "../services/structured-location.service";
 import { getLocalMarkets, type LocalMarket } from "../services/market.service";
 import {
   getMyVerificationCenter,
@@ -31,7 +38,7 @@ import {
 } from "../services/verification.service";
 import { apiUrl } from "../lib/api";
 
-type SellerType = "used_market" | "campus" | "local_market" | "nearby";
+type SellerType = "used_market" | "campus" | "local_market";
 type VerificationStepKey =
   | "store_details"
   | "documents_business"
@@ -57,12 +64,6 @@ const sellerTypeOptions: Array<{
     label: "Local Market Seller",
     description:
       "Sell from an approved physical market like Igbudu, Ugbomro, Jakpa, or Okha.",
-  },
-  {
-    value: "nearby",
-    label: "Nearby Independent Seller",
-    description:
-      "Sell from your shop, hostel, home area, office, or business location.",
   },
 ];
 
@@ -145,6 +146,7 @@ function formToDraftPayload(form: HTMLFormElement, nextStep: number) {
 }
 
 function SellerOnboarding() {
+  const navigate = useNavigate();
   const { user, store, refreshSession } = useAuth();
   const [state, setState] = useState<SellerVerificationResponse | null>(null);
   const [requirementCase, setRequirementCase] = useState<VerificationCase | null>(null);
@@ -153,6 +155,21 @@ function SellerOnboarding() {
   const [sellerType, setSellerType] = useState<SellerType>("campus");
   const [currentStep, setCurrentStep] = useState(1);
   const [localMarkets, setLocalMarkets] = useState<LocalMarket[]>([]);
+  const [locationCatalog, setLocationCatalog] = useState<LocationCatalog | null>(null);
+  const [structuredLocation, setStructuredLocation] = useState({
+    country: "Nigeria",
+    state: "",
+    city: "",
+    nearestCampus: "",
+    nearestMarketplace: "",
+    street: "",
+    pickupPlaceId: "",
+    pickupLat: "",
+    pickupLng: "",
+    locationVerifiedAt: "",
+  });
+  const [locationMatches, setLocationMatches] = useState<GeocodedSellerLocation[]>([]);
+  const [isGeocoding, setIsGeocoding] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -175,6 +192,19 @@ function SellerOnboarding() {
       setFaceVerified(Boolean(result.verification?.faceVerified));
       setFaceReference(result.verification?.faceReference || "");
       setSellerType((result.verification?.sellerType as SellerType) || "campus");
+      const savedLocation = result.verification;
+      setStructuredLocation({
+        country: savedLocation?.country || "Nigeria",
+        state: savedLocation?.state || "",
+        city: savedLocation?.city || "",
+        nearestCampus: savedLocation?.nearestCampus || savedLocation?.campus || "",
+        nearestMarketplace: savedLocation?.nearestMarketplace || "",
+        street: savedLocation?.street || savedLocation?.pickupLocation || "",
+        pickupPlaceId: savedLocation?.pickupPlaceId || "",
+        pickupLat: String(result.readiness?.store?.pickupLat ?? ""),
+        pickupLng: String(result.readiness?.store?.pickupLng ?? ""),
+        locationVerifiedAt: savedLocation?.locationVerifiedAt || "",
+      });
       setCurrentStep(safeStep(result.verification?.currentStep, 1));
       setError("");
     } catch (requestError) {
@@ -194,6 +224,9 @@ function SellerOnboarding() {
     void getLocalMarkets()
       .then((response) => setLocalMarkets(response.markets))
       .catch(() => setLocalMarkets([]));
+    void getLocationCatalog()
+      .then(setLocationCatalog)
+      .catch(() => setLocationCatalog(null));
   }, []);
 
   useEffect(() => {
@@ -229,6 +262,80 @@ function SellerOnboarding() {
     verificationReady && subscriptionActive && platformFeeReady && payoutReady;
   const payoutAccount = state?.readiness?.payoutAccount;
   const currentStepMeta = verificationSteps[currentStep - 1] || verificationSteps[0];
+  const availableCities = useMemo(
+    () =>
+      locationCatalog?.states.find((item) => item.name === structuredLocation.state)
+        ?.cities || [],
+    [locationCatalog, structuredLocation.state],
+  );
+
+  async function findStructuredLocation() {
+    const text = [
+      structuredLocation.street,
+      structuredLocation.nearestMarketplace,
+      structuredLocation.nearestCampus,
+      structuredLocation.city,
+      structuredLocation.state,
+      structuredLocation.country,
+    ].filter(Boolean).join(", ");
+    if (!structuredLocation.state || !structuredLocation.city || !structuredLocation.street) {
+      setError("Choose a state and city, then enter the street before confirming the map pin.");
+      return;
+    }
+
+    setError("");
+    setIsGeocoding(true);
+    try {
+      const response = await geocodeSellerLocation(text);
+      const precise = response.results.filter(
+        (item) => item.placeId && item.lat !== null && item.lng !== null,
+      );
+      setLocationMatches(precise);
+      if (!precise.length) {
+        setError("No verified map pin was found. Add a clearer street, landmark, campus or marketplace and try again.");
+      }
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : "The address could not be mapped right now.",
+      );
+    } finally {
+      setIsGeocoding(false);
+    }
+  }
+
+  function selectStructuredLocation(result: GeocodedSellerLocation) {
+    setStructuredLocation((current) => ({
+      ...current,
+      country: result.country || current.country,
+      state: result.state || current.state,
+      city: result.city || current.city,
+      street: result.formattedAddress || current.street,
+      pickupPlaceId: result.placeId,
+      pickupLat: String(result.lat ?? ""),
+      pickupLng: String(result.lng ?? ""),
+      locationVerifiedAt: new Date().toISOString(),
+    }));
+    setLocationMatches([]);
+    setMessage("Map pin confirmed. Save this stage to keep the verified pickup location.");
+  }
+
+  function updateStructuredLocation(
+    field: "state" | "city" | "nearestCampus" | "nearestMarketplace" | "street",
+    value: string,
+  ) {
+    setStructuredLocation((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "state" ? { city: "" } : {}),
+      pickupPlaceId: "",
+      pickupLat: "",
+      pickupLng: "",
+      locationVerifiedAt: "",
+    }));
+    setLocationMatches([]);
+  }
 
   const completedStepSet = useMemo(
     () => new Set(verification?.completedSteps || []),
@@ -315,7 +422,7 @@ function SellerOnboarding() {
 
   function handleReadinessClick(sectionId: string, redirectPath?: string) {
     if (redirectPath) {
-      window.location.href = redirectPath;
+      navigate(redirectPath);
       return;
     }
 
@@ -761,6 +868,135 @@ function SellerOnboarding() {
                   </label>
                 </div>
 
+                <div className="seller-onboarding-special-block seller-structured-location">
+                  <div className="seller-onboarding-title compact">
+                    <span>Verified service area</span>
+                    <h2>Business and pickup location</h2>
+                    <p>
+                      These fields power marketplace search and delivery distance. Your seller
+                      type is not shown as a public profile tag.
+                    </p>
+                  </div>
+                  <div className="seller-onboarding-form-grid">
+                    <label>
+                      <span>Country</span>
+                      <select name="country" value={structuredLocation.country} onChange={() => undefined} aria-readonly="true">
+                        <option value="Nigeria">Nigeria</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span>State</span>
+                      <select
+                        name="state"
+                        value={structuredLocation.state}
+                        onChange={(event) => updateStructuredLocation("state", event.target.value)}
+                        required
+                      >
+                        <option value="">Choose state</option>
+                        {locationCatalog?.states.map((item) => (
+                          <option key={item.name} value={item.name}>{item.name}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>City</span>
+                      <select
+                        name="city"
+                        value={structuredLocation.city}
+                        onChange={(event) => updateStructuredLocation("city", event.target.value)}
+                        required
+                      >
+                        <option value="">Choose city</option>
+                        {structuredLocation.city && !availableCities.includes(structuredLocation.city) ? (
+                          <option value={structuredLocation.city}>{structuredLocation.city}</option>
+                        ) : null}
+                        {availableCities.map((city) => (
+                          <option key={city} value={city}>{city}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Nearest campus</span>
+                      <input
+                        name="nearestCampus"
+                        list="seller-campus-options"
+                        value={structuredLocation.nearestCampus}
+                        onChange={(event) => updateStructuredLocation("nearestCampus", event.target.value)}
+                        placeholder="UNIBEN, FUPRE, UNILAG..."
+                        required
+                      />
+                      <datalist id="seller-campus-options">
+                        {locationCatalog?.campuses.map((campus) => (
+                          <option key={campus} value={campus} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label>
+                      <span>Nearest marketplace</span>
+                      <input
+                        name="nearestMarketplace"
+                        list="seller-marketplace-options"
+                        value={structuredLocation.nearestMarketplace}
+                        onChange={(event) => updateStructuredLocation("nearestMarketplace", event.target.value)}
+                        placeholder="Igbudu Market, Ugbomro Market..."
+                        required
+                      />
+                      <datalist id="seller-marketplace-options">
+                        {locationCatalog?.marketplaces.map((market) => (
+                          <option key={market.id} value={market.name} />
+                        ))}
+                        {localMarkets.map((market) => (
+                          <option key={`local-${market.id}`} value={market.name} />
+                        ))}
+                      </datalist>
+                    </label>
+                    <label className="seller-location-street-field">
+                      <span>Street / exact pickup address</span>
+                      <input
+                        name="street"
+                        value={structuredLocation.street}
+                        onChange={(event) => updateStructuredLocation("street", event.target.value)}
+                        placeholder="Street, shop number, landmark and area"
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <input type="hidden" name="pickupPlaceId" value={structuredLocation.pickupPlaceId} />
+                  <input type="hidden" name="pickupLat" value={structuredLocation.pickupLat} />
+                  <input type="hidden" name="pickupLng" value={structuredLocation.pickupLng} />
+                  <input type="hidden" name="locationVerifiedAt" value={structuredLocation.locationVerifiedAt} />
+
+                  <div className="seller-map-pin-actions">
+                    <button type="button" onClick={() => void findStructuredLocation()} disabled={isGeocoding}>
+                      <FiMapPin /> {isGeocoding ? "Finding address..." : "Find and confirm map pin"}
+                    </button>
+                    <span className={structuredLocation.pickupPlaceId ? "confirmed" : ""}>
+                      {structuredLocation.pickupPlaceId
+                        ? "Verified map pin saved in this form"
+                        : "A verified map pin is required before final submission"}
+                    </span>
+                  </div>
+
+                  {locationMatches.length > 0 ? (
+                    <div className="seller-location-matches" aria-label="Matching map locations">
+                      {locationMatches.map((result) => (
+                        <button
+                          type="button"
+                          key={result.placeId}
+                          onClick={() => selectStructuredLocation(result)}
+                        >
+                          <FiMapPin />
+                          <span>
+                            <strong>{result.formattedAddress}</strong>
+                            <small>{result.city || structuredLocation.city}, {result.state || structuredLocation.state}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
                 {sellerType === "campus" && (
                   <div className="seller-onboarding-form-grid">
                     <label>
@@ -951,46 +1187,6 @@ function SellerOnboarding() {
                         />
                       </label>
                     </div>
-                  </div>
-                )}
-
-                {sellerType === "nearby" && (
-                  <div className="seller-onboarding-form-grid">
-                    <label>
-                      <span>Business area/location</span>
-                      <input
-                        name="locationArea"
-                        defaultValue={verification?.locationArea || activeStore?.locationArea || ""}
-                        placeholder="Effurun, Ugbomro, Abraka..."
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Business address / pickup location</span>
-                      <input
-                        name="pickupLocation"
-                        defaultValue={
-                          verification?.pickupLocation ||
-                          activeStore?.pickupLocation ||
-                          ""
-                        }
-                        placeholder="Shop, hostel, office, home area..."
-                        required
-                      />
-                    </label>
-                    <label>
-                      <span>Nearest landmark</span>
-                      <input
-                        name="nearestLandmark"
-                        defaultValue={
-                          verification?.nearestLandmark ||
-                          activeStore?.nearestLandmark ||
-                          ""
-                        }
-                        placeholder="Nearest junction, filling station..."
-                        required
-                      />
-                    </label>
                   </div>
                 )}
 

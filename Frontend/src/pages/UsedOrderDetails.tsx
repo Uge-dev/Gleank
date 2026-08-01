@@ -135,7 +135,7 @@ function UsedOrderDetails() {
         contextType: "used_order",
         contextId: order.id,
       });
-      navigate(`/used-messages?conversation=${response.conversation.id}`);
+      navigate(`/messages?conversation=${response.conversation.id}`);
     } catch (requestError) {
       setError(
         requestError instanceof Error

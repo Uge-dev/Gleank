@@ -108,13 +108,6 @@ function feedEngagementScore(product: FeedProduct) {
   );
 }
 
-function firstLocationWord(value?: string) {
-  return String(value || "")
-    .split(/[\s,/-]+/)
-    .map((part) => part.trim())
-    .find(Boolean) || "Nearby";
-}
-
 function productSource(store?: SearchResults["stores"][number]) {
   if (!store) return { sourceTag: "Marketplace", sourceDetail: "" };
 
@@ -129,22 +122,13 @@ function productSource(store?: SearchResults["stores"][number]) {
     };
   }
 
-  if (store.sellerType === "nearby") {
-    return {
-      sourceTag: firstLocationWord(
-        store.locationArea || store.pickupLocation || store.campus,
-      ),
-      sourceDetail: "",
-    };
-  }
-
   if (store.sellerType === "used_market") {
     return { sourceTag: "Used Market", sourceDetail: "" };
   }
 
   return {
-    sourceTag: "Campus Market",
-    sourceDetail: store.campus,
+    sourceTag: "Marketplace",
+    sourceDetail: "",
   };
 }
 
@@ -157,6 +141,7 @@ function Home() {
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [activeRightTab, setActiveRightTab] = useState<FeedTab>("hot");
+  const [feedOpenedAt] = useState(() => Date.now());
   const [marketplace, setMarketplace] = useState<SearchResults>(emptyResults);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -467,7 +452,7 @@ async function shareProduct(productId: string, productName: string) {
     }
 
     if (activeRightTab === "vendors") {
-      const tenDaysAgo = Date.now() - 10 * 24 * 60 * 60 * 1_000;
+      const tenDaysAgo = feedOpenedAt - 10 * 24 * 60 * 60 * 1_000;
 
       return productsOnly
         .filter((product) => {
@@ -510,6 +495,7 @@ async function shareProduct(productId: string, productName: string) {
     });
   }, [
     activeRightTab,
+    feedOpenedAt,
     marketplace.products,
     marketplace.usedListings,
     storeBySlug,
@@ -789,7 +775,7 @@ viewCount={product.interaction.viewCount}
                       <FiUsers />
                       Stores
                     </span>
-                    <h3>Active campus sellers</h3>
+                    <h3>Active sellers</h3>
                   </div>
 
                   <button
@@ -832,7 +818,7 @@ viewCount={product.interaction.viewCount}
                         <div>
                           <strong>{store.name}</strong>
                           <p>
-                            {store.category} • {store.campus}
+                            {store.category}
                           </p>
                         </div>
 

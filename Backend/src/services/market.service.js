@@ -3,6 +3,7 @@ import { createId, slugify } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import {
   serializeProduct,
+  serializePublicStore,
   serializeStore,
   serializeUsedListing,
 } from "../lib/serializers.js";
@@ -59,11 +60,6 @@ const SELLER_TYPE_OPTIONS = [
     value: "local_market",
     label: "Local Market Seller",
     description: "Sell from a real physical market like Igbudu, Ugbomro, Jakpa, Okha, or any approved local market.",
-  },
-  {
-    value: "nearby",
-    label: "Nearby Independent Seller",
-    description: "Sell from your current shop, hostel, home area, or business location.",
   },
   {
     value: "used_market",
@@ -329,7 +325,7 @@ export function serializeMarket(row) {
 }
 
 function serializeMarketStore(row, viewerId = "") {
-  const store = serializeStore({
+  const privateStore = serializeStore({
     id: row.store_ref_id || row.id,
     owner_id: row.store_owner_id || row.owner_id,
     slug: row.store_slug || row.slug,
@@ -357,15 +353,24 @@ function serializeMarketStore(row, viewerId = "") {
     shop_section: row.store_shop_section || row.shop_section,
     pickup_lat: row.store_pickup_lat ?? row.pickup_lat,
     pickup_lng: row.store_pickup_lng ?? row.pickup_lng,
+    country: row.store_country || row.country,
+    state: row.store_state || row.state,
+    city: row.store_city || row.city,
+    nearest_campus: row.store_nearest_campus || row.nearest_campus,
+    nearest_marketplace: row.store_nearest_marketplace || row.nearest_marketplace,
+    street: row.store_street || row.street,
+    pickup_place_id: row.store_pickup_place_id || row.pickup_place_id,
+    location_verified_at: row.store_location_verified_at || row.location_verified_at,
     created_at: row.store_created_at || row.created_at,
     updated_at: row.store_updated_at || row.updated_at,
   });
 
-  return {
+  const store = serializePublicStore(privateStore);
+  const output = {
     ...store,
     ownerName: row.owner_name || "",
-    ownerEmail: row.owner_email || "",
-    ownerPhone: row.owner_phone || "",
+    ownerEmail: "",
+    ownerPhone: "",
     marketProfile: row.profile_id
       ? {
           id: row.profile_id,
@@ -386,6 +391,11 @@ function serializeMarketStore(row, viewerId = "") {
     },
     interaction: storeInteraction(store.id, viewerId),
   };
+  Object.defineProperty(output, "_pickupCoordinates", {
+    value: { lat: privateStore.pickupLat, lng: privateStore.pickupLng },
+    enumerable: false,
+  });
+  return output;
 }
 
 function serializeMarketProduct(row, viewerId = "") {
@@ -394,7 +404,7 @@ function serializeMarketProduct(row, viewerId = "") {
     storeName: row.store_name || "",
     storeSlug: row.store_slug || "",
     storeCampus: row.store_campus || "",
-    store: serializeStore({
+    store: serializePublicStore({
       id: row.store_ref_id || row.store_id,
       owner_id: row.store_owner_id,
       slug: row.store_slug,
@@ -422,6 +432,14 @@ function serializeMarketProduct(row, viewerId = "") {
       shop_section: row.store_shop_section,
       pickup_lat: row.store_pickup_lat,
       pickup_lng: row.store_pickup_lng,
+      country: row.store_country,
+      state: row.store_state,
+      city: row.store_city,
+      nearest_campus: row.store_nearest_campus,
+      nearest_marketplace: row.store_nearest_marketplace,
+      street: row.store_street,
+      pickup_place_id: row.store_pickup_place_id,
+      location_verified_at: row.store_location_verified_at,
       created_at: row.store_created_at,
       updated_at: row.store_updated_at,
     }),
@@ -467,6 +485,14 @@ const productSelectSql = `
          stores.shop_section AS store_shop_section,
          stores.pickup_lat AS store_pickup_lat,
          stores.pickup_lng AS store_pickup_lng,
+         stores.country AS store_country,
+         stores.state AS store_state,
+         stores.city AS store_city,
+         stores.nearest_campus AS store_nearest_campus,
+         stores.nearest_marketplace AS store_nearest_marketplace,
+         stores.street AS store_street,
+         stores.pickup_place_id AS store_pickup_place_id,
+         stores.location_verified_at AS store_location_verified_at,
          stores.created_at AS store_created_at,
          stores.updated_at AS store_updated_at,
          (SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) AS like_count,
@@ -494,7 +520,6 @@ const productEngagementOrderSql = `
 const publicSellerVisibilitySql = `
   (
     COALESCE(stores.seller_type, 'campus') IN ('campus', 'used_market')
-    OR (stores.seller_type = 'nearby' AND stores.verification_status = 'verified')
     OR (
       stores.seller_type = 'local_market'
       AND EXISTS (
@@ -540,11 +565,17 @@ function listPublicProducts({
           OR products.category LIKE ? ESCAPE '\\'
           OR stores.name LIKE ? ESCAPE '\\'
           OR stores.campus LIKE ? ESCAPE '\\'
+          OR stores.nearest_campus LIKE ? ESCAPE '\\'
+          OR stores.nearest_marketplace LIKE ? ESCAPE '\\'
+          OR stores.state LIKE ? ESCAPE '\\'
+          OR stores.city LIKE ? ESCAPE '\\'
         )
         AND (
           ? = ''
           OR LOWER(stores.campus) = LOWER(?)
+          OR LOWER(stores.nearest_campus) = LOWER(?)
           OR stores.campus LIKE ? ESCAPE '\\'
+          OR stores.nearest_campus LIKE ? ESCAPE '\\'
         )
       ORDER BY ${orderSql}
       LIMIT ?
@@ -556,8 +587,14 @@ function listPublicProducts({
       pattern,
       pattern,
       pattern,
+      pattern,
+      pattern,
+      pattern,
+      pattern,
       cleanCampus,
       cleanCampus,
+      cleanCampus,
+      campusPattern,
       campusPattern,
       ...(order === "engagement" ? [] : [cleanCampus, cleanCampus]),
       safeLimit,
@@ -618,6 +655,14 @@ function listActiveStores({ query = "", campus = "", viewerId = "", limit = 24 }
              stores.shop_section AS store_shop_section,
              stores.pickup_lat AS store_pickup_lat,
              stores.pickup_lng AS store_pickup_lng,
+             stores.country AS store_country,
+             stores.state AS store_state,
+             stores.city AS store_city,
+             stores.nearest_campus AS store_nearest_campus,
+             stores.nearest_marketplace AS store_nearest_marketplace,
+             stores.street AS store_street,
+             stores.pickup_place_id AS store_pickup_place_id,
+             stores.location_verified_at AS store_location_verified_at,
              stores.created_at AS store_created_at,
              stores.updated_at AS store_updated_at,
              users.name AS owner_name,
@@ -635,11 +680,17 @@ function listActiveStores({ query = "", campus = "", viewerId = "", limit = 24 }
           OR stores.description LIKE ? ESCAPE '\\'
           OR stores.campus LIKE ? ESCAPE '\\'
           OR stores.category LIKE ? ESCAPE '\\'
+          OR stores.nearest_campus LIKE ? ESCAPE '\\'
+          OR stores.nearest_marketplace LIKE ? ESCAPE '\\'
+          OR stores.state LIKE ? ESCAPE '\\'
+          OR stores.city LIKE ? ESCAPE '\\'
         )
         AND (
           ? = ''
           OR LOWER(stores.campus) = LOWER(?)
+          OR LOWER(stores.nearest_campus) = LOWER(?)
           OR stores.campus LIKE ? ESCAPE '\\'
+          OR stores.nearest_campus LIKE ? ESCAPE '\\'
         )
       ORDER BY
         CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
@@ -653,8 +704,14 @@ function listActiveStores({ query = "", campus = "", viewerId = "", limit = 24 }
       pattern,
       pattern,
       pattern,
+      pattern,
+      pattern,
+      pattern,
+      pattern,
       cleanCampus,
       cleanCampus,
+      cleanCampus,
+      campusPattern,
       campusPattern,
       cleanCampus,
       cleanCampus,
@@ -1033,26 +1090,72 @@ export function getLocalMarketById(marketId, { viewerId = "", publicOnly = true 
 
 export function getNearbySellers({ query = "", campus = "", viewerId = "" } = {}) {
   const cleanCampus = clean(campus, 120);
+  const presence = viewerId
+    ? db.prepare(`
+        SELECT lat, lng, captured_at
+        FROM account_location_presence
+        WHERE user_id = ? AND permission_status = 'granted'
+      `).get(viewerId)
+    : null;
+  const hasCoordinates =
+    Number.isFinite(Number(presence?.lat)) && Number.isFinite(Number(presence?.lng));
+  const toRadians = (value) => (Number(value) * Math.PI) / 180;
+  const distanceKm = (lat, lng) => {
+    const earthRadiusKm = 6371;
+    const latDelta = toRadians(Number(lat) - Number(presence.lat));
+    const lngDelta = toRadians(Number(lng) - Number(presence.lng));
+    const a =
+      Math.sin(latDelta / 2) ** 2 +
+      Math.cos(toRadians(presence.lat)) *
+        Math.cos(toRadians(lat)) *
+        Math.sin(lngDelta / 2) ** 2;
+    return Number((2 * earthRadiusKm * Math.asin(Math.sqrt(a))).toFixed(2));
+  };
+
+  const sellers = listActiveStores({
+    query,
+    campus: hasCoordinates ? "" : cleanCampus,
+    viewerId,
+    limit: 100,
+  }).map((store) => ({
+    ...store,
+    distanceKm:
+      hasCoordinates &&
+        store._pickupCoordinates?.lat !== null &&
+        store._pickupCoordinates?.lng !== null
+        ? distanceKm(store._pickupCoordinates.lat, store._pickupCoordinates.lng)
+        : null,
+  })).sort((first, second) => {
+    if (first.distanceKm === null) return 1;
+    if (second.distanceKm === null) return -1;
+    return first.distanceKm - second.distanceKm;
+  }).slice(0, 50);
+  const storeDistances = new Map(sellers.map((store) => [store.id, store.distanceKm]));
+  const products = listPublicProducts({
+    query,
+    campus: hasCoordinates ? "" : cleanCampus,
+    viewerId,
+    limit: 100,
+    order: "engagement",
+  }).filter((product) => storeDistances.has(product.store?.id || product.storeId))
+    .map((product) => ({
+      ...product,
+      distanceKm: storeDistances.get(product.store?.id || product.storeId) ?? null,
+    }))
+    .sort((first, second) => Number(first.distanceKm ?? Number.MAX_VALUE) - Number(second.distanceKm ?? Number.MAX_VALUE))
+    .slice(0, 50);
 
   return {
-    locationMode: cleanCampus ? "campus" : "platform",
+    locationMode: hasCoordinates ? "distance" : cleanCampus ? "campus" : "platform",
     selectedCampus: cleanCampus,
-    note: cleanCampus
-      ? "Nearby ranking is currently campus-prioritized until map distance APIs are connected."
-      : "Choose a campus/location later to make nearby ranking more exact.",
-    sellers: listActiveStores({
-      query,
-      campus: cleanCampus,
-      viewerId,
-      limit: 50,
-    }),
-    products: listPublicProducts({
-      query,
-      campus: cleanCampus,
-      viewerId,
-      limit: 50,
-      order: "engagement",
-    }),
+    note: hasCoordinates
+      ? "Ranked by saved straight-line distance. No map-routing token is used for this list."
+      : cleanCampus
+        ? "Ranked around your saved campus until browser location is available."
+        : "Enable browser location once to rank sellers by distance.",
+    originCapturedAt: presence?.captured_at || null,
+    sellers,
+    products,
   };
 }
 
@@ -1376,13 +1479,6 @@ export function assertCategoryAllowedForStore(storeInput, category, { itemType =
     }
 
     ensureCategoryAllowedByMarket(market, cleanCategory);
-  }
-
-  if (sellerType === "nearby") {
-    const verificationStatus = store.verification_status || "";
-    if (verificationStatus !== "verified") {
-      throw new HttpError(403, "Admin must approve your Nearby Seller profile before uploads.");
-    }
   }
 
   if (!hasApprovedSellerCategory(store, cleanCategory)) {

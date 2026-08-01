@@ -16,6 +16,7 @@ export function optionalAuth(req, _res, next) {
     "/api/location",
     "/api/verification",
     "/api/notifications",
+    "/api/messages",
     "/api/security",
     "/api/kyc",
   ].some((prefix) => requestPath.startsWith(prefix));
@@ -25,10 +26,17 @@ export function optionalAuth(req, _res, next) {
     requestPath === "/api/package-rules" ||
     requestPath.startsWith("/api/package-rules/") ||
     requestPath.startsWith("/api/verification/admin/") ||
-    requestPath === "/api/verification/admin/queues";
+    requestPath === "/api/verification/admin/queues" ||
+    requestPath.startsWith("/api/notifications") ||
+    requestPath.startsWith("/api/messages");
   const riderPath = requestPath.startsWith("/api/rider") || sharedRiderPath;
   const adminPath = requestPath.startsWith("/api/admin") || sharedAdminPath;
-  let portal = adminPath
+  const sharedAccountPath =
+    requestPath.startsWith("/api/notifications") ||
+    requestPath.startsWith("/api/messages");
+  let portal = sharedAccountPath
+    ? "user"
+    : adminPath
     ? "admin"
     : requestPath.startsWith("/api/rider")
       ? "rider"

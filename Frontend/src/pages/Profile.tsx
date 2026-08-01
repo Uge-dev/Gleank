@@ -80,7 +80,7 @@ const quickActions = [
     title: "Used Market Messages",
     description: "Chat with buyers and sellers around used items and protected orders.",
     icon: <FiMessageCircle />,
-    path: "/used-messages",
+    path: "/messages",
   },
   {
     title: "Saved Items",
@@ -124,7 +124,7 @@ function Profile() {
   const displayName = user?.name || "Gleenc User";
   const displayEmail = user?.email || "user@gleenc.com";
   const displayCampus = user?.campus || "Campus not set";
-  const accountType = user?.role === "seller" || store ? "Campus Seller" : "Campus Buyer";
+  const accountType = user?.role === "seller" || store ? "Seller" : "Buyer";
   const profileAvatarUrl = store?.logoUrl
     ? resolveMediaUrl(store.logoUrl, "")
     : uploadedAvatarUrl

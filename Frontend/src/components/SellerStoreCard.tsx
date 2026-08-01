@@ -39,7 +39,7 @@ function SellerStoreCard({
           <h2>{store.name}</h2>
           <p>@{store.slug}</p>
           <span>
-            {store.campus} • {store.verified ? "Verified store" : "Campus store"}
+            {store.verified ? "Verified store" : "Seller store"}
           </span>
         </div>
       </div>

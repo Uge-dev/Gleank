@@ -15,6 +15,17 @@ export type RegisterInput = {
   campus: string;
   phone?: string;
   storeName?: string;
+  sellerType?: "campus" | "local_market" | "used_market";
+  country?: string;
+  state?: string;
+  city?: string;
+  nearestCampus?: string;
+  nearestMarketplace?: string;
+  street?: string;
+  pickupPlaceId?: string;
+  pickupLat?: number;
+  pickupLng?: number;
+  locationVerifiedAt?: string;
 };
 
 export function getCurrentSession() {

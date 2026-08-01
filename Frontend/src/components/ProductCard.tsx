@@ -27,7 +27,6 @@ function ProductCard({
   name,
   price,
   category,
-  campus,
   seller,
   mediaType,
   imageUrl,
@@ -85,7 +84,7 @@ function ProductCard({
         <h3>{name}</h3>
 
         <p>
-          {category} • {campus}
+          {category}
           {stock !== undefined
             ? ` • ${Number(stock) <= 0 ? "Out of stock" : `${Number(stock)} In stock`}`
             : ""}

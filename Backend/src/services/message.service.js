@@ -17,6 +17,23 @@ function parseImages(value) {
   }
 }
 
+function parseObject(value) {
+  try {
+    const parsed = JSON.parse(value || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function directConversationKey(firstUserId, secondUserId) {
+  return `direct:${[String(firstUserId || ""), String(secondUserId || "")].sort().join(":")}`;
+}
+
+function supportConversationKey(buyerId, sellerId) {
+  return `support:${String(buyerId || "")}:${String(sellerId || "")}`;
+}
+
 function serializeConversation(row, viewerUserId) {
   const viewerIsBuyer = row.buyer_id === viewerUserId;
   const otherUserId = viewerIsBuyer ? row.seller_id : row.buyer_id;
@@ -194,6 +211,14 @@ function serializeMessage(row) {
     senderAvatarUrl: row.sender_avatar_url || null,
     body: row.body,
     attachmentUrl: row.attachment_url || null,
+    context:
+      row.context_type && row.context_id
+        ? {
+            type: row.context_type,
+            id: row.context_id,
+            ...parseObject(row.context_snapshot),
+          }
+        : null,
     isRead: Boolean(row.is_read),
     createdAt: row.created_at,
   };
@@ -284,10 +309,12 @@ function normalizeDirectConversationDuplicates(firstUserId, secondUserId, prefer
     .get(primary.id);
 
   const now = new Date().toISOString();
+  const conversationKey = directConversationKey(firstUserId, secondUserId);
   db.prepare(`
     UPDATE conversations
     SET context_type = ?,
         context_id = ?,
+        conversation_key = ?,
         listing_id = COALESCE(listing_id, ?),
         order_id = COALESCE(order_id, ?),
         last_message_body = ?,
@@ -297,6 +324,7 @@ function normalizeDirectConversationDuplicates(firstUserId, secondUserId, prefer
   `).run(
     clean(preferredContext.contextType || primary.context_type, 40),
     clean(preferredContext.contextId || primary.context_id, 180),
+    conversationKey,
     preferredContext.listingId || null,
     preferredContext.orderId || null,
     latestMessage?.body || primary.last_message_body || "",
@@ -306,6 +334,82 @@ function normalizeDirectConversationDuplicates(firstUserId, secondUserId, prefer
   );
 
   return primary.id;
+}
+
+function resolveMessageContext(conversation, contextType, contextId) {
+  const type = clean(contextType, 40);
+  const id = clean(contextId, 180);
+  if (!type && !id) return null;
+  if (!id || !["product", "used_listing"].includes(type)) {
+    throw new HttpError(422, "This message context is not supported.");
+  }
+
+  const participants = new Set([conversation.buyerId, conversation.sellerId]);
+
+  if (type === "product") {
+    const product = db.prepare(`
+      SELECT products.id, products.name, products.price_kobo, products.image_urls,
+             stores.owner_id, stores.slug
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+        AND products.status IN ('active', 'out_of_stock')
+        AND stores.status = 'active'
+    `).get(id);
+    if (!product || !participants.has(product.owner_id)) {
+      throw new HttpError(404, "The product for this conversation was not found.");
+    }
+
+    return {
+      type,
+      id: product.id,
+      name: clean(product.name, 180),
+      imageUrl: parseImages(product.image_urls)[0] || null,
+      priceKobo: Number(product.price_kobo || 0),
+      href: `/products/${product.id}`,
+    };
+  }
+
+  const listing = db.prepare(`
+    SELECT id, seller_id, name, price_kobo, image_urls
+    FROM used_listings
+    WHERE id = ? AND status IN ('active', 'sold')
+  `).get(id);
+  if (!listing || !participants.has(listing.seller_id)) {
+    throw new HttpError(404, "The used item for this conversation was not found.");
+  }
+
+  return {
+    type,
+    id: listing.id,
+    name: clean(listing.name, 180),
+    imageUrl: parseImages(listing.image_urls)[0] || null,
+    priceKobo: Number(listing.price_kobo || 0),
+    href: `/used-market/${listing.id}`,
+  };
+}
+
+export function getConversationDraftContext(userId, conversationId, contextType, contextId) {
+  const conversation = getConversation(userId, conversationId);
+  return resolveMessageContext(conversation, contextType, contextId);
+}
+
+export function createProductConversation(userId, productId) {
+  const product = db.prepare(`
+    SELECT products.id, stores.id AS store_id, stores.slug
+    FROM products
+    JOIN stores ON stores.id = products.store_id
+    WHERE products.id = ?
+      AND products.status IN ('active', 'out_of_stock')
+      AND stores.status = 'active'
+  `).get(productId);
+  if (!product) throw new HttpError(404, "Product was not found.");
+
+  const conversation = createStoreConversation(userId, product.store_id || product.slug);
+  return {
+    conversation,
+    draftContext: getConversationDraftContext(userId, conversation.id, "product", product.id),
+  };
 }
 
 function normalizeAllDirectConversationDuplicates(userId) {
@@ -372,10 +476,10 @@ export function createUsedListingConversation(userId, listingId) {
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, listing_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, listing_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'used_listing', ?, ?, ?, ?, '', NULL, ?, ?)
-  `).run(id, listingId, listingId, userId, listing.seller_id, now, now);
+    ) VALUES (?, ?, 'used_listing', ?, ?, ?, ?, '', NULL, ?, ?)
+  `).run(id, directConversationKey(userId, listing.seller_id), listingId, listingId, userId, listing.seller_id, now, now);
 
   return getConversation(userId, id);
 }
@@ -425,10 +529,10 @@ export function createUsedOrderConversation(userId, orderId) {
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, listing_id, order_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, listing_id, order_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'used_order', ?, ?, ?, ?, ?, '', NULL, ?, ?)
-  `).run(id, orderId, order.listing_id, orderId, order.buyer_id, order.seller_id, now, now);
+    ) VALUES (?, ?, 'used_order', ?, ?, ?, ?, ?, '', NULL, ?, ?)
+  `).run(id, directConversationKey(order.buyer_id, order.seller_id), orderId, order.listing_id, orderId, order.buyer_id, order.seller_id, now, now);
 
   db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE id = ?").run(id, orderId);
 
@@ -463,10 +567,10 @@ export function createStoreConversation(userId, storeIdOrSlug) {
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'store', ?, ?, ?, '', NULL, ?, ?)
-  `).run(id, store.id, userId, store.owner_id, now, now);
+    ) VALUES (?, ?, 'store', ?, ?, ?, '', NULL, ?, ?)
+  `).run(id, directConversationKey(userId, store.owner_id), store.id, userId, store.owner_id, now, now);
 
   return getConversation(userId, id);
 }
@@ -496,10 +600,10 @@ export function createStoreOrderConversation(userId, orderId) {
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, order_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, order_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'store', ?, ?, ?, ?, '', NULL, ?, ?)
-  `).run(id, contextId, order.id, order.buyer_id, order.seller_id, now, now);
+    ) VALUES (?, ?, 'store', ?, ?, ?, ?, '', NULL, ?, ?)
+  `).run(id, directConversationKey(order.buyer_id, order.seller_id), contextId, order.id, order.buyer_id, order.seller_id, now, now);
 
   return getConversation(userId, id);
 }
@@ -562,10 +666,10 @@ export function createDeliveryAssignmentConversation(userId, assignmentId) {
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, order_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, order_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'store', ?, ?, ?, ?, 'Delivery chat opened.', ?, ?, ?)
-  `).run(id, contextId, assignment.order_id || assignment.id, buyerId, sellerId, now, now, now);
+    ) VALUES (?, ?, 'store', ?, ?, ?, ?, 'Delivery chat opened.', ?, ?, ?)
+  `).run(id, directConversationKey(buyerId, sellerId), contextId, assignment.order_id || assignment.id, buyerId, sellerId, now, now, now);
 
   if (userRole === "admin") recordAdminConversationAccess(userId, id, "Delivery assignment review", assignment.delivery_batch_id);
 
@@ -602,17 +706,21 @@ export function createSupportConversation(userId) {
     `)
     .get(userId, support.id);
 
-  if (existing) return getConversation(userId, existing.id);
+  if (existing) {
+    db.prepare("UPDATE conversations SET conversation_key = ? WHERE id = ?")
+      .run(supportConversationKey(userId, support.id), existing.id);
+    return getConversation(userId, existing.id);
+  }
 
   const now = new Date().toISOString();
   const id = createId("cnv");
 
   db.prepare(`
     INSERT INTO conversations (
-      id, context_type, context_id, buyer_id, seller_id,
+      id, conversation_key, context_type, context_id, buyer_id, seller_id,
       last_message_body, last_message_at, created_at, updated_at
-    ) VALUES (?, 'support', 'admin', ?, ?, 'Gleenc support is ready to help.', ?, ?, ?)
-  `).run(id, userId, support.id, now, now, now);
+    ) VALUES (?, ?, 'support', 'admin', ?, ?, 'Gleenc support is ready to help.', ?, ?, ?)
+  `).run(id, supportConversationKey(userId, support.id), userId, support.id, now, now, now);
 
   db.prepare(`
     INSERT INTO messages (id, conversation_id, sender_id, body, attachment_url, is_read, created_at)
@@ -695,7 +803,14 @@ export function sendMessage(userId, conversationId, input) {
 
   const body = clean(input?.body, 1600);
   const attachmentUrl = clean(input?.attachmentUrl, 2000);
-  if (!body && !attachmentUrl) throw new HttpError(422, "Message cannot be empty.");
+  const messageContext = resolveMessageContext(
+    conversation,
+    input?.contextType,
+    input?.contextId,
+  );
+  if (!body && !attachmentUrl && !messageContext) {
+    throw new HttpError(422, "Message cannot be empty.");
+  }
 
   const now = new Date().toISOString();
   const id = createId("msg");
@@ -710,12 +825,32 @@ export function sendMessage(userId, conversationId, input) {
       })
     : { body, flagged: false, warning: "" };
   const finalBody = clean(protectedMessage.body, 1600);
-  const previewBody = finalBody || "Sent an image";
+  const previewBody = finalBody || (messageContext ? `Shared ${messageContext.name}` : "Sent an image");
+  const contextSnapshot = messageContext
+    ? JSON.stringify({
+        name: messageContext.name,
+        imageUrl: messageContext.imageUrl,
+        priceKobo: messageContext.priceKobo,
+        href: messageContext.href,
+      })
+    : "{}";
 
   db.prepare(`
-    INSERT INTO messages (id, conversation_id, sender_id, body, attachment_url, is_read, created_at)
-    VALUES (?, ?, ?, ?, ?, 0, ?)
-  `).run(id, conversationId, userId, finalBody, attachmentUrl || null, now);
+    INSERT INTO messages (
+      id, conversation_id, sender_id, body, attachment_url,
+      context_type, context_id, context_snapshot, is_read, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
+  `).run(
+    id,
+    conversationId,
+    userId,
+    finalBody,
+    attachmentUrl || null,
+    messageContext?.type || "",
+    messageContext?.id || "",
+    contextSnapshot,
+    now,
+  );
 
   db.prepare(`
     UPDATE conversations
@@ -733,9 +868,7 @@ export function sendMessage(userId, conversationId, input) {
       title: `New message from ${sender?.name || "Gleenc user"}`,
       body: previewBody,
       actionLabel: "Open chat",
-      actionPath: conversation.contextType === "used_order" || conversation.contextType === "used_listing"
-        ? `/used-messages?conversation=${conversation.id}`
-        : `/messages`,
+      actionPath: `/messages?conversation=${conversation.id}`,
       imageUrl: sender?.avatar_url || conversation.storeLogoUrl || conversation.listingImageUrl || "",
     });
   }

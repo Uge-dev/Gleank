@@ -305,6 +305,126 @@
   }
 }
 
+/* Support inbox mirrors the buyer/seller messaging workspace. */
+.admin-support-panel {
+  padding: 0;
+}
+
+.admin-support-workspace {
+  border-top: 0;
+  grid-template-columns: minmax(320px, 34%) minmax(0, 1fr);
+}
+
+.admin-support-inbox-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 20px 16px 12px;
+  border-bottom: 1px solid #eef2f7;
+  background: #fff;
+}
+
+.admin-support-inbox-head > span {
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.admin-support-inbox-head h2 {
+  margin: 4px 0 14px;
+  color: #0f172a;
+  font-size: 1.8rem;
+}
+
+.admin-support-inbox-head label {
+  min-height: 44px;
+  padding: 0 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.admin-support-inbox-head input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0f172a;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.admin-support-inbox-head > div {
+  margin-top: 10px;
+  display: flex;
+  gap: 5px;
+  overflow-x: auto;
+}
+
+.admin-support-inbox-head > div button {
+  min-height: 31px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.admin-support-inbox-head > div button.active {
+  background: #0f172a;
+  color: #fff;
+}
+
+.admin-support-chat,
+.admin-support-chat .admin-support-thread {
+  background: #fff;
+}
+
+.admin-support-chat-head {
+  background: #fff;
+  border-bottom-color: #eef2f7;
+}
+
+.admin-support-reply {
+  min-height: 72px;
+  padding: 11px 16px;
+  background: #fff;
+}
+
+.admin-support-reply textarea {
+  min-height: 44px;
+  max-height: 110px;
+  resize: none;
+  border-radius: 999px;
+  background: #f8fafc;
+}
+
+.admin-support-send-btn {
+  width: 44px;
+  min-width: 44px;
+  border-radius: 50%;
+}
+
+.admin-brand-mark img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+@media (max-width: 780px) {
+  .admin-support-workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
 .admin-shell *,
 .admin-login-page * {
   box-sizing: border-box;

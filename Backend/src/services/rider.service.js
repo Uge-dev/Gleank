@@ -557,11 +557,9 @@ function sourceForOrder(orderType, order) {
   const marketSource =
     sellerType === "local_market"
       ? "Local Market"
-      : sellerType === "nearby"
-        ? "Nearby Seller"
-        : sellerType === "used_market"
+      : sellerType === "used_market"
           ? "Used Market"
-          : "Campus Market";
+          : "Seller pickup";
 
   return {
     marketSource,

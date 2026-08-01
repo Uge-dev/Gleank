@@ -258,7 +258,7 @@ function Search() {
                         <span>{product.category}</span>
                         <h3>{product.name}</h3>
                         <p>
-                          {product.category} • {product.storeCampus || "Gleenc"} •{" "}
+                          {product.category} •{" "}
                           {product.status === "out_of_stock"
                             ? "Out of stock"
                             : `${product.stock} In stock`}
@@ -358,7 +358,7 @@ function Search() {
               <div className="search-section-heading">
                 <div>
                   <span>Sellers</span>
-                  <h2>Campus sellers and stores</h2>
+                  <h2>Sellers and stores</h2>
                 </div>
                 <small>{results.stores.length}</small>
               </div>
@@ -389,7 +389,7 @@ function Search() {
                         <div>
                           <span>{store.category}</span>
                           <h3>{store.name}</h3>
-                          <p>{store.campus || "Campus not specified"}</p>
+                          <p>{store.category || "Seller store"}</p>
                           <small>
                             <FiStar />
                             {store.verified ? "Verified" : "Active store"}

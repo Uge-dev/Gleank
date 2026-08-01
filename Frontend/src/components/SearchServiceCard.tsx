@@ -23,7 +23,7 @@ function SearchServiceCard({ service, onRequireAuth }: SearchServiceCardProps) {
         <h3>{service.title}</h3>
 
         <p>
-          {service.category} • {service.campus}
+          {service.category}
         </p>
 
         <small>{service.seller}</small>

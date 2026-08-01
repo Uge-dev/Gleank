@@ -4,28 +4,37 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useAuth } from './context/AuthContext';
 import RiderLayout from './layouts/RiderLayout';
-import Login from './pages/auth/Login';
-import Signup from './pages/auth/Signup';
-import RiderForgotPassword from './pages/auth/ForgotPassword';
-import RiderResetPassword from './pages/auth/ResetPassword';
-import RiderVerifyResetCode from './pages/auth/VerifyResetCode';
-import RiderVerifyEmail from './pages/auth/VerifyEmail';
-import Dashboard from './pages/Dashboard';
-import AssignedOrders from './pages/AssignedOrders';
-import ActiveDeliveries from './pages/ActiveDeliveries';
-import DeliveryVerification from './pages/DeliveryVerification';
-import DeliveryDetails from './pages/DeliveryDetails';
-import CompletedDeliveries from './pages/CompletedDeliveries';
-import Earnings from './pages/Earnings';
-import Notifications from './pages/Notifications';
-import Profile from './pages/Profile';
-import Settings from './pages/Settings';
-import VerificationCenter from './pages/VerificationCenter';
-import SafetyCenter from './pages/SafetyCenter';
-import NotFound from './pages/NotFound';
 import LocationPermissionNotice from '../components/LocationPermissionNotice';
 
+const Login = lazy(() => import('./pages/auth/Login'));
+const Signup = lazy(() => import('./pages/auth/Signup'));
+const RiderForgotPassword = lazy(() => import('./pages/auth/ForgotPassword'));
+const RiderResetPassword = lazy(() => import('./pages/auth/ResetPassword'));
+const RiderVerifyResetCode = lazy(() => import('./pages/auth/VerifyResetCode'));
+const RiderVerifyEmail = lazy(() => import('./pages/auth/VerifyEmail'));
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const AssignedOrders = lazy(() => import('./pages/AssignedOrders'));
+const ActiveDeliveries = lazy(() => import('./pages/ActiveDeliveries'));
+const DeliveryVerification = lazy(() => import('./pages/DeliveryVerification'));
+const DeliveryDetails = lazy(() => import('./pages/DeliveryDetails'));
 const Navigation = lazy(() => import('./pages/Navigation'));
+const CompletedDeliveries = lazy(() => import('./pages/CompletedDeliveries'));
+const Earnings = lazy(() => import('./pages/Earnings'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const RiderMessages = lazy(() => import('./pages/Messages'));
+const Profile = lazy(() => import('./pages/Profile'));
+const Settings = lazy(() => import('./pages/Settings'));
+const VerificationCenter = lazy(() => import('./pages/VerificationCenter'));
+const SafetyCenter = lazy(() => import('./pages/SafetyCenter'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+
+function RiderRouteFallback() {
+  return (
+    <main className="grid min-h-[24rem] place-items-center">
+      <p className="font-bold text-slate-600">Loading rider page...</p>
+    </main>
+  );
+}
 
 function ProtectedRoute({ children }: { children: ReactElement }) {
   const { rider, loading } = useAuth();
@@ -49,7 +58,8 @@ export default function App() {
     <>
       <LocationPermissionNotice />
       <AnimatePresence mode="wait">
-        <Routes>
+        <Suspense fallback={<RiderRouteFallback />}>
+          <Routes>
         <Route path="/" element={<Navigate to="/rider" replace />} />
         <Route path="/rider/login" element={<Login />} />
         <Route path="/rider/signup" element={<Signup />} />
@@ -74,28 +84,20 @@ export default function App() {
           <Route path="delivery/:orderId" element={<DeliveryDetails />} />
           <Route
             path="navigate/:assignmentId"
-            element={
-              <Suspense
-                fallback={
-                  <main className="grid min-h-[24rem] place-items-center">
-                    <p className="font-bold text-slate-600">Loading map...</p>
-                  </main>
-                }
-              >
-                <Navigation />
-              </Suspense>
-            }
+            element={<Navigation />}
           />
           <Route path="completed" element={<CompletedDeliveries />} />
           <Route path="earnings" element={<Earnings />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="messages" element={<RiderMessages />} />
           <Route path="verification" element={<VerificationCenter />} />
           <Route path="safety" element={<SafetyCenter />} />
           <Route path="profile" element={<Profile />} />
           <Route path="settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<NotFound />} />
-        </Routes>
+          </Routes>
+        </Suspense>
       </AnimatePresence>
     </>
   );

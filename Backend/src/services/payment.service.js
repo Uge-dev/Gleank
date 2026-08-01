@@ -529,7 +529,7 @@ function insertPaymentTransaction({
   );
 }
 
-function getStoreOrderForPayment(userId, orderId) {
+function getStoreOrderForPayment(userId, orderId, { payAtDelivery = false } = {}) {
   const order = db
     .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
     .get(orderId, userId);
@@ -542,8 +542,16 @@ function getStoreOrderForPayment(userId, orderId) {
     throw new HttpError(422, "This order has already been paid.");
   }
 
-  if (order.seller_confirmation_required && !order.seller_confirmed_at) {
-    throw new HttpError(422, "The seller must confirm item availability before payment can continue.");
+  if (order.payment_method === "pay_on_delivery" && !payAtDelivery) {
+    throw new HttpError(422, "Use the Pay at Delivery payment step after the seller confirms this order.");
+  }
+
+  if (
+    payAtDelivery &&
+    (order.payment_method !== "pay_on_delivery" ||
+      !["seller_confirmed", "ready_for_delivery", "out_for_delivery"].includes(order.status))
+  ) {
+    throw new HttpError(422, "Pay at Delivery can only open after seller confirmation or rider pickup.");
   }
 
   const payableStatuses = new Set([
@@ -952,7 +960,9 @@ export async function initializePayment(userId, input) {
   let prefix = "GLK-PAY";
 
   if (purpose === "store_order") {
-    const order = getStoreOrderForPayment(userId, targetId);
+    const order = getStoreOrderForPayment(userId, targetId, {
+      payAtDelivery: Boolean(input?.payAtDelivery),
+    });
     orderId = order.id;
     amountKobo = order.total_kobo;
     prefix = "GLK-PAY";

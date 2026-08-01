@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { FiCheckCircle, FiHome, FiKey, FiPackage, FiTruck, FiUser } from 'react-icons/fi';
+import { FiCheckCircle, FiHome, FiKey, FiMessageCircle, FiPackage, FiTruck } from 'react-icons/fi';
 import { useRiderData } from '../../context/RiderDataContext';
 
 type RiderMobileNavItem = {
@@ -15,7 +15,7 @@ const riderMobileNavItems: RiderMobileNavItem[] = [
   { label: 'New Jobs', path: '/rider/assigned', icon: FiPackage, badge: 'assignments' },
   { label: 'Active', path: '/rider/active', icon: FiTruck, badge: 'active' },
   { label: 'Done', path: '/rider/completed', icon: FiCheckCircle },
-  { label: 'Profile', path: '/rider/profile', icon: FiUser }
+  { label: 'Chats', path: '/rider/messages', icon: FiMessageCircle }
 ];
 
 export default function RiderMobileNav() {

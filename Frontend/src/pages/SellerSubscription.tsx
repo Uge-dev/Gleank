@@ -76,7 +76,7 @@ function SellerSubscription() {
 
       <div className="subscription-plan-card">
         <div className="subscription-plan-icon"><FiCreditCard /></div>
-        <span>Campus Seller Monthly</span>
+        <span>Seller Monthly</span>
         <h2>₦{(subscription?.amount || 1999).toLocaleString()} / month</h2>
         <p>Status: <strong>{subscriptionStatus.replaceAll("_", " ")}</strong></p>
         {subscription?.currentPeriodEnd && <p>Active until {new Date(subscription.currentPeriodEnd).toLocaleString()}</p>}

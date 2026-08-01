@@ -315,23 +315,20 @@ export function CartProvider({ children }: CartProviderProps) {
     localStorage.removeItem(OLD_GLOBAL_CART_KEY);
   }
 
-  const value = useMemo(
-    () => ({
-      cartItems,
-      cartCount,
-      cartSubtotal,
-      cartDrawerOpen,
-      openCartDrawer,
-      closeCartDrawer,
-      addToCart,
-      increaseQuantity,
-      decreaseQuantity,
-      removeFromCart,
-      removeCartProducts,
-      clearCart,
-    }),
-    [cartDrawerOpen, cartCount, cartItems, cartSubtotal, currentUserId],
-  );
+  const value = {
+    cartItems,
+    cartCount,
+    cartSubtotal,
+    cartDrawerOpen,
+    openCartDrawer,
+    closeCartDrawer,
+    addToCart,
+    increaseQuantity,
+    decreaseQuantity,
+    removeFromCart,
+    removeCartProducts,
+    clearCart,
+  };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

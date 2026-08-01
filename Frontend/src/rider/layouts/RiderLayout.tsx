@@ -25,7 +25,7 @@ export default function RiderLayout() {
       </AnimatePresence>
       <div className="lg:pl-72">
         <Topbar onMenu={() => setMobileNavOpen(true)} />
-        <main className="px-4 pb-28 pt-6 lg:px-8 lg:py-8">
+        <main className="px-4 pb-28 pt-24 lg:px-8 lg:pb-8 lg:pt-24">
           <Outlet />
         </main>
       </div>

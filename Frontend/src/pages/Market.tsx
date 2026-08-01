@@ -125,6 +125,16 @@ function Market() {
 
     return rows;
   }, [hub]);
+  const discoveryTags = useMemo(() => {
+    if (!hub) return [];
+    const tags = new Set<string>();
+    hub.localMarkets.forEach((market) => tags.add(market.name));
+    hub.nearbySellers.forEach((store) => {
+      if (store.nearestCampus) tags.add(store.nearestCampus);
+      if (store.nearestMarketplace) tags.add(store.nearestMarketplace);
+    });
+    return [...tags].filter(Boolean).slice(0, 16);
+  }, [hub]);
 
   if (isLoading) {
     return (
@@ -177,6 +187,16 @@ function Market() {
             </Link>
           ))}
         </div>
+
+        {discoveryTags.length > 0 ? (
+          <div className="market-discovery-tags" aria-label="Popular campuses and marketplaces">
+            {discoveryTags.map((tag) => (
+              <Link key={tag} to={`/market/search?q=${encodeURIComponent(tag)}`}>
+                <FiMapPin /> {tag}
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {error && !hub ? (

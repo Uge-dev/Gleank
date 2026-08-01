@@ -14,9 +14,11 @@ export function createStore(store) {
       id, owner_id, slug, name, description, campus, category, phone,
       seller_type, operating_hours, whatsapp_phone, allow_rider_whatsapp_contact,
       location_area, pickup_location, nearest_landmark, market_id,
-      shop_stall_number, shop_section, pickup_lat, pickup_lng,
+      shop_stall_number, shop_section, country, state, city,
+      nearest_campus, nearest_marketplace, street, pickup_place_id,
+      location_verified_at, pickup_lat, pickup_lng,
       status, verified, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     store.id,
     store.ownerId,
@@ -36,6 +38,14 @@ export function createStore(store) {
     store.marketId || null,
     store.shopStallNumber || "",
     store.shopSection || "",
+    store.country || "Nigeria",
+    store.state || "",
+    store.city || "",
+    store.nearestCampus || store.campus || "",
+    store.nearestMarketplace || "",
+    store.street || store.pickupLocation || "",
+    store.pickupPlaceId || "",
+    store.locationVerifiedAt || null,
     store.pickupLat ?? null,
     store.pickupLng ?? null,
     store.status,
@@ -48,6 +58,8 @@ export function createStore(store) {
 }
 
 export function updateStore(ownerId, updates) {
+  const existing = findStoreByOwnerId(ownerId);
+
   db.prepare(`
     UPDATE stores
     SET name = ?, description = ?, campus = ?, category = ?, phone = ?,
@@ -74,8 +86,8 @@ export function updateStore(ownerId, updates) {
     updates.marketId || null,
     updates.shopStallNumber || "",
     updates.shopSection || "",
-    updates.pickupLat ?? null,
-    updates.pickupLng ?? null,
+    updates.pickupLat ?? existing?.pickup_lat ?? null,
+    updates.pickupLng ?? existing?.pickup_lng ?? null,
     updates.status,
     updates.logoUrl,
     updates.coverUrl,

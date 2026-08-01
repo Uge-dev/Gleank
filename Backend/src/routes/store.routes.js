@@ -2,8 +2,8 @@ import { Router } from "express";
 import { db } from "../db/database.js";
 import {
   serializeProduct,
+  serializePublicStore,
   serializeService,
-  serializeStore,
   serializeUsedListing,
 } from "../lib/serializers.js";
 import { HttpError } from "../lib/http-error.js";
@@ -204,7 +204,7 @@ storeRouter.get("/", (req, res) => {
     `)
     .all(query, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
     .map((row) => ({
-      ...serializeStore(row),
+      ...serializePublicStore(row),
       interaction: storeInteraction(row.id, req.auth?.user_id),
     }));
 
@@ -343,7 +343,7 @@ storeRouter.get("/:slug", (req, res) => {
   const highlights = buildStoreHighlights(store.id, products, services);
 
   res.json({
-    store: serializeStore(store),
+    store: serializePublicStore(store),
     products,
     services,
     highlights,

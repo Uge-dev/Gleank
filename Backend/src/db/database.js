@@ -569,6 +569,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
+    conversation_key TEXT NOT NULL DEFAULT '',
     context_type TEXT NOT NULL CHECK (context_type IN ('used_listing', 'used_order', 'store', 'support')),
     context_id TEXT NOT NULL DEFAULT '',
     listing_id TEXT,
@@ -598,6 +599,9 @@ db.exec(`
     sender_id TEXT NOT NULL,
     body TEXT NOT NULL,
     attachment_url TEXT,
+    context_type TEXT NOT NULL DEFAULT '',
+    context_id TEXT NOT NULL DEFAULT '',
+    context_snapshot TEXT NOT NULL DEFAULT '{}',
     is_read INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -883,7 +887,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL UNIQUE,
     store_id TEXT,
-    plan_name TEXT NOT NULL DEFAULT 'Campus Seller Monthly',
+    plan_name TEXT NOT NULL DEFAULT 'Seller Monthly',
     amount_kobo INTEGER NOT NULL DEFAULT 199900 CHECK (amount_kobo >= 0),
     status TEXT NOT NULL DEFAULT 'inactive'
       CHECK (status IN ('inactive', 'active', 'expired', 'past_due', 'cancelled')),
@@ -971,6 +975,11 @@ ensureColumn("services", "service_type", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("services", "location", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("services", "min_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "max_price_kobo", "INTEGER NOT NULL DEFAULT 0");
+
+ensureColumn("conversations", "conversation_key", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("messages", "context_type", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("messages", "context_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("messages", "context_snapshot", "TEXT NOT NULL DEFAULT '{}'");
 
 ensureColumn("used_listings", "reason_for_selling", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("used_listings", "defects_disclosed", "TEXT NOT NULL DEFAULT ''");

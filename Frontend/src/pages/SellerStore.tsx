@@ -457,7 +457,6 @@ function SellerStore() {
                   "This seller is building their Gleenc store."}
               </p>
 
-              <p className="seller-campus-text">{store.campus}</p>
 
               {shareNotice && (
                 <p className="seller-share-notice" role="status">
@@ -568,7 +567,6 @@ function SellerStore() {
           {activeTab === "Services" && (
             <ServiceGrid
               services={filteredServices}
-              storeCampus={store.campus}
               onMessage={openMessages}
             />
           )}
@@ -584,7 +582,6 @@ function SellerStore() {
               {favoriteServices.length > 0 && (
                 <ServiceGrid
                   services={favoriteServices}
-                  storeCampus={store.campus}
                   onMessage={openMessages}
                   favorite
                 />
@@ -601,7 +598,6 @@ function SellerStore() {
                   {store.description || "No store description has been added."}
                 </p>
 
-                <p className="seller-about-campus">{store.campus}</p>
               </section>
 
               <section>
@@ -610,9 +606,7 @@ function SellerStore() {
                 <div className="seller-trust-list">
                   <span>
                     <FiStar />
-                    {store.verified
-                      ? "Verified campus seller"
-                      : "Campus seller"}
+                    {store.verified ? "Verified seller" : "Seller"}
                   </span>
 
                   <span>
@@ -643,13 +637,6 @@ function SellerStore() {
 
     </>
   );
-}
-
-function marketSourceLabel(store: PublicStoreWorkspace["store"]) {
-  if (store.sellerType === "local_market") return "Local Market";
-  if (store.sellerType === "nearby") return "Nearby Market";
-  if (store.sellerType === "used_market") return "Used Market";
-  return "Campus Market";
 }
 
 function toMarketProduct(
@@ -713,7 +700,6 @@ function ProductGrid({
         <MarketProductCard
           key={product.id}
           product={toMarketProduct(product, store)}
-          sourceLabel={marketSourceLabel(store)}
         />
       ))}
     </div>
@@ -722,12 +708,10 @@ function ProductGrid({
 
 function ServiceGrid({
   services,
-  storeCampus,
   onMessage,
   favorite = false,
 }: {
   services: SellerService[];
-  storeCampus: string;
   onMessage: () => void;
   favorite?: boolean;
 }) {
@@ -767,7 +751,7 @@ function ServiceGrid({
             <h3>{service.name}</h3>
             <p className="seller-service-location">
               <FiMapPin />
-              {service.location || storeCampus || "Campus service"}
+              {service.location || "Seller service"}
             </p>
             <p className="seller-service-description">
               {service.description || "Message this seller to discuss availability, timing, and service details."}

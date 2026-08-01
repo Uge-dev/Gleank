@@ -4,8 +4,8 @@ import { HttpError } from "../lib/http-error.js";
 import { createNotification } from "./notification.service.js";
 import {
   serializeProduct,
+  serializePublicStore,
   serializeService,
-  serializeStore,
   serializeUsedListing,
 } from "../lib/serializers.js";
 
@@ -31,7 +31,7 @@ function targetFor(type, itemId) {
     const row = db
       .prepare("SELECT * FROM stores WHERE id = ? AND status = 'active'")
       .get(itemId);
-    return serializeStore(row);
+    return serializePublicStore(row);
   }
 
   if (type === "service") {

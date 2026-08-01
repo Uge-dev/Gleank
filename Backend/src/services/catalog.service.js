@@ -1,7 +1,7 @@
 import { db } from "../db/database.js";
 import {
   serializeProduct,
-  serializeStore,
+  serializePublicStore,
 } from "../lib/serializers.js";
 import { HttpError } from "../lib/http-error.js";
 import {
@@ -25,7 +25,7 @@ const publicProductQuery = `
 function serializePublicProduct(row) {
   return {
     ...serializeProduct(row),
-    store: serializeStore({
+    store: serializePublicStore({
       id: row.store_id,
       owner_id: row.owner_id,
       slug: row.store_slug,

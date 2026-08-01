@@ -43,7 +43,7 @@ const stringArrayValue = z.preprocess((value) => {
 }, z.array(z.string().trim().max(80)).max(12));
 
 const sellerTypeSchema = z
-  .enum(["used_market", "campus", "local_market", "nearby"])
+  .enum(["used_market", "campus", "local_market"])
   .default("campus");
 
 const availabilitySchema = z

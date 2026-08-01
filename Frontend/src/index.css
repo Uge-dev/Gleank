@@ -361,6 +361,129 @@ html[data-theme="dark"] .seller-order-task-meta span {
   }
 }
 
+.seller-onboarding-form select {
+  width: 100%;
+  min-height: 50px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  color: #020617;
+  outline: none;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.seller-structured-location {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid #dbeafe;
+  border-radius: 22px;
+  background: #f8fbff;
+}
+
+.seller-location-street-field {
+  grid-column: 1 / -1;
+}
+
+.seller-map-pin-actions {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.seller-map-pin-actions button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: #0f172a;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.seller-map-pin-actions span {
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.seller-map-pin-actions span.confirmed {
+  color: #15803d;
+}
+
+.seller-location-matches {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.seller-location-matches button {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 15px;
+  background: #fff;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.seller-location-matches button span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.seller-location-matches button strong,
+.seller-location-matches button small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .seller-location-street-field {
+    grid-column: auto;
+  }
+}
+
+.market-discovery-tags {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.market-discovery-tags::-webkit-scrollbar {
+  display: none;
+}
+
+.market-discovery-tags a {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
 /* Seller cart shortcut in the For You header */
 .for-you-cart-link {
   width: 38px;
@@ -589,6 +712,103 @@ html[data-theme="dark"] .seller-order-task-meta span {
   }
 }
 
+/* Structured product references stay inside the canonical account-to-account
+   thread, so opening another product never creates another inbox card. */
+.message-product-context,
+.chat-draft-context {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: min(360px, 100%);
+  padding: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a !important;
+  text-decoration: none;
+}
+
+.message-product-context {
+  margin-bottom: 8px;
+}
+
+.message-product-context > img,
+.message-product-context > span:first-child,
+.chat-draft-context > img {
+  width: 48px;
+  height: 48px;
+  border-radius: 11px;
+  object-fit: cover;
+  background: #f1f5f9;
+}
+
+.message-product-context > span:first-child {
+  display: grid;
+  place-items: center;
+}
+
+.message-product-context > span:nth-child(2),
+.chat-draft-context > span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.message-product-context small,
+.chat-draft-context small {
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.message-product-context strong,
+.chat-draft-context strong {
+  overflow: hidden;
+  color: #0f172a !important;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-product-context em,
+.chat-draft-context em {
+  color: #16a34a;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.chat-draft-context {
+  grid-column: 1 / -1;
+  order: -2;
+  width: 100%;
+}
+
+.chat-draft-context > button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff1f2;
+  color: #e11d48;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.rider-message-workspace {
+  height: calc(100dvh - 7rem);
+  min-height: 560px;
+}
+
+.rider-message-workspace .messages-page,
+.rider-message-workspace .messages-layout {
+  height: 100%;
+  min-height: 0;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -676,6 +896,75 @@ body {
   font-family: "Ryo Sans", Inter, Arial, sans-serif;
   background: #ffffff;
   color: #0f172a;
+}
+
+.app-route-loading {
+  min-height: 14rem;
+  display: grid;
+  place-items: center;
+  color: var(--muted, #64748b);
+  font-weight: 800;
+}
+
+.auth-seller-location-fields {
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-location-search-btn {
+  min-height: 3rem;
+  border: 0;
+  border-radius: 1rem;
+  background: #101827;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.auth-location-search-btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.auth-location-matches {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.auth-location-matches button {
+  border: 1px solid #dbe4f0;
+  border-radius: 1rem;
+  padding: 0.85rem 1rem;
+  background: #fff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.auth-location-matches strong,
+.auth-location-matches small {
+  display: block;
+}
+
+.auth-location-matches small {
+  margin-top: 0.25rem;
+  color: #64748b;
+}
+
+.auth-location-status {
+  margin: 0;
+  color: #b45309;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.auth-location-status.confirmed {
+  color: #15803d;
 }
 
 

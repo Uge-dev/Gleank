@@ -109,18 +109,13 @@ function UsedProductDetails() {
     if (!listing) return;
 
     requireAuth(async () => {
-      if (listing.sellerRole === "seller" && listing.sellerStoreSlug) {
-        navigate(`/messages?seller=${encodeURIComponent(listing.sellerStoreSlug)}`);
-        return;
-      }
-
       setIsMessaging(true);
       try {
-        const response = await createConversation({
+        await createConversation({
           contextType: "used_listing",
           contextId: listing.id,
         });
-        navigate(`/used-messages?conversation=${response.conversation.id}`);
+        navigate(`/messages?listing=${encodeURIComponent(listing.id)}`);
       } catch (requestError) {
         setReportMessage(
           requestError instanceof Error

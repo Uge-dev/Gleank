@@ -22,6 +22,15 @@ const password = z
     }
   });
 
+const optionalLatitude = z.preprocess(
+  (value) => value === "" || value === null ? undefined : value,
+  z.coerce.number().min(-90).max(90).optional(),
+);
+const optionalLongitude = z.preprocess(
+  (value) => value === "" || value === null ? undefined : value,
+  z.coerce.number().min(-180).max(180).optional(),
+);
+
 export const registerSchema = z
   .object({
     name: z.string().trim().min(2).max(80),
@@ -31,6 +40,17 @@ export const registerSchema = z
     campus: z.string().trim().min(2).max(80),
     phone: z.string().trim().max(30).optional().default(""),
     storeName: z.string().trim().max(100).optional().default(""),
+    sellerType: z.enum(["campus", "local_market", "used_market"]).optional().default("campus"),
+    country: z.string().trim().max(80).optional().default(""),
+    state: z.string().trim().max(120).optional().default(""),
+    city: z.string().trim().max(120).optional().default(""),
+    nearestCampus: z.string().trim().max(160).optional().default(""),
+    nearestMarketplace: z.string().trim().max(180).optional().default(""),
+    street: z.string().trim().max(240).optional().default(""),
+    pickupPlaceId: z.string().trim().max(300).optional().default(""),
+    pickupLat: optionalLatitude,
+    pickupLng: optionalLongitude,
+    locationVerifiedAt: z.string().datetime().optional().or(z.literal("")),
     vehicleType: z.string().trim().max(80).optional().default(""),
     vehiclePlate: z.string().trim().max(40).optional().default(""),
     coverageArea: z.string().trim().max(160).optional().default(""),

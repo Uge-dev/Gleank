@@ -29,9 +29,8 @@ function booleanFromInput(value, fallback = false) {
 
 function sellerTypeFromInput(value) {
   const next = clean(value || "campus", 40);
-  return ["used_market", "campus", "local_market", "nearby"].includes(next)
-    ? next
-    : "campus";
+  if (next === "nearby") return "campus";
+  return ["used_market", "campus", "local_market"].includes(next) ? next : "campus";
 }
 
 function jsonFromMarketRequest(input = {}) {
@@ -53,6 +52,114 @@ function numberOrNull(value) {
   if (value === undefined || value === null || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isMappedNigeriaLocation(location = {}) {
+  return (
+    location.lat !== null &&
+    location.lng !== null &&
+    location.lat >= 4 &&
+    location.lat <= 14.7 &&
+    location.lng >= 2.5 &&
+    location.lng <= 15
+  );
+}
+
+function structuredLocationFromInput(input = {}, existing = {}, store = {}) {
+  return {
+    country: pickNext(input.country, existing?.country, store?.country || "Nigeria"),
+    state: pickNext(input.state, existing?.state, store?.state),
+    city: pickNext(input.city, existing?.city, store?.city),
+    nearestCampus: pickNext(
+      input.nearestCampus,
+      existing?.nearest_campus,
+      store?.nearest_campus || existing?.campus || store?.campus,
+    ),
+    nearestMarketplace: pickNext(
+      input.nearestMarketplace,
+      existing?.nearest_marketplace,
+      store?.nearest_marketplace,
+    ),
+    street: pickNext(
+      input.street,
+      existing?.street,
+      store?.street || input.pickupLocation || existing?.pickup_location || store?.pickup_location,
+    ),
+    placeId: pickNext(input.pickupPlaceId || input.placeId, existing?.pickup_place_id, store?.pickup_place_id),
+    lat: numberOrNull(input.pickupLat ?? input.lat ?? store?.pickup_lat),
+    lng: numberOrNull(input.pickupLng ?? input.lng ?? store?.pickup_lng),
+    verifiedAt: pickNext(
+      input.locationVerifiedAt,
+      existing?.location_verified_at,
+      store?.location_verified_at,
+    ),
+  };
+}
+
+function syncStructuredSellerLocation(userId, store, input, existing) {
+  const location = structuredLocationFromInput(input, existing, store);
+  const now = new Date().toISOString();
+  const verifiedAt =
+    isMappedNigeriaLocation(location) && location.placeId
+      ? location.verifiedAt || now
+      : null;
+
+  db.prepare(`
+    UPDATE seller_verification_profiles
+    SET country = ?, state = ?, city = ?, nearest_campus = ?,
+        nearest_marketplace = ?, street = ?, pickup_place_id = ?,
+        location_verified_at = ?, updated_at = ?
+    WHERE user_id = ?
+  `).run(
+    location.country, location.state, location.city, location.nearestCampus,
+    location.nearestMarketplace, location.street, location.placeId,
+    verifiedAt, now, userId,
+  );
+
+  db.prepare(`
+    UPDATE stores
+    SET country = ?, state = ?, city = ?, nearest_campus = ?,
+        nearest_marketplace = ?, street = ?, pickup_place_id = ?,
+        location_verified_at = ?, pickup_lat = ?, pickup_lng = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    location.country, location.state, location.city, location.nearestCampus,
+    location.nearestMarketplace, location.street, location.placeId,
+    verifiedAt, location.lat, location.lng, now, store.id,
+  );
+
+  const pickup = db.prepare(`
+    SELECT id FROM seller_pickup_locations
+    WHERE seller_id = ? AND is_default = 1
+    LIMIT 1
+  `).get(userId);
+  const values = [
+    store.id, location.street, location.city, location.nearestCampus,
+    location.nearestMarketplace, location.country, location.state, location.city,
+    location.nearestCampus, location.nearestMarketplace, location.street,
+    location.placeId, verifiedAt, location.lat, location.lng,
+    location.placeId ? "geocoded" : "manual", now,
+  ];
+  if (pickup) {
+    db.prepare(`
+      UPDATE seller_pickup_locations
+      SET store_id = ?, address = ?, area = ?, campus = ?, market_name = ?,
+          country = ?, state = ?, city = ?, nearest_campus = ?,
+          nearest_marketplace = ?, street = ?, place_id = ?, verified_at = ?,
+          lat = ?, lng = ?, source = ?, updated_at = ?
+      WHERE id = ?
+    `).run(...values, pickup.id);
+  } else {
+    db.prepare(`
+      INSERT INTO seller_pickup_locations (
+        id, seller_id, store_id, label, address, area, campus, market_name,
+        country, state, city, nearest_campus, nearest_marketplace, street,
+        place_id, verified_at, lat, lng, source, is_default, created_at, updated_at
+      ) VALUES (?, ?, ?, 'Default pickup', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `).run(createId("spl"), userId, ...values.slice(0, -1), now, now);
+  }
+
+  return { ...location, verifiedAt };
 }
 
 function uniqueStoreSlug(storeName) {
@@ -150,10 +257,23 @@ function sellerStoreDetailsComplete(row, store) {
   );
 }
 
-function sellerLocationMissing(row) {
+function sellerLocationMissing(row, store = {}) {
   const sellerType = sellerTypeFromInput(row?.seller_type);
   const marketRequest = parseJsonObject(row?.market_request_json);
   const missing = [];
+
+  if (!hasText(row?.country)) missing.push("Country");
+  if (!hasText(row?.state)) missing.push("State");
+  if (!hasText(row?.city)) missing.push("City");
+  if (!hasText(row?.nearest_campus)) missing.push("Nearest campus");
+  if (!hasText(row?.nearest_marketplace)) missing.push("Nearest marketplace");
+  if (!hasText(row?.street)) missing.push("Street address");
+  if (!hasText(row?.pickup_place_id) || !row?.location_verified_at) {
+    missing.push("Confirmed map pin");
+  }
+  if (!isMappedNigeriaLocation({ lat: numberOrNull(store?.pickup_lat), lng: numberOrNull(store?.pickup_lng) })) {
+    missing.push("Mapped pickup location within Nigeria");
+  }
 
   if (sellerType === "campus") {
     if (!hasText(row?.campus)) missing.push("Campus");
@@ -170,12 +290,6 @@ function sellerLocationMissing(row) {
     if (!hasText(row?.nearest_landmark)) missing.push("Market landmark");
     if (!hasText(row?.pickup_location)) missing.push("Pickup point");
     if (!hasText(row?.location_area)) missing.push("Area/location note");
-  }
-
-  if (sellerType === "nearby") {
-    if (!hasText(row?.location_area)) missing.push("Business area/location");
-    if (!hasText(row?.pickup_location)) missing.push("Business address / pickup location");
-    if (!hasText(row?.nearest_landmark)) missing.push("Nearest landmark");
   }
 
   if (sellerType === "used_market") {
@@ -200,7 +314,7 @@ function buildSellerVerificationProgress(row) {
     missingRequirements.push("Phone/contact details");
   }
   if (!row?.seller_type) missingRequirements.push("Seller type");
-  const locationMissing = sellerLocationMissing(row);
+  const locationMissing = sellerLocationMissing(row, store);
   const contactReady =
     user?.phone_verified || hasText(row?.phone) || hasText(user?.phone);
 
@@ -383,6 +497,14 @@ export function serializeSellerVerification(row) {
       fullName: "",
       phone: "",
       campus: "",
+      country: "Nigeria",
+      state: "",
+      city: "",
+      nearestCampus: "",
+      nearestMarketplace: "",
+      street: "",
+      pickupPlaceId: "",
+      locationVerifiedAt: null,
       sellerType: "campus",
       locationArea: "",
       pickupLocation: "",
@@ -416,7 +538,8 @@ export function serializeSellerVerification(row) {
       row.phone &&
       (row.seller_type !== "campus" || row.campus) &&
       (row.seller_type !== "local_market" || row.market_id || row.market_request_json) &&
-      (row.seller_type !== "nearby" || row.location_area) &&
+      row.country && row.state && row.city && row.nearest_campus &&
+      row.nearest_marketplace && row.street && row.location_verified_at &&
       row.face_verified &&
       row.business_description &&
       row.agreement_accepted,
@@ -429,6 +552,14 @@ export function serializeSellerVerification(row) {
     fullName: row.full_name,
     phone: row.phone,
     campus: row.campus,
+    country: row.country || "Nigeria",
+    state: row.state || "",
+    city: row.city || "",
+    nearestCampus: row.nearest_campus || row.campus || "",
+    nearestMarketplace: row.nearest_marketplace || "",
+    street: row.street || row.pickup_location || "",
+    pickupPlaceId: row.pickup_place_id || "",
+    locationVerifiedAt: row.location_verified_at || null,
     sellerType: row.seller_type || "campus",
     locationArea: row.location_area || "",
     pickupLocation: row.pickup_location || "",
@@ -547,6 +678,7 @@ export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl
       existing ? existing.agreement_accepted !== 0 : false,
     ),
   };
+  const structuredLocation = structuredLocationFromInput(input, existing, store);
 
   transaction(() => {
     if (existing) {
@@ -684,7 +816,7 @@ export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl
       });
     }
 
-    if (["local_market", "nearby"].includes(next.sellerType)) {
+    if (next.sellerType === "local_market") {
       ensureSellerCategoryRequest({
         sellerId: userId,
         storeId: store.id,
@@ -693,6 +825,15 @@ export function updateSellerOnboardingDraft(userId, input = {}, identityProofUrl
       });
     }
   });
+
+  syncStructuredSellerLocation(userId, store, {
+    ...input,
+    ...structuredLocation,
+    pickupPlaceId: structuredLocation.placeId,
+    pickupLat: structuredLocation.lat,
+    pickupLng: structuredLocation.lng,
+    locationVerifiedAt: structuredLocation.verifiedAt,
+  }, existing);
 
   return syncSellerVerificationProgress(
     userId,
@@ -827,7 +968,7 @@ function submitSellerVerificationStageRequirements(userId, stage) {
       { payload: shared, provider: "seller_onboarding_stage_1" },
     );
 
-    if (["local_market", "nearby"].includes(sellerType)) {
+    if (sellerType === "local_market") {
       submitSellerRequirementIfReviewable(
         userId,
         sellerType,
@@ -871,7 +1012,7 @@ function submitSellerVerificationStageRequirements(userId, stage) {
       );
     }
 
-    if (["local_market", "nearby"].includes(sellerType)) {
+    if (sellerType === "local_market") {
       submitSellerRequirementIfReviewable(
         userId,
         sellerType,
@@ -1001,6 +1142,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       existing ? existing.agreement_accepted !== 0 : false,
     ),
   };
+  const structuredLocation = structuredLocationFromInput(input, existing, store);
 
   if (!user?.email_verified) {
     throw new HttpError(422, "Verify your email before submitting seller verification.");
@@ -1012,6 +1154,35 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
 
   if (!next.fullName || !next.phone || !next.sellerType) {
     throw new HttpError(422, "Complete seller name, phone, and seller type.");
+  }
+
+  if (
+    !structuredLocation.country ||
+    !structuredLocation.state ||
+    !structuredLocation.city ||
+    !structuredLocation.nearestCampus ||
+    !structuredLocation.nearestMarketplace ||
+    !structuredLocation.street ||
+    !structuredLocation.placeId ||
+    structuredLocation.lat === null ||
+    structuredLocation.lng === null
+  ) {
+    throw new HttpError(
+      422,
+      "Complete country, state, city, nearest campus, nearest marketplace and street, then confirm the address map pin.",
+    );
+  }
+
+  if (
+    structuredLocation.lat < 4 ||
+    structuredLocation.lat > 14.7 ||
+    structuredLocation.lng < 2.5 ||
+    structuredLocation.lng > 15
+  ) {
+    throw new HttpError(
+      422,
+      "Confirm a mapped pickup location within Nigeria before submitting seller verification.",
+    );
   }
 
   if (next.sellerType === "campus" && (!next.campus || !next.pickupLocation || !next.nearestLandmark)) {
@@ -1028,13 +1199,6 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       !next.locationArea)
   ) {
     throw new HttpError(422, "Complete market, stall, section, landmark, pickup point, and area details.");
-  }
-
-  if (
-    next.sellerType === "nearby" &&
-    (!next.locationArea || !next.pickupLocation || !next.nearestLandmark)
-  ) {
-    throw new HttpError(422, "Complete business area, pickup address, and nearest landmark.");
   }
 
   if (
@@ -1235,7 +1399,7 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       });
     }
 
-    if (["local_market", "nearby"].includes(next.sellerType)) {
+    if (next.sellerType === "local_market") {
       ensureSellerCategoryRequest({
         sellerId: userId,
         storeId: store.id,
@@ -1278,6 +1442,15 @@ export function upsertSellerVerification(userId, input, identityProofUrl = null)
       userId,
     );
   });
+
+  syncStructuredSellerLocation(userId, store, {
+    ...input,
+    ...structuredLocation,
+    pickupPlaceId: structuredLocation.placeId,
+    pickupLat: structuredLocation.lat,
+    pickupLng: structuredLocation.lng,
+    locationVerifiedAt: structuredLocation.verifiedAt,
+  }, existing);
 
   submitSellerVerificationStageRequirements(userId, 1);
   submitSellerVerificationStageRequirements(userId, 2);

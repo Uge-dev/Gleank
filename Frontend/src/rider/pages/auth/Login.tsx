@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { FiLock, FiMail, FiTruck } from 'react-icons/fi';
+import { FiArrowLeft, FiLock, FiMail, FiTruck } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { ApiClientError } from '../../services/apiClient';
 import Button from '../../components/ui/Button';
@@ -76,6 +76,12 @@ export default function Login() {
 
       <section className="flex items-center justify-center px-2 py-10">
         <motion.form initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} onSubmit={handleSubmit} className="w-full max-w-md rounded-[2rem] border border-slate-100 bg-white p-7 shadow-soft">
+          <Link
+            to="/login"
+            className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
+          >
+            <FiArrowLeft /> Buyer/seller login
+          </Link>
           <div className="mb-8 text-center">
             <div className="mx-auto grid h-16 w-16 place-items-center overflow-hidden rounded-3xl bg-white shadow-glow">
               <img src="/Gleenc%20Mark.png" alt="" className="h-14 w-14 object-contain" />

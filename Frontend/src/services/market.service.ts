@@ -43,6 +43,7 @@ export type LocalMarket = {
 };
 
 export type MarketProduct = SellerProduct & {
+  distanceKm?: number | null;
   storeName: string;
   storeSlug: string;
   storeCampus: string;
@@ -55,7 +56,7 @@ export type MarketProduct = SellerProduct & {
     logoUrl: string | null;
     coverUrl: string | null;
     verified: boolean;
-    sellerType?: "used_market" | "campus" | "local_market" | "nearby";
+    sellerType?: "used_market" | "campus" | "local_market";
     marketId?: string | null;
   };
   interaction?: {
@@ -76,6 +77,7 @@ export type MarketProduct = SellerProduct & {
 };
 
 export type MarketStore = SearchStore & {
+  distanceKm?: number | null;
   ownerName?: string;
   ownerEmail?: string;
   ownerPhone?: string;
@@ -132,6 +134,7 @@ export type NearbySellersResponse = {
   locationMode: string;
   selectedCampus: string;
   note: string;
+  originCapturedAt?: string | null;
   sellers: MarketStore[];
   products: MarketProduct[];
 };

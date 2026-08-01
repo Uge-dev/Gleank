@@ -63,6 +63,7 @@ import {
   getAdminToken,
   markAdminSupportConversationRead,
   sendAdminSupportMessage,
+  subscribeToAdminNotifications,
   type AdminAuditLog,
   type AdminKycVerification,
   type AdminPriceRange,
@@ -442,7 +443,17 @@ function AdminSupportInbox({
     conversations[0]?.id || "",
   );
   const [mobileConversationOpen, setMobileConversationOpen] = useState(false);
+  const [inboxSearch, setInboxSearch] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<"all" | "unread" | "buyer" | "seller" | "rider">("all");
   const threadEndRef = useRef<HTMLDivElement | null>(null);
+  const visibleConversations = useMemo(() => {
+    const keyword = inboxSearch.trim().toLowerCase();
+    return conversations.filter((conversation) => {
+      if (inboxFilter === "unread" && conversation.unreadCount <= 0) return false;
+      if (["buyer", "seller", "rider"].includes(inboxFilter) && conversation.userRole !== inboxFilter) return false;
+      return !keyword || `${conversation.userName} ${conversation.userEmail} ${conversation.lastMessage}`.toLowerCase().includes(keyword);
+    });
+  }, [conversations, inboxFilter, inboxSearch]);
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ||
     conversations[0] ||
@@ -475,17 +486,34 @@ function AdminSupportInbox({
 
   return (
     <section className="admin-panel-card admin-support-panel">
-      <div className="admin-panel-head">
-        <div>
-          <h2>Support Inbox</h2>
-          <p>Reply to users and sellers who open admin chat from the More page.</p>
-        </div>
-        <span>{conversations.length} conversations</span>
-      </div>
-
       <div className={`admin-support-workspace ${mobileConversationOpen ? "chat-open" : ""}`}>
         <aside className="admin-support-conversations" aria-label="Support conversations">
-          {conversations.map((conversation) => (
+          <div className="admin-support-inbox-head">
+            <span>Live Inbox</span>
+            <h2>Messages</h2>
+            <label>
+              <FaSearch />
+              <input
+                value={inboxSearch}
+                onChange={(event) => setInboxSearch(event.target.value)}
+                placeholder="Search people or messages..."
+              />
+            </label>
+            <div>
+              {(["all", "unread", "buyer", "seller", "rider"] as const).map((filter) => (
+                <button
+                  type="button"
+                  key={filter}
+                  className={inboxFilter === filter ? "active" : ""}
+                  onClick={() => setInboxFilter(filter)}
+                >
+                  {filter === "all" ? "All" : filter[0].toUpperCase() + filter.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {visibleConversations.map((conversation) => (
             <button
               type="button"
               key={conversation.id}
@@ -510,7 +538,7 @@ function AdminSupportInbox({
                   <strong>{conversation.userName}</strong>
                   <time>{formatAdminTime(conversation.lastMessageAt)}</time>
                 </span>
-                <small>{conversation.userRole} • {conversation.campus || "Location not set"}</small>
+                <small>{conversation.userRole === "rider" ? "@rider" : conversation.userRole}</small>
                 <p>{conversation.lastMessage || "Open this conversation"}</p>
               </span>
               {conversation.unreadCount > 0 ? (
@@ -519,7 +547,7 @@ function AdminSupportInbox({
             </button>
           ))}
 
-          {conversations.length === 0 ? (
+          {visibleConversations.length === 0 ? (
             <div className="admin-empty-state">
               No support conversation matches your current search.
             </div>
@@ -760,7 +788,7 @@ function AdminDashboard() {
     void loadAdminData();
 
     const refresh = () => void loadAdminData(false);
-    const refreshTimer = window.setInterval(refresh, 5000);
+    const refreshTimer = window.setInterval(refresh, 30_000);
     const handleVisibility = () => {
       if (document.visibilityState === "visible") refresh();
     };
@@ -772,6 +800,19 @@ function AdminDashboard() {
       window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [isLoggedIn, loadAdminData]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    let refreshTimer = 0;
+    const unsubscribe = subscribeToAdminNotifications(() => {
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => void loadAdminData(false), 250);
+    });
+    return () => {
+      window.clearTimeout(refreshTimer);
+      unsubscribe();
     };
   }, [isLoggedIn, loadAdminData]);
 
@@ -1166,7 +1207,7 @@ function AdminDashboard() {
         delete next[conversation.id];
         return next;
       });
-    } catch (error) {
+    } catch {
       showAdminConnectionNotice();
     } finally {
       setReplyingConversationId("");
@@ -1179,7 +1220,7 @@ function AdminDashboard() {
     try {
       const response = await markAdminSupportConversationRead(conversation.id);
       setData(response.data);
-    } catch (error) {
+    } catch {
       showAdminConnectionNotice();
     }
   }
@@ -1242,7 +1283,7 @@ function AdminDashboard() {
     try {
       const response = await uploadAdminAvatar(file);
       setAdminProfile(response.admin);
-    } catch (error) {
+    } catch {
       showAdminConnectionNotice();
     } finally {
       setIsUploadingAdminAvatar(false);
@@ -1270,7 +1311,11 @@ function AdminDashboard() {
       <aside className={`admin-sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="admin-sidebar-head">
           <div className="admin-logo-row">
-            <div className="admin-brand-mark">G</div>
+            <div className="admin-brand-mark">
+              {adminProfile.avatarUrl ? (
+                <img src={apiUrl(adminProfile.avatarUrl)} alt="Gleenc admin" />
+              ) : "G"}
+            </div>
             <div>
               <strong>Gleenc</strong>
               <span>Admin Console</span>
@@ -1445,8 +1490,8 @@ function AdminDashboard() {
                     <MiniQueue title="Needs correction" value={verificationQueueCounts.needsInformation || 0} helper="Requirement-specific correction requests" tone="red" />
                     <MiniQueue title="Upgrade requests" value={verificationQueueCounts.upgradeRequests || 0} helper="Higher verification levels" tone="blue" />
                     <MiniQueue title="Market requests" value={data.marketRequests.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Approve missing local markets" tone="orange" />
-                    <MiniQueue title="Category approvals" value={data.categoryApprovals.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Control local/nearby seller categories" tone="blue" />
-                    <MiniQueue title="Used market approvals" value={data.usedItems.filter((item) => item.status === "pending").length} helper="Review campus used-item uploads" tone="blue" />
+                    <MiniQueue title="Category approvals" value={data.categoryApprovals.filter((item) => item.status === "pending" || item.status === "needs_more_info").length} helper="Control seller category requests" tone="blue" />
+                    <MiniQueue title="Used market approvals" value={data.usedItems.filter((item) => item.status === "pending").length} helper="Review used-item uploads" tone="blue" />
                     <MiniQueue title="Open disputes" value={data.disputes.filter((item) => item.status === "open" || item.status === "reviewing").length} helper="Buyer/seller complaints" tone="red" />
                     <MiniQueue title="Support chat" value={data.overview.unreadSupport} helper="Unread admin chat messages" tone="blue" />
                     <MiniQueue title="Payout release" value={payoutRows.length} helper="Seller payment actions" tone="green" />
@@ -1599,14 +1644,14 @@ function AdminDashboard() {
 
               <DataTable<AdminCategoryApproval>
                 title="Seller Category Approvals"
-                subtitle="Local Market and Nearby sellers can only upload in approved categories. Campus sellers remain broadly open except dangerous/prohibited categories."
+                subtitle="Review category access for sellers while keeping dangerous and prohibited categories blocked."
                 rows={data.categoryApprovals}
                 search={search}
                 onView={(approval) => openRecord(`${approval.storeName} · ${approval.categoryName}`, approval as unknown as Record<string, unknown>)}
                 columns={[
                   { label: "Store", render: (approval) => approval.storeName },
                   { label: "Seller", render: (approval) => approval.sellerName },
-                  { label: "Market", render: (approval) => approval.marketName || "Nearby / platform" },
+                  { label: "Market", render: (approval) => approval.marketName || "Platform" },
                   { label: "Category", render: (approval) => approval.categoryName },
                   { label: "Status", render: (approval) => <StatusBadge status={approval.status} /> },
                   { label: "Note", render: (approval) => approval.adminNote || "—" },
