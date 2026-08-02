@@ -163,6 +163,7 @@ export function serializeProduct(row) {
     description: row.description || "",
     ...pricePayload(row),
     stock: row.stock,
+    availableSizes: safeJsonArray(row.available_sizes),
     status: row.status,
     moderationStatus: row.moderation_status || "draft",
     moderationNote: row.moderation_note || "",

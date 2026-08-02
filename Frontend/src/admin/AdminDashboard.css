@@ -906,6 +906,56 @@
   gap: 18px;
 }
 
+.admin-market-create-card {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid #dbeafe;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #eff6ff, #ecfdf5);
+  padding: 1.25rem;
+}
+
+.admin-market-create-card h2,
+.admin-market-create-card p { margin: .2rem 0 0; }
+.admin-market-create-card > button,
+.admin-market-create-card form > button {
+  border: 0;
+  border-radius: 12px;
+  background: #0f172a;
+  color: #fff;
+  padding: .75rem 1rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.admin-market-create-card form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+  width: 100%;
+  margin-top: .5rem;
+}
+.admin-market-create-card label { display: grid; gap: .35rem; font-size: .8rem; font-weight: 800; }
+.admin-market-create-card input,
+.admin-market-create-card select {
+  min-width: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  padding: .7rem;
+}
+.admin-market-create-card .wide { grid-column: span 2; }
+@media (max-width: 850px) {
+  .admin-market-create-card form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .admin-market-create-card form { grid-template-columns: 1fr; }
+  .admin-market-create-card .wide { grid-column: auto; }
+}
+
 .admin-hero-card h2 {
   max-width: 760px;
   font-size: clamp(1.7rem, 4vw, 3.2rem);

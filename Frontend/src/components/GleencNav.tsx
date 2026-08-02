@@ -35,6 +35,7 @@ import { useAuth } from "../context/AuthContext";
 import { getUnreadMessageCount } from "../services/message.service";
 import { getNotificationUnreadCount } from "../services/notification.service";
 import { getSellerActionableOrderCount } from "../services/seller.service";
+import { getPendingBuyerOrderCount } from "../services/order.service";
 import { resolveMediaUrl } from "../utils/media";
 
 type NavItem = {
@@ -61,6 +62,7 @@ function GleencNav() {
   const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [notificationUnreadCount, setNotificationUnreadCount] = useState(0);
   const [sellerOrderCount, setSellerOrderCount] = useState(0);
+  const [buyerPendingOrderCount, setBuyerPendingOrderCount] = useState(0);
 
   const { cartCount, openCartDrawer } = useCart();
 
@@ -77,19 +79,23 @@ function GleencNav() {
       setMessageUnreadCount(0);
       setNotificationUnreadCount(0);
       setSellerOrderCount(0);
+      setBuyerPendingOrderCount(0);
       return;
     }
 
     let active = true;
 
     async function loadCounts() {
-      const [messageResult, notificationResult, sellerOrderResult] = await Promise.allSettled([
+      const [messageResult, notificationResult, sellerOrderResult, buyerOrderResult] = await Promise.allSettled([
         user?.emailVerified
           ? getUnreadMessageCount()
           : Promise.resolve({ unreadCount: 0 }),
         getNotificationUnreadCount(),
         isSellerExperience && user?.emailVerified
           ? getSellerActionableOrderCount()
+          : Promise.resolve({ count: 0 }),
+        user?.emailVerified
+          ? getPendingBuyerOrderCount()
           : Promise.resolve({ count: 0 }),
       ]);
 
@@ -105,6 +111,9 @@ function GleencNav() {
 
       if (sellerOrderResult.status === "fulfilled") {
         setSellerOrderCount(Number(sellerOrderResult.value.count || 0));
+      }
+      if (buyerOrderResult.status === "fulfilled") {
+        setBuyerPendingOrderCount(Number(buyerOrderResult.value.count || 0));
       }
     }
 
@@ -277,6 +286,7 @@ function GleencNav() {
     if (label === "Messages") return messageUnreadCount;
     if (label === "Notifications") return notificationUnreadCount;
     if (label === "Orders") return sellerOrderCount;
+    if (label === "Your Orders") return buyerPendingOrderCount;
     return 0;
   }
 

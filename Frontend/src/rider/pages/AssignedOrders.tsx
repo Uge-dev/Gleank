@@ -1,4 +1,4 @@
-import { FiClock, FiCopy, FiInfo, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
+import { FiClock, FiCopy, FiInfo, FiMap, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
 import { useEffect, useState } from 'react';
 import { useRiderData } from '../context/RiderDataContext';
 import AssignmentCard from '../components/rider/AssignmentCard';
@@ -66,7 +66,7 @@ export default function AssignedOrders() {
     };
     window.addEventListener('focus', refreshOnFocus);
     document.addEventListener('visibilitychange', refreshWhenVisible);
-    const interval = window.setInterval(() => void loadDispatches(), 10000);
+    const interval = window.setInterval(() => void loadDispatches(), 20000);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', refreshOnFocus);
@@ -165,9 +165,24 @@ export default function AssignedOrders() {
                           <FiMapPin className="mr-1 inline" />
                           {task.pickupLocation || 'Pickup location unavailable'}
                         </p>
+                        {typeof task.distanceToPickupKm === 'number' ? (
+                          <p className="mt-1 text-xs font-black text-cyan-700">
+                            {task.distanceToPickupKm.toFixed(1)} km from your current location
+                          </p>
+                        ) : null}
                         {task.sellerPhone ? (
                           <a className="mt-1 block text-xs font-bold text-emerald-700" href={`tel:${task.sellerPhone}`}>
                             <FiPhone className="mr-1 inline" /> {task.sellerPhone}
+                          </a>
+                        ) : null}
+                        {typeof task.pickupPoint?.lat === 'number' && typeof task.pickupPoint?.lng === 'number' ? (
+                          <a
+                            className="mt-2 inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-slate-800 shadow-sm"
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${task.pickupPoint.lat},${task.pickupPoint.lng}`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <FiMap /> Open seller map
                           </a>
                         ) : null}
                       </div>
@@ -289,6 +304,21 @@ export default function AssignedOrders() {
                     <FiMapPin className="mr-1 inline" />
                     {task.pickupLocation || 'Pickup location unavailable'}
                   </p>
+                  {typeof task.distanceToPickupKm === 'number' ? (
+                    <p className="mt-2 text-sm font-black text-cyan-700">
+                      {task.distanceToPickupKm.toFixed(1)} km away now
+                    </p>
+                  ) : null}
+                  {typeof task.pickupPoint?.lat === 'number' && typeof task.pickupPoint?.lng === 'number' ? (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${task.pickupPoint.lat},${task.pickupPoint.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800"
+                    >
+                      <FiMap /> Open map to seller
+                    </a>
+                  ) : null}
                   {phone ? (
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       <a

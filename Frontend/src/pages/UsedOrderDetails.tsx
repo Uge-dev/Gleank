@@ -9,6 +9,7 @@ import {
   FiLock,
   FiMessageCircle,
   FiPackage,
+  FiUpload,
   FiShield,
   FiTruck,
 } from "react-icons/fi";
@@ -19,9 +20,13 @@ import LoadingState from "../components/LoadingState";
 import { createConversation } from "../services/message.service";
 import {
   getUsedOrder,
+  chooseUsedOrderFulfillment,
+  getUsedOrderAvailableRiders,
+  assignUsedOrderRider,
+  submitUsedDeliveryProof,
   updateUsedOrderStatus,
-  verifyUsedOrderDelivery,
 } from "../services/used-order.service";
+import type { AvailableDeliveryRider } from "../services/seller.service";
 
 import { initializeUsedOrderPayment } from "../services/payment.service";
 import type { UsedMarketOrder, UsedMarketOrderStatus } from "../types/domain";
@@ -46,7 +51,9 @@ function UsedOrderDetails() {
   const [isLoading, setIsLoading] = useState(true);
   const [isWorking, setIsWorking] = useState(false);
   const [error, setError] = useState("");
-  const [deliveryCode, setDeliveryCode] = useState("");
+  const [riders, setRiders] = useState<AvailableDeliveryRider[]>([]);
+  const [selectedRiderId, setSelectedRiderId] = useState("");
+  const [deliveryProof, setDeliveryProof] = useState<File | null>(null);
 
   function loadOrder() {
     setIsLoading(true);
@@ -104,24 +111,55 @@ function UsedOrderDetails() {
     }
   }
 
-  async function handleVerifyDelivery() {
+  async function handleFulfillment(method: "gleenc_rider" | "external_delivery") {
     if (!order) return;
     setIsWorking(true);
     setError("");
     try {
-      const response = await verifyUsedOrderDelivery(
-        order.id,
-        deliveryCode,
-        "Seller verified the buyer delivery code.",
-      );
+      const response = await chooseUsedOrderFulfillment(order.id, method);
       setOrder(response.order);
-      setDeliveryCode("");
+      if (method === "gleenc_rider") {
+        const riderResponse = await getUsedOrderAvailableRiders(order.id);
+        setRiders(riderResponse.riders || []);
+      }
     } catch (requestError) {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Delivery code could not be verified.",
+          : "Delivery method could not be saved.",
       );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleAssignRider() {
+    if (!order || !selectedRiderId) return;
+    setIsWorking(true);
+    setError("");
+    try {
+      await assignUsedOrderRider(order.id, selectedRiderId);
+      loadOrder();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The rider could not be assigned.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function handleExternalProof() {
+    if (!order || !deliveryProof) return;
+    setIsWorking(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("proofImage", deliveryProof);
+      form.append("note", "Seller submitted proof for external delivery.");
+      const response = await submitUsedDeliveryProof(order.id, form);
+      setOrder(response.order);
+      setDeliveryProof(null);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Delivery proof could not be submitted.");
     } finally {
       setIsWorking(false);
     }
@@ -240,6 +278,7 @@ function UsedOrderDetails() {
               ) : null}
               <div><span>Campus</span><strong>{order.campus}</strong></div>
               <div><span>Option</span><strong>{order.deliveryOption}</strong></div>
+              <div><span>Return policy</span><strong>{order.returnDays === 0 ? "No returns" : `${order.returnDays || 0} day(s)`}</strong></div>
               <div><span>Pickup</span><strong>{order.pickupLocation || "Not set"}</strong></div>
               <div><span>Delivery address</span><strong>{order.deliveryAddress || "Not required"}</strong></div>
             </div>
@@ -253,10 +292,13 @@ function UsedOrderDetails() {
             </div>
             <h2>Buyer protection</h2>
             <p>
-              Verification code: <strong>{order.verificationCode}</strong>
+              {isSeller ? "Seller pickup code" : "Verification code"}: {" "}
+              <strong>{isSeller ? order.sellerPickupCode || "Locks until a rider is assigned" : order.verificationCode}</strong>
             </p>
             <p className="used-small-note">
-              Share this only when the item has been inspected and accepted.
+              {isSeller
+                ? "Share this only with the assigned rider at the physical pickup."
+                : "Share this only when the item has been inspected and accepted."}
             </p>
           </section>
 
@@ -277,34 +319,48 @@ function UsedOrderDetails() {
               </button>
             )}
 
-            {isSeller && order.status === "paid" && (
-              <button type="button" onClick={() => void handleStatus("seller_confirmed", "Seller confirmed item availability.")} disabled={isWorking}>
-                <FiCheckCircle />
-                Seller confirm availability
-              </button>
+            {isSeller && order.paymentStatus === "paid" && order.fulfillmentMethod === "undecided" && (
+              <div className="delivery-code-action">
+                <strong>Choose how this item will be delivered</strong>
+                <button type="button" onClick={() => void handleFulfillment("gleenc_rider")} disabled={isWorking}>
+                  <FiTruck /> Use a Gleenc rider
+                </button>
+                <button type="button" className="secondary" onClick={() => void handleFulfillment("external_delivery")} disabled={isWorking}>
+                  External delivery
+                </button>
+              </div>
             )}
 
-            {isSeller && order.status === "seller_confirmed" && (
-              <button type="button" onClick={() => void handleStatus("meetup_or_delivery", "Pickup or delivery process has started.")} disabled={isWorking}>
-                <FiTruck />
-                Start pickup/delivery
-              </button>
-            )}
-
-            {isSeller && order.status === "meetup_or_delivery" && (
+            {isSeller && order.fulfillmentMethod === "gleenc_rider" && order.fulfillmentStatus === "awaiting_rider_assignment" && (
               <div className="delivery-code-action">
                 <label>
-                  Buyer delivery code
-                  <input
-                    value={deliveryCode}
-                    onChange={(event) => setDeliveryCode(event.target.value)}
-                    placeholder="Enter 6-digit code"
-                    inputMode="numeric"
-                  />
+                  Available rider
+                  <select value={selectedRiderId} onChange={(event) => setSelectedRiderId(event.target.value)}>
+                    <option value="">Select an online rider</option>
+                    {riders.map((rider) => (
+                      <option key={rider.id} value={rider.id}>{rider.name} · {rider.vehicleType || rider.transportType || "Rider"}</option>
+                    ))}
+                  </select>
                 </label>
-                <button type="button" onClick={() => void handleVerifyDelivery()} disabled={isWorking || !deliveryCode.trim()}>
-                  <FiPackage />
-                  Verify code & mark delivered
+                {!riders.length ? (
+                  <button type="button" className="secondary" onClick={() => void getUsedOrderAvailableRiders(order.id).then((response) => setRiders(response.riders || [])).catch((requestError) => setError(requestError instanceof Error ? requestError.message : "Riders could not be loaded."))}>
+                    Refresh available riders
+                  </button>
+                ) : null}
+                <button type="button" onClick={() => void handleAssignRider()} disabled={isWorking || !selectedRiderId}>
+                  <FiTruck /> Assign selected rider
+                </button>
+              </div>
+            )}
+
+            {isSeller && order.fulfillmentMethod === "external_delivery" && !["delivered", "completed"].includes(order.status) && (
+              <div className="delivery-code-action">
+                <label>
+                  External delivery proof
+                  <input type="file" accept="image/*" onChange={(event) => setDeliveryProof(event.target.files?.[0] || null)} />
+                </label>
+                <button type="button" onClick={() => void handleExternalProof()} disabled={isWorking || !deliveryProof}>
+                  <FiUpload /> Submit proof and mark delivered
                 </button>
               </div>
             )}

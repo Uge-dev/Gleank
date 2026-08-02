@@ -450,6 +450,9 @@ function serializeMarketProduct(row, viewerId = "") {
       saves: Number(row.save_count || 0),
       shares: Number(row.share_count || 0),
       views: Number(row.view_count || 0),
+      storeFollowers: Number(row.store_follower_count || 0),
+      successfulDeliveries: Number(row.successful_delivery_count || 0),
+      positiveReviews: Number(row.positive_review_count || 0),
     },
   };
 
@@ -499,19 +502,25 @@ const productSelectSql = `
          (SELECT COUNT(*) FROM product_comments WHERE product_comments.product_id = products.id AND product_comments.is_deleted = 0) AS comment_count,
          (SELECT COUNT(*) FROM saved_items WHERE saved_items.item_type = 'product' AND saved_items.item_id = products.id) AS save_count,
          (SELECT COUNT(*) FROM product_shares WHERE product_shares.product_id = products.id) AS share_count,
-         (SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) AS view_count
+         (SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) AS view_count,
+         (SELECT COUNT(*) FROM store_follows WHERE store_follows.store_id = stores.id) AS store_follower_count,
+         (SELECT COUNT(*) FROM orders WHERE orders.store_id = stores.id AND orders.status IN ('delivered', 'completed') AND orders.payment_status = 'paid') AS successful_delivery_count,
+         (SELECT COUNT(*) FROM store_reviews WHERE store_reviews.store_id = stores.id AND store_reviews.rating >= 4) AS positive_review_count
   FROM products
   JOIN stores ON stores.id = products.store_id
 `;
 
 const productEngagementOrderSql = `
   (
-    CASE WHEN products.is_featured = 1 THEN 100000 ELSE 0 END
+    CASE WHEN products.is_featured = 1 THEN 30 ELSE 0 END
     + ((SELECT COUNT(*) FROM product_shares WHERE product_shares.product_id = products.id) * 14)
     + ((SELECT COUNT(*) FROM product_comments WHERE product_comments.product_id = products.id AND product_comments.is_deleted = 0) * 10)
     + ((SELECT COUNT(*) FROM product_likes WHERE product_likes.product_id = products.id) * 6)
     + ((SELECT COUNT(*) FROM saved_items WHERE saved_items.item_type = 'product' AND saved_items.item_id = products.id) * 5)
     + ((SELECT COUNT(*) FROM product_views WHERE product_views.product_id = products.id AND product_views.user_id IS NOT NULL) * 1)
+    + ((SELECT COUNT(*) FROM store_follows WHERE store_follows.store_id = stores.id) * 8)
+    + ((SELECT COUNT(*) FROM orders WHERE orders.store_id = stores.id AND orders.status IN ('delivered', 'completed') AND orders.payment_status = 'paid') * 12)
+    + ((SELECT COUNT(*) FROM store_reviews WHERE store_reviews.store_id = stores.id AND store_reviews.rating >= 4) * 15)
   ) DESC,
   products.created_at DESC,
   products.updated_at DESC
@@ -1959,6 +1968,15 @@ function replaceMarketCategories(marketId, categories) {
 export function adminCreateMarket(input = {}) {
   const payload = marketPayloadFromInput(input);
   ensureValidMarketStatus(payload.status);
+  if (!payload.state || !payload.city || !payload.address) {
+    throw new HttpError(422, "State, city, and a real market address are required.");
+  }
+  if (payload.latitude == null || payload.longitude == null) {
+    throw new HttpError(422, "Add the mapped latitude and longitude before creating this market.");
+  }
+  if (payload.latitude < -90 || payload.latitude > 90 || payload.longitude < -180 || payload.longitude > 180) {
+    throw new HttpError(422, "Market coordinates are outside the valid map range.");
+  }
 
   const now = nowIso();
   const id = createId("mkt");

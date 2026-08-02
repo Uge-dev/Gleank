@@ -293,6 +293,14 @@ function UsedProductDetails() {
                   ? `${availableQuantity} available`
                   : "Unavailable"}
               </span>
+              <span>
+                {listing.returnDays === 0
+                  ? "No returns"
+                  : `${listing.returnDays || 0}-day return policy`}
+              </span>
+              {listing.availableSizes?.length ? (
+                <span>Sizes: {listing.availableSizes.join(", ")}</span>
+              ) : null}
               {listing.serialNumber && <span>Serial: {listing.serialNumber}</span>}
             </div>
 

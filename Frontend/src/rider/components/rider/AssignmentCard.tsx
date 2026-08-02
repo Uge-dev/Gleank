@@ -15,6 +15,7 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
 import StatusBadge from '../ui/StatusBadge';
+import { createConversation } from '../../../services/message.service';
 
 export default function AssignmentCard({ assignment }: { assignment: PrivateAssignment }) {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [openingChat, setOpeningChat] = useState(false);
   const telLink = `tel:${assignment.sellerPhone}`;
   const whatsAppLink = `https://wa.me/${assignment.sellerWhatsApp}`;
   const dispatchRemainingLabel = assignment.dispatchRemainingSeconds != null
@@ -50,6 +52,23 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
       );
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function openSellerChat() {
+    setOpeningChat(true);
+    setActionError('');
+    try {
+      const response = await createConversation(
+        { contextType: 'delivery_assignment', contextId: assignment.id },
+        'rider',
+      );
+      setContactOpen(false);
+      navigate(`/rider/messages?conversation=${encodeURIComponent(response.conversation.id)}`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'The seller chat could not be opened.');
+    } finally {
+      setOpeningChat(false);
     }
   }
 
@@ -129,7 +148,16 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
             <p className="font-extrabold text-slate-950">{assignment.sellerName}</p>
             <p className="mt-1 text-sm text-slate-500">{assignment.sellerPhone}</p>
           </div>
-          <div className="flex gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Button
+              variant="secondary"
+              icon={FiMessageCircle}
+              disabled={openingChat}
+              onClick={() => void openSellerChat()}
+              fullWidth
+            >
+              {openingChat ? 'Opening...' : 'Gleenc chat'}
+            </Button>
             <a href={telLink} className="flex-1">
               <Button variant="dark" icon={FiPhoneCall} fullWidth>Call</Button>
             </a>

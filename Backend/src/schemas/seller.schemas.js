@@ -91,6 +91,7 @@ export const productSchema = z.object({
   description: z.string().trim().min(10).max(3_000),
   price: numberValue(1),
   stock: numberValue(1).pipe(z.number().int()),
+  availableSizes: stringArrayValue.optional().default([]),
   status: z.enum(["draft", "active", "out_of_stock"]).default("draft"),
   availabilityStatus: availabilitySchema,
   returnPolicy: returnPolicySchema,
@@ -111,6 +112,14 @@ export const productSchema = z.object({
   estimatedPackageUnits: numberValue(1).pipe(z.number().int()).optional().default(1),
   requiresSeparateDelivery: booleanValue.optional().default(false),
   retainedImageUrls: z.string().optional().default("[]"),
+}).superRefine((value, context) => {
+  if (/fashion|cloth|apparel|shoe|footwear/i.test(value.category) && !value.availableSizes.length) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["availableSizes"],
+      message: "Add at least one available size for clothing or footwear.",
+    });
+  }
 });
 
 export const serviceSchema = z.object({

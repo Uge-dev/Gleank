@@ -1955,7 +1955,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
 
   const activeWorkload = profile
     ? db.prepare(`
-        SELECT COUNT(*) AS count
+        SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
         FROM rider_assignments
         WHERE rider_id = ?
           AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
@@ -1985,7 +1985,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
     locationPermission: profile?.gps_permission_status === "gps_enabled" || String(profile?.availability_mode || "").includes("gps"),
     capacityReady,
     zoneReady,
-    workloadReady: Number(activeWorkload || 0) < Number(options.maxActiveAssignments || 2),
+    workloadReady: Number(activeWorkload || 0) < Number(options.maxActiveAssignments || 14),
     deliveryLimitReady: highValueAllowed,
     autoDispatchEnabled:
       options.requireAutoDispatch === false ||
@@ -2009,7 +2009,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
   add(checks.locationPermission, "LOCATION_PERMISSION_MISSING", "Enable GPS/location permission.");
   add(checks.capacityReady, "CAPACITY_MISSING", "Complete your vehicle and package capacity.");
   add(checks.zoneReady, "SERVICE_ZONE_MISSING", "Select at least one working zone.");
-  add(checks.workloadReady, "WORKLOAD_LIMIT", "Finish current deliveries before taking another assignment.");
+  add(checks.workloadReady, "WORKLOAD_LIMIT", "This rider already has 14 incomplete dispatches.");
   add(checks.deliveryLimitReady, "DELIVERY_LIMIT", "This package is above your current verification limit.");
   add(
     checks.autoDispatchEnabled,

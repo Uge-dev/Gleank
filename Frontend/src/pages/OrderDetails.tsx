@@ -10,12 +10,14 @@ import {
   FiPackage,
   FiPhone,
   FiShoppingBag,
+  FiStar,
   FiTruck,
 } from "react-icons/fi";
 import LoadingState from "../components/LoadingState";
 import { useAuth } from "../context/AuthContext";
 import {
   getOrder,
+  submitOrderReview,
   sellerConfirmOrder as confirmSellerOrder,
 } from "../services/order.service";
 import {
@@ -106,6 +108,10 @@ function OrderDetails() {
   const [isConfirmingOrder, setIsConfirmingOrder] = useState(false);
   const [sellerPickupTask, setSellerPickupTask] =
     useState<SellerPickupTask | null>(null);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewNotice, setReviewNotice] = useState("");
+  const [reviewSaving, setReviewSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -205,6 +211,20 @@ function OrderDetails() {
       );
     } finally {
       setIsConfirmingOrder(false);
+    }
+  }
+
+  async function handleReview() {
+    if (!order || reviewSaving) return;
+    setReviewSaving(true);
+    setReviewNotice("");
+    try {
+      await submitOrderReview(order.id, reviewRating, reviewBody);
+      setReviewNotice("Your review was saved and now contributes to this store's visibility.");
+    } catch (requestError) {
+      setReviewNotice(requestError instanceof Error ? requestError.message : "The review could not be saved.");
+    } finally {
+      setReviewSaving(false);
     }
   }
 
@@ -499,6 +519,31 @@ function OrderDetails() {
               )}
             </section>
           )}
+
+          {isBuyerOfOrder && ["delivered", "completed"].includes(order.status) && order.paymentStatus === "paid" ? (
+            <section className="order-review-panel">
+              <h2>Review this store</h2>
+              <p>Verified delivery reviews improve trustworthy seller visibility.</p>
+              <div>
+                {[1, 2, 3, 4, 5].map((rating) => (
+                  <button
+                    key={rating}
+                    type="button"
+                    className={rating <= reviewRating ? "active" : ""}
+                    aria-label={`${rating} star rating`}
+                    onClick={() => setReviewRating(rating)}
+                  >
+                    <FiStar />
+                  </button>
+                ))}
+              </div>
+              <textarea value={reviewBody} onChange={(event) => setReviewBody(event.target.value)} maxLength={1000} placeholder="What went well?" />
+              <button type="button" disabled={reviewSaving} onClick={() => void handleReview()}>
+                {reviewSaving ? "Saving..." : "Save verified review"}
+              </button>
+              {reviewNotice ? <small>{reviewNotice}</small> : null}
+            </section>
+          ) : null}
 
           <Link className="order-message-link" to={`/messages?order=${order.id}`}>
             <FiMessageCircle /> {isSellerOfOrder ? "Message buyer" : "Message seller"}

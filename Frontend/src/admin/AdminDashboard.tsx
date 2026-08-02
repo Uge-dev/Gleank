@@ -49,6 +49,7 @@ import {
   adminLogin,
   adminLogout,
   clearAdminToken,
+  createAdminMarket,
   createAdminPriceRange,
   deleteAdminRecord,
   deleteAdminPriceRange,
@@ -708,6 +709,8 @@ function AdminDashboard() {
   });
   const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [marketFormOpen, setMarketFormOpen] = useState(false);
+  const [marketSaving, setMarketSaving] = useState(false);
   const [supportConversationToOpen, setSupportConversationToOpen] = useState("");
   const [locallyReadAlertIds, setLocallyReadAlertIds] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
@@ -1007,6 +1010,38 @@ function AdminDashboard() {
       await loadAdminData(false);
     } catch {
       showAdminConnectionNotice();
+    }
+  }
+
+  async function submitMarket(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMarketSaving(true);
+    setLoadError("");
+    try {
+      const form = new FormData(event.currentTarget);
+      await createAdminMarket({
+        name: String(form.get("name") || ""),
+        state: String(form.get("state") || ""),
+        city: String(form.get("city") || ""),
+        area: String(form.get("area") || ""),
+        address: String(form.get("address") || ""),
+        landmark: String(form.get("landmark") || ""),
+        latitude: Number(form.get("latitude")),
+        longitude: Number(form.get("longitude")),
+        radiusKm: Number(form.get("radiusKm") || 3),
+        allowedCategories: String(form.get("allowedCategories") || "")
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+        status: String(form.get("status")) === "active" ? "active" : "pending",
+      });
+      setMarketFormOpen(false);
+      event.currentTarget.reset();
+      await loadAdminData(false);
+    } catch (requestError) {
+      setLoadError(requestError instanceof Error ? requestError.message : "The market could not be created.");
+    } finally {
+      setMarketSaving(false);
     }
   }
 
@@ -1594,6 +1629,32 @@ function AdminDashboard() {
 
           {activeTab === "marketplace" ? (
             <div className="admin-stage3-grid">
+              <section className="admin-market-create-card">
+                <div>
+                  <span>Approved local market directory</span>
+                  <h2>Add a mapped marketplace</h2>
+                  <p>Create real market records that local sellers can select during onboarding.</p>
+                </div>
+                <button type="button" onClick={() => setMarketFormOpen((open) => !open)}>
+                  {marketFormOpen ? "Close form" : "Add marketplace"}
+                </button>
+                {marketFormOpen ? (
+                  <form onSubmit={submitMarket}>
+                    <label>Market name<input name="name" required /></label>
+                    <label>State<input name="state" required /></label>
+                    <label>City<input name="city" required /></label>
+                    <label>Area<input name="area" /></label>
+                    <label className="wide">Real address<input name="address" required /></label>
+                    <label>Landmark<input name="landmark" /></label>
+                    <label>Latitude<input name="latitude" type="number" step="any" min="-90" max="90" required /></label>
+                    <label>Longitude<input name="longitude" type="number" step="any" min="-180" max="180" required /></label>
+                    <label>Coverage radius (km)<input name="radiusKm" type="number" min="0.1" max="100" step="0.1" defaultValue="3" required /></label>
+                    <label className="wide">Allowed categories<input name="allowedCategories" placeholder="Food, Fashion, Electronics" required /></label>
+                    <label>Status<select name="status" defaultValue="active"><option value="active">Active</option><option value="pending">Pending</option></select></label>
+                    <button type="submit" disabled={marketSaving}>{marketSaving ? "Saving..." : "Create marketplace"}</button>
+                  </form>
+                ) : null}
+              </section>
               <DataTable<AdminMarket>
                 title="Local Market Management"
                 subtitle="Create, activate, disable and inspect approved Local Markets that buyers can browse publicly."

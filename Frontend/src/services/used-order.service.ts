@@ -1,5 +1,6 @@
 import { apiRequest } from "../lib/api";
 import type { UsedMarketOrder, UsedMarketOrderStatus } from "../types/domain";
+import type { AvailableDeliveryRider } from "./seller.service";
 
 export type CreateUsedOrderInput = {
   listingId: string;
@@ -84,11 +85,37 @@ export function updateUsedOrderStatus(
 }
 
 export function submitUsedDeliveryProof(id: string, formData: FormData) {
-  return apiRequest<{ success: boolean }>(
+  return apiRequest<{ success: boolean; order: UsedMarketOrder }>(
     `/used-orders/${encodeURIComponent(id)}/delivery-proof`,
     {
       method: "POST",
       body: formData,
+    },
+  );
+}
+
+export function chooseUsedOrderFulfillment(
+  id: string,
+  method: "gleenc_rider" | "external_delivery",
+) {
+  return apiRequest<{ order: UsedMarketOrder }>(
+    `/used-orders/${encodeURIComponent(id)}/fulfillment`,
+    { method: "PATCH", body: JSON.stringify({ method }) },
+  );
+}
+
+export function getUsedOrderAvailableRiders(id: string) {
+  return apiRequest<{ riders: AvailableDeliveryRider[] }>(
+    `/used-orders/${encodeURIComponent(id)}/available-riders`,
+  );
+}
+
+export function assignUsedOrderRider(id: string, riderId: string) {
+  return apiRequest<{ assignment: unknown; pickupCode?: string }>(
+    `/used-orders/${encodeURIComponent(id)}/assign-rider`,
+    {
+      method: "POST",
+      body: JSON.stringify({ riderId }),
     },
   );
 }

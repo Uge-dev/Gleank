@@ -521,6 +521,9 @@ export function MessageWorkspace({
           {error && (
             <div className="messages-inline-error" role="alert">
               {error}
+              {/not allowed|spam|privacy and policy/i.test(error) ? (
+                <Link to="/help">Review Privacy and Policy</Link>
+              ) : null}
             </div>
           )}
 

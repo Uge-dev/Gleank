@@ -47,6 +47,17 @@ function parseImages(value) {
   }
 }
 
+function parseStringList(value) {
+  if (Array.isArray(value)) return value.map((item) => clean(item, 30)).filter(Boolean);
+  try {
+    const parsed = JSON.parse(value || "[]");
+    if (Array.isArray(parsed)) return parsed.map((item) => clean(item, 30)).filter(Boolean);
+  } catch {
+    return String(value || "").split(",").map((item) => clean(item, 30)).filter(Boolean);
+  }
+  return [];
+}
+
 function parseObject(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) return value;
 
@@ -153,6 +164,8 @@ function serializeUsedListing(row, includePrivate = false) {
     quantity: safePositiveInteger(row.quantity, 1),
     reservedQuantity: includePrivate ? Math.max(0, Number(row.reserved_quantity || 0)) : undefined,
     availableQuantity: availableQuantity(row),
+    returnDays: Math.max(0, Number(row.return_days || 0)),
+    availableSizes: parseStringList(row.available_sizes),
     imageUrls: parseImages(row.image_urls),
     status: row.status,
     verified: row.status === "active" && trustComplete && payoutComplete,
@@ -289,6 +302,12 @@ export function createUsedListing(userId, input, files) {
     throw new HttpError(422, "Confirm that the item belongs to you before submitting.");
   }
 
+  const returnDays = Number(input.returnDays);
+  if (!Number.isInteger(returnDays) || returnDays < 0 || returnDays > 30) {
+    throw new HttpError(422, "Choose a return policy between 0 and 30 days. Select 0 only for a clearly stated no-return policy.");
+  }
+  const availableSizes = parseStringList(input.availableSizes);
+
   const price = computePlatformPrice(input.price);
   const quantity = safePositiveInteger(input.quantity, 1);
   const metadata = categoryMetadataFromInput(input);
@@ -304,12 +323,12 @@ export function createUsedListing(userId, input, files) {
     INSERT INTO used_listings (
       id, seller_id, name, category, description, condition, price_kobo,
       seller_price_kobo, platform_fee_kobo, buyer_price_kobo, campus, area_location,
-      pickup_location, delivery_option, quantity, reserved_quantity, serial_number, image_urls,
+      pickup_location, delivery_option, quantity, reserved_quantity, return_days, available_sizes, serial_number, image_urls,
       ownership_proof_url, receipt_url, status, reason_for_selling,
       defects_disclosed, confirmation_text, review_note, trust_profile_id,
       payout_account_id, category_metadata, risk_level, review_required,
       seller_verification_level, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     userId,
@@ -326,6 +345,8 @@ export function createUsedListing(userId, input, files) {
     clean(input.pickupLocation, 160),
     clean(input.deliveryOption, 30),
     quantity,
+    returnDays,
+    JSON.stringify(availableSizes),
     clean(input.serialNumber, 120),
     JSON.stringify(images),
     files.ownershipProof?.url || null,

@@ -108,6 +108,46 @@ export type AvailableDeliveryRider = {
   };
 };
 
+export type AssignedOrderRider = {
+  assignmentId: string | null;
+  dispatchAttemptId: string | null;
+  orderId: string;
+  status: string;
+  accepted: boolean;
+  canCancel: boolean;
+  conversationId: string | null;
+  chatPath: string;
+  rider: {
+    id: string;
+    name: string;
+    username: "@rider" | string;
+    profileImageUrl: string | null;
+    phone: string;
+    email: string;
+    vehicleType: string;
+    isOnline: boolean;
+    lastActiveAt: string | null;
+    currentLocation: { lat: number; lng: number } | null;
+    distanceToSellerKm: number | null;
+  };
+};
+
+export function getAssignedOrderRider(orderId: string) {
+  return apiRequest<{ assignedRider: AssignedOrderRider }>(
+    `/seller/orders/${encodeURIComponent(orderId)}/assigned-rider`,
+  );
+}
+
+export function cancelAssignedOrderRider(orderId: string, reason = "") {
+  return apiRequest<{ cancelled: boolean }>(
+    `/seller/orders/${encodeURIComponent(orderId)}/assigned-rider`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
+    },
+  );
+}
+
 export function getSellerPickupTasks() {
   return apiRequest<{ pickupTasks: SellerPickupTask[] }>("/seller/pickup-tasks");
 }

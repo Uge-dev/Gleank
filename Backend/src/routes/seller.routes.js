@@ -24,7 +24,9 @@ import {
   storeUpdateSchema,
 } from "../schemas/seller.schemas.js";
 import {
+  cancelSellerRiderAssignment,
   createRiderAssignment,
+  getSellerAssignedRider,
   listAvailableRiders,
 } from "../services/rider.service.js";
 import {
@@ -260,6 +262,18 @@ sellerRouter.post("/orders/:orderId/assign-rider", (req, res) => {
     orderType: "store_order",
     orderId: req.params.orderId,
   }));
+});
+
+sellerRouter.get("/orders/:orderId/assigned-rider", (req, res) => {
+  res.json({ assignedRider: getSellerAssignedRider(req.auth, req.params.orderId) });
+});
+
+sellerRouter.delete("/orders/:orderId/assigned-rider", (req, res) => {
+  res.json(cancelSellerRiderAssignment(
+    req.auth,
+    req.params.orderId,
+    String(req.body?.reason || ""),
+  ));
 });
 
 sellerRouter.get("/payouts", (req, res) => {

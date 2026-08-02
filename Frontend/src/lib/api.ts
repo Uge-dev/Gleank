@@ -9,10 +9,13 @@ function resolveApiUrl() {
 
   try {
     const configured = new URL(configuredUrl);
-    const isVercelApp = window.location.hostname.endsWith(".vercel.app");
-    const isRenderBackend = configured.hostname.endsWith(".onrender.com");
+    const isLocalFrontend = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const configuredIsLocal = ["localhost", "127.0.0.1"].includes(configured.hostname);
 
-    if (isVercelApp && isRenderBackend && configured.origin !== window.location.origin) {
+    // Production is served behind the same-origin /api proxy. Keeping browser
+    // requests same-origin preserves the correct user/rider session cookie and
+    // avoids a stale VITE_API_URL silently sending chat to another deployment.
+    if (!isLocalFrontend && !configuredIsLocal && configured.origin !== window.location.origin) {
       return "/api";
     }
   } catch {

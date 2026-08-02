@@ -34,40 +34,22 @@ import {
   markRiderPresenceOnline,
 } from "./rider-presence.service.js";
 import { calculateRoute } from "./location.service.js";
+import { createDeliveryAssignmentConversation } from "./message.service.js";
 
 const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
 const COMPLETE_ALLOWED_STATUSES = new Set(["picked_up", "out_for_delivery"]);
 const MAX_PROOF_DISTANCE_METERS = Number(process.env.RIDER_PROOF_RADIUS_METERS || 500);
-const OTP_MAX_ATTEMPTS = 5;
-const OTP_COOLDOWN_MS = 15 * 60 * 1000;
+const MAX_INCOMPLETE_DISPATCHES = 14;
 
 function nowIso() {
   return new Date().toISOString();
 }
 
-function minutesUntilNextCodeAttempt(timestamp) {
-  const remainingMs = new Date(timestamp).getTime() + OTP_COOLDOWN_MS - Date.now();
-  return Math.max(1, Math.ceil(remainingMs / 60_000));
-}
-
-function assertCodeAttemptAllowed(row, label) {
-  const attemptCount = Number(row?.code_attempt_count || 0);
-  const lastAttemptAt = row?.last_code_attempt_at
-    ? new Date(row.last_code_attempt_at).getTime()
-    : 0;
-
-  if (
-    attemptCount >= OTP_MAX_ATTEMPTS &&
-    lastAttemptAt > 0 &&
-    Date.now() - lastAttemptAt < OTP_COOLDOWN_MS
-  ) {
-    throw new HttpError(
-      429,
-      `${label} code verification is temporarily locked. Please wait about ${minutesUntilNextCodeAttempt(row.last_code_attempt_at)} minute(s) before trying again.`,
-    );
-  }
-}
+// Verification failures are audited but never lock an order, rider, seller, or
+// buyer out of the delivery workflow. Pickup attempts still require proof and
+// proximity checks, and abnormal attempt counts are escalated to admins.
+function assertCodeAttemptAllowed() {}
 
 function adminIds() {
   return db
@@ -88,7 +70,7 @@ function recordCodeFailure(row, label) {
     WHERE id = ?
   `).run(now, now, row.id);
 
-  if (nextAttempts >= OTP_MAX_ATTEMPTS) {
+  if ([5, 25, 100, 500, 1000].includes(nextAttempts)) {
     createNotificationForUsers(adminIds(), {
       type: "admin",
       title: `${label} code failures detected`,
@@ -448,6 +430,32 @@ function getRiderProfile(userId) {
   return db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(userId);
 }
 
+function activeDispatchCount(riderId) {
+  return Number(db.prepare(`
+    SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
+    FROM rider_assignments
+    WHERE rider_id = ?
+      AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
+  `).get(riderId)?.count || 0);
+}
+
+function assertRiderHasCapacity(riderId, { allowAssignmentId = "" } = {}) {
+  const activeCount = activeDispatchCount(riderId);
+  const assignmentAlreadyActive = allowAssignmentId
+    ? db.prepare(`
+        SELECT id FROM rider_assignments
+        WHERE id = ? AND rider_id = ?
+          AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
+      `).get(allowAssignmentId, riderId)
+    : null;
+
+  if (!assignmentAlreadyActive && activeCount >= MAX_INCOMPLETE_DISPATCHES) {
+    throw new HttpError(422, `This rider already has ${MAX_INCOMPLETE_DISPATCHES} incomplete dispatches.`);
+  }
+
+  return activeCount;
+}
+
 function requireRiderUser(auth) {
   if (!auth) throw new HttpError(401, "Please log in to continue.");
   if (auth.role !== "rider") throw new HttpError(403, "Rider dashboard requires a rider account.");
@@ -479,7 +487,15 @@ function assignmentByIdForRider(riderId, assignmentId) {
 }
 
 function assignmentByOrderForRider(riderId, orderId) {
-  return db.prepare("SELECT * FROM rider_assignments WHERE order_id = ? AND rider_id = ?").get(orderId, riderId);
+  return db.prepare(`
+    SELECT *
+    FROM rider_assignments
+    WHERE order_id = ? AND rider_id = ?
+    ORDER BY
+      CASE WHEN status IN ('accepted','arrived_pickup','picked_up','out_for_delivery','assigned') THEN 0 ELSE 1 END,
+      updated_at DESC
+    LIMIT 1
+  `).get(orderId, riderId);
 }
 
 function orderTable(orderType) {
@@ -881,6 +897,10 @@ export async function registerRider(input, meta = {}) {
       now,
       now,
     );
+    if (input.selfieUrl) {
+      db.prepare("UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?")
+        .run(clean(input.selfieUrl, 500), now, result.user.id);
+    }
   });
 
   applyDevelopmentRiderDispatchDefaults(result.user.id, now);
@@ -941,6 +961,8 @@ export function updateRiderVerificationDocuments(auth, input) {
     now,
     riderId,
   );
+  db.prepare("UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?")
+    .run(clean(input.selfieUrl, 500), now, riderId);
 
   createNotification({
     userId: riderId,
@@ -1010,7 +1032,7 @@ export function riderDashboard(auth) {
         ELSE 9
       END,
       created_at DESC
-    LIMIT 200
+    LIMIT 100
   `).all(userId);
   const notificationState = listNotifications(userId);
 
@@ -1044,8 +1066,10 @@ export function getRiderAssignment(auth, assignmentId) {
   return serializeAssignment(row);
 }
 
-export function listAvailableRiders(auth) {
-  if (!auth || !["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Only sellers or admins can view available riders.");
+export function listAvailableRiders(auth, { allowUsedMarketSeller = false } = {}) {
+  if (!auth || (!["seller", "admin"].includes(auth.role) && !allowUsedMarketSeller)) {
+    throw new HttpError(403, "Only sellers or admins can view available riders.");
+  }
   expireStaleRiderPresence();
   return db.prepare(`
     SELECT users.id, users.name, rider_profiles.*
@@ -1060,27 +1084,42 @@ export function listAvailableRiders(auth) {
   `).all()
     .filter((row) =>
       evaluateRiderEligibility(row.user_id, {
-        maxActiveAssignments: 2,
+        maxActiveAssignments: MAX_INCOMPLETE_DISPATCHES,
         heartbeatSeconds: 300,
       }).eligible,
     )
-    .map((row) => ({
-      id: row.user_id,
-      name: row.name || row.full_name,
-      profile: serializeProfile(row),
-      eligibility: evaluateRiderEligibility(row.user_id, {
-        maxActiveAssignments: 2,
+    .map((row) => {
+      const profile = serializeProfile(row);
+      const eligibility = evaluateRiderEligibility(row.user_id, {
+        maxActiveAssignments: MAX_INCOMPLETE_DISPATCHES,
         heartbeatSeconds: 300,
-      }),
-      privacyNote: "Private phone details unlock only after a delivery assignment is accepted.",
-    }));
+      });
+      return {
+        id: row.user_id,
+        name: row.name || row.full_name,
+        displayName: row.name || row.full_name,
+        profileImageUrl: profile?.selfieUrl || null,
+        vehicleType: profile?.vehicleType || profile?.transportType || "Rider",
+        transportType: profile?.transportType || "motorcycle",
+        coverageArea: profile?.coverageArea || "",
+        availabilityMode: profile?.availabilityMode || "offline",
+        isOnline: profile?.availability === "online",
+        lastActiveAt: profile?.lastPresenceAt || profile?.updatedAt || null,
+        ratingAverage: Number(profile?.ratingAverage || 0),
+        successfulDeliveries: Number(profile?.completedDeliveries || 0),
+        eligibleForThisOrder: eligibility.eligible,
+        profile,
+        eligibility,
+        privacyNote: "Private phone details unlock only after a delivery assignment is accepted.",
+      };
+    });
 }
 
 function loadOrderForAssignment(auth, orderType, orderId) {
   const table = orderTable(orderType);
   const order = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(orderId);
   if (!order) throw new HttpError(404, "Order was not found.");
-  if (auth.role === "seller" && order.seller_id !== (auth.user_id || auth.id)) {
+  if (auth.role !== "admin" && order.seller_id !== (auth.user_id || auth.id)) {
     throw new HttpError(403, "Only the seller assigned to this order can assign a rider.");
   }
   const payAtDeliveryAllowed =
@@ -1094,7 +1133,10 @@ function loadOrderForAssignment(auth, orderType, orderId) {
 }
 
 export function createRiderAssignment(auth, input) {
-  if (!auth || !["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Only sellers or admins can assign deliveries.");
+  const isUsedMarketSeller = input?.orderType === "used_order" && Boolean(auth?.user_id || auth?.id);
+  if (!auth || (!["seller", "admin"].includes(auth.role) && !isUsedMarketSeller)) {
+    throw new HttpError(403, "Only the order seller or an admin can assign deliveries.");
+  }
   const order = loadOrderForAssignment(auth, input.orderType, input.orderId);
   const source = sourceForOrder(input.orderType, order);
   const pickupPoint = input.pickupPoint || source.pickupPoint;
@@ -1115,6 +1157,16 @@ export function createRiderAssignment(auth, input) {
   const rider = db.prepare("SELECT * FROM users WHERE id = ? AND role = 'rider' AND is_active = 1").get(input.riderId);
   if (!rider) throw new HttpError(404, "Selected rider was not found.");
   const riderProfile = requireVerifiedRider(input.riderId);
+  const existingAssignment = db.prepare(`
+    SELECT * FROM rider_assignments
+    WHERE order_type = ? AND order_id = ?
+  `).get(input.orderType, input.orderId);
+  if (existingAssignment && ACTIVE_ASSIGNMENT_STATUSES.has(existingAssignment.status)) {
+    throw new HttpError(409, "This order already has an active rider assignment. Cancel it before assigning another rider.");
+  }
+  assertRiderHasCapacity(input.riderId, {
+    allowAssignmentId: existingAssignment?.rider_id === input.riderId ? existingAssignment.id : "",
+  });
   if (Number(input.packageValueKobo || order.total_kobo || 0) > Number(riderProfile.max_package_value_kobo || 0)) {
     throw new HttpError(422, "This package value is above the rider's current verification limit.");
   }
@@ -1127,10 +1179,10 @@ export function createRiderAssignment(auth, input) {
     : null;
   const pickupCode = generateOrderVerificationCode("seller-pickup", order.id) || generateOtp();
   const deliveryCode = clean(order.verification_code, 12) || generateOrderVerificationCode("buyer-delivery", order.id) || generateOtp();
-  const pickupCodeHash = linkedPickupTask?.pickup_otp_hash || order.seller_pickup_code_hash || hashOtp(pickupCode);
-  const deliveryCodeHash = linkedDeliveryTask?.delivery_otp_hash || order.buyer_delivery_code_hash || hashOtp(deliveryCode);
+  const pickupCodeHash = hashOtp(pickupCode);
+  const deliveryCodeHash = hashOtp(deliveryCode);
   const now = nowIso();
-  const id = createId("ras");
+  const id = existingAssignment?.id || createId("ras");
   const assignmentPaymentStatus = order.payment_status === "paid" ? "paid" : "unpaid";
   const assignmentPaymentConfirmedAt = assignmentPaymentStatus === "paid" ? now : null;
   const packageSummary = input.packageSummary || order.note || "Gleenc delivery package";
@@ -1159,6 +1211,69 @@ export function createRiderAssignment(auth, input) {
         package_tag_code, package_value_kobo, delivery_fee_kobo,
         delivery_batch_id, pickup_task_id, created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'assigned', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(order_type, order_id) DO UPDATE SET
+        rider_id = excluded.rider_id,
+        seller_id = excluded.seller_id,
+        buyer_id = excluded.buyer_id,
+        store_id = excluded.store_id,
+        listing_id = excluded.listing_id,
+        market_source = excluded.market_source,
+        seller_type = excluded.seller_type,
+        market_id = excluded.market_id,
+        market_name = excluded.market_name,
+        campus_name = excluded.campus_name,
+        pickup_landmark = excluded.pickup_landmark,
+        seller_allows_whatsapp = excluded.seller_allows_whatsapp,
+        status = 'assigned',
+        dispatch_timeout_seconds = excluded.dispatch_timeout_seconds,
+        dispatch_expires_at = excluded.dispatch_expires_at,
+        dispatch_timeout_policy = excluded.dispatch_timeout_policy,
+        payment_status = excluded.payment_status,
+        payment_confirmed_at = excluded.payment_confirmed_at,
+        pickup_code_hash = excluded.pickup_code_hash,
+        delivery_code_hash = excluded.delivery_code_hash,
+        pickup_address = excluded.pickup_address,
+        pickup_lat = excluded.pickup_lat,
+        pickup_lng = excluded.pickup_lng,
+        delivery_address = excluded.delivery_address,
+        delivery_details = excluded.delivery_details,
+        delivery_landmark = excluded.delivery_landmark,
+        delivery_bus_stop = excluded.delivery_bus_stop,
+        delivery_lat = excluded.delivery_lat,
+        delivery_lng = excluded.delivery_lng,
+        seller_name = excluded.seller_name,
+        seller_phone = excluded.seller_phone,
+        seller_whatsapp = excluded.seller_whatsapp,
+        buyer_name = excluded.buyer_name,
+        buyer_phone = excluded.buyer_phone,
+        package_summary = excluded.package_summary,
+        package_tag_code = excluded.package_tag_code,
+        package_value_kobo = excluded.package_value_kobo,
+        delivery_fee_kobo = excluded.delivery_fee_kobo,
+        delivery_batch_id = excluded.delivery_batch_id,
+        pickup_task_id = excluded.pickup_task_id,
+        pickup_proof_url = NULL,
+        pickup_proof_note = '',
+        pickup_proof_lat = NULL,
+        pickup_proof_lng = NULL,
+        pickup_proof_accuracy_meters = NULL,
+        pickup_proof_created_at = NULL,
+        delivery_proof_url = NULL,
+        delivery_proof_note = '',
+        delivery_proof_lat = NULL,
+        delivery_proof_lng = NULL,
+        delivery_proof_accuracy_meters = NULL,
+        delivery_proof_created_at = NULL,
+        accepted_at = NULL,
+        picked_up_at = NULL,
+        delivered_at = NULL,
+        failed_at = NULL,
+        fail_reason = '',
+        seller_pickup_code_verified_at = NULL,
+        buyer_delivery_code_verified_at = NULL,
+        code_attempt_count = 0,
+        last_code_attempt_at = NULL,
+        updated_at = excluded.updated_at
     `).run(
       id,
       input.orderId,
@@ -1205,7 +1320,29 @@ export function createRiderAssignment(auth, input) {
       now,
       now,
     );
+    db.prepare(`
+      UPDATE ${orderTable(input.orderType)}
+      SET seller_pickup_code_hash = ?, buyer_delivery_code_hash = ?, updated_at = ?
+      WHERE id = ?
+    `).run(pickupCodeHash, deliveryCodeHash, now, input.orderId);
+    if (linkedPickupTask) {
+      db.prepare("UPDATE pickup_tasks SET pickup_otp_hash = ?, code_attempt_count = 0, last_code_attempt_at = NULL, updated_at = ? WHERE id = ?")
+        .run(pickupCodeHash, now, linkedPickupTask.id);
+    }
+    if (linkedDeliveryTask) {
+      db.prepare("UPDATE delivery_tasks SET delivery_otp_hash = ?, code_attempt_count = 0, last_code_attempt_at = NULL, updated_at = ? WHERE id = ?")
+        .run(deliveryCodeHash, now, linkedDeliveryTask.id);
+    }
     updateConnectedOrderAssignment(input.orderType, input.orderId, id, input.riderId, input.orderType === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
+    if (input.orderType === "used_order") {
+      db.prepare(`
+        UPDATE used_market_orders
+        SET fulfillment_method = 'gleenc_rider',
+            fulfillment_status = 'rider_assigned',
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, input.orderId);
+    }
     if (input.orderType === "store_order") {
       db.prepare(`
         UPDATE orders
@@ -1299,8 +1436,10 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
   if (Number(row.package_value_kobo || 0) > Number(profile.max_package_value_kobo || 0)) {
     throw new HttpError(422, "This package value is above your current rider verification limit.");
   }
+  assertRiderHasCapacity(riderId, { allowAssignmentId: assignmentId });
   const now = nowIso();
   transaction(() => {
+    assertRiderHasCapacity(riderId, { allowAssignmentId: assignmentId });
     db.prepare("UPDATE rider_assignments SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, assignmentId);
     updateConnectedOrderAssignment(row.order_type, row.order_id, assignmentId, riderId, row.order_type === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
     if (row.order_type === "store_order") {
@@ -1324,6 +1463,14 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
       `).run(now, now, row.delivery_batch_id);
       db.prepare("UPDATE pickup_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ? AND status != 'seller_rejected'").run(now, row.delivery_batch_id);
       db.prepare("UPDATE delivery_tasks SET status = 'pickup_in_progress', updated_at = ? WHERE delivery_batch_id = ?").run(now, row.delivery_batch_id);
+    }
+    db.prepare("UPDATE rider_profiles SET current_active_batch_count = ?, updated_at = ? WHERE user_id = ?")
+      .run(activeDispatchCount(riderId), now, riderId);
+    try {
+      createDeliveryAssignmentConversation(riderId, assignmentId);
+    } catch {
+      // Chat can be hydrated again from the order card; never roll back a
+      // valid delivery acceptance because a legacy conversation needs repair.
     }
     createNotification({
       userId: riderId,
@@ -1499,14 +1646,14 @@ export function verifyPickup(auth, assignmentId, input) {
   if (row.payment_status !== "paid" && !payAtDeliveryAllowed) {
     throw new HttpError(422, "Pickup is blocked until platform payment is confirmed.");
   }
+  requireProofEvidence(input, "Pickup");
+  requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
   assertCodeAttemptAllowed(row, "Pickup");
   if (!verifyOtp(input.sellerPickupCode, row.pickup_code_hash)) {
     recordCodeFailure(row, "Pickup");
     throw new HttpError(422, "Invalid pickup code. Please confirm the code with the seller.");
   }
   resetCodeAttempts(row);
-  requireProofEvidence(input, "Pickup");
-  requireProofLocationNear(input.proofLocation, { lat: row.pickup_lat, lng: row.pickup_lng }, "Pickup proof");
 
   const now = nowIso();
   transaction(() => {
@@ -1682,9 +1829,6 @@ export function completeDelivery(auth, orderId, input) {
 
   const now = nowIso();
   const deliveryCodeAlreadyVerified = Boolean(row.buyer_delivery_code_verified_at);
-  const batchBeforeCompletion = row.delivery_batch_id
-    ? db.prepare("SELECT status FROM delivery_batches WHERE id = ?").get(row.delivery_batch_id)
-    : null;
   if (!deliveryCodeAlreadyVerified) {
     assertCodeAttemptAllowed(row, "Delivery");
     if (!verifyOtp(input.customerDeliveryCode, row.delivery_code_hash)) {
@@ -1751,17 +1895,8 @@ export function completeDelivery(auth, orderId, input) {
           WHERE delivery_batch_id = ?
         `).run(now, now, now, row.delivery_batch_id);
 
-        if (batchBeforeCompletion?.status !== "delivered") {
-          db.prepare(`
-            UPDATE rider_profiles
-            SET current_active_batch_count = CASE
-                  WHEN current_active_batch_count > 0 THEN current_active_batch_count - 1
-                  ELSE 0
-                END,
-                updated_at = ?
-            WHERE user_id = ?
-          `).run(now, riderId);
-        }
+        // Workload is synchronized from live assignments below. Avoid mutable
+        // decrement counters, which drift when a batch has several orders.
       }
     }
     db.prepare(`
@@ -1771,9 +1906,11 @@ export function completeDelivery(auth, orderId, input) {
     `).run(createId("reg"), riderId, row.id, row.order_id, row.order_type, row.delivery_fee_kobo || 0, now, now);
     db.prepare(`
       UPDATE rider_profiles
-      SET completed_deliveries = completed_deliveries + 1, updated_at = ?
+      SET completed_deliveries = completed_deliveries + 1,
+          current_active_batch_count = ?,
+          updated_at = ?
       WHERE user_id = ?
-    `).run(now, riderId);
+    `).run(activeDispatchCount(riderId), now, riderId);
     createNotification({
       userId: row.buyer_id,
       type: "order",
@@ -1858,6 +1995,8 @@ export function failAssignment(auth, assignmentId, input) {
   const now = nowIso();
   transaction(() => {
     db.prepare("UPDATE rider_assignments SET status = 'failed', fail_reason = ?, failed_at = ?, updated_at = ? WHERE id = ?").run(clean(input.note, 500), now, now, assignmentId);
+    db.prepare("UPDATE rider_profiles SET current_active_batch_count = ?, updated_at = ? WHERE user_id = ?")
+      .run(activeDispatchCount(riderId), now, riderId);
     if (input.currentLocation) recordLocation(riderId, input.currentLocation, assignmentId);
     createNotification({
       userId: row.seller_id,
@@ -1927,6 +2066,189 @@ export function auditRiderContact(auth, assignmentId, input) {
 export function markRiderNotificationRead(auth, notificationId) {
   const riderId = requireRiderUser(auth);
   return markNotificationRead(riderId, notificationId);
+}
+
+function sellerOrderForRiderManagement(auth, orderId) {
+  if (!auth || !["seller", "admin"].includes(auth.role)) {
+    throw new HttpError(403, "Seller or admin access is required.");
+  }
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+  if (!order) throw new HttpError(404, "Order was not found.");
+  if (auth.role !== "admin" && order.seller_id !== (auth.user_id || auth.id)) {
+    throw new HttpError(403, "Only this order's seller can manage its rider.");
+  }
+  return order;
+}
+
+function assignedRiderRowForOrder(order) {
+  const assignment = db.prepare(`
+    SELECT rider_assignments.*,
+           users.name AS rider_user_name,
+           users.email AS rider_email,
+           users.phone AS rider_user_phone,
+           users.avatar_url AS rider_avatar_url,
+           rider_profiles.selfie_url AS rider_selfie_url,
+           rider_profiles.vehicle_type AS rider_vehicle_type,
+           rider_profiles.transport_type AS rider_transport_type,
+           rider_profiles.current_lat AS rider_current_lat,
+           rider_profiles.current_lng AS rider_current_lng,
+           rider_profiles.last_location_at AS rider_last_location_at,
+           rider_profiles.last_presence_at AS rider_last_presence_at,
+           rider_profiles.availability AS rider_availability
+    FROM rider_assignments
+    JOIN users ON users.id = rider_assignments.rider_id
+    LEFT JOIN rider_profiles ON rider_profiles.user_id = rider_assignments.rider_id
+    WHERE rider_assignments.order_type = 'store_order'
+      AND rider_assignments.order_id = ?
+    ORDER BY
+      CASE WHEN rider_assignments.status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery') THEN 0 ELSE 1 END,
+      rider_assignments.updated_at DESC
+    LIMIT 1
+  `).get(order.id);
+  if (assignment && ACTIVE_ASSIGNMENT_STATUSES.has(assignment.status)) return assignment;
+
+  if (!order.delivery_batch_id) return null;
+  return db.prepare(`
+    SELECT dispatch_attempts.id AS dispatch_attempt_id,
+           dispatch_attempts.status AS dispatch_attempt_status,
+           dispatch_attempts.rider_id,
+           dispatch_attempts.offered_at AS created_at,
+           dispatch_attempts.updated_at,
+           users.name AS rider_user_name,
+           users.email AS rider_email,
+           users.phone AS rider_user_phone,
+           users.avatar_url AS rider_avatar_url,
+           rider_profiles.selfie_url AS rider_selfie_url,
+           rider_profiles.vehicle_type AS rider_vehicle_type,
+           rider_profiles.transport_type AS rider_transport_type,
+           rider_profiles.current_lat AS rider_current_lat,
+           rider_profiles.current_lng AS rider_current_lng,
+           rider_profiles.last_location_at AS rider_last_location_at,
+           rider_profiles.last_presence_at AS rider_last_presence_at,
+           rider_profiles.availability AS rider_availability
+    FROM dispatch_attempts
+    JOIN users ON users.id = dispatch_attempts.rider_id
+    LEFT JOIN rider_profiles ON rider_profiles.user_id = dispatch_attempts.rider_id
+    WHERE dispatch_attempts.delivery_batch_id = ?
+      AND dispatch_attempts.status IN ('offered','accepted')
+    ORDER BY dispatch_attempts.updated_at DESC
+    LIMIT 1
+  `).get(order.delivery_batch_id);
+}
+
+export function getSellerAssignedRider(auth, orderId) {
+  const order = sellerOrderForRiderManagement(auth, orderId);
+  const row = assignedRiderRowForOrder(order);
+  if (!row) throw new HttpError(404, "No active rider is assigned to this order.");
+
+  const riderPoint = pointFrom("", row.rider_current_lat, row.rider_current_lng);
+  const pickupPoint = pointFrom(order.pickup_location || "", order.pickup_lat, order.pickup_lng);
+  const meters = distanceMeters(riderPoint, pickupPoint);
+  let conversationId = null;
+  if (row.id) {
+    try {
+      conversationId = createDeliveryAssignmentConversation(auth.user_id || auth.id, row.id)?.id || null;
+    } catch {
+      conversationId = null;
+    }
+  }
+
+  return {
+    assignmentId: row.id || null,
+    dispatchAttemptId: row.dispatch_attempt_id || null,
+    orderId: order.id,
+    status: row.status || row.dispatch_attempt_status || "offered",
+    accepted: ["accepted", "arrived_pickup", "picked_up", "out_for_delivery"].includes(row.status) || row.dispatch_attempt_status === "accepted",
+    canCancel: !["picked_up", "out_for_delivery", "delivered"].includes(row.status),
+    conversationId,
+    chatPath: conversationId ? `/messages?conversation=${conversationId}` : "",
+    rider: {
+      id: row.rider_id,
+      name: row.rider_user_name || "Gleenc rider",
+      username: "@rider",
+      profileImageUrl: row.rider_selfie_url || row.rider_avatar_url || null,
+      phone: row.rider_user_phone || "",
+      email: row.rider_email || "",
+      vehicleType: row.rider_vehicle_type || row.rider_transport_type || "Rider",
+      isOnline: row.rider_availability === "online" && isRiderPresenceOnline({ user_id: row.rider_id }),
+      lastActiveAt: row.rider_last_presence_at || row.rider_last_location_at || row.updated_at || null,
+      currentLocation: row.rider_current_lat == null || row.rider_current_lng == null
+        ? null
+        : { lat: Number(row.rider_current_lat), lng: Number(row.rider_current_lng) },
+      distanceToSellerKm: Number.isFinite(meters) ? Number((meters / 1000).toFixed(2)) : null,
+    },
+  };
+}
+
+export function cancelSellerRiderAssignment(auth, orderId, reason = "") {
+  const order = sellerOrderForRiderManagement(auth, orderId);
+  const row = assignedRiderRowForOrder(order);
+  if (!row) throw new HttpError(404, "No active rider assignment was found.");
+  if (["picked_up", "out_for_delivery", "delivered"].includes(row.status)) {
+    throw new HttpError(409, "The rider assignment cannot be cancelled after pickup.");
+  }
+
+  const now = nowIso();
+  const note = clean(reason || "Seller cancelled the rider assignment.", 500);
+  transaction(() => {
+    if (row.id) {
+      db.prepare(`
+        UPDATE rider_assignments
+        SET status = 'cancelled', fail_reason = ?, failed_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(note, now, now, row.id);
+    }
+    if (order.delivery_batch_id) {
+      db.prepare(`
+        UPDATE dispatch_attempts
+        SET status = CASE WHEN status IN ('offered','accepted') THEN 'superseded' ELSE status END,
+            rejection_reason = CASE WHEN status IN ('offered','accepted') THEN ? ELSE rejection_reason END,
+            updated_at = ?
+        WHERE delivery_batch_id = ?
+      `).run(note, now, order.delivery_batch_id);
+      db.prepare(`
+        UPDATE delivery_batches
+        SET assigned_rider_id = NULL,
+            current_dispatch_attempt_id = NULL,
+            status = 'ready_for_dispatch',
+            dispatch_status = 'ready_for_dispatch',
+            rider_assignment_status = 'ready',
+            blocking_step = 'ready_to_find_rider',
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, order.delivery_batch_id);
+      db.prepare(`
+        UPDATE pickup_tasks
+        SET status = CASE WHEN seller_marked_ready = 1 THEN 'package_ready' ELSE status END,
+            updated_at = ?
+        WHERE delivery_batch_id = ? AND status != 'seller_rejected'
+      `).run(now, order.delivery_batch_id);
+      db.prepare("UPDATE delivery_tasks SET status = 'pending_pickups', updated_at = ? WHERE delivery_batch_id = ?")
+        .run(now, order.delivery_batch_id);
+    }
+    db.prepare(`
+      UPDATE orders
+      SET assigned_rider_id = NULL,
+          rider_assignment_id = NULL,
+          auto_dispatch_status = 'ready_for_dispatch',
+          dispatch_status = 'ready_for_dispatch',
+          delivery_status = 'package_ready',
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, order.id);
+    db.prepare("UPDATE rider_profiles SET current_active_batch_count = ?, updated_at = ? WHERE user_id = ?")
+      .run(activeDispatchCount(row.rider_id), now, row.rider_id);
+    createNotification({
+      userId: row.rider_id,
+      type: "order",
+      title: "Rider assignment cancelled",
+      body: note,
+      actionLabel: "Open rider dashboard",
+      actionPath: "/rider",
+    });
+  });
+
+  return { ok: true, orderId: order.id, cancelledRiderId: row.rider_id };
 }
 
 export function cookieConfig() {

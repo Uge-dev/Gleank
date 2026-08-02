@@ -6,7 +6,9 @@ import {
   FiClock,
   FiMapPin,
   FiMessageCircle,
+  FiNavigation,
   FiPackage,
+  FiPhone,
   FiShoppingBag,
   FiTruck,
   FiX,
@@ -17,9 +19,11 @@ import LoadingState from "../components/LoadingState";
 import {
   getSellerOrders,
   getSellerPickupTasks,
+  getAssignedOrderRider,
+  cancelAssignedOrderRider,
   markSellerPickupTaskReady,
 } from "../services/seller.service";
-import type { SellerPickupTask } from "../services/seller.service";
+import type { AssignedOrderRider, SellerPickupTask } from "../services/seller.service";
 import {
   sellerConfirmOrder,
   sellerRejectOrder,
@@ -80,6 +84,9 @@ function SellerOrders() {
   const [taskActionId, setTaskActionId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [riderOrderId, setRiderOrderId] = useState("");
+  const [assignedRider, setAssignedRider] = useState<AssignedOrderRider | null>(null);
+  const [riderDetailsLoading, setRiderDetailsLoading] = useState(false);
 
   const loadOrders = useCallback(async () => {
     const [activeResponse, successfulResponse] = await Promise.all([
@@ -115,6 +122,54 @@ function SellerOrders() {
   useEffect(() => {
     void loadPage();
   }, [loadPage]);
+
+  const loadAssignedRider = useCallback(async (orderId: string, silent = false) => {
+    if (!silent) setRiderDetailsLoading(true);
+    try {
+      const response = await getAssignedOrderRider(orderId);
+      setAssignedRider(response.assignedRider);
+      setError("");
+    } catch (requestError) {
+      if (!silent) {
+        setError(requestError instanceof Error ? requestError.message : "Rider details could not be loaded.");
+        setRiderOrderId("");
+      }
+    } finally {
+      if (!silent) setRiderDetailsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!riderOrderId) return undefined;
+    const interval = window.setInterval(() => {
+      void loadAssignedRider(riderOrderId, true);
+    }, 15_000);
+    return () => window.clearInterval(interval);
+  }, [loadAssignedRider, riderOrderId]);
+
+  async function openAssignedRider(orderId: string) {
+    setRiderOrderId(orderId);
+    setAssignedRider(null);
+    await loadAssignedRider(orderId);
+  }
+
+  async function cancelRiderAssignment() {
+    if (!riderOrderId || !assignedRider?.canCancel) return;
+    const reason = window.prompt("Why are you cancelling this rider assignment?", "Assigning another rider.");
+    if (reason === null) return;
+    setTaskActionId(`cancel-rider-${riderOrderId}`);
+    try {
+      await cancelAssignedOrderRider(riderOrderId, reason);
+      setRiderOrderId("");
+      setAssignedRider(null);
+      setNotice("Rider assignment cancelled. You can now select another available rider.");
+      await Promise.all([loadOrders(), loadPickupTasks()]);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "The rider assignment could not be cancelled.");
+    } finally {
+      setTaskActionId("");
+    }
+  }
 
   const summary = useMemo(
     () => ({
@@ -370,8 +425,7 @@ function SellerOrders() {
                 !orderClosed &&
                 !sellerConfirmed &&
                 (order.paymentStatus === "paid" ||
-                  order.paymentMethod === "pay_on_delivery" ||
-                  Boolean(order.sellerConfirmationRequired));
+                  order.paymentMethod === "pay_on_delivery");
               const offerPending = [
                 "offer_pending",
                 "rider_offered",
@@ -553,15 +607,23 @@ function SellerOrders() {
                     ) : null}
 
                     {offerPending && !pickupTask?.assignedRiderId ? (
-                      <span className="seller-order-rider-offer-label">
+                      <button
+                        type="button"
+                        className="seller-order-rider-offer-label"
+                        onClick={() => void openAssignedRider(order.id)}
+                      >
                         <FiClock /> Waiting for rider acceptance
-                      </span>
+                      </button>
                     ) : null}
 
                     {pickupTask?.assignedRiderId && !orderClosed ? (
-                      <span className="seller-order-rider-assigned-card-label">
+                      <button
+                        type="button"
+                        className="seller-order-rider-assigned-card-label"
+                        onClick={() => void openAssignedRider(order.id)}
+                      >
                         <FiTruck /> Rider assigned
-                      </span>
+                      </button>
                     ) : null}
 
                     {!orderClosed &&
@@ -738,6 +800,74 @@ function SellerOrders() {
           />
         )}
       </section>
+
+      {riderOrderId ? (
+        <div className="seller-rider-modal-backdrop" role="presentation" onMouseDown={() => setRiderOrderId("")}>
+          <section
+            className="seller-rider-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Assigned rider details"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <button type="button" className="seller-rider-modal-close" aria-label="Close" onClick={() => setRiderOrderId("")}>
+              <FiX />
+            </button>
+            {riderDetailsLoading || !assignedRider ? (
+              <LoadingState message="Loading assigned rider..." />
+            ) : (
+              <>
+                <div className="seller-rider-modal-profile">
+                  {assignedRider.rider.profileImageUrl ? (
+                    <img src={resolveMediaUrl(assignedRider.rider.profileImageUrl, "")} alt={assignedRider.rider.name} />
+                  ) : (
+                    <span>{assignedRider.rider.name.slice(0, 1).toUpperCase()}</span>
+                  )}
+                  <div>
+                    <small>{assignedRider.accepted ? "Accepted delivery" : "Offer awaiting acceptance"}</small>
+                    <h2>{assignedRider.rider.name}</h2>
+                    <p>{assignedRider.rider.username} · {assignedRider.rider.vehicleType}</p>
+                  </div>
+                  <strong className={assignedRider.rider.isOnline ? "online" : ""}>
+                    {assignedRider.rider.isOnline
+                      ? "Active now"
+                      : assignedRider.rider.lastActiveAt
+                        ? `Active ${formatDate(assignedRider.rider.lastActiveAt)}`
+                        : "Offline"}
+                  </strong>
+                </div>
+
+                <div className="seller-rider-modal-metrics">
+                  <span><FiNavigation /> {assignedRider.rider.distanceToSellerKm == null ? "Distance unavailable" : `${assignedRider.rider.distanceToSellerKm} km from you`}</span>
+                  <span><FiTruck /> {assignedRider.status.replace(/_/g, " ")}</span>
+                </div>
+
+                <div className="seller-rider-modal-actions">
+                  {assignedRider.chatPath ? (
+                    <Link to={assignedRider.chatPath}><FiMessageCircle /> In-app chat</Link>
+                  ) : (
+                    <span><FiMessageCircle /> Chat opens after acceptance</span>
+                  )}
+                  {assignedRider.rider.phone ? (
+                    <a href={`tel:${assignedRider.rider.phone}`}><FiPhone /> {assignedRider.rider.phone}</a>
+                  ) : null}
+                </div>
+
+                {assignedRider.canCancel ? (
+                  <button
+                    type="button"
+                    className="seller-rider-cancel-assignment"
+                    disabled={taskActionId === `cancel-rider-${riderOrderId}`}
+                    onClick={() => void cancelRiderAssignment()}
+                  >
+                    <FiX /> {taskActionId === `cancel-rider-${riderOrderId}` ? "Cancelling..." : "Cancel assignment and choose another rider"}
+                  </button>
+                ) : null}
+              </>
+            )}
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

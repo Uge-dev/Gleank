@@ -10,6 +10,7 @@ import {
   listOrderReturns,
   respondToReturnRequest,
 } from "./return-dispute.service.js";
+import { generateOrderVerificationCode } from "./logistics.service.js";
 
 const USED_ORDER_STATUSES = new Set([
   "pending_payment",
@@ -124,6 +125,11 @@ function serializeOrder(row, events = []) {
     stage4Status: row.stage4_status || "",
     stage4PaymentStatus: row.stage4_payment_status || "",
     fulfillmentStatus: row.fulfillment_status || "",
+    fulfillmentMethod: row.fulfillment_method || "undecided",
+    quantity: Math.max(1, Number(row.quantity || 1)),
+    returnDays: Math.max(0, Number(row.return_days || 0)),
+    reservationExpiresAt: row.reservation_expires_at || null,
+    sellerDeliveryConfirmedAt: row.seller_delivery_confirmed_at || null,
     sellerConfirmationRequired: Boolean(row.seller_confirmation_required),
     returnWindowEndsAt: row.return_window_ends_at || null,
     buyerConfirmedAt: row.buyer_confirmed_at || null,
@@ -143,6 +149,10 @@ function serializeOrder(row, events = []) {
     verificationCode:
       row.payment_status === "paid" && row.viewer_id === row.buyer_id
         ? row.verification_code || ""
+        : "",
+    sellerPickupCode:
+      row.assigned_rider_id && row.viewer_id === row.seller_id
+        ? generateOrderVerificationCode("seller-pickup", row.id)
         : "",
     packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
@@ -276,7 +286,36 @@ function releaseUsedListingUnit(listingId) {
   refreshUsedListingAvailability(listingId);
 }
 
+export function releaseExpiredUsedOrderReservations() {
+  const now = new Date().toISOString();
+  const expired = db.prepare(`
+    SELECT id, listing_id
+    FROM used_market_orders
+    WHERE status = 'pending_payment'
+      AND payment_status = 'unpaid'
+      AND reservation_expires_at IS NOT NULL
+      AND reservation_expires_at <= ?
+    LIMIT 100
+  `).all(now);
+
+  for (const row of expired) {
+    const result = db.prepare(`
+      UPDATE used_market_orders
+      SET status = 'cancelled',
+          fulfillment_status = 'reservation_expired',
+          updated_at = ?
+      WHERE id = ? AND status = 'pending_payment' AND payment_status = 'unpaid'
+    `).run(now, row.id);
+    if (result.changes) {
+      releaseUsedListingUnit(row.listing_id);
+      insertEvent(row.id, "cancelled", "Payment reservation expired and inventory was restored automatically.");
+    }
+  }
+  return expired.length;
+}
+
 export function listUsedOrders(userId) {
+  releaseExpiredUsedOrderReservations();
   return db
     .prepare(`
       ${selectOrderBase()}
@@ -289,12 +328,14 @@ export function listUsedOrders(userId) {
 }
 
 export function getUsedOrder(userId, idOrCode) {
+  releaseExpiredUsedOrderReservations();
   const row = getOrderRowForUser(userId, idOrCode);
   if (!row) throw new HttpError(404, "Used Market order was not found.");
   return hydrateOrder(row, userId);
 }
 
 export function createUsedOrder(userId, input) {
+  releaseExpiredUsedOrderReservations();
   const listingId = clean(input?.listingId, 120);
   if (!listingId) throw new HttpError(422, "Used listing is required.");
 
@@ -341,22 +382,26 @@ export function createUsedOrder(userId, input) {
     const protectionFeeKobo = Math.round((sellerPriceKobo * env.platformFeePercent) / 100);
     const deliveryFeeKobo = 0;
     const totalKobo = sellerPriceKobo + protectionFeeKobo + deliveryFeeKobo;
+    const reservationExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
 
     db.prepare(`
       INSERT INTO used_market_orders (
         id, order_code, listing_id, buyer_id, seller_id, status, payment_status,
         payment_method, stage4_status, stage4_payment_status, fulfillment_status,
-        seller_confirmation_required, payout_status,
+        seller_confirmation_required, payout_status, quantity, return_days,
+        reservation_expires_at, fulfillment_method,
         item_price_kobo, protection_fee_kobo, delivery_fee_kobo, total_kobo,
         buyer_name, buyer_phone, campus, delivery_option, delivery_address,
         pickup_location, note, verification_code, package_tag_code, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', 1, ?, ?, 'undecided', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       generateOrderCode(),
       listing.id,
       userId,
       listing.seller_id,
+      Math.max(0, Number(listing.return_days || 0)),
+      reservationExpiresAt,
       sellerPriceKobo,
       protectionFeeKobo,
       deliveryFeeKobo,
@@ -512,6 +557,43 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
   });
 }
 
+export function chooseUsedOrderFulfillment(user, orderId, method) {
+  if (!["gleenc_rider", "external_delivery"].includes(method)) {
+    throw new HttpError(422, "Choose Gleenc rider delivery or external delivery.");
+  }
+  const row = getOrderRowForUser(user.user_id, orderId);
+  if (!row) throw new HttpError(404, "Used Market order was not found.");
+  if (row.seller_id !== user.user_id && user.role !== "admin") {
+    throw new HttpError(403, "Only the seller can choose delivery fulfillment.");
+  }
+  if (row.payment_status !== "paid") {
+    throw new HttpError(409, "Delivery fulfillment unlocks after protected payment is confirmed.");
+  }
+  if (["delivered", "completed", "cancelled", "disputed"].includes(row.status)) {
+    throw new HttpError(409, "Fulfillment can no longer be changed for this order.");
+  }
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE used_market_orders
+    SET fulfillment_method = ?,
+        fulfillment_status = ?,
+        status = CASE WHEN status = 'paid' THEN 'seller_confirmed' ELSE status END,
+        seller_confirmed_at = COALESCE(seller_confirmed_at, ?),
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    method,
+    method === "gleenc_rider" ? "awaiting_rider_assignment" : "external_delivery_selected",
+    now,
+    now,
+    row.id,
+  );
+  insertEvent(row.id, "seller_confirmed", method === "gleenc_rider"
+    ? "Seller selected delivery with a Gleenc rider."
+    : "Seller selected external delivery and remains responsible for proof and buyer handover.");
+  return getUsedOrder(user.user_id, row.id);
+}
+
 
 export function verifyUsedOrderDelivery(user, orderId, _code, _note = "") {
   const row = getOrderRowForUser(user.user_id, orderId);
@@ -548,11 +630,32 @@ export function submitUsedDeliveryProof(user, orderId, fileUrl, note = "") {
   if (row.seller_id !== user.user_id && user.role !== "admin") {
     throw new HttpError(403, "Only seller can submit delivery proof.");
   }
+  if (row.payment_status !== "paid") {
+    throw new HttpError(409, "Protected payment must be confirmed before delivery proof is submitted.");
+  }
+  if (row.fulfillment_method !== "external_delivery") {
+    throw new HttpError(409, "Use the assigned Gleenc rider workflow for in-platform delivery proof.");
+  }
+  if (!fileUrl) throw new HttpError(422, "Upload a clear delivery proof image.");
+
+  const now = new Date().toISOString();
 
   db.prepare(`
     INSERT INTO used_market_delivery_proofs (id, order_id, seller_id, proof_image_url, note, status, created_at)
     VALUES (?, ?, ?, ?, ?, 'submitted', ?)
-  `).run(createId("udp"), row.id, row.seller_id, fileUrl || null, clean(note, 1000), new Date().toISOString());
+  `).run(createId("udp"), row.id, row.seller_id, fileUrl, clean(note, 1000), now);
+
+  const returnWindowEndsAt = new Date(Date.now() + Math.max(0, Number(row.return_days || 0)) * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare(`
+    UPDATE used_market_orders
+    SET status = 'delivered',
+        fulfillment_status = 'external_delivery_proof_submitted',
+        seller_delivery_confirmed_at = ?,
+        return_window_ends_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(now, returnWindowEndsAt, now, row.id);
+  insertEvent(row.id, "delivered", "External delivery proof submitted. Buyer can confirm receipt or open a protected return/dispute.");
 
   createNotification({
     userId: row.buyer_id,
@@ -564,5 +667,5 @@ export function submitUsedDeliveryProof(user, orderId, fileUrl, note = "") {
     imageUrl: fileUrl || parseImages(row.listing_image_urls)[0] || "",
   });
 
-  return { success: true };
+  return { success: true, order: getUsedOrder(user.user_id, row.id) };
 }

@@ -418,7 +418,7 @@ export function RiderDataProvider({ children }: { children: ReactNode }) {
     };
     const interval = window.setInterval(() => {
       refreshWhenActive();
-    }, 10000);
+    }, 30000);
     window.addEventListener('focus', refreshWhenActive);
     window.addEventListener('online', refreshWhenActive);
     document.addEventListener('visibilitychange', refreshWhenActive);

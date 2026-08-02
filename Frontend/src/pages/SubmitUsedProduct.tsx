@@ -576,6 +576,27 @@ function SubmitUsedProduct() {
                 </select>
               </label>
               <label>
+                Return policy (days)
+                <input
+                  name="returnDays"
+                  type="number"
+                  min="0"
+                  max="30"
+                  step="1"
+                  defaultValue="2"
+                  required
+                />
+                <small>Use 0 only for a clearly disclosed no-return listing.</small>
+              </label>
+              <label>
+                Available sizes
+                <input
+                  name="availableSizes"
+                  placeholder="Example: 39, 40, 41 or S, M, L"
+                  required={selectedCategory === "Fashion/Clothing" || selectedCategory === "Shoes/Bags"}
+                />
+              </label>
+              <label>
                 Serial number / IMEI / code
                 <input name="serialNumber" placeholder="Optional but recommended for gadgets" />
               </label>

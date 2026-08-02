@@ -211,6 +211,10 @@ function Create() {
       requiredFields.push(["requiredVehicleType", "Required vehicle is required."]);
       requiredFields.push(["estimatedPackageUnits", "Package units are required."]);
       requiredFields.push(["deliveryReadinessType", "Delivery readiness timing is required."]);
+      const category = String(formData.get("category") || "");
+      if (/fashion|cloth|apparel|shoe|footwear/i.test(category)) {
+        requiredFields.push(["availableSizes", "Add the available sizes for clothing or footwear."]);
+      }
     } else {
       requiredFields.push(["serviceType", "Service type is required."]);
       requiredFields.push(["location", "Service location is required."]);
@@ -494,17 +498,27 @@ function Create() {
             )}
 
             {createType === "product" ? (
-              <label>
-                <span>Stock quantity</span>
-                <input
-                  name="stock"
-                  type="number"
-                  min="1"
-                  step="1"
-                  defaultValue={existingProduct?.stock ?? 1}
-                  required
-                />
-              </label>
+              <>
+                <label>
+                  <span>Stock quantity</span>
+                  <input
+                    name="stock"
+                    type="number"
+                    min="1"
+                    step="1"
+                    defaultValue={existingProduct?.stock ?? 1}
+                    required
+                  />
+                </label>
+                <label>
+                  <span>Available sizes (for clothing/shoes)</span>
+                  <input
+                    name="availableSizes"
+                    defaultValue={existingProduct?.availableSizes?.join(", ") || ""}
+                    placeholder="Example: 39, 40, 41 or S, M, L"
+                  />
+                </label>
+              </>
             ) : (
               <label>
                 <span>Duration (minutes)</span>

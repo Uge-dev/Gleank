@@ -10,10 +10,10 @@ function resolveAdminApiBase() {
 
   try {
     const configured = new URL(configuredUrl);
-    const isVercelApp = window.location.hostname.endsWith(".vercel.app");
-    const isRenderBackend = configured.hostname.endsWith(".onrender.com");
+    const isLocalFrontend = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+    const configuredIsLocal = ["localhost", "127.0.0.1"].includes(configured.hostname);
 
-    if (isVercelApp && isRenderBackend && configured.origin !== window.location.origin) {
+    if (!isLocalFrontend && !configuredIsLocal && configured.origin !== window.location.origin) {
       return "/api";
     }
   } catch {
@@ -122,6 +122,25 @@ export async function uploadAdminAvatar(file: File) {
 
 export async function fetchAdminDataset(): Promise<AdminDataset> {
   return request<AdminDataset>("/admin/overview");
+}
+
+export async function createAdminMarket(input: {
+  name: string;
+  state: string;
+  city: string;
+  area?: string;
+  address: string;
+  landmark?: string;
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+  allowedCategories: string[];
+  status: "pending" | "active";
+}) {
+  return request<{ success: boolean; market: import("./adminData").AdminMarket }>(
+    "/admin/markets",
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 export function subscribeToAdminNotifications(onChange: () => void) {

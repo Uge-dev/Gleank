@@ -725,7 +725,10 @@ function markUsedOrderPaid(row) {
 
   db.prepare(`
     UPDATE used_listings
-    SET status = 'sold',
+    SET status = CASE
+          WHEN COALESCE(reserved_quantity, 0) >= COALESCE(quantity, 1) THEN 'sold'
+          ELSE 'active'
+        END,
         updated_at = ?
     WHERE id = ?
   `).run(now, order.listing_id);

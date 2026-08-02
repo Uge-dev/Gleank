@@ -88,10 +88,16 @@ function conversationSelect(extraWhere = "") {
     SELECT conversations.*,
            buyer.name AS buyer_name,
            buyer.role AS buyer_role,
-           buyer.avatar_url AS buyer_avatar_url,
+           COALESCE(
+             NULLIF(buyer.avatar_url, ''),
+             (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = buyer.id LIMIT 1)
+           ) AS buyer_avatar_url,
            seller.name AS seller_name,
            seller.role AS seller_role,
-           seller.avatar_url AS seller_avatar_url,
+           COALESCE(
+             NULLIF(seller.avatar_url, ''),
+             (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = seller.id LIMIT 1)
+           ) AS seller_avatar_url,
            (
              SELECT avatar_url
              FROM users support_admin
@@ -787,7 +793,10 @@ export function listMessages(userId, conversationId) {
       SELECT messages.*,
              users.name AS sender_name,
              users.role AS sender_role,
-             users.avatar_url AS sender_avatar_url
+             COALESCE(
+               NULLIF(users.avatar_url, ''),
+               (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = users.id LIMIT 1)
+             ) AS sender_avatar_url
       FROM messages
       JOIN users ON users.id = messages.sender_id
       WHERE messages.conversation_id = ?
@@ -824,6 +833,34 @@ export function sendMessage(userId, conversationId, input) {
         body,
       })
     : { body, flagged: false, warning: "" };
+  const senderAccount = db.prepare(`
+    SELECT users.role,
+           (
+             SELECT seller_type
+             FROM stores
+             WHERE owner_id = users.id AND status = 'active'
+             ORDER BY updated_at DESC
+             LIMIT 1
+           ) AS seller_type
+    FROM users
+    WHERE users.id = ?
+  `).get(userId);
+  if (
+    protectedMessage.flagged &&
+    senderAccount?.role === "seller" &&
+    senderAccount?.seller_type !== "used_market" &&
+    !["used_listing", "used_order"].includes(conversation.contextType)
+  ) {
+    throw new HttpError(
+      422,
+      "This message is not allowed on Gleenc or may be spam. Keep contact and payment inside Gleenc for user protection. Review the Privacy and Policy page.",
+      {
+        code: "CHAT_POLICY_BLOCKED",
+        policyPath: "/help",
+        reasons: protectedMessage.reasons || [],
+      },
+    );
+  }
   const finalBody = clean(protectedMessage.body, 1600);
   const previewBody = finalBody || (messageContext ? `Shared ${messageContext.name}` : "Sent an image");
   const contextSnapshot = messageContext
@@ -860,15 +897,25 @@ export function sendMessage(userId, conversationId, input) {
 
   if (recipientId && recipientId !== userId) {
     const sender = db
-      .prepare("SELECT name, avatar_url FROM users WHERE id = ?")
+      .prepare(`
+        SELECT users.name, users.role,
+               COALESCE(
+                 NULLIF(users.avatar_url, ''),
+                 (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = users.id LIMIT 1)
+               ) AS avatar_url
+        FROM users
+        WHERE users.id = ?
+      `)
       .get(userId);
+    const recipientRole = db.prepare("SELECT role FROM users WHERE id = ?").get(recipientId)?.role;
+    const actionBase = recipientRole === "rider" ? "/rider/messages" : "/messages";
     createNotification({
       userId: recipientId,
       type: "message",
       title: `New message from ${sender?.name || "Gleenc user"}`,
       body: previewBody,
       actionLabel: "Open chat",
-      actionPath: `/messages?conversation=${conversation.id}`,
+      actionPath: `${actionBase}?conversation=${conversation.id}`,
       imageUrl: sender?.avatar_url || conversation.storeLogoUrl || conversation.listingImageUrl || "",
     });
   }

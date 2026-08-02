@@ -35,9 +35,20 @@ export function getOrders() {
   return apiRequest<{ orders: GleencOrder[] }>("/orders");
 }
 
+export function getPendingBuyerOrderCount() {
+  return apiRequest<{ count: number }>("/orders/pending-count");
+}
+
 export function getOrder(id: string) {
   return apiRequest<{ order: GleencOrder }>(
     `/orders/${encodeURIComponent(id)}`,
+  );
+}
+
+export function submitOrderReview(id: string, rating: number, body = "") {
+  return apiRequest<{ review: { id: string; rating: number; body: string } }>(
+    `/orders/${encodeURIComponent(id)}/review`,
+    { method: "POST", body: JSON.stringify({ rating, body }) },
   );
 }
 

@@ -176,11 +176,11 @@ export function createProduct(userId, input, uploadedUrls, imageModeration = nul
   db.prepare(`
     INSERT INTO products (
       id, store_id, name, slug, category, description, price_kobo, seller_price_kobo, platform_fee_kobo, buyer_price_kobo,
-      stock, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
+      stock, available_sizes, status, moderation_status, moderation_note, moderation_reasons, risk_score, risk_level,
       availability_status, seller_confirmation_required, return_policy, delivery_readiness_type,
       delivery_readiness_value, delivery_ready_after_minutes, delivery_ready_at,
       ocr_review_status, requires_admin_review, is_featured, image_urls, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     store.id,
@@ -193,6 +193,7 @@ export function createProduct(userId, input, uploadedUrls, imageModeration = nul
     price.platformFeeKobo,
     price.buyerPriceKobo,
     stock,
+    JSON.stringify(input.availableSizes || []),
     status,
     moderationPatch.moderationStatus,
     moderationPatch.moderationNote,
@@ -256,7 +257,7 @@ export function updateProduct(userId, productId, input, uploadedUrls, imageModer
     UPDATE products
     SET name = ?, slug = ?, category = ?, description = ?, price_kobo = ?,
         seller_price_kobo = ?, platform_fee_kobo = ?, buyer_price_kobo = ?,
-        stock = ?, status = ?, moderation_status = ?, moderation_note = ?,
+        stock = ?, available_sizes = ?, status = ?, moderation_status = ?, moderation_note = ?,
         moderation_reasons = ?, risk_score = ?, risk_level = ?,
         availability_status = ?, seller_confirmation_required = ?, return_policy = ?,
         delivery_readiness_type = ?, delivery_readiness_value = ?,
@@ -275,6 +276,7 @@ export function updateProduct(userId, productId, input, uploadedUrls, imageModer
     price.platformFeeKobo,
     price.buyerPriceKobo,
     input.stock,
+    JSON.stringify(input.availableSizes || []),
     status,
     moderationPatch.moderationStatus,
     moderationPatch.moderationNote,

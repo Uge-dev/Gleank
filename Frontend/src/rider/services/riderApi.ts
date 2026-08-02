@@ -172,6 +172,8 @@ export type RiderDispatchOffer = {
       sellerName?: string;
       sellerPhone?: string;
       pickupLocation?: string;
+      pickupPoint?: BackendPoint;
+      distanceToPickupKm?: number | null;
       pickupSequence?: number;
       status?: string;
       firstProduct?: {

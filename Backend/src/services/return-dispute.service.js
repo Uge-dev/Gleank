@@ -111,6 +111,14 @@ export function createReturnRequest(auth, orderId, input = {}) {
   if (!canOpenReturn(order)) {
     throw new HttpError(422, "Returns can only be opened after paid delivery is confirmed.");
   }
+  if (sourceType === "used_order") {
+    if (Number(order.return_days || 0) <= 0) {
+      throw new HttpError(422, "This used listing has a no-return policy. You can still open a dispute for fraud, damage, or a materially misdescribed item.");
+    }
+    if (order.return_window_ends_at && new Date(order.return_window_ends_at).getTime() < Date.now()) {
+      throw new HttpError(422, "The return window for this used item has ended. You can still open a protected dispute where applicable.");
+    }
+  }
 
   const existing = db
     .prepare(`

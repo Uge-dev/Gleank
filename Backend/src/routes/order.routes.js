@@ -3,6 +3,7 @@ import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import {
   createOrders,
   getOrder,
+  getPendingBuyerOrderCount,
   getOrderPaymentState,
   listOrders,
   listReturnsForOrder,
@@ -12,6 +13,7 @@ import {
   replyToOrderReturn,
   sellerConfirmOrder,
   sellerRejectOrder,
+  submitStoreReview,
   updateOrderStatus,
   verifyOrderDelivery,
 } from "../services/order.service.js";
@@ -22,6 +24,10 @@ orderRouter.use(requireAuth, requireEmailVerified);
 
 orderRouter.get("/", (req, res) => {
   res.json({ orders: listOrders(req.auth.user_id) });
+});
+
+orderRouter.get("/pending-count", (req, res) => {
+  res.json({ count: getPendingBuyerOrderCount(req.auth.user_id) });
 });
 
 orderRouter.post("/", (req, res) => {
@@ -111,4 +117,8 @@ orderRouter.post("/:id/verify-delivery", (req, res) => {
       String(req.body?.note || ""),
     ),
   });
+});
+
+orderRouter.post("/:id/review", (req, res) => {
+  res.status(201).json({ review: submitStoreReview(req.auth, req.params.id, req.body || {}) });
 });

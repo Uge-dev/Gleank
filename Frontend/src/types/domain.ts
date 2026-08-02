@@ -111,6 +111,7 @@ export type SellerProduct = {
   priceKobo: number;
   price: number;
   stock: number;
+  availableSizes?: string[];
   status: "draft" | "active" | "out_of_stock";
   moderationStatus?: ModerationStatus;
   moderationNote?: string;
@@ -222,6 +223,16 @@ export type SearchProduct = SellerProduct & {
   storeSlug: string;
   storeCampus?: string;
   interaction: ProductInteraction;
+  metrics?: {
+    likes: number;
+    comments: number;
+    saves: number;
+    shares: number;
+    views: number;
+    storeFollowers?: number;
+    successfulDeliveries?: number;
+    positiveReviews?: number;
+  };
 };
 
 export type SearchService = SellerService & {
@@ -371,6 +382,8 @@ export type UsedListing = {
   quantity?: number;
   reservedQuantity?: number;
   availableQuantity?: number;
+  returnDays?: number;
+  availableSizes?: string[];
   sellerRole?: "buyer" | "seller" | "rider" | "admin" | string;
   sellerStoreSlug?: string;
   sellerStoreName?: string;
@@ -520,6 +533,7 @@ export type GleencOrder = {
   pickupLocation: string;
   note: string;
   verificationCode: string;
+  sellerPickupCode?: string;
   createdAt: string;
   updatedAt: string;
   items: OrderItem[];
@@ -571,6 +585,11 @@ export type UsedMarketOrder = {
   stage4Status?: string;
   stage4PaymentStatus?: string;
   fulfillmentStatus?: string;
+  fulfillmentMethod?: "undecided" | "gleenc_rider" | "external_delivery" | string;
+  quantity?: number;
+  returnDays?: number;
+  reservationExpiresAt?: string | null;
+  sellerDeliveryConfirmedAt?: string | null;
   sellerConfirmationRequired?: boolean;
   returnWindowEndsAt?: string | null;
   buyerConfirmedAt?: string | null;
@@ -588,6 +607,7 @@ export type UsedMarketOrder = {
   pickupLocation: string;
   note: string;
   verificationCode: string;
+  sellerPickupCode?: string;
   createdAt: string;
   updatedAt: string;
   events: UsedMarketOrderEvent[];

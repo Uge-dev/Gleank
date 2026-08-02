@@ -97,6 +97,9 @@ export type AdminMarket = {
   area: string;
   address: string;
   landmark: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  radiusKm?: number;
   status: AdminStatus;
   allowedCategories: string[];
   deliveryNote: string;

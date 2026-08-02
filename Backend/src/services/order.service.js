@@ -325,6 +325,8 @@ function getOrderRowsForSeller(userId, view = "active") {
         AND (
           orders.payment_status = 'paid'
           OR orders.payment_method = 'pay_on_delivery'
+          OR orders.seller_confirmation_required = 1
+          OR orders.stage4_status IN ('pending_seller_confirmation', 'seller_confirmation_pending')
         )
         ${lifecycleFilter}
       ORDER BY orders.created_at DESC
@@ -481,6 +483,16 @@ export function getOrder(userId, idOrCode) {
   return hydrateOrder(row, userId);
 }
 
+export function getPendingBuyerOrderCount(userId) {
+  const row = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM orders
+    WHERE buyer_id = ?
+      AND status IN ('pending_payment', 'paid')
+  `).get(userId);
+  return Number(row?.count || 0);
+}
+
 export function createOrders(userId, input) {
   const items = Array.isArray(input?.items) ? input.items : [];
 
@@ -593,16 +605,6 @@ export function createOrders(userId, input) {
       (total, item) => total + item.lineTotalKobo,
       0,
     );
-
-    if (
-      totalKoboForEligibility >= FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO &&
-      deliveryOption === "Delivery"
-    ) {
-      throw new HttpError(
-        422,
-        "Door step delivery is available only when the order subtotal is below ₦100,000. Choose Pickup for this order.",
-      );
-    }
 
     if (paymentMethod === "pay_on_delivery") {
       if (totalKoboForEligibility >= FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO) {
@@ -805,7 +807,7 @@ export function createOrders(userId, input) {
           paymentMethod === "pay_on_delivery"
             ? `${buyerName} placed a Pay at Delivery order for ${firstProductName}. Confirm availability before rider pickup.`
             : sellerConfirmationRequired
-              ? `${buyerName} placed an order for ${firstProductName}. Confirm availability before payment.`
+              ? `${buyerName} placed an order for ${firstProductName}. The buyer can pay now; confirm availability before fulfilment starts.`
             : `${buyerName} placed an order for ${firstProductName}.`,
         actionLabel: "View order",
         actionPath: `/orders/${orderId}`,
@@ -823,7 +825,7 @@ export function createOrders(userId, input) {
           paymentMethod === "pay_on_delivery"
             ? `Your order ${orderCode} was sent to the seller. You will still pay securely through Gleenc/Paystack before the delivery code unlocks.`
             : sellerConfirmationRequired
-              ? `Your order ${orderCode} is waiting for seller availability confirmation.`
+              ? `Your order ${orderCode} is ready for payment. The seller will confirm availability before fulfilment starts.`
             : `Your order ${orderCode} is waiting for payment.`,
         actionLabel: "Continue order",
         actionPath: `/orders/${orderId}`,
@@ -1026,7 +1028,7 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
       body:
         row.payment_method === "pay_on_delivery"
           ? "The seller confirmed your order. You will pay securely through Gleenc/Paystack when the rider arrives, before delivery code verification."
-          : "The seller confirmed your order. You can now continue payment.",
+          : "The seller confirmed your order. Payment remains available through Gleenc/Paystack.",
       actionLabel: "View order",
       actionPath: `/orders/${row.id}`,
     });
@@ -1333,4 +1335,45 @@ export function openOrderDispute(user, orderId, input = {}) {
 
 export function listReturnsForOrder(user, orderId) {
   return listOrderReturns(user, orderId, "store_order");
+}
+
+export function submitStoreReview(user, orderId, input = {}) {
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+  if (!order) throw new HttpError(404, "Order was not found.");
+  const userId = user.user_id || user.id;
+  if (order.buyer_id !== userId) throw new HttpError(403, "Only the buyer can review this delivery.");
+  if (order.payment_status !== "paid" || !["delivered", "completed"].includes(order.status)) {
+    throw new HttpError(422, "A store can be reviewed only after a paid delivery is completed.");
+  }
+  const rating = Number(input.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    throw new HttpError(422, "Choose a rating from 1 to 5.");
+  }
+  const body = String(input.body || "").trim().slice(0, 1000);
+  const now = new Date().toISOString();
+  const existing = db.prepare("SELECT id FROM store_reviews WHERE order_id = ?").get(order.id);
+  const id = existing?.id || createId("srv");
+  db.prepare(`
+    INSERT INTO store_reviews (id, store_id, order_id, buyer_id, seller_id, rating, body, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(order_id) DO UPDATE SET rating = excluded.rating, body = excluded.body, updated_at = excluded.updated_at
+  `).run(id, order.store_id, order.id, order.buyer_id, order.seller_id, rating, body, now, now);
+  createNotification({
+    userId: order.seller_id,
+    type: "order",
+    title: "New store review",
+    body: `${rating}/5 rating received for order ${order.order_code}.`,
+    actionLabel: "Open store",
+    actionPath: "/dashboard",
+  });
+  const row = db.prepare("SELECT * FROM store_reviews WHERE order_id = ?").get(order.id);
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    storeId: row.store_id,
+    rating: Number(row.rating),
+    body: row.body || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }

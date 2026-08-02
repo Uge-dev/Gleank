@@ -315,6 +315,9 @@ function ProductDetails() {
     { label: "Category", value: product.category },
     { label: "Store", value: product.store.name },
     { label: "Stock", value: `${product.stock} available` },
+    ...(product.availableSizes?.length
+      ? [{ label: "Available sizes", value: product.availableSizes.join(", ") }]
+      : []),
     { label: "Listing", value: product.status.replaceAll("_", " ") },
     { label: "Store status", value: product.store.status },
   ];

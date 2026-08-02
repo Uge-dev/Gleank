@@ -175,6 +175,7 @@ db.exec(`
     description TEXT NOT NULL DEFAULT '',
     price_kobo INTEGER NOT NULL CHECK (price_kobo >= 0),
     stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    available_sizes TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'draft'
       CHECK (status IN ('draft', 'active', 'out_of_stock')),
     image_urls TEXT NOT NULL DEFAULT '[]',
@@ -226,6 +227,8 @@ db.exec(`
     delivery_option TEXT NOT NULL DEFAULT 'Pickup'
       CHECK (delivery_option IN ('Pickup', 'Delivery', 'Pickup & Delivery')),
     serial_number TEXT NOT NULL DEFAULT '',
+    return_days INTEGER NOT NULL DEFAULT 0,
+    available_sizes TEXT NOT NULL DEFAULT '[]',
     image_urls TEXT NOT NULL DEFAULT '[]',
     ownership_proof_url TEXT,
     receipt_url TEXT,
@@ -566,6 +569,24 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS order_events_order_id_idx ON order_events(order_id);
 
+  CREATE TABLE IF NOT EXISTS store_reviews (
+    id TEXT PRIMARY KEY,
+    store_id TEXT NOT NULL,
+    order_id TEXT NOT NULL UNIQUE,
+    buyer_id TEXT NOT NULL,
+    seller_id TEXT NOT NULL,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    body TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+    FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+    FOREIGN KEY (buyer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+  ) STRICT;
+
+  CREATE INDEX IF NOT EXISTS store_reviews_store_id_idx ON store_reviews(store_id, rating);
+
 
   CREATE TABLE IF NOT EXISTS conversations (
     id TEXT PRIMARY KEY,
@@ -645,6 +666,11 @@ db.exec(`
     note TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
     package_tag_code TEXT NOT NULL DEFAULT '',
+    quantity INTEGER NOT NULL DEFAULT 1,
+    return_days INTEGER NOT NULL DEFAULT 0,
+    reservation_expires_at TEXT,
+    fulfillment_method TEXT NOT NULL DEFAULT 'undecided',
+    seller_delivery_confirmed_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (listing_id) REFERENCES used_listings(id) ON DELETE CASCADE,
@@ -970,6 +996,7 @@ function ensureColumn(table, column, definition) {
 }
 
 ensureColumn("products", "is_featured", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("products", "available_sizes", "TEXT NOT NULL DEFAULT '[]'");
 ensureColumn("services", "is_featured", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "service_type", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("services", "location", "TEXT NOT NULL DEFAULT ''");
@@ -1177,6 +1204,8 @@ ensureColumn("used_listings", "platform_fee_kobo", "INTEGER NOT NULL DEFAULT 0")
 ensureColumn("used_listings", "buyer_price_kobo", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("used_listings", "quantity", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("used_listings", "reserved_quantity", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_listings", "return_days", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_listings", "available_sizes", "TEXT NOT NULL DEFAULT '[]'");
 
 ensureColumn("orders", "payment_method", "TEXT NOT NULL DEFAULT 'pay_now'");
 ensureColumn("orders", "stage4_status", "TEXT NOT NULL DEFAULT ''");
@@ -1207,6 +1236,11 @@ ensureColumn("used_market_orders", "seller_rejection_note", "TEXT NOT NULL DEFAU
 ensureColumn("used_market_orders", "return_window_ends_at", "TEXT");
 ensureColumn("used_market_orders", "buyer_confirmed_at", "TEXT");
 ensureColumn("used_market_orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");
+ensureColumn("used_market_orders", "quantity", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("used_market_orders", "return_days", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("used_market_orders", "reservation_expires_at", "TEXT");
+ensureColumn("used_market_orders", "fulfillment_method", "TEXT NOT NULL DEFAULT 'undecided'");
+ensureColumn("used_market_orders", "seller_delivery_confirmed_at", "TEXT");
 
 ensureColumn("seller_verification_profiles", "face_verified", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("seller_verification_profiles", "face_provider", "TEXT NOT NULL DEFAULT ''");

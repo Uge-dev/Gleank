@@ -80,30 +80,45 @@ function getStoreInitials(storeName: string) {
     .toUpperCase();
 }
 
-function freshnessBoost(product: FeedProduct) {
+function freshnessBoost(product: { createdAt: string; updatedAt: string }) {
   const createdAt = new Date(product.createdAt || product.updatedAt || "").getTime();
 
   if (!Number.isFinite(createdAt)) return 0;
 
   const ageDays = (Date.now() - createdAt) / (24 * 60 * 60 * 1000);
 
-  if (ageDays <= 1) return 900;
-  if (ageDays <= 3) return 520;
-  if (ageDays <= 7) return 260;
-  if (ageDays <= 14) return 110;
+  if (ageDays <= 1) return 24;
+  if (ageDays <= 3) return 16;
+  if (ageDays <= 7) return 10;
+  if (ageDays <= 14) return 5;
   return 0;
+}
+
+function usedEngagementScore(listing: FeedUsedListing) {
+  const interaction = listing.interaction;
+  return (
+    Number(interaction?.shareCount || 0) * 14 +
+    Number(interaction?.commentCount || 0) * 10 +
+    Number(interaction?.likeCount || 0) * 6 +
+    Number(interaction?.saveCount || 0) * 5 +
+    Number(interaction?.viewCount || 0) +
+    freshnessBoost(listing)
+  );
 }
 
 function feedEngagementScore(product: FeedProduct) {
   const interaction = product.interaction;
 
   return (
-    (product.isFeatured ? 100_000 : 0) +
+    (product.isFeatured ? 30 : 0) +
     interaction.shareCount * 14 +
     interaction.commentCount * 10 +
     interaction.likeCount * 6 +
     interaction.saveCount * 5 +
     interaction.viewCount +
+    Number(product.metrics?.storeFollowers || 0) * 8 +
+    Number(product.metrics?.successfulDeliveries || 0) * 12 +
+    Number(product.metrics?.positiveReviews || 0) * 15 +
     freshnessBoost(product)
   );
 }
@@ -477,12 +492,14 @@ async function shareProduct(productId: string, productName: string) {
     }));
 
     return [...productItems, ...usedItems].sort((a, b) => {
-      if (a.kind === "product" && b.kind === "product") {
-        const engagementA = feedEngagementScore(a.product);
-        const engagementB = feedEngagementScore(b.product);
+      const engagementA = a.kind === "product"
+        ? feedEngagementScore(a.product)
+        : usedEngagementScore(a.listing);
+      const engagementB = b.kind === "product"
+        ? feedEngagementScore(b.product)
+        : usedEngagementScore(b.listing);
 
-        if (engagementA !== engagementB) return engagementB - engagementA;
-      }
+      if (engagementA !== engagementB) return engagementB - engagementA;
 
       const dateA = a.kind === "product"
         ? a.product.createdAt || a.product.updatedAt

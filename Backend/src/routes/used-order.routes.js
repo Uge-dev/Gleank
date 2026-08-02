@@ -3,6 +3,7 @@ import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import { fileUrl, upload } from "../middleware/upload.js";
 import {
   createUsedOrder,
+  chooseUsedOrderFulfillment,
   getUsedOrder,
   listUsedOrders,
   listReturnsForUsedOrder,
@@ -14,6 +15,8 @@ import {
   updateUsedOrderStatus,
   verifyUsedOrderDelivery,
 } from "../services/used-order.service.js";
+import { createRiderAssignment, listAvailableRiders } from "../services/rider.service.js";
+import { HttpError } from "../lib/http-error.js";
 
 export const usedOrderRouter = Router();
 
@@ -29,6 +32,32 @@ usedOrderRouter.post("/", (req, res) => {
 
 usedOrderRouter.get("/:id", (req, res) => {
   res.json({ order: getUsedOrder(req.auth.user_id, req.params.id) });
+});
+
+usedOrderRouter.patch("/:id/fulfillment", (req, res) => {
+  res.json({
+    order: chooseUsedOrderFulfillment(
+      req.auth,
+      req.params.id,
+      String(req.body?.method || ""),
+    ),
+  });
+});
+
+usedOrderRouter.get("/:id/available-riders", (req, res) => {
+  const order = getUsedOrder(req.auth.user_id, req.params.id);
+  if (order.sellerId !== req.auth.user_id && req.auth.role !== "admin") {
+    throw new HttpError(403, "Only this order's seller can select a rider.");
+  }
+  res.json({ riders: listAvailableRiders(req.auth, { allowUsedMarketSeller: true }) });
+});
+
+usedOrderRouter.post("/:id/assign-rider", (req, res) => {
+  res.status(201).json(createRiderAssignment(req.auth, {
+    ...(req.body || {}),
+    orderType: "used_order",
+    orderId: req.params.id,
+  }));
 });
 
 usedOrderRouter.post("/:id/pay", (req, res) => {
