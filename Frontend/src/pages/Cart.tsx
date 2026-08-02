@@ -122,6 +122,9 @@ function Cart() {
                 <span>{item.campus || "Campus product"}</span>
                 <h2>{item.name}</h2>
                 <p>Sold by {item.sellerName}</p>
+                {item.selectedSize ? (
+                  <small className="cart-stock-note">Size: {item.selectedSize}</small>
+                ) : null}
                 {item.itemType === "used_listing" ? (
                   <small className="cart-market-kind">Used Market</small>
                 ) : null}

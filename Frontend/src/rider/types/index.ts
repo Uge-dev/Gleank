@@ -72,6 +72,7 @@ export interface Rider {
   maxWeightClass?: string;
   fragileHandlingAbility?: string;
   deliveryBagType?: string;
+  currentLocation?: { lat: number; lng: number; accuracyMeters?: number; updatedAt?: string | null } | null;
   documents: RiderDocument[];
   emergencyContact: EmergencyContact;
   guarantor: Guarantor;

@@ -431,6 +431,12 @@ function SellerOrders() {
                 "rider_offered",
                 "rider_accepted",
               ].includes(pickupTask?.dispatchStatus || "");
+              const riderRelationshipExists = Boolean(
+                pickupTask?.assignedRiderId ||
+                  order.assignedRiderId ||
+                  order.riderAssignmentId ||
+                  offerPending,
+              );
               const packageDraft = pickupTask
                 ? packageDrafts[pickupTask.id] ||
                   packageDraftForTask(pickupTask)
@@ -616,7 +622,7 @@ function SellerOrders() {
                       </button>
                     ) : null}
 
-                    {pickupTask?.assignedRiderId && !orderClosed ? (
+                    {riderRelationshipExists ? (
                       <button
                         type="button"
                         className="seller-order-rider-assigned-card-label"
@@ -846,7 +852,7 @@ function SellerOrders() {
                   {assignedRider.chatPath ? (
                     <Link to={assignedRider.chatPath}><FiMessageCircle /> In-app chat</Link>
                   ) : (
-                    <span><FiMessageCircle /> Chat opens after acceptance</span>
+                    <span><FiMessageCircle /> Chat is unavailable for this assignment</span>
                   )}
                   {assignedRider.rider.phone ? (
                     <a href={`tel:${assignedRider.rider.phone}`}><FiPhone /> {assignedRider.rider.phone}</a>

@@ -6,6 +6,7 @@ import { serializeUser } from "../lib/serializers.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { isDojahConfigured } from "./dojah.service.js";
 import { isRiderPresenceOnline } from "./rider-presence.service.js";
+import { activeDispatchCount } from "./rider-capacity.service.js";
 
 const REQUIREMENT_STATUSES = new Set([
   "not_submitted",
@@ -1953,14 +1954,7 @@ export function evaluateRiderEligibility(userId, options = {}) {
     caseRow = null;
   }
 
-  const activeWorkload = profile
-    ? db.prepare(`
-        SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
-        FROM rider_assignments
-        WHERE rider_id = ?
-          AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
-      `).get(userId).count
-    : 0;
+  const activeWorkload = profile ? activeDispatchCount(userId) : 0;
   const serviceZones = parseArrayColumn(profile?.service_zone_ids);
   const heartbeatSeconds = secondsSince(profile?.last_presence_at);
   const requiredLevel = Math.max(1, Number(options.requiredLevel || 1));

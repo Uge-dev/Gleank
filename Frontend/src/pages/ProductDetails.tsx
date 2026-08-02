@@ -69,12 +69,14 @@ function ProductDetails() {
   const [commentText, setCommentText] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [shareNotice, setShareNotice] = useState("");
+  const [selectedSize, setSelectedSize] = useState("");
 
   useEffect(() => {
     let active = true;
     setIsLoading(true);
     setError("");
     setQuantity(1);
+    setSelectedSize("");
 
     void getPublicProduct(id)
       .then((response) => {
@@ -186,11 +188,16 @@ function ProductDetails() {
   }
 
   function handleAddToCart() {
-    if (!product || product.status === "out_of_stock") return;
+    if (!product || product.status === "out_of_stock") return false;
     if (user?.id === product.store.ownerId) {
       setShareNotice("You cannot order your own product.");
       window.setTimeout(() => setShareNotice(""), 2200);
-      return;
+      return false;
+    }
+    if (product.availableSizes?.length && !selectedSize) {
+      setShareNotice("Choose an available size before adding this product.");
+      window.setTimeout(() => setShareNotice(""), 2200);
+      return false;
     }
     addToCart({
       id: product.id,
@@ -204,8 +211,11 @@ function ProductDetails() {
       category: product.category,
       deliveryReadinessLabel: product.deliveryReadiness?.label,
       stock: product.stock,
+      availableSizes: product.availableSizes,
+      selectedSize,
       quantity,
     });
+    return true;
   }
 
   function handleAddRelatedToCart(relatedProduct: ProductDetailsResponse["product"]) {
@@ -217,6 +227,12 @@ function ProductDetails() {
 
     if (user?.id === relatedProduct.store.ownerId) {
       setShareNotice("You cannot order your own product.");
+      window.setTimeout(() => setShareNotice(""), 2200);
+      return;
+    }
+
+    if (relatedProduct.availableSizes?.length) {
+      setShareNotice("Open this product to choose an available size.");
       window.setTimeout(() => setShareNotice(""), 2200);
       return;
     }
@@ -233,6 +249,7 @@ function ProductDetails() {
       category: relatedProduct.category,
       deliveryReadinessLabel: relatedProduct.deliveryReadiness?.label,
       stock: relatedProduct.stock,
+      availableSizes: relatedProduct.availableSizes,
       quantity: 1,
     });
 
@@ -242,7 +259,7 @@ function ProductDetails() {
 
   function handleOrderNow() {
     if (!requireAuth()) return;
-    handleAddToCart();
+    if (!handleAddToCart()) return;
     navigate("/checkout");
   }
 
@@ -349,6 +366,25 @@ function ProductDetails() {
                 {product.deliveryReadiness.label}
               </p>
             )}
+
+            {product.availableSizes?.length ? (
+              <fieldset className="product-size-selector">
+                <legend>Choose a size</legend>
+                <div className="product-size-options">
+                  {product.availableSizes.map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      className={selectedSize === size ? "active" : ""}
+                      aria-pressed={selectedSize === size}
+                      onClick={() => setSelectedSize(size)}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+            ) : null}
 
             <div className="product-social-row">
               <button

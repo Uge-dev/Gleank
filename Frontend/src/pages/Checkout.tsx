@@ -226,8 +226,9 @@ function Checkout() {
 
     void getCheckoutGroupingPreview({
       items: productCartItems.map((item) => ({
-        productId: item.id,
-        quantity: item.quantity,
+          productId: item.id,
+          quantity: item.quantity,
+          selectedSize: item.selectedSize,
       })),
     })
       .then((preview) => {
@@ -770,6 +771,7 @@ function Checkout() {
                   <strong>{item.name}</strong>
                   <span>
                     {item.sellerName} • Qty {item.quantity}
+                    {item.selectedSize ? ` • Size ${item.selectedSize}` : ""}
                   </span>
                   {item.deliveryReadinessLabel && (
                     <small>{item.deliveryReadinessLabel}</small>

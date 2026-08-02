@@ -32,6 +32,7 @@ function UsedCheckout() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
   const [listing, setListing] = useState<UsedListing | null>(null);
+  const [quantity, setQuantity] = useState(1);
   const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery" | "Pickup & Delivery">("Pickup");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -47,6 +48,7 @@ function UsedCheckout() {
         if (!active) return;
         setListing(response.listing);
         setDeliveryOption(response.listing.deliveryOption);
+        setQuantity(1);
       })
       .catch((requestError) => {
         if (active) {
@@ -84,6 +86,14 @@ function UsedCheckout() {
       return;
     }
 
+    const requestedQuantity = Math.max(1, Math.floor(quantity));
+    if (requestedQuantity > availableQuantity) {
+      setError(
+        `Only ${availableQuantity} unit(s) are currently available. Reduce the quantity before continuing, or message the seller for more availability.`,
+      );
+      return;
+    }
+
     const formData = new FormData(event.currentTarget);
     setIsSubmitting(true);
     setError("");
@@ -91,6 +101,7 @@ function UsedCheckout() {
     try {
       const response = await createUsedOrder({
         listingId: listing.id,
+        quantity: requestedQuantity,
         buyerName: String(formData.get("buyerName") || ""),
         buyerPhone: String(formData.get("buyerPhone") || ""),
         campus: String(formData.get("campus") || ""),
@@ -137,8 +148,8 @@ function UsedCheckout() {
 
   if (!listing) return null;
 
-  const protectionFee = Math.round(listing.price * 0.03);
-  const total = listing.price + protectionFee;
+  const protectionFee = Math.round(listing.price * 0.03) * quantity;
+  const total = (listing.price * quantity) + protectionFee;
   const availableQuantity =
     listing.availableQuantity !== undefined
       ? Math.max(0, Number(listing.availableQuantity || 0))
@@ -177,6 +188,18 @@ function UsedCheckout() {
           </div>
 
           <div className="used-form-grid">
+            <label>
+              <span>Quantity</span>
+              <input
+                name="quantity"
+                type="number"
+                min="1"
+                max={Math.max(1, availableQuantity)}
+                value={quantity}
+                onChange={(event) => setQuantity(Math.max(1, Number(event.target.value) || 1))}
+                required
+              />
+            </label>
             <label>
               <span>Full name</span>
               <input name="buyerName" placeholder="Your full name" required />
@@ -251,8 +274,8 @@ function UsedCheckout() {
 
           <div className="used-summary-lines">
             <div>
-              <span>Item price</span>
-              <strong>{formatPrice(listing.price)}</strong>
+              <span>Item price ({quantity}×)</span>
+              <strong>{formatPrice(listing.price * quantity)}</strong>
             </div>
             <div>
               <span>Protection fee</span>

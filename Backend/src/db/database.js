@@ -456,6 +456,7 @@ db.exec(`
     user_id TEXT NOT NULL,
     product_id TEXT NOT NULL,
     quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+    selected_size TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -548,6 +549,7 @@ db.exec(`
     product_image_url TEXT,
     unit_price_kobo INTEGER NOT NULL CHECK (unit_price_kobo >= 0),
     quantity INTEGER NOT NULL CHECK (quantity > 0),
+    selected_size TEXT NOT NULL DEFAULT '',
     total_kobo INTEGER NOT NULL CHECK (total_kobo >= 0),
     created_at TEXT NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
@@ -997,6 +999,8 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("products", "is_featured", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("products", "available_sizes", "TEXT NOT NULL DEFAULT '[]'");
+ensureColumn("cart_items", "selected_size", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("order_items", "selected_size", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("services", "is_featured", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("services", "service_type", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("services", "location", "TEXT NOT NULL DEFAULT ''");

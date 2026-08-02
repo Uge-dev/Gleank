@@ -4,6 +4,7 @@ import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import { evaluatePayAtDeliveryEligibility } from "./payment-protection.service.js";
+import { validateSelectedSize } from "./product-size.service.js";
 import {
   getAccountLocationPresence,
   upsertAccountLocationPresence,
@@ -261,6 +262,7 @@ function serializeOrderItem(row) {
     unitPriceKobo: row.unit_price_kobo,
     unitPrice: toNaira(row.unit_price_kobo),
     quantity: row.quantity,
+    selectedSize: row.selected_size || "",
     totalKobo: row.total_kobo,
     total: toNaira(row.total_kobo),
     createdAt: row.created_at,
@@ -535,14 +537,20 @@ export function createOrders(userId, input) {
   for (const item of items) {
     const productId = String(item.productId || item.id || "").trim();
     const quantity = Number(item.quantity || 1);
+    const selectedSize = String(item.selectedSize || item.size || "").trim();
 
     if (!productId || !Number.isInteger(quantity) || quantity < 1) {
       throw new HttpError(422, "Please check the cart items and quantities.");
     }
 
-    const current = requestedItemMap.get(productId) || { productId, quantity: 0 };
+    const key = `${productId}::${selectedSize}`;
+    const current = requestedItemMap.get(key) || {
+      productId,
+      selectedSize,
+      quantity: 0,
+    };
     current.quantity += quantity;
-    requestedItemMap.set(productId, current);
+    requestedItemMap.set(key, current);
   }
 
   const requestedItems = Array.from(requestedItemMap.values());
@@ -578,6 +586,8 @@ export function createOrders(userId, input) {
         throw new HttpError(403, "Sellers cannot order their own products.");
       }
 
+      const selectedSize = validateSelectedSize(product, requested.selectedSize);
+
       if (product.status !== "active" || product.stock < requested.quantity) {
         throw new HttpError(409, inventoryUnavailableMessage(product, requested.quantity));
       }
@@ -593,6 +603,7 @@ export function createOrders(userId, input) {
 
       group.products.push({
         product,
+        selectedSize,
         quantity: requested.quantity,
         lineTotalKobo: product.price_kobo * requested.quantity,
       });
@@ -766,9 +777,9 @@ export function createOrders(userId, input) {
         db.prepare(`
           INSERT INTO order_items (
             id, order_id, product_id, product_name, product_image_url,
-            unit_price_kobo, quantity, total_kobo, created_at
+            unit_price_kobo, quantity, selected_size, total_kobo, created_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           createId("oit"),
           orderId,
@@ -777,6 +788,7 @@ export function createOrders(userId, input) {
           firstImage(item.product.image_urls),
           item.product.price_kobo,
           item.quantity,
+          item.selectedSize,
           item.lineTotalKobo,
           now,
         );

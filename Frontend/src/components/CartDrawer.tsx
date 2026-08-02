@@ -141,6 +141,9 @@ function CartDrawer() {
                       <p>
                         {item.sellerName}
                       </p>
+                      {item.selectedSize ? (
+                        <small className="cart-stock-note">Size: {item.selectedSize}</small>
+                      ) : null}
                       {item.itemType === "used_listing" ? (
                         <small className="cart-market-kind">Used Market</small>
                       ) : null}

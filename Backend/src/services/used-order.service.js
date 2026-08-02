@@ -248,40 +248,42 @@ function refreshUsedListingAvailability(listingId) {
   }
 }
 
-function reserveUsedListingUnit(listingId) {
+function reserveUsedListingUnits(listingId, quantity = 1) {
+  const requestedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
   const now = new Date().toISOString();
   const result = db
     .prepare(`
       UPDATE used_listings
-      SET reserved_quantity = reserved_quantity + 1,
+      SET reserved_quantity = reserved_quantity + ?,
           status = CASE
-            WHEN reserved_quantity + 1 >= quantity THEN 'sold'
+            WHEN reserved_quantity + ? >= quantity THEN 'sold'
             ELSE status
           END,
           updated_at = ?
       WHERE id = ?
         AND status = 'active'
-        AND reserved_quantity < quantity
+        AND reserved_quantity + ? <= quantity
     `)
-    .run(now, listingId);
+    .run(requestedQuantity, requestedQuantity, now, listingId, requestedQuantity);
 
   if (!result.changes) {
-    throw new HttpError(409, "This used item is no longer available. Please choose another item or message the seller.");
+    throw new HttpError(409, "This used item is no longer available in the requested quantity. Please reduce the quantity or message the seller for more availability.");
   }
 }
 
-function releaseUsedListingUnit(listingId) {
+function releaseUsedListingUnits(listingId, quantity = 1) {
+  const releasedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
   const now = new Date().toISOString();
 
   db.prepare(`
     UPDATE used_listings
     SET reserved_quantity = CASE
-          WHEN reserved_quantity > 0 THEN reserved_quantity - 1
+          WHEN reserved_quantity >= ? THEN reserved_quantity - ?
           ELSE 0
         END,
         updated_at = ?
     WHERE id = ?
-  `).run(now, listingId);
+  `).run(releasedQuantity, releasedQuantity, now, listingId);
 
   refreshUsedListingAvailability(listingId);
 }
@@ -289,7 +291,7 @@ function releaseUsedListingUnit(listingId) {
 export function releaseExpiredUsedOrderReservations() {
   const now = new Date().toISOString();
   const expired = db.prepare(`
-    SELECT id, listing_id
+    SELECT id, listing_id, quantity
     FROM used_market_orders
     WHERE status = 'pending_payment'
       AND payment_status = 'unpaid'
@@ -307,7 +309,7 @@ export function releaseExpiredUsedOrderReservations() {
       WHERE id = ? AND status = 'pending_payment' AND payment_status = 'unpaid'
     `).run(now, row.id);
     if (result.changes) {
-      releaseUsedListingUnit(row.listing_id);
+      releaseUsedListingUnits(row.listing_id, row.quantity);
       insertEvent(row.id, "cancelled", "Payment reservation expired and inventory was restored automatically.");
     }
   }
@@ -351,8 +353,10 @@ export function createUsedOrder(userId, input) {
   if (!listing) throw new HttpError(404, "This used item is not available for protected purchase.");
   if (listing.seller_id === userId) throw new HttpError(422, "You cannot buy your own used item.");
 
-  if (listingReservedQuantity(listing) >= listingQuantity(listing)) {
-    throw new HttpError(409, "This used item is no longer available. Please choose another item or message the seller.");
+  const requestedQuantity = Math.max(1, Math.floor(Number(input?.quantity) || 1));
+  const availableQuantity = Math.max(0, listingQuantity(listing) - listingReservedQuantity(listing));
+  if (requestedQuantity > availableQuantity) {
+    throw new HttpError(409, `Only ${availableQuantity} unit(s) are available for this used item. Reduce the quantity or message the seller for more availability.`);
   }
 
   const buyerName = clean(input?.buyerName, 120);
@@ -378,7 +382,8 @@ export function createUsedOrder(userId, input) {
   const order = transaction(() => {
     const now = new Date().toISOString();
     const id = createId("uor");
-    const sellerPriceKobo = Number(listing.seller_price_kobo || 0) || Number(listing.price_kobo || 0);
+    const sellerUnitPriceKobo = Number(listing.seller_price_kobo || 0) || Number(listing.price_kobo || 0);
+    const sellerPriceKobo = sellerUnitPriceKobo * requestedQuantity;
     const protectionFeeKobo = Math.round((sellerPriceKobo * env.platformFeePercent) / 100);
     const deliveryFeeKobo = 0;
     const totalKobo = sellerPriceKobo + protectionFeeKobo + deliveryFeeKobo;
@@ -393,13 +398,14 @@ export function createUsedOrder(userId, input) {
         item_price_kobo, protection_fee_kobo, delivery_fee_kobo, total_kobo,
         buyer_name, buyer_phone, campus, delivery_option, delivery_address,
         pickup_location, note, verification_code, package_tag_code, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', 1, ?, ?, 'undecided', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
+      ) VALUES (?, ?, ?, ?, ?, 'pending_payment', 'unpaid', 'pay_now', 'awaiting_payment', 'awaiting_payment', 'pending', 0, 'pending_payment', ?, ?, ?, 'undecided', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
       id,
       generateOrderCode(),
       listing.id,
       userId,
       listing.seller_id,
+      requestedQuantity,
       Math.max(0, Number(listing.return_days || 0)),
       reservationExpiresAt,
       sellerPriceKobo,
@@ -419,7 +425,7 @@ export function createUsedOrder(userId, input) {
       now,
     );
 
-    reserveUsedListingUnit(listing.id);
+    reserveUsedListingUnits(listing.id, requestedQuantity);
 
     insertEvent(id, "pending_payment", "Protected order created. Buyer should complete payment to reserve this item.");
 
@@ -532,7 +538,7 @@ export function updateUsedOrderStatus(user, orderId, status, note = "") {
     db.prepare("UPDATE used_market_orders SET status = ?, updated_at = ? WHERE id = ?").run(status, now, row.id);
 
     if (status === "cancelled") {
-      releaseUsedListingUnit(row.listing_id);
+      releaseUsedListingUnits(row.listing_id, row.quantity);
     }
 
     if (status === "completed") {

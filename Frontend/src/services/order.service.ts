@@ -4,6 +4,7 @@ import type { GleencOrder, OrderStatus } from "../types/domain";
 export type CreateOrderItemInput = {
   productId: string;
   quantity: number;
+  selectedSize?: string;
 };
 
 export type CreateOrderInput = {

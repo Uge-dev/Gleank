@@ -4,6 +4,7 @@ import type { AvailableDeliveryRider } from "./seller.service";
 
 export type CreateUsedOrderInput = {
   listingId: string;
+  quantity: number;
   buyerName: string;
   buyerPhone: string;
   campus: string;

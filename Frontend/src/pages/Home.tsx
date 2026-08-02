@@ -698,7 +698,8 @@ async function shareProduct(productId: string, productName: string) {
                       storeLogoUrl={storeLogoUrl}
                       productName={product.name}
 	                      price={formatPrice(product.price)}
-	                      category={product.category}
+                        category={product.category}
+                        availableSizes={product.availableSizes}
                         sourceTag={source.sourceTag}
                         sourceDetail={source.sourceDetail}
                         deliveryReadinessLabel={product.deliveryReadiness?.label}

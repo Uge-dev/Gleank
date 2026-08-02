@@ -682,6 +682,74 @@ export function createDeliveryAssignmentConversation(userId, assignmentId) {
   return getConversation(userRole === "admin" ? buyerId : userId, id);
 }
 
+export function createDeliveryOfferConversation(userId, dispatchAttemptId) {
+  const offer = db.prepare(`
+    SELECT dispatch_attempts.id,
+           dispatch_attempts.rider_id,
+           pickup_tasks.seller_id,
+           pickup_tasks.order_id
+    FROM dispatch_attempts
+    JOIN pickup_tasks
+      ON pickup_tasks.delivery_batch_id = dispatch_attempts.delivery_batch_id
+     AND pickup_tasks.status != 'seller_rejected'
+    WHERE dispatch_attempts.id = ?
+    ORDER BY pickup_tasks.pickup_sequence ASC
+    LIMIT 1
+  `).get(dispatchAttemptId);
+
+  if (!offer) throw new HttpError(404, "Delivery offer was not found.");
+
+  const userRole = db.prepare("SELECT role FROM users WHERE id = ?").get(userId)?.role || "";
+  if (userId !== offer.seller_id && userId !== offer.rider_id && userRole !== "admin") {
+    throw new HttpError(403, "You cannot open this delivery offer conversation.");
+  }
+
+  const buyerId = offer.rider_id;
+  const sellerId = offer.seller_id;
+  const contextId = `dispatch_offer:${offer.id}`;
+  const canonicalId = normalizeDirectConversationDuplicates(
+    buyerId,
+    sellerId,
+    { contextType: "store", contextId, orderId: offer.order_id || offer.id },
+  );
+  if (canonicalId) {
+    if (userRole === "admin") recordAdminConversationAccess(userId, canonicalId, "Dispatch offer review", null);
+    return getConversation(userRole === "admin" ? buyerId : userId, canonicalId);
+  }
+
+  const existing = db.prepare(`
+    SELECT id
+    FROM conversations
+    WHERE context_type = 'store'
+      AND context_id = ?
+      AND buyer_id = ?
+      AND seller_id = ?
+    LIMIT 1
+  `).get(contextId, buyerId, sellerId);
+  if (existing) return getConversation(userRole === "admin" ? buyerId : userId, existing.id);
+
+  const now = new Date().toISOString();
+  const id = createId("cnv");
+  db.prepare(`
+    INSERT INTO conversations (
+      id, conversation_key, context_type, context_id, order_id, buyer_id, seller_id,
+      last_message_body, last_message_at, created_at, updated_at
+    ) VALUES (?, ?, 'store', ?, ?, ?, ?, '', NULL, ?, ?)
+  `).run(
+    id,
+    directConversationKey(buyerId, sellerId),
+    contextId,
+    offer.order_id || offer.id,
+    buyerId,
+    sellerId,
+    now,
+    now,
+  );
+
+  if (userRole === "admin") recordAdminConversationAccess(userId, id, "Dispatch offer review", null);
+  return getConversation(userRole === "admin" ? buyerId : userId, id);
+}
+
 export function recordAdminConversationAccess(adminId, conversationId, reason = "", relatedDeliveryBatchId = null) {
   const admin = db.prepare("SELECT id, role FROM users WHERE id = ?").get(adminId);
   if (!admin || admin.role !== "admin") return null;

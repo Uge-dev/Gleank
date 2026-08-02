@@ -18,12 +18,16 @@ import {
   heartbeatRiderPresence,
   isRiderPresenceOnline,
 } from "./rider-presence.service.js";
+import {
+  activeDispatchCount,
+  lockRiderCapacity,
+  MAX_INCOMPLETE_DISPATCHES,
+} from "./rider-capacity.service.js";
 
 const SIZE_ORDER = ["small", "medium", "large", "extra_large"];
 const WEIGHT_ORDER = ["very_light", "light", "medium", "heavy", "very_heavy"];
 const VEHICLE_ORDER = ["walking_ok", "bicycle_or_above", "motorcycle_or_above", "tricycle_or_above", "car_or_van_required"];
 const RISK_ORDER = ["low", "medium", "high", "critical"];
-const MAX_INCOMPLETE_DISPATCHES = 14;
 const MANUAL_ASSIGNMENT_DISPATCH_STATUSES = new Set([
   "seller_manual_assignment_required",
   "manual_assignment_required",
@@ -70,12 +74,7 @@ function nowIso() {
 }
 
 function currentRiderWorkload(riderId) {
-  return Number(db.prepare(`
-    SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
-    FROM rider_assignments
-    WHERE rider_id = ?
-      AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
-  `).get(riderId)?.count || 0);
+  return activeDispatchCount(riderId);
 }
 
 function syncRiderWorkload(riderId, now = nowIso()) {
@@ -2435,6 +2434,9 @@ function riderBatchDiagnostics(
   ) {
     reasons.push("rider_offline");
   }
+  if (Number(capacity.currentActiveBatchCount || 0) > 0) {
+    reasons.push("rider_has_active_delivery");
+  }
   if (Number(verification.activeWorkload || 0) >= MAX_INCOMPLETE_DISPATCHES) {
     reasons.push("rider_at_dispatch_capacity");
   }
@@ -3150,6 +3152,7 @@ export function riderAcceptDispatch(auth, dispatchId, input = {}) {
     if (attempt.status !== "offered") {
       throw new HttpError(409, "This dispatch offer is no longer active.");
     }
+    lockRiderCapacity(riderId);
     if (currentRiderWorkload(riderId) >= MAX_INCOMPLETE_DISPATCHES) {
       throw new HttpError(422, `You already have ${MAX_INCOMPLETE_DISPATCHES} incomplete dispatches.`);
     }
@@ -4038,6 +4041,16 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
   if (!task) throw new HttpError(404, "Pickup task was not found.");
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(task.delivery_batch_id);
   if (batch?.assigned_rider_id !== riderId) throw new HttpError(403, "This pickup is not assigned to you.");
+  if (task.seller_pickup_code_verified_at || task.status === "picked_up") {
+    return {
+      pickupTask: serializePickupTask(task),
+      batch: getDeliveryBatchById(task.delivery_batch_id),
+      alreadyVerified: true,
+    };
+  }
+  if (task.status !== "pickup_in_progress") {
+    throw new HttpError(422, "Seller pickup cannot be verified at this stage.");
+  }
   const proofUrl = clean(input.proofUrl || input.fileUrl || "", 500);
   if (!proofUrl) throw new HttpError(422, "Upload a pickup proof photo before verifying seller pickup.");
   assertOtpAttemptAllowed("pickup_tasks", "id", task, "seller pickup");
@@ -4054,8 +4067,9 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
     });
     throw new HttpError(422, "Seller pickup OTP is not correct.");
   }
-  const now = nowIso();
-  db.prepare(`
+  return transaction(() => {
+    const now = nowIso();
+    db.prepare(`
     UPDATE pickup_tasks
     SET status = 'picked_up',
         picked_up_at = ?,
@@ -4122,7 +4136,11 @@ export function verifyPickupTask(auth, pickupTaskId, input = {}) {
       statusAfter: "pickup_confirmed",
     });
   }
-  return { pickupTask: serializePickupTask(db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(pickupTaskId)), batch: getDeliveryBatchById(task.delivery_batch_id) };
+    return {
+      pickupTask: serializePickupTask(db.prepare("SELECT * FROM pickup_tasks WHERE id = ?").get(pickupTaskId)),
+      batch: getDeliveryBatchById(task.delivery_batch_id),
+    };
+  });
 }
 
 export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
@@ -4131,6 +4149,16 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
   if (!task) throw new HttpError(404, "Delivery task was not found.");
   const batch = db.prepare("SELECT * FROM delivery_batches WHERE id = ?").get(task.delivery_batch_id);
   if (batch?.assigned_rider_id !== riderId) throw new HttpError(403, "This delivery is not assigned to you.");
+  if (task.buyer_delivery_code_verified_at || task.status === "delivered") {
+    return {
+      deliveryTask: task,
+      batch: getDeliveryBatchById(task.delivery_batch_id),
+      alreadyVerified: true,
+    };
+  }
+  if (task.status !== "out_for_delivery") {
+    throw new HttpError(422, "Buyer delivery cannot be verified at this stage.");
+  }
   const unpaidOrders = Number(
     db.prepare(`
       SELECT COUNT(*) AS count
@@ -4160,8 +4188,9 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
     });
     throw new HttpError(422, "Buyer delivery OTP is not correct.");
   }
-  const now = nowIso();
-  db.prepare(`
+  return transaction(() => {
+    const now = nowIso();
+    db.prepare(`
     UPDATE delivery_tasks
     SET status = 'delivered',
         delivered_at = ?,
@@ -4228,7 +4257,8 @@ export function verifyDeliveryTask(auth, deliveryTaskId, input = {}) {
   });
   notifyBatchParties(task.delivery_batch_id, "Delivery completed", "Your Gleenc delivery batch has been marked delivered.", "delivery_completed");
   updateReliabilityScore(riderId, "rider");
-  return { deliveryTask: task, batch: getDeliveryBatchById(task.delivery_batch_id) };
+    return { deliveryTask: db.prepare("SELECT * FROM delivery_tasks WHERE id = ?").get(deliveryTaskId), batch: getDeliveryBatchById(task.delivery_batch_id) };
+  });
 }
 
 export function addTaskProof(auth, taskType, taskId, input = {}) {

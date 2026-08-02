@@ -317,6 +317,7 @@ test("seller can register and load workspace", async () => {
     .field("description", "A clean test chair with no hidden faults.")
     .field("condition", "Very Good")
     .field("price", "180000")
+    .field("quantity", "6")
     .field("campus", "FUPRE")
     .field("areaLocation", "FUPRE main campus")
     .field("pickupLocation", "Main gate")
@@ -324,6 +325,7 @@ test("seller can register and load workspace", async () => {
     .field("serialNumber", "TEST-123")
     .field("defectsDisclosed", "No defects")
     .field("reasonForSelling", "Testing the protected used market flow.")
+    .field("returnDays", "7")
     .field("confirmOwnership", "true")
     .field("confirmOwnershipText", "Seller confirmed ownership and truthful disclosure.")
     .field("fullName", "Test Seller")
@@ -358,7 +360,105 @@ test("seller can register and load workspace", async () => {
 
   assert.equal(usedListingResponse.status, 201);
   assert.equal(usedListingResponse.body.listing.status, "active");
+  assert.equal(usedListingResponse.body.listing.availableQuantity, 6);
   const usedListingId = usedListingResponse.body.listing.id;
+
+  const usedBuyerAgent = request.agent(app);
+  const usedBuyerRegister = await usedBuyerAgent
+    .post("/api/auth/register")
+    .send({
+      name: "Used Quantity Buyer",
+      email: "used-quantity-buyer@gleank.local",
+      password: "UsedQuantityBuyer123!",
+      role: "buyer",
+      campus: "FUPRE",
+    });
+  assert.equal(usedBuyerRegister.status, 201);
+
+  const sizeProductResponse = await agent
+    .post("/api/seller/products")
+    .field("name", "Test Campus Jacket")
+    .field("category", "Fashion")
+    .field("description", "A size-aware test product.")
+    .field("price", "22000")
+    .field("stock", "4")
+    .field("status", "active")
+    .field("availableSizes", JSON.stringify(["M", "L"]))
+    .field("retainedImageUrls", JSON.stringify(["/uploads/test-campus-jacket.jpg"]));
+  assert.equal(sizeProductResponse.status, 201);
+  assert.deepEqual(sizeProductResponse.body.product.availableSizes, ["M", "L"]);
+  const sizeProductId = sizeProductResponse.body.product.id;
+
+  const missingSizeCart = await usedBuyerAgent
+    .post("/api/cart/items")
+    .send({ productId: sizeProductId, quantity: 1 });
+  assert.equal(missingSizeCart.status, 422);
+
+  const validSizeCart = await usedBuyerAgent
+    .post("/api/cart/items")
+    .send({ productId: sizeProductId, quantity: 1, selectedSize: "M" });
+  assert.equal(validSizeCart.status, 201);
+  assert.equal(validSizeCart.body.cartItems[0].selectedSize, "M");
+
+  const invalidSizeCart = await usedBuyerAgent
+    .post("/api/cart/items")
+    .send({ productId: sizeProductId, quantity: 1, selectedSize: "XXL" });
+  assert.equal(invalidSizeCart.status, 409);
+
+  const sizeOrder = await usedBuyerAgent
+    .post("/api/orders")
+    .send({
+      items: [{ productId: sizeProductId, quantity: 1, selectedSize: "M" }],
+      buyerName: "Used Quantity Buyer",
+      buyerPhone: "08000000099",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+      paymentMethod: "pay_now",
+    });
+  assert.equal(sizeOrder.status, 201);
+  assert.equal(
+    db
+      .prepare("SELECT selected_size FROM order_items WHERE order_id = ?")
+      .get(sizeOrder.body.orders[0].id).selected_size,
+    "M",
+  );
+
+  const firstUsedOrder = await usedBuyerAgent
+    .post("/api/used-orders")
+    .send({
+      listingId: usedListingId,
+      quantity: 1,
+      buyerName: "Used Quantity Buyer",
+      buyerPhone: "08000000099",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+    });
+  assert.equal(firstUsedOrder.status, 201);
+  assert.equal(firstUsedOrder.body.order.quantity, 1);
+  assert.equal(firstUsedOrder.body.order.returnDays, 7);
+  const afterFirstUsedOrder = db
+    .prepare("SELECT quantity, reserved_quantity, status FROM used_listings WHERE id = ?")
+    .get(usedListingId);
+  assert.deepEqual(afterFirstUsedOrder, { quantity: 6, reserved_quantity: 1, status: "active" });
+
+  const oversizedUsedOrder = await usedBuyerAgent
+    .post("/api/used-orders")
+    .send({
+      listingId: usedListingId,
+      quantity: 6,
+      buyerName: "Used Quantity Buyer",
+      buyerPhone: "08000000099",
+      campus: "FUPRE",
+      deliveryOption: "Pickup",
+      pickupLocation: "FUPRE main gate",
+    });
+  assert.equal(oversizedUsedOrder.status, 409);
+  const afterOversizedUsedOrder = db
+    .prepare("SELECT quantity, reserved_quantity, status FROM used_listings WHERE id = ?")
+    .get(usedListingId);
+  assert.deepEqual(afterOversizedUsedOrder, { quantity: 6, reserved_quantity: 1, status: "active" });
 
   const usedMarketResponse = await request(app)
     .get("/api/used-market")
@@ -1441,12 +1541,17 @@ test("public payment verification confirms local payment and protects buyer OTP"
       campus: "FUPRE",
       deliveryOption: "Delivery",
       deliveryAddress: "Library road, FUPRE",
-      paymentMethod: "pay_now",
+      deliveryDetails: "Engineering Faculty reception",
+      deliveryLandmark: "Beside the main library",
+      nearestBusStop: "FUPRE Main Gate",
+      deliveryLat: 5.5662,
+      deliveryLng: 5.8461,
+      paymentMethod: "pay_on_delivery",
     });
   assert.equal(blockedHighValueDoorstep.status, 422);
   assert.match(
     blockedHighValueDoorstep.body.message,
-    /Door step delivery.*below ₦100,000/i,
+    /Payment on Delivery.*below ₦100,000/i,
   );
 
   const highValuePayNowOrder = await buyerAgent

@@ -27,6 +27,7 @@ type FeedPostCardProps = {
   productName: string;
   price: string;
   category: string;
+  availableSizes?: string[];
   sourceTag?: string;
   sourceDetail?: string;
   deliveryReadinessLabel?: string;
@@ -119,6 +120,7 @@ function FeedPostCard({
   productName,
   price,
   category,
+  availableSizes,
   sourceTag,
   sourceDetail,
   deliveryReadinessLabel,
@@ -222,6 +224,11 @@ const cardSwipeStartRef = useRef<{
   function handleAddToCart() {
     if (!cartEnabled || stockLimit === 0 || isOwnProduct) return;
 
+    if (availableSizes?.length) {
+      window.location.assign(resolvedDetailsPath);
+      return;
+    }
+
     addToCart({
       id,
       itemType: cartItemType,
@@ -235,6 +242,7 @@ const cardSwipeStartRef = useRef<{
       category,
       deliveryReadinessLabel,
       stock: stockLimit,
+      availableSizes,
       quantity,
       detailsPath: resolvedDetailsPath,
     });

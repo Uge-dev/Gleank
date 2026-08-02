@@ -1,5 +1,6 @@
 import {
   FiClock,
+  FiMap,
   FiMapPin,
   FiMessageCircle,
   FiNavigation,
@@ -11,6 +12,7 @@ import { useState } from 'react';
 import type { PrivateAssignment } from '../../types';
 import { formatDateTime } from '../../utils/format';
 import { useRiderData } from '../../context/RiderDataContext';
+import { useAuth } from '../../context/AuthContext';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
@@ -20,6 +22,7 @@ import { createConversation } from '../../../services/message.service';
 export default function AssignmentCard({ assignment }: { assignment: PrivateAssignment }) {
   const navigate = useNavigate();
   const { startDelivery } = useRiderData();
+  const { rider } = useAuth();
   const [contactOpen, setContactOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -27,6 +30,20 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
   const [openingChat, setOpeningChat] = useState(false);
   const telLink = `tel:${assignment.sellerPhone}`;
   const whatsAppLink = `https://wa.me/${assignment.sellerWhatsApp}`;
+  const hasPickupCoordinates =
+    typeof assignment.pickupLat === 'number' &&
+    Number.isFinite(assignment.pickupLat) &&
+    typeof assignment.pickupLng === 'number' &&
+    Number.isFinite(assignment.pickupLng);
+  const riderPoint = rider?.currentLocation;
+  const distanceKm = hasPickupCoordinates && riderPoint
+    ? haversineDistanceKm(
+        riderPoint.lat,
+        riderPoint.lng,
+        Number(assignment.pickupLat),
+        Number(assignment.pickupLng),
+      )
+    : null;
   const dispatchRemainingLabel = assignment.dispatchRemainingSeconds != null
     ? `${Math.ceil(assignment.dispatchRemainingSeconds / 60)} min left`
     : assignment.dispatchExpiresAt
@@ -89,7 +106,9 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
             </p>
           </div>
           <div className="shrink-0 rounded-2xl bg-cyan-50 px-3 py-2 text-center">
-            <p className="text-xs font-bold text-cyan-700">{assignment.distanceKm} km</p>
+            <p className="text-xs font-bold text-cyan-700">
+              {distanceKm == null ? 'Distance unavailable' : `${distanceKm.toFixed(1)} km`}
+            </p>
           </div>
         </div>
 
@@ -114,6 +133,15 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <Button
+            variant="secondary"
+            icon={FiMap}
+            disabled={!hasPickupCoordinates}
+            onClick={() => navigate(`/rider/navigate/${assignment.id}`)}
+            fullWidth
+          >
+            {hasPickupCoordinates ? 'Open seller map' : 'Map unavailable'}
+          </Button>
           <Button
             variant="secondary"
             icon={FiMessageCircle}
@@ -179,6 +207,18 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
       />
     </>
   );
+}
+
+function haversineDistanceKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const deltaLat = toRadians(lat2 - lat1);
+  const deltaLng = toRadians(lng2 - lng1);
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(toRadians(lat1)) *
+      Math.cos(toRadians(lat2)) *
+      Math.sin(deltaLng / 2) ** 2;
+  return 6_371 * 2 * Math.asin(Math.sqrt(a));
 }
 
 function LocationRow({

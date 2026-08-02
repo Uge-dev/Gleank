@@ -1,6 +1,7 @@
 import { db, transaction } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
+import { validateSelectedSize } from "./product-size.service.js";
 
 function parseImages(value) {
   try {
@@ -32,6 +33,15 @@ function serializeCartItem(row) {
     campus: row.store_campus || "",
     quantity: row.quantity,
     stock: row.stock,
+    availableSizes: (() => {
+      try {
+        const parsed = JSON.parse(row.available_sizes || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    })(),
+    selectedSize: row.selected_size || "",
     status: row.status,
     updatedAt: row.updated_at,
   };
@@ -63,6 +73,7 @@ export function listCart(userId) {
       SELECT cart_items.*, cart_items.product_id,
              products.name, products.price_kobo, products.buyer_price_kobo,
              products.category, products.image_urls, products.stock, products.status,
+             products.available_sizes,
              stores.name AS store_name, stores.slug AS store_slug,
              stores.campus AS store_campus
       FROM cart_items
@@ -86,19 +97,33 @@ export function addCartItem(userId, input) {
   }
 
   const product = activeProduct(productId);
+  const selectedSize = validateSelectedSize(product, input?.selectedSize);
   const now = new Date().toISOString();
 
+  const existing = db
+    .prepare("SELECT selected_size FROM cart_items WHERE user_id = ? AND product_id = ?")
+    .get(userId, productId);
+
+  if (existing?.selected_size && existing.selected_size !== selectedSize) {
+    throw new HttpError(
+      409,
+      "This product is already in your cart with another size. Remove it or finish that item before choosing a different size.",
+    );
+  }
+
   db.prepare(`
-    INSERT INTO cart_items (id, user_id, product_id, quantity, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO cart_items (id, user_id, product_id, quantity, selected_size, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, product_id) DO UPDATE SET
       quantity = MIN(cart_items.quantity + excluded.quantity, 99),
+      selected_size = excluded.selected_size,
       updated_at = excluded.updated_at
   `).run(
     createId("crt"),
     userId,
     productId,
     quantity,
+    selectedSize,
     now,
     now,
   );
@@ -107,7 +132,11 @@ export function addCartItem(userId, input) {
 }
 
 export function setCartItemQuantity(userId, productId, quantity) {
-  activeProduct(productId);
+  const product = activeProduct(productId);
+  const existing = db
+    .prepare("SELECT selected_size FROM cart_items WHERE user_id = ? AND product_id = ?")
+    .get(userId, productId);
+  validateSelectedSize(product, existing?.selected_size);
   const requestedQuantity = Number(quantity || 1);
 
   if (!Number.isFinite(requestedQuantity)) {

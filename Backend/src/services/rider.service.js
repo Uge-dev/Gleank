@@ -34,13 +34,22 @@ import {
   markRiderPresenceOnline,
 } from "./rider-presence.service.js";
 import { calculateRoute } from "./location.service.js";
-import { createDeliveryAssignmentConversation } from "./message.service.js";
+import {
+  createDeliveryAssignmentConversation,
+  createDeliveryOfferConversation,
+} from "./message.service.js";
+import {
+  activeDispatchCount,
+  hasRiderCapacity,
+  INCOMPLETE_DISPATCH_STATUSES,
+  lockRiderCapacity,
+  MAX_INCOMPLETE_DISPATCHES,
+} from "./rider-capacity.service.js";
 
-const ACTIVE_ASSIGNMENT_STATUSES = new Set(["assigned", "accepted", "arrived_pickup", "picked_up", "out_for_delivery"]);
+const ACTIVE_ASSIGNMENT_STATUSES = new Set(INCOMPLETE_DISPATCH_STATUSES);
 const PICKUP_ALLOWED_STATUSES = new Set(["accepted", "arrived_pickup"]);
 const COMPLETE_ALLOWED_STATUSES = new Set(["picked_up", "out_for_delivery"]);
 const MAX_PROOF_DISTANCE_METERS = Number(process.env.RIDER_PROOF_RADIUS_METERS || 500);
-const MAX_INCOMPLETE_DISPATCHES = 14;
 
 function nowIso() {
   return new Date().toISOString();
@@ -430,30 +439,11 @@ function getRiderProfile(userId) {
   return db.prepare("SELECT * FROM rider_profiles WHERE user_id = ?").get(userId);
 }
 
-function activeDispatchCount(riderId) {
-  return Number(db.prepare(`
-    SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
-    FROM rider_assignments
-    WHERE rider_id = ?
-      AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
-  `).get(riderId)?.count || 0);
-}
-
 function assertRiderHasCapacity(riderId, { allowAssignmentId = "" } = {}) {
-  const activeCount = activeDispatchCount(riderId);
-  const assignmentAlreadyActive = allowAssignmentId
-    ? db.prepare(`
-        SELECT id FROM rider_assignments
-        WHERE id = ? AND rider_id = ?
-          AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
-      `).get(allowAssignmentId, riderId)
-    : null;
-
-  if (!assignmentAlreadyActive && activeCount >= MAX_INCOMPLETE_DISPATCHES) {
+  if (!hasRiderCapacity(riderId, { allowAssignmentId })) {
     throw new HttpError(422, `This rider already has ${MAX_INCOMPLETE_DISPATCHES} incomplete dispatches.`);
   }
-
-  return activeCount;
+  return activeDispatchCount(riderId);
 }
 
 function requireRiderUser(auth) {
@@ -641,9 +631,10 @@ function statsForRider(userId) {
     WHERE rider_id = ? AND status = 'offered'
   `).get(userId).count;
   const active = db.prepare(`
-    SELECT COUNT(*) AS count FROM rider_assignments
-    WHERE rider_id = ? AND status IN ('accepted','arrived_pickup','picked_up','out_for_delivery')
-  `).get(userId).count;
+    SELECT COUNT(DISTINCT COALESCE(delivery_batch_id, id)) AS count
+    FROM rider_assignments
+    WHERE rider_id = ? AND status IN (${INCOMPLETE_DISPATCH_STATUSES.map(() => "?").join(",")})
+  `).get(userId, ...INCOMPLETE_DISPATCH_STATUSES).count;
   const completed = db.prepare("SELECT COUNT(*) AS count FROM rider_assignments WHERE rider_id = ? AND status = 'delivered'").get(userId).count;
   const earnings = db.prepare("SELECT COALESCE(SUM(amount_kobo), 0) AS total FROM rider_earnings WHERE rider_id = ?").get(userId).total;
   const payoutPending = db.prepare(`
@@ -655,8 +646,8 @@ function statsForRider(userId) {
     SELECT package_value_kobo, package_summary, dispatch_timeout_policy
     FROM rider_assignments
     WHERE rider_id = ?
-      AND status IN ('assigned','accepted','arrived_pickup','picked_up','out_for_delivery')
-  `).all(userId);
+      AND status IN (${INCOMPLETE_DISPATCH_STATUSES.map(() => "?").join(",")})
+  `).all(userId, ...INCOMPLETE_DISPATCH_STATUSES);
   const highRiskTasks = activeRows.filter((row) => riskLevelForAssignment(row) === "high").length;
 
   return {
@@ -1198,6 +1189,12 @@ export function createRiderAssignment(auth, input) {
   });
   const dispatchExpiresAt = buildDispatchExpiresAt(now, dispatchPolicy.timeoutSeconds);
   transaction(() => {
+    // Recheck inside the write transaction so manual assignment cannot race
+    // with another assignment request and exceed the shared capacity limit.
+    lockRiderCapacity(input.riderId);
+    assertRiderHasCapacity(input.riderId, {
+      allowAssignmentId: existingAssignment?.rider_id === input.riderId ? existingAssignment.id : "",
+    });
     db.prepare(`
       INSERT INTO rider_assignments (
         id, order_id, order_type, rider_id, seller_id, buyer_id, store_id, listing_id,
@@ -1439,6 +1436,7 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
   assertRiderHasCapacity(riderId, { allowAssignmentId: assignmentId });
   const now = nowIso();
   transaction(() => {
+    lockRiderCapacity(riderId);
     assertRiderHasCapacity(riderId, { allowAssignmentId: assignmentId });
     db.prepare("UPDATE rider_assignments SET status = 'accepted', accepted_at = ?, updated_at = ? WHERE id = ?").run(now, now, assignmentId);
     updateConnectedOrderAssignment(row.order_type, row.order_id, assignmentId, riderId, row.order_type === "used_order" ? "meetup_or_delivery" : "ready_for_delivery");
@@ -1640,6 +1638,12 @@ export function verifyPickup(auth, assignmentId, input) {
   requireVerifiedRider(riderId);
   const row = assignmentByIdForRider(riderId, assignmentId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found.");
+  if (
+    row.seller_pickup_code_verified_at &&
+    ["picked_up", "out_for_delivery", "delivered"].includes(row.status)
+  ) {
+    return serializeAssignment(row, { revealPrivate: true });
+  }
   if (!PICKUP_ALLOWED_STATUSES.has(row.status)) throw new HttpError(422, "Pickup cannot be verified at this stage.");
   const order = connectedOrder(row);
   const payAtDeliveryAllowed = order?.payment_method === "pay_on_delivery" && row.payment_status === "unpaid";
@@ -1745,6 +1749,9 @@ export function verifyDeliveryCode(auth, orderId, input) {
   requireVerifiedRider(riderId);
   const row = assignmentByOrderForRider(riderId, orderId);
   if (!row) throw new HttpError(404, "Delivery assignment was not found for this order.");
+  if (row.buyer_delivery_code_verified_at) {
+    return serializeAssignment(row, { revealPrivate: true });
+  }
   if (!["picked_up", "out_for_delivery"].includes(row.status)) {
     throw new HttpError(422, "Verify seller pickup before verifying the buyer delivery code.");
   }
@@ -2148,6 +2155,12 @@ export function getSellerAssignedRider(auth, orderId) {
   if (row.id) {
     try {
       conversationId = createDeliveryAssignmentConversation(auth.user_id || auth.id, row.id)?.id || null;
+    } catch {
+      conversationId = null;
+    }
+  } else if (row.dispatch_attempt_id) {
+    try {
+      conversationId = createDeliveryOfferConversation(auth.user_id || auth.id, row.dispatch_attempt_id)?.id || null;
     } catch {
       conversationId = null;
     }

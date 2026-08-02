@@ -17,10 +17,14 @@ export async function getAccountCart() {
   return normalizeCartItems(response.cartItems);
 }
 
-export async function addAccountCartItem(productId: string, quantity = 1) {
+export async function addAccountCartItem(
+  productId: string,
+  quantity = 1,
+  selectedSize = "",
+) {
   const response = await apiRequest<{ cartItems: CartItem[] }>("/cart/items", {
     method: "POST",
-    body: JSON.stringify({ productId, quantity }),
+    body: JSON.stringify({ productId, quantity, selectedSize }),
   });
   return normalizeCartItems(response.cartItems);
 }
@@ -58,6 +62,7 @@ export async function mergeAccountCart(items: CartItem[]) {
       items: items.map((item) => ({
         productId: item.id,
         quantity: item.quantity,
+        selectedSize: item.selectedSize || "",
       })),
     }),
   });

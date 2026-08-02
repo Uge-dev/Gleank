@@ -58,6 +58,7 @@ type BackendRiderProfile = {
   completedDeliveries?: number;
   identityDocumentUrl?: string | null;
   selfieUrl?: string | null;
+  currentLocation?: { lat: number; lng: number; accuracyMeters?: number; updatedAt?: string | null } | null;
 };
 
 type BackendRiderAuthResponse = {
@@ -500,6 +501,7 @@ function normalizeRider(response: BackendRiderAuthResponse): { rider: Rider } {
       verificationStatus: mapVerificationStatus(profile.verificationStatus),
       maxPackageValue: Number(profile.maxPackageValue || 0),
       activeZone: profile.coverageArea || user.campus || 'Gleenc coverage',
+      currentLocation: profile.currentLocation || null,
       profileCompletionPercent: Number(profile.profileCompletionPercent || 0),
       completionMissingFields: Array.isArray(profile.completionMissingFields) ? profile.completionMissingFields.map(String) : [],
       verificationStages: profile.verificationStages && typeof profile.verificationStages === 'object' ? profile.verificationStages as Record<string, boolean> : {},

@@ -7322,6 +7322,43 @@ html[data-theme="dark"] .seller-listing-form textarea {
   letter-spacing: -2.4px;
 }
 
+.product-size-selector {
+  border: 0;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+.product-size-selector legend {
+  color: var(--text-strong, #172033);
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-bottom: 0.55rem;
+}
+
+.product-size-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.product-size-options button {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d7dde8);
+  border-radius: 0.7rem;
+  color: var(--text-strong, #172033);
+  cursor: pointer;
+  font: inherit;
+  min-width: 3rem;
+  padding: 0.55rem 0.8rem;
+}
+
+.product-size-options button.active,
+.product-size-options button:focus-visible {
+  background: #182033;
+  border-color: #182033;
+  color: #fff;
+}
+
 .product-category-line {
   margin-top: 10px;
   color: #64748b;

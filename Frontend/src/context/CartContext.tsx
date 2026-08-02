@@ -20,6 +20,8 @@ export type CartItem = {
   sellerId: string;
   campus: string;
   category?: string;
+  availableSizes?: string[];
+  selectedSize?: string;
   deliveryReadinessLabel?: string;
   stock?: number;
   quantity: number;
@@ -93,6 +95,10 @@ function parseCart(value: string | null): CartItem[] {
         sellerId: String(item.sellerId || ""),
         campus: String(item.campus || ""),
         category: item.category ? String(item.category) : undefined,
+        availableSizes: Array.isArray(item.availableSizes)
+          ? item.availableSizes.map((size: unknown) => String(size || "")).filter(Boolean)
+          : undefined,
+        selectedSize: item.selectedSize ? String(item.selectedSize) : undefined,
         deliveryReadinessLabel: item.deliveryReadinessLabel
           ? String(item.deliveryReadinessLabel)
           : undefined,
@@ -232,6 +238,8 @@ export function CartProvider({ children }: CartProviderProps) {
             stock: incomingStock ?? cartItem.stock,
             deliveryReadinessLabel:
               item.deliveryReadinessLabel || cartItem.deliveryReadinessLabel,
+            availableSizes: item.availableSizes ?? cartItem.availableSizes,
+            selectedSize: item.selectedSize || cartItem.selectedSize,
             quantity: cartItem.quantity + incomingQuantity,
           };
         });
