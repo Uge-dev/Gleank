@@ -120,7 +120,13 @@ function OrderDetails() {
 
     void getOrder(id)
       .then((response) => {
-        if (active) setOrder(response.order);
+        if (active) {
+          setOrder(response.order);
+          if (response.order.review) {
+            setReviewRating(response.order.review.rating);
+            setReviewBody(response.order.review.body);
+          }
+        }
       })
       .catch((requestError) => {
         if (!active) return;

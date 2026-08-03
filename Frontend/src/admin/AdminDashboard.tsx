@@ -27,6 +27,7 @@ import {
   FaUserShield,
   FaUsers,
 } from "react-icons/fa";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   emptyAdminDataset,
   type AdminActivityLog,
@@ -56,6 +57,7 @@ import {
   decideAdminKyc,
   fetchAdminAuditLogs,
   fetchAdminDataset,
+  fetchAdminNotifications,
   fetchAdminVerificationQueues,
   fetchAdminKyc,
   fetchAdminProfile,
@@ -63,12 +65,15 @@ import {
   fetchAdminRiders,
   getAdminToken,
   markAdminSupportConversationRead,
+  markAdminNotificationRead,
+  markAllAdminNotificationsRead,
   sendAdminSupportMessage,
   subscribeToAdminNotifications,
   type AdminAuditLog,
   type AdminKycVerification,
   type AdminPriceRange,
   type AdminProfile,
+  type AdminNotification,
   type AdminVerificationCase,
   type AdminVerificationRequirement,
   type AdminVerificationQueues,
@@ -97,6 +102,7 @@ type AdminTab =
   | "riders"
   | "disputes"
   | "support"
+  | "notifications"
   | "activityLogs"
   | "settings";
 
@@ -126,6 +132,7 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "riders", label: "Riders", icon: <FaTruck />, description: "Rider approvals" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
   { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
+  { id: "notifications", label: "Notifications", icon: <FaBell />, description: "All platform alerts" },
   { id: "activityLogs", label: "Activity Logs", icon: <FaHistory />, description: "Admin actions" },
   { id: "settings", label: "Settings", icon: <FaCog />, description: "Rules and setup" },
 ];
@@ -683,8 +690,14 @@ function AdminSupportInbox({
 }
 
 function AdminDashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const [activeTab, setActiveTab] = useState<AdminTab>(() =>
+    location.pathname.replace(/\/+$/, "").endsWith("/notifications")
+      ? "notifications"
+      : "overview",
+  );
   const [search, setSearch] = useState("");
   const [riderFilter, setRiderFilter] = useState("all");
   const [disputeFilter, setDisputeFilter] = useState<"all" | "buyer" | "seller" | "rider">("all");
@@ -694,6 +707,11 @@ function AdminDashboard() {
   const [priceRanges, setPriceRanges] = useState<AdminPriceRange[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [verificationQueues, setVerificationQueues] = useState<AdminVerificationQueues>({ cases: [], queues: {} });
+  const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
+  const [adminUnreadCount, setAdminUnreadCount] = useState(0);
+  const [adminNotificationFilter, setAdminNotificationFilter] = useState<"all" | "unread" | "read">("all");
+  const [adminNotificationPage, setAdminNotificationPage] = useState(1);
+  const [adminNotificationPages, setAdminNotificationPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -773,6 +791,16 @@ function AdminDashboard() {
       if (verificationQueueResult.status === "fulfilled") {
         setVerificationQueues(verificationQueueResult.value);
       }
+
+      try {
+        const notificationResult = await fetchAdminNotifications(adminNotificationPage, adminNotificationFilter);
+        setAdminNotifications(notificationResult.notifications);
+        setAdminUnreadCount(notificationResult.unreadCount || 0);
+        setAdminNotificationPages(notificationResult.totalPages || 1);
+      } catch {
+        // The platform dataset remains usable if the notification stream is
+        // temporarily unavailable; the realtime subscription will retry.
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       showAdminConnectionNotice();
@@ -784,7 +812,7 @@ function AdminDashboard() {
     } finally {
       if (showSpinner) setLoading(false);
     }
-  }, [showAdminConnectionNotice]);
+  }, [adminNotificationFilter, adminNotificationPage, showAdminConnectionNotice]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -805,6 +833,12 @@ function AdminDashboard() {
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [isLoggedIn, loadAdminData]);
+
+  useEffect(() => {
+    if (location.pathname.replace(/\/+$/, "").endsWith("/notifications")) {
+      setActiveTab("notifications");
+    }
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!isLoggedIn) return undefined;
@@ -978,6 +1012,14 @@ function AdminDashboard() {
       ),
     );
     await loadAdminData(false);
+  }
+
+  async function openAdminNotification(notification: AdminNotification) {
+    await markAdminNotificationRead(notification.id).catch(() => undefined);
+    const safePath = /^\/admin(?:\/|$)/.test(notification.actionPath || "")
+      ? notification.actionPath
+      : "/admin";
+    window.location.assign(safePath);
   }
 
   async function logout() {
@@ -1329,6 +1371,11 @@ function AdminDashboard() {
     setActiveTab(tab);
     setSearch("");
     setSidebarOpen(false);
+    if (tab === "notifications") {
+      navigate("/admin/notifications");
+    } else if (location.pathname.replace(/\/+$/, "").endsWith("/notifications")) {
+      navigate("/admin");
+    }
   }
 
   if (!isLoggedIn) {
@@ -1393,12 +1440,12 @@ function AdminDashboard() {
                 aria-label="Open admin notifications"
                 aria-expanded={notificationOpen}
                 onClick={() => {
-                  setNotificationOpen((open) => !open);
-                  void loadAdminData(false);
+                  setNotificationOpen(false);
+                  selectTab("notifications");
                 }}
               >
                 <FaBell />
-                {adminAlerts.length > 0 ? <span>{adminAlerts.length}</span> : null}
+                {adminUnreadCount > 0 ? <span>{adminUnreadCount}</span> : null}
               </button>
 
               {notificationOpen ? (
@@ -1475,6 +1522,54 @@ function AdminDashboard() {
               message={loadError}
               onRetry={() => void refreshLiveData()}
             />
+          ) : null}
+
+          {activeTab === "notifications" ? (
+            <section className="admin-panel-card admin-notifications-page">
+              <div className="admin-panel-head">
+                <div>
+                  <h2>Notifications</h2>
+                  <p>Live platform activity for the admin account.</p>
+                </div>
+                <button type="button" onClick={() => void markAllAdminNotificationsRead().then(() => void loadAdminData(false))}>
+                  Mark all read
+                </button>
+              </div>
+              <div className="admin-notification-filters">
+                {(["all", "unread", "read"] as const).map((filter) => (
+                  <button
+                    type="button"
+                    key={filter}
+                    className={adminNotificationFilter === filter ? "active" : ""}
+                    onClick={() => { setAdminNotificationFilter(filter); setAdminNotificationPage(1); }}
+                  >
+                    {filter[0].toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <div className="admin-full-notification-list">
+                {adminNotifications.length ? adminNotifications.map((notification) => (
+                  <button
+                    type="button"
+                    key={notification.id}
+                    className={notification.unread ? "unread" : ""}
+                    onClick={() => void openAdminNotification(notification)}
+                  >
+                    <FaBell />
+                    <span>
+                      <strong>{notification.title}</strong>
+                      <small>{notification.message}</small>
+                      <time>{formatAdminTime(notification.createdAt)}</time>
+                    </span>
+                  </button>
+                )) : <div className="admin-notification-empty"><FaCheckCircle /><strong>No notifications</strong></div>}
+              </div>
+              <div className="admin-notification-pagination">
+                <button type="button" disabled={adminNotificationPage <= 1} onClick={() => setAdminNotificationPage((page) => page - 1)}>Previous</button>
+                <span>Page {adminNotificationPage} of {adminNotificationPages}</span>
+                <button type="button" disabled={adminNotificationPage >= adminNotificationPages} onClick={() => setAdminNotificationPage((page) => page + 1)}>Next</button>
+              </div>
+            </section>
           ) : null}
 
           {activeTab === "overview" ? (

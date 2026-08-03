@@ -14,7 +14,11 @@ export const notificationRouter = Router();
 notificationRouter.use(requireAuth);
 
 notificationRouter.get("/", (req, res) => {
-  res.json(listNotifications(req.auth.user_id));
+  res.json(listNotifications(req.auth.user_id, {
+    page: req.query.page,
+    limit: req.query.limit,
+    filter: req.query.filter,
+  }));
 });
 
 notificationRouter.get("/unread-count", (req, res) => {

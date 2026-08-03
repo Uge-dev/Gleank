@@ -21,6 +21,11 @@ export type CreateOrderInput = {
   deliveryLat?: number | null;
   deliveryLng?: number | null;
   pickupLocation: string;
+  pickupPointId?: string;
+  pickupPointAddress?: string;
+  pickupPointArea?: string;
+  pickupPointLat?: number | null;
+  pickupPointLng?: number | null;
   note?: string;
   items: CreateOrderItemInput[];
 };

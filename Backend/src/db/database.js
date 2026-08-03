@@ -524,6 +524,11 @@ db.exec(`
       CHECK (delivery_option IN ('Pickup', 'Delivery')),
     delivery_address TEXT NOT NULL DEFAULT '',
     pickup_location TEXT NOT NULL DEFAULT '',
+    pickup_point_id TEXT NOT NULL DEFAULT '',
+    pickup_point_address TEXT NOT NULL DEFAULT '',
+    pickup_point_area TEXT NOT NULL DEFAULT '',
+    pickup_point_lat REAL,
+    pickup_point_lng REAL,
     note TEXT NOT NULL DEFAULT '',
     verification_code TEXT NOT NULL DEFAULT '',
     package_tag_code TEXT NOT NULL DEFAULT '',
@@ -1222,6 +1227,11 @@ ensureColumn("orders", "seller_rejection_note", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "delivery_details", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "delivery_landmark", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "delivery_bus_stop", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "pickup_point_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "pickup_point_address", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "pickup_point_area", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "pickup_point_lat", "REAL");
+ensureColumn("orders", "pickup_point_lng", "REAL");
 ensureColumn("orders", "return_window_ends_at", "TEXT");
 ensureColumn("orders", "buyer_confirmed_at", "TEXT");
 ensureColumn("orders", "payout_status", "TEXT NOT NULL DEFAULT 'pending_payment'");

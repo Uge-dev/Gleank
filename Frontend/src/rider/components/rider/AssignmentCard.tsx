@@ -17,7 +17,6 @@ import Button from '../ui/Button';
 import Card from '../ui/Card';
 import Modal from '../ui/Modal';
 import StatusBadge from '../ui/StatusBadge';
-import { createConversation } from '../../../services/message.service';
 
 export default function AssignmentCard({ assignment }: { assignment: PrivateAssignment }) {
   const navigate = useNavigate();
@@ -73,20 +72,11 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
   }
 
   async function openSellerChat() {
-    setOpeningChat(true);
     setActionError('');
-    try {
-      const response = await createConversation(
-        { contextType: 'delivery_assignment', contextId: assignment.id },
-        'rider',
-      );
-      setContactOpen(false);
-      navigate(`/rider/messages?conversation=${encodeURIComponent(response.conversation.id)}`);
-    } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'The seller chat could not be opened.');
-    } finally {
-      setOpeningChat(false);
-    }
+    setOpeningChat(true);
+    setContactOpen(false);
+    navigate(`/rider/messages?assignment=${encodeURIComponent(assignment.id)}`);
+    setOpeningChat(false);
   }
 
   return (
@@ -148,7 +138,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
             onClick={() => setContactOpen(true)}
             fullWidth
           >
-            Contact seller
+            Message Seller
           </Button>
           <Button
             icon={FiTruck}
@@ -184,7 +174,7 @@ export default function AssignmentCard({ assignment }: { assignment: PrivateAssi
               onClick={() => void openSellerChat()}
               fullWidth
             >
-              {openingChat ? 'Opening...' : 'Gleenc chat'}
+              {openingChat ? 'Opening...' : 'Message Seller'}
             </Button>
             <a href={telLink} className="flex-1">
               <Button variant="dark" icon={FiPhoneCall} fullWidth>Call</Button>

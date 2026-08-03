@@ -83,7 +83,7 @@ function Checkout() {
   const selectedLocation =
     deliveryOption === "Delivery"
       ? selectedDeliveryLocation?.formattedAddress || ""
-      : pickupLocation;
+      : selectedDeliveryLocation?.formattedAddress || pickupLocation;
   const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
   const grandTotal = cartSubtotal + deliveryFee;
   const flexibleCheckoutEligible = cartSubtotal < FLEXIBLE_CHECKOUT_MAX_ORDER;
@@ -129,12 +129,6 @@ function Checkout() {
   }, [campus]);
 
   useEffect(() => {
-    if (deliveryOption !== "Delivery") {
-      setAddressSuggestions([]);
-      setAddressSearchError("");
-      return;
-    }
-
     const query = addressQuery.trim();
     if (query.length < 3 || selectedDeliveryLocation?.formattedAddress === query) {
       setAddressSuggestions([]);
@@ -192,6 +186,10 @@ function Checkout() {
       campus,
       deliveryOption,
       destination: selectedLocation,
+      originLat: undefined,
+      originLng: undefined,
+      destinationLat: selectedDeliveryLocation?.lat ?? null,
+      destinationLng: selectedDeliveryLocation?.lng ?? null,
     })
       .then((response) => {
         if (!active) return;
@@ -213,7 +211,13 @@ function Checkout() {
     return () => {
       active = false;
     };
-  }, [campus, deliveryOption, selectedLocation]);
+  }, [
+    campus,
+    deliveryOption,
+    selectedDeliveryLocation?.lat,
+    selectedDeliveryLocation?.lng,
+    selectedLocation,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated || productCartItems.length === 0) {
@@ -292,8 +296,11 @@ function Checkout() {
       return;
     }
 
-    if (deliveryOption === "Pickup" && !selectedPickupLocation) {
-      setError("Select a pickup location before payment.");
+    if (
+      deliveryOption === "Pickup" &&
+      (!selectedPickupLocation || selectedDeliveryLocation?.lat == null || selectedDeliveryLocation?.lng == null)
+    ) {
+      setError("Search for and select an approved Gleenc pickup point before payment.");
       return;
     }
 
@@ -354,6 +361,11 @@ function Checkout() {
         deliveryLat: selectedDeliveryLocation?.lat ?? null,
         deliveryLng: selectedDeliveryLocation?.lng ?? null,
         pickupLocation: deliveryOption === "Pickup" ? selectedPickup : "",
+        pickupPointId: deliveryOption === "Pickup" ? "geocoded-pickup" : "",
+        pickupPointAddress: deliveryOption === "Pickup" ? selectedDeliveryLocation?.formattedAddress || selectedPickup : "",
+        pickupPointArea: deliveryOption === "Pickup" ? selectedDeliveryLocation?.area || selectedDeliveryLocation?.campus || campus : "",
+        pickupPointLat: deliveryOption === "Pickup" ? selectedDeliveryLocation?.lat ?? null : null,
+        pickupPointLng: deliveryOption === "Pickup" ? selectedDeliveryLocation?.lng ?? null : null,
         note,
         paymentMethod,
         items: productCartItems.map((item) => ({
@@ -566,21 +578,47 @@ function Checkout() {
 
             {deliveryOption === "Pickup" ? (
               <div className="delivery-zone-card">
-                <label>
-                  <span>Pickup location</span>
-                  <select
+                <label className="checkout-address-search">
+                  <span>Search an approved Gleenc pickup point</span>
+                  <input
                     name="pickupLocation"
-                    value={pickupLocation}
-                    onChange={(event) => setPickupLocation(event.target.value)}
+                    value={addressQuery}
+                    onChange={(event) => {
+                      setAddressQuery(event.target.value);
+                      setPickupLocation(event.target.value);
+                      setSelectedDeliveryLocation(null);
+                    }}
+                    placeholder="Example: FUPRE Main Gate, Warri"
+                    autoComplete="off"
                     required
-                  >
-                    <option value="">Select an approved pickup point</option>
-                    {zones.map((zone) => (
-                      <option key={zone.id} value={zone.id}>
-                        {zone.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  {isSearchingAddress ? <small className="checkout-address-status">Finding nearby pickup points...</small> : null}
+                  {addressSuggestions.length > 0 ? (
+                    <div className="checkout-address-suggestions" role="listbox">
+                      {addressSuggestions.map((suggestion, index) => (
+                        <button
+                          key={`${suggestion.formattedAddress}-${index}`}
+                          type="button"
+                          role="option"
+                          onClick={() => {
+                            setSelectedDeliveryLocation(suggestion);
+                            setAddressQuery(suggestion.formattedAddress);
+                            setPickupLocation(suggestion.formattedAddress);
+                            setCampus(suggestion.area || suggestion.campus || campus);
+                            setAddressSuggestions([]);
+                            setAddressSearchError("");
+                          }}
+                        >
+                          <FiMapPin />
+                          <span>
+                            <strong>{suggestion.formattedAddress}</strong>
+                            <small>{suggestion.area || suggestion.campus || "Nigeria"}</small>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {addressSearchError ? <small className="checkout-address-error">{addressSearchError}</small> : null}
                 </label>
 
                 <div className="delivery-quote-box">

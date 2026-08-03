@@ -10,12 +10,14 @@ import {
   createSupportConversation,
   createUsedListingConversation,
   createUsedOrderConversation,
+  getConversationPreview,
   getConversationDraftContext,
   getConversation,
   getUnreadMessageCount,
   listConversations,
   listMessages,
   sendMessage,
+  sendDraftMessage,
 } from "../services/message.service.js";
 
 export const messageRouter = Router();
@@ -42,6 +44,10 @@ messageRouter.get("/conversations", (req, res) => {
 
 messageRouter.get("/unread-count", (req, res) => {
   res.json({ unreadCount: getUnreadMessageCount(req.auth.user_id) });
+});
+
+messageRouter.post("/conversation-preview", conversationCreateLimiter, (req, res) => {
+  res.json(getConversationPreview(req.auth.user_id, req.body || {}));
 });
 
 messageRouter.post("/conversations", conversationCreateLimiter, (req, res) => {
@@ -90,6 +96,18 @@ messageRouter.get("/conversations/:id", (req, res) => {
 messageRouter.get("/conversations/:id/messages", (req, res) => {
   res.json({ messages: listMessages(req.auth.user_id, req.params.id) });
 });
+
+messageRouter.post(
+  "/drafts/messages",
+  messageSendLimiter,
+  upload.single("attachment"),
+  (req, res) => {
+    res.status(201).json(sendDraftMessage(req.auth.user_id, {
+      ...req.body,
+      attachmentUrl: fileUrl(req, req.file),
+    }));
+  },
+);
 
 messageRouter.post(
   "/conversations/:id/messages",

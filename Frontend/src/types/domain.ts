@@ -531,7 +531,19 @@ export type GleencOrder = {
   deliveryOption: "Pickup" | "Delivery";
   deliveryAddress: string;
   pickupLocation: string;
+  pickupPointId?: string;
+  pickupPointAddress?: string;
+  pickupPointArea?: string;
+  pickupPointLat?: number | null;
+  pickupPointLng?: number | null;
   note: string;
+  review?: {
+    id: string;
+    rating: number;
+    body: string;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+  } | null;
   verificationCode: string;
   sellerPickupCode?: string;
   createdAt: string;
@@ -615,6 +627,7 @@ export type UsedMarketOrder = {
 
 export type GleencConversation = {
   id: string;
+  isDraft?: boolean;
   contextType: "used_listing" | "used_order" | "store" | "support";
   contextId: string;
   listingId: string | null;

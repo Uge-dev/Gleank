@@ -40,6 +40,19 @@ export type AdminProfile = {
   avatarUrl: string | null;
 };
 
+export type AdminNotification = {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  actionLabel: string;
+  actionPath: string;
+  imageUrl: string | null;
+  unread: boolean;
+  readAt: string | null;
+  createdAt: string;
+};
+
 export function getAdminToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY);
 }
@@ -122,6 +135,29 @@ export async function uploadAdminAvatar(file: File) {
 
 export async function fetchAdminDataset(): Promise<AdminDataset> {
   return request<AdminDataset>("/admin/overview");
+}
+
+export function fetchAdminNotifications(page = 1, filter: "all" | "unread" | "read" = "all") {
+  return request<{
+    notifications: AdminNotification[];
+    unreadCount: number;
+    page: number;
+    totalPages: number;
+  }>(`/notifications?page=${page}&limit=40&filter=${filter}`);
+}
+
+export function markAdminNotificationRead(id: string) {
+  return request<{ notifications: AdminNotification[]; unreadCount: number }>(
+    `/notifications/${encodeURIComponent(id)}/read`,
+    { method: "POST" },
+  );
+}
+
+export function markAllAdminNotificationsRead() {
+  return request<{ notifications: AdminNotification[]; unreadCount: number }>(
+    "/notifications/read-all",
+    { method: "POST" },
+  );
 }
 
 export async function createAdminMarket(input: {

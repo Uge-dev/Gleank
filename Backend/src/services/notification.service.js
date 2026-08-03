@@ -122,16 +122,26 @@ export function createNotificationForUsers(userIds, input) {
     .map(serializeNotification);
 }
 
-export function listNotifications(userId) {
+export function listNotifications(userId, options = {}) {
+  const page = Math.max(1, Number.parseInt(options.page, 10) || 1);
+  const limit = Math.min(100, Math.max(10, Number.parseInt(options.limit, 10) || 40));
+  const filter = options.filter === "unread" ? "unread" : options.filter === "read" ? "read" : "all";
+  const filterSql = filter === "unread" ? " AND is_read = 0" : filter === "read" ? " AND is_read = 1" : "";
+  const offset = (page - 1) * limit;
   const notifications = db
     .prepare(`
       SELECT * FROM notifications
-      WHERE user_id = ?
+      WHERE user_id = ?${filterSql}
       ORDER BY created_at DESC
-      LIMIT 120
+      LIMIT ? OFFSET ?
     `)
-    .all(userId)
+    .all(userId, limit, offset)
     .map(serializeNotification);
+
+  const total = Number(db.prepare(`
+    SELECT COUNT(*) AS count FROM notifications
+    WHERE user_id = ?${filterSql}
+  `).get(userId).count || 0);
 
   const unreadCount = db
     .prepare(`
@@ -144,6 +154,10 @@ export function listNotifications(userId) {
   return {
     notifications,
     unreadCount: Number(unreadCount || 0),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
   };
 }
 

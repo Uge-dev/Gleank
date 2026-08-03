@@ -34,10 +34,7 @@ import {
   markRiderPresenceOnline,
 } from "./rider-presence.service.js";
 import { calculateRoute } from "./location.service.js";
-import {
-  createDeliveryAssignmentConversation,
-  createDeliveryOfferConversation,
-} from "./message.service.js";
+import { createDeliveryAssignmentConversation } from "./message.service.js";
 import {
   activeDispatchCount,
   hasRiderCapacity,
@@ -1467,8 +1464,8 @@ export function acceptRiderAssignment(auth, assignmentId, input = {}) {
     try {
       createDeliveryAssignmentConversation(riderId, assignmentId);
     } catch {
-      // Chat can be hydrated again from the order card; never roll back a
-      // valid delivery acceptance because a legacy conversation needs repair.
+      // Chat hydration is recoverable from the assignment card; never roll
+      // back a valid delivery acceptance because of a legacy chat row.
     }
     createNotification({
       userId: riderId,
@@ -2151,20 +2148,10 @@ export function getSellerAssignedRider(auth, orderId) {
   const riderPoint = pointFrom("", row.rider_current_lat, row.rider_current_lng);
   const pickupPoint = pointFrom(order.pickup_location || "", order.pickup_lat, order.pickup_lng);
   const meters = distanceMeters(riderPoint, pickupPoint);
-  let conversationId = null;
-  if (row.id) {
-    try {
-      conversationId = createDeliveryAssignmentConversation(auth.user_id || auth.id, row.id)?.id || null;
-    } catch {
-      conversationId = null;
-    }
-  } else if (row.dispatch_attempt_id) {
-    try {
-      conversationId = createDeliveryOfferConversation(auth.user_id || auth.id, row.dispatch_attempt_id)?.id || null;
-    } catch {
-      conversationId = null;
-    }
-  }
+  // Opening the seller popup must not create an empty conversation. The
+  // message page resolves this assignment as a draft and persists it only
+  // when the first message is sent.
+  const conversationId = null;
 
   return {
     assignmentId: row.id || null,
@@ -2174,7 +2161,11 @@ export function getSellerAssignedRider(auth, orderId) {
     accepted: ["accepted", "arrived_pickup", "picked_up", "out_for_delivery"].includes(row.status) || row.dispatch_attempt_status === "accepted",
     canCancel: !["picked_up", "out_for_delivery", "delivered"].includes(row.status),
     conversationId,
-    chatPath: conversationId ? `/messages?conversation=${conversationId}` : "",
+    chatPath: row.id
+      ? `/messages?assignment=${encodeURIComponent(row.id)}`
+      : row.dispatch_attempt_id
+        ? `/messages?offer=${encodeURIComponent(row.dispatch_attempt_id)}`
+        : "",
     rider: {
       id: row.rider_id,
       name: row.rider_user_name || "Gleenc rider",

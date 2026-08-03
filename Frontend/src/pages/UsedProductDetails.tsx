@@ -21,7 +21,6 @@ import LoadingState from "../components/LoadingState";
 import UsedListingTrustBadges from "../components/UsedListingTrustBadges";
 import { useAuth } from "../context/AuthContext";
 import { useSaved } from "../context/SavedContext";
-import { createConversation } from "../services/message.service";
 import { getUsedListing, reportUsedListing } from "../services/marketplace.service";
 import type { UsedListing } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
@@ -111,10 +110,6 @@ function UsedProductDetails() {
     requireAuth(async () => {
       setIsMessaging(true);
       try {
-        await createConversation({
-          contextType: "used_listing",
-          contextId: listing.id,
-        });
         navigate(`/messages?listing=${encodeURIComponent(listing.id)}`);
       } catch (requestError) {
         setReportMessage(

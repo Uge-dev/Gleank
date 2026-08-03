@@ -764,6 +764,15 @@ router.patch("/:collection/:id/status", requireAdmin, (req, res) => {
     }
 
     const data = updateRecordStatus(collection, id, status, field);
+    logAdminAudit({
+      adminId: req.auth.user_id,
+      action: "admin_record_status_update",
+      targetType: collection,
+      targetId: id,
+      summary: `Admin changed ${collection} record status to ${status}.`,
+      metadata: { field, status },
+      ...requestMeta(req),
+    });
     res.json({ success: true, data });
   } catch (error) {
     sendAdminError(res, error, "Could not update admin record.");

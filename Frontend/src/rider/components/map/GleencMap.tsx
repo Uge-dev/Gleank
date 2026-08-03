@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   GeoJSONSource,
@@ -7,7 +7,7 @@ import {
   Marker,
 } from 'maplibre-gl';
 import * as maplibregl from 'maplibre-gl';
-import { FiCrosshair } from 'react-icons/fi';
+import { FiCrosshair, FiRefreshCw } from 'react-icons/fi';
 import { config } from '../../config/env';
 import type { RouteCoordinate, RouteGeometry } from '../../types';
 
@@ -94,6 +94,8 @@ export default function GleencMap({
   const loadedRef = useRef(false);
   const initialViewRef = useRef({ rider, destination, routeGeometry });
   const latestPointsRef = useRef({ rider, destination });
+  const [mapError, setMapError] = useState('');
+  const [mapAttempt, setMapAttempt] = useState(0);
 
   useEffect(() => {
     latestPointsRef.current = { rider, destination };
@@ -103,13 +105,26 @@ export default function GleencMap({
     if (!containerRef.current || mapRef.current) return;
     const initialView = initialViewRef.current;
 
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: config.mapStyleUrl,
-      center: [initialView.destination.lng, initialView.destination.lat],
-      zoom: 14,
-      attributionControl: { compact: true },
-    });
+    setMapError('');
+    let map: MapLibreMap;
+    try {
+      map = new maplibregl.Map({
+        container: containerRef.current,
+        style: config.mapStyleUrl,
+        center: [initialView.destination.lng, initialView.destination.lat],
+        zoom: 14,
+        attributionControl: { compact: true },
+      });
+    } catch {
+      setMapError('The map could not be initialized. Please try again.');
+      return;
+    }
+    const handleMapError = () => {
+      if (!loadedRef.current) {
+        setMapError('The map could not load right now. Check your connection and try again.');
+      }
+    };
+    map.on('error', handleMapError);
     map.addControl(
       new maplibregl.NavigationControl({ showCompass: true, showZoom: true }),
       'top-right',
@@ -118,6 +133,7 @@ export default function GleencMap({
 
     map.on('load', () => {
       loadedRef.current = true;
+      setMapError('');
       if (!map.getSource(ROUTE_SOURCE)) {
         map.addSource(ROUTE_SOURCE, {
           type: 'geojson',
@@ -174,10 +190,11 @@ export default function GleencMap({
       riderMarkerRef.current = null;
       destinationMarkerRef.current = null;
       loadedRef.current = false;
+      map.off('error', handleMapError);
       map.remove();
       mapRef.current = null;
     };
-  }, []);
+  }, [mapAttempt]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -246,15 +263,30 @@ export default function GleencMap({
   return (
     <div className="gleenc-map-shell">
       <div ref={containerRef} className="gleenc-map-canvas" />
-      <button
-        type="button"
-        className="gleenc-map-recenter"
-        onClick={recenter}
-        aria-label="Recenter map on my location"
-      >
-        <FiCrosshair />
-        <span>Recenter</span>
-      </button>
+      {mapError ? (
+        <div className="absolute inset-0 z-10 flex min-h-[28rem] flex-col items-center justify-center gap-3 bg-white p-6 text-center">
+          <p className="font-black text-slate-900">Map unavailable</p>
+          <p className="max-w-sm text-sm text-slate-500">{mapError}</p>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white"
+            onClick={() => setMapAttempt((attempt) => attempt + 1)}
+          >
+            <FiRefreshCw />
+            Retry map
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="gleenc-map-recenter"
+          onClick={recenter}
+          aria-label="Recenter map on my location"
+        >
+          <FiCrosshair />
+          <span>Recenter</span>
+        </button>
+      )}
     </div>
   );
 }

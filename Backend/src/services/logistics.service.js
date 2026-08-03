@@ -1152,8 +1152,8 @@ function loadOrderForBatch(orderId) {
            stores.nearest_landmark, stores.pickup_zone_id, stores.pickup_lat, stores.pickup_lng,
            COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS route_pickup_lat,
            COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS route_pickup_lng,
-           COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
-           COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
+           COALESCE(orders.delivery_lat, orders.pickup_point_lat, buyer_presence.lat) AS route_delivery_lat,
+           COALESCE(orders.delivery_lng, orders.pickup_point_lng, buyer_presence.lng) AS route_delivery_lng,
            users.name AS seller_name, users.phone AS seller_user_phone
     FROM orders
     JOIN stores ON stores.id = orders.store_id
@@ -1197,7 +1197,7 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
 
   const now = nowIso();
   const parentId = createId("por");
-  const deliveryText = orders[0].delivery_address || orders[0].pickup_location || orders[0].campus || "";
+  const deliveryText = orders[0].delivery_address || orders[0].pickup_point_address || orders[0].pickup_location || orders[0].campus || "";
   const deliveryZone = findZoneForText(deliveryText) || findZoneForText(orders[0].campus, "campus");
   const parentTotal = orders.reduce((sum, order) => sum + Number(order.total_kobo || 0), 0);
   const oldDeliveryTotal = orders.reduce((sum, order) => sum + Number(order.delivery_fee_kobo || 0), 0);
@@ -1214,7 +1214,7 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
     oldDeliveryTotal,
     clean(orders[0].campus || orders[0].delivery_area || ""),
     deliveryZone?.id || null,
-    clean(orders[0].delivery_address || orders[0].pickup_location || ""),
+    clean(orders[0].delivery_address || orders[0].pickup_point_address || orders[0].pickup_location || ""),
     now,
     now,
   );
@@ -1512,7 +1512,7 @@ export function ensureOrderDeliverySetup(orderId) {
         linkedTask.delivery_batch_id,
         order.buyer_id,
         batch?.delivery_zone_id || null,
-        clean(order.delivery_address || order.pickup_location || ""),
+        clean(order.delivery_address || order.pickup_point_address || order.pickup_location || ""),
         hashOtp(codes?.buyerDeliveryCode || generateOtp()),
         now,
         now,
@@ -2253,8 +2253,8 @@ function routeCoordinatesForBatch(batchId) {
     SELECT
       COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS pickup_lat,
       COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS pickup_lng,
-      COALESCE(orders.delivery_lat, buyer_presence.lat) AS delivery_lat,
-      COALESCE(orders.delivery_lng, buyer_presence.lng) AS delivery_lng
+      COALESCE(orders.delivery_lat, orders.pickup_point_lat, buyer_presence.lat) AS delivery_lat,
+      COALESCE(orders.delivery_lng, orders.pickup_point_lng, buyer_presence.lng) AS delivery_lng
     FROM pickup_tasks
     JOIN orders ON orders.id = pickup_tasks.order_id
     JOIN stores ON stores.id = orders.store_id
@@ -2868,8 +2868,8 @@ function createAssignmentsForBatch(batchId, riderId) {
            stores.allow_rider_whatsapp_contact, users.name AS seller_name, users.phone AS seller_user_phone,
            COALESCE(seller_presence.lat, orders.pickup_lat, stores.pickup_lat) AS route_pickup_lat,
            COALESCE(seller_presence.lng, orders.pickup_lng, stores.pickup_lng) AS route_pickup_lng,
-           COALESCE(orders.delivery_lat, buyer_presence.lat) AS route_delivery_lat,
-           COALESCE(orders.delivery_lng, buyer_presence.lng) AS route_delivery_lng,
+           COALESCE(orders.delivery_lat, orders.pickup_point_lat, buyer_presence.lat) AS route_delivery_lat,
+           COALESCE(orders.delivery_lng, orders.pickup_point_lng, buyer_presence.lng) AS route_delivery_lng,
            delivery_tasks.delivery_otp_hash
     FROM pickup_tasks
     JOIN orders ON orders.id = pickup_tasks.order_id
@@ -2952,7 +2952,7 @@ function createAssignmentsForBatch(batchId, riderId) {
         task.pickup_location || task.store_street || task.store_pickup_location || task.pickup_landmark || task.store_nearest_marketplace || task.store_nearest_campus || task.store_location_area || [task.store_city, task.store_state].filter(Boolean).join(", ") || task.campus || "Pickup location unavailable",
         task.route_pickup_lat ?? task.pickup_lat ?? null,
         task.route_pickup_lng ?? task.pickup_lng ?? null,
-        task.delivery_address || task.pickup_location || "",
+        task.delivery_address || task.pickup_point_address || task.pickup_location || "",
         task.delivery_details || "",
         task.delivery_landmark || "",
         task.delivery_bus_stop || "",
@@ -3031,7 +3031,7 @@ function createAssignmentsForBatch(batchId, riderId) {
         "Pickup location unavailable",
       task.route_pickup_lat ?? task.pickup_lat ?? null,
       task.route_pickup_lng ?? task.pickup_lng ?? null,
-      task.delivery_address || task.pickup_location || "",
+      task.delivery_address || task.pickup_point_address || task.pickup_location || "",
       task.delivery_details || "",
       task.delivery_landmark || "",
       task.delivery_bus_stop || "",
@@ -3233,7 +3233,8 @@ export function riderAcceptDispatch(auth, dispatchId, input = {}) {
       try {
         createDeliveryAssignmentConversation(riderId, assignment.id);
       } catch {
-        // The assignment remains valid even if chat hydration is retried from the UI.
+        // The assignment remains valid even if chat hydration is retried from
+        // the UI.
       }
     });
     createNotification({

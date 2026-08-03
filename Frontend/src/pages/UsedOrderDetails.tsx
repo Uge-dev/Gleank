@@ -17,7 +17,6 @@ import {
 import ErrorState from "../components/ErrorState";
 import { useAuth } from "../context/AuthContext";
 import LoadingState from "../components/LoadingState";
-import { createConversation } from "../services/message.service";
 import {
   getUsedOrder,
   chooseUsedOrderFulfillment,
@@ -169,11 +168,7 @@ function UsedOrderDetails() {
     if (!order) return;
     setIsWorking(true);
     try {
-      const response = await createConversation({
-        contextType: "used_order",
-        contextId: order.id,
-      });
-      navigate(`/messages?conversation=${response.conversation.id}`);
+      navigate(`/messages?usedOrder=${encodeURIComponent(order.id)}`);
     } catch (requestError) {
       setError(
         requestError instanceof Error

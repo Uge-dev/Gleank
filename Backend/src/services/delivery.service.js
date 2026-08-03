@@ -102,6 +102,28 @@ function distanceKm(origin, destination) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function coordinate(value, min, max) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= min && number <= max ? number : null;
+}
+
+function haversineKm(originLat, originLng, destinationLat, destinationLng) {
+  const lat1 = coordinate(originLat, -90, 90);
+  const lng1 = coordinate(originLng, -180, 180);
+  const lat2 = coordinate(destinationLat, -90, 90);
+  const lng2 = coordinate(destinationLng, -180, 180);
+  if ([lat1, lng1, lat2, lng2].some((value) => value === null)) return null;
+  const radians = (value) => (value * Math.PI) / 180;
+  const dLat = radians(lat2 - lat1);
+  const dLng = radians(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(lat1)) *
+      Math.cos(radians(lat2)) *
+      Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.asin(Math.sqrt(a));
+}
+
 function roundFee(value, roundToKobo) {
   if (!roundToKobo) return Math.round(value);
   return Math.ceil(value / roundToKobo) * roundToKobo;
@@ -142,7 +164,17 @@ export function calculateDeliveryQuote(input = {}) {
       : input.pickupLocation || input.destination,
   );
 
-  if (!destination) {
+  const coordinateDistance = haversineKm(
+    input.originLat,
+    input.originLng,
+    input.destinationLat,
+    input.destinationLng,
+  );
+  const hasGeocodedDestination =
+    coordinate(input.destinationLat, -90, 90) !== null &&
+    coordinate(input.destinationLng, -180, 180) !== null;
+
+  if (!destination && coordinateDistance === null && !hasGeocodedDestination) {
     throw new HttpError(
       422,
       deliveryOption === "Delivery"
@@ -151,7 +183,9 @@ export function calculateDeliveryQuote(input = {}) {
     );
   }
 
-  const distance = Number(distanceKm(origin, destination).toFixed(2));
+  const distance = Number(
+    (coordinateDistance === null ? (destination ? distanceKm(origin, destination) : 1) : coordinateDistance).toFixed(2),
+  );
   let feeKobo = 0;
 
   if (deliveryOption === "Pickup") {
@@ -170,7 +204,9 @@ export function calculateDeliveryQuote(input = {}) {
     campus: map.label,
     deliveryOption,
     origin: { id: origin.id, label: origin.label },
-    destination: { id: destination.id, label: destination.label },
+    destination: destination
+      ? { id: destination.id, label: destination.label }
+      : { id: "geocoded", label: input.destination || input.deliveryAddress || input.pickupLocation || "Selected location" },
     distanceKm: distance,
     feeKobo,
     fee: toNaira(feeKobo),

@@ -83,6 +83,78 @@ function serializeConversation(row, viewerUserId) {
   };
 }
 
+function serializeDraftConversation({
+  id,
+  contextType = "store",
+  contextId = "",
+  buyer,
+  seller,
+  listing = null,
+  orderId = null,
+  viewerUserId,
+}) {
+  const viewerIsBuyer = buyer.id === viewerUserId;
+  const other = viewerIsBuyer ? seller : buyer;
+  const store = seller.store || null;
+  return {
+    id,
+    isDraft: true,
+    contextType,
+    contextId,
+    listingId: listing?.id || null,
+    orderId,
+    buyerId: buyer.id,
+    sellerId: seller.id,
+    buyerName: buyer.name || "",
+    sellerName: seller.name || "",
+    otherUserId: other.id,
+    otherUserName: other.name || "Gleenc user",
+    otherUserRole: other.role || "buyer",
+    otherUserAvatarUrl: other.avatarUrl || null,
+    listingName: listing?.name || "",
+    listingImageUrl: listing?.imageUrl || null,
+    storeName: store?.name || "",
+    storeSlug: store?.slug || "",
+    storeLogoUrl: store?.logoUrl || null,
+    storeCampus: store?.campus || "",
+    storeCategory: store?.category || "",
+    unreadCount: 0,
+    lastMessageBody: "",
+    lastMessageAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function publicUser(userId) {
+  const row = db.prepare(`
+    SELECT users.id, users.name, users.role,
+           COALESCE(
+             NULLIF(users.avatar_url, ''),
+             (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = users.id LIMIT 1)
+           ) AS avatar_url
+    FROM users WHERE users.id = ?
+  `).get(userId);
+  if (!row) throw new HttpError(404, "The chat participant was not found.");
+  return { id: row.id, name: row.name || "Gleenc user", role: row.role, avatarUrl: row.avatar_url || null };
+}
+
+function publicSeller(userId) {
+  const user = publicUser(userId);
+  const store = db.prepare(`
+    SELECT id, name, slug, logo_url, campus, category
+    FROM stores
+    WHERE owner_id = ? AND status = 'active'
+    ORDER BY updated_at DESC LIMIT 1
+  `).get(userId);
+  return {
+    ...user,
+    store: store
+      ? { id: store.id, name: store.name || "", slug: store.slug || "", logoUrl: store.logo_url || null, campus: store.campus || "", category: store.category || "" }
+      : null,
+  };
+}
+
 function conversationSelect(extraWhere = "") {
   return `
     SELECT conversations.*,
@@ -415,6 +487,260 @@ export function createProductConversation(userId, productId) {
   return {
     conversation,
     draftContext: getConversationDraftContext(userId, conversation.id, "product", product.id),
+  };
+}
+
+function findDirectConversationId(buyerId, sellerId) {
+  return db.prepare(`
+    SELECT id FROM conversations
+    WHERE conversation_key = ?
+    LIMIT 1
+  `).get(directConversationKey(buyerId, sellerId))?.id || null;
+}
+
+function listingContext(listing) {
+  return listing
+    ? {
+        type: "used_listing",
+        id: listing.id,
+        name: clean(listing.name, 180),
+        imageUrl: parseImages(listing.image_urls)[0] || null,
+        priceKobo: Number(listing.price_kobo || 0),
+        href: `/used-market/${listing.id}`,
+      }
+    : null;
+}
+
+function productContext(product) {
+  return product
+    ? {
+        type: "product",
+        id: product.id,
+        name: clean(product.name, 180),
+        imageUrl: parseImages(product.image_urls)[0] || null,
+        priceKobo: Number(product.price_kobo || 0),
+        href: `/products/${product.id}`,
+      }
+    : null;
+}
+
+/**
+ * Resolve a chat target without writing a conversation row.  This is used by
+ * the message composer so opening a profile/order cannot create an empty
+ * inbox record. The same relationship is resolved again when the first
+ * message is sent, so IDs from the browser are never trusted on their own.
+ */
+function resolveConversationTarget(userId, contextType, contextId) {
+  const type = clean(contextType, 40);
+  const id = clean(contextId, 180);
+  if (!type) throw new HttpError(422, "Choose a valid conversation type.");
+
+  if (type === "store") {
+    const store = db.prepare(`
+      SELECT id, owner_id FROM stores
+      WHERE (id = ? OR slug = ?) AND status = 'active'
+    `).get(id, id);
+    if (!store) throw new HttpError(404, "Store was not found.");
+    if (store.owner_id === userId) throw new HttpError(422, "You cannot start a store conversation with yourself.");
+    return {
+      buyerId: userId,
+      sellerId: store.owner_id,
+      contextType: "store",
+      contextId: store.id,
+      listing: null,
+      messageContext: null,
+      orderId: null,
+    };
+  }
+
+  if (type === "product") {
+    const product = db.prepare(`
+      SELECT products.id, products.name, products.price_kobo, products.image_urls,
+             stores.id AS store_id, stores.owner_id AS seller_id
+      FROM products JOIN stores ON stores.id = products.store_id
+      WHERE products.id = ?
+        AND products.status IN ('active', 'out_of_stock')
+        AND stores.status = 'active'
+    `).get(id);
+    if (!product) throw new HttpError(404, "Product was not found.");
+    if (product.seller_id === userId) throw new HttpError(422, "You cannot start a product conversation with yourself.");
+    return {
+      buyerId: userId,
+      sellerId: product.seller_id,
+      contextType: "store",
+      contextId: product.store_id,
+      listing: null,
+      messageContext: productContext(product),
+      orderId: null,
+    };
+  }
+
+  if (type === "used_listing") {
+    const listing = db.prepare(`
+      SELECT id, seller_id, name, price_kobo, image_urls
+      FROM used_listings
+      WHERE id = ? AND status IN ('active', 'sold')
+    `).get(id);
+    if (!listing) throw new HttpError(404, "Used item was not found.");
+    if (listing.seller_id === userId) throw new HttpError(422, "You cannot start a conversation with yourself.");
+    const store = db.prepare(
+      "SELECT id FROM stores WHERE owner_id = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
+    ).get(listing.seller_id);
+    return {
+      buyerId: userId,
+      sellerId: listing.seller_id,
+      contextType: store ? "store" : "used_listing",
+      contextId: store?.id || listing.id,
+      listing,
+      messageContext: listingContext(listing),
+      orderId: null,
+    };
+  }
+
+  if (type === "order" || type === "used_order") {
+    const order = type === "order"
+      ? db.prepare("SELECT id, buyer_id, seller_id FROM orders WHERE id = ? AND (buyer_id = ? OR seller_id = ?)").get(id, userId, userId)
+      : db.prepare("SELECT id, buyer_id, seller_id, listing_id FROM used_market_orders WHERE id = ? AND (buyer_id = ? OR seller_id = ?)").get(id, userId, userId);
+    if (!order) throw new HttpError(404, type === "order" ? "Order was not found." : "Used order was not found.");
+    const listing = type === "used_order" && order.listing_id
+      ? db.prepare("SELECT id, seller_id, name, price_kobo, image_urls FROM used_listings WHERE id = ?").get(order.listing_id)
+      : null;
+    return {
+      buyerId: order.buyer_id,
+      sellerId: order.seller_id,
+      contextType: type === "used_order" ? "used_order" : "store",
+      contextId: order.id,
+      listing,
+      messageContext: listingContext(listing),
+      orderId: order.id,
+    };
+  }
+
+  if (type === "delivery_assignment") {
+    const assignment = db.prepare(`
+      SELECT id, order_id, buyer_id, seller_id, rider_id, delivery_batch_id
+      FROM rider_assignments WHERE id = ?
+    `).get(id);
+    if (!assignment) throw new HttpError(404, "Delivery assignment was not found.");
+    const role = db.prepare("SELECT role FROM users WHERE id = ?").get(userId)?.role || "";
+    if (![assignment.buyer_id, assignment.seller_id, assignment.rider_id].includes(userId) && role !== "admin") {
+      throw new HttpError(403, "You cannot open this delivery conversation.");
+    }
+    const buyerRider = userId === assignment.buyer_id;
+    return {
+      buyerId: buyerRider ? assignment.buyer_id : assignment.rider_id,
+      sellerId: buyerRider ? assignment.rider_id : assignment.seller_id,
+      contextType: "store",
+      contextId: buyerRider ? `delivery_buyer:${assignment.id}` : `delivery_assignment:${assignment.id}`,
+      listing: null,
+      messageContext: null,
+      orderId: assignment.order_id || assignment.id,
+    };
+  }
+
+  if (type === "delivery_offer") {
+    const offer = db.prepare(`
+      SELECT dispatch_attempts.id, dispatch_attempts.rider_id,
+             pickup_tasks.seller_id, pickup_tasks.order_id
+      FROM dispatch_attempts
+      JOIN pickup_tasks
+        ON pickup_tasks.delivery_batch_id = dispatch_attempts.delivery_batch_id
+       AND pickup_tasks.status != 'seller_rejected'
+      WHERE dispatch_attempts.id = ?
+      ORDER BY pickup_tasks.pickup_sequence ASC
+      LIMIT 1
+    `).get(id);
+    if (!offer) throw new HttpError(404, "Delivery offer was not found.");
+    if (![offer.seller_id, offer.rider_id].includes(userId)) {
+      throw new HttpError(403, "You cannot open this delivery offer conversation.");
+    }
+    return {
+      buyerId: offer.rider_id,
+      sellerId: offer.seller_id,
+      contextType: "store",
+      contextId: `dispatch_offer:${offer.id}`,
+      listing: null,
+      messageContext: null,
+      orderId: offer.order_id || offer.id,
+    };
+  }
+
+  throw new HttpError(422, "Choose a valid conversation type.");
+}
+
+function buildDraftConversation(userId, target) {
+  const buyer = publicUser(target.buyerId);
+  const seller = target.sellerId === target.buyerId ? buyer : publicSeller(target.sellerId);
+  return serializeDraftConversation({
+    id: `draft:${createId("msg")}`,
+    contextType: target.contextType,
+    contextId: target.contextId,
+    buyer,
+    seller,
+    listing: target.listing,
+    orderId: target.orderId,
+    viewerUserId: userId,
+  });
+}
+
+export function getConversationPreview(userId, input = {}) {
+  const target = resolveConversationTarget(userId, input.contextType, input.contextId);
+  const existingId = findDirectConversationId(target.buyerId, target.sellerId);
+  if (existingId) {
+    return {
+      conversation: getConversation(userId, existingId),
+      draftContext: target.messageContext,
+    };
+  }
+  return {
+    conversation: buildDraftConversation(userId, target),
+    draftContext: target.messageContext,
+  };
+}
+
+function persistConversationForTarget(target) {
+  const existingId = findDirectConversationId(target.buyerId, target.sellerId);
+  if (existingId) return existingId;
+
+  const now = new Date().toISOString();
+  const id = createId("cnv");
+  try {
+    db.prepare(`
+      INSERT INTO conversations (
+        id, conversation_key, context_type, context_id, listing_id, order_id,
+        buyer_id, seller_id, last_message_body, last_message_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', NULL, ?, ?)
+    `).run(
+      id,
+      directConversationKey(target.buyerId, target.sellerId),
+      target.contextType,
+      target.contextId,
+      target.listing?.id || null,
+      target.orderId || null,
+      target.buyerId,
+      target.sellerId,
+      now,
+      now,
+    );
+    return id;
+  } catch (error) {
+    if (!String(error?.message || "").toLowerCase().includes("unique")) throw error;
+    return findDirectConversationId(target.buyerId, target.sellerId);
+  }
+}
+
+export function sendDraftMessage(userId, input = {}) {
+  const target = resolveConversationTarget(userId, input.contextType, input.contextId);
+  const conversationId = persistConversationForTarget(target);
+  if (!conversationId) throw new HttpError(409, "The conversation could not be opened. Please try again.");
+  const message = sendMessage(userId, conversationId, {
+    ...input,
+    contextType: input.messageContextType || target.messageContext?.type || "",
+    contextId: input.messageContextId || target.messageContext?.id || "",
+  });
+  return {
+    conversation: getConversation(userId, conversationId),
+    message,
   };
 }
 
@@ -816,7 +1142,14 @@ export function listConversations(userId) {
   normalizeAllDirectConversationDuplicates(userId);
   const conversations = db
     .prepare(conversationSelect(`
-      WHERE conversations.buyer_id = ? OR conversations.seller_id = ?
+      WHERE (conversations.buyer_id = ? OR conversations.seller_id = ?)
+        AND (
+          conversations.context_type = 'support'
+          OR EXISTS (
+            SELECT 1 FROM messages
+            WHERE messages.conversation_id = conversations.id
+          )
+        )
       ORDER BY COALESCE(conversations.last_message_at, conversations.updated_at) DESC
       LIMIT 100
     `))

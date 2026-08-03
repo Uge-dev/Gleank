@@ -25,7 +25,7 @@ export function getUnreadMessageCount(portal: MessagePortal = "user") {
 }
 
 export function createConversation(input: {
-  contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "support" | "delivery_assignment";
+  contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "support" | "delivery_assignment" | "delivery_offer";
   contextId?: string;
 }, portal: MessagePortal = "user") {
   return apiRequest<{
@@ -39,6 +39,20 @@ export function createConversation(input: {
       body: JSON.stringify(input),
     },
   );
+}
+
+export function previewConversation(input: {
+  contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "delivery_assignment" | "delivery_offer";
+  contextId?: string;
+}, portal: MessagePortal = "user") {
+  return apiRequest<{
+    conversation: GleencConversation;
+    draftContext: GleencMessageContext | null;
+  }>("/messages/conversation-preview", {
+    method: "POST",
+    headers: portalHeaders(portal),
+    body: JSON.stringify(input),
+  });
 }
 
 export function getConversation(id: string, portal: MessagePortal = "user") {
@@ -71,7 +85,7 @@ export function sendConversationMessage(
     }
     formData.append("attachment", attachment);
 
-    return apiRequest<{ message: GleencMessage }>(
+    return apiRequest<{ message: GleencMessage; conversation?: GleencConversation }>(
       `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
         method: "POST",
@@ -81,7 +95,7 @@ export function sendConversationMessage(
     );
   }
 
-  return apiRequest<{ message: GleencMessage }>(
+  return apiRequest<{ message: GleencMessage; conversation?: GleencConversation }>(
     `/messages/conversations/${encodeURIComponent(conversationId)}/messages`,
     {
       method: "POST",
@@ -90,6 +104,48 @@ export function sendConversationMessage(
         body,
         contextType: context?.type || "",
         contextId: context?.id || "",
+      }),
+    },
+  );
+}
+
+export function sendDraftConversationMessage(
+  input: {
+    contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "delivery_assignment" | "delivery_offer";
+    contextId?: string;
+    body: string;
+    attachment?: File | null;
+    messageContext?: GleencMessageContext | null;
+  },
+  portal: MessagePortal = "user",
+) {
+  if (input.attachment) {
+    const formData = new FormData();
+    formData.append("contextType", input.contextType);
+    formData.append("contextId", input.contextId || "");
+    formData.append("body", input.body);
+    if (input.messageContext) {
+      formData.append("messageContextType", input.messageContext.type);
+      formData.append("messageContextId", input.messageContext.id);
+    }
+    formData.append("attachment", input.attachment);
+    return apiRequest<{ conversation: GleencConversation; message: GleencMessage }>(
+      "/messages/drafts/messages",
+      { method: "POST", headers: portalHeaders(portal), body: formData },
+    );
+  }
+
+  return apiRequest<{ conversation: GleencConversation; message: GleencMessage }>(
+    "/messages/drafts/messages",
+    {
+      method: "POST",
+      headers: portalHeaders(portal),
+      body: JSON.stringify({
+        contextType: input.contextType,
+        contextId: input.contextId || "",
+        body: input.body,
+        messageContextType: input.messageContext?.type || "",
+        messageContextId: input.messageContext?.id || "",
       }),
     },
   );

@@ -36,6 +36,10 @@ export type DeliveryQuoteInput = {
   origin?: string;
   destination?: string;
   deliveryAddress?: string;
+  originLat?: number | null;
+  originLng?: number | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
 };
 
 export function getDeliveryZones(campus: string) {

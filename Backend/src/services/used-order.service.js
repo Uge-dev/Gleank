@@ -2,7 +2,6 @@ import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
-import { createUsedOrderConversation } from "./message.service.js";
 import { createNotification, createNotificationForUsers } from "./notification.service.js";
 import {
   createDispute,
@@ -428,9 +427,6 @@ export function createUsedOrder(userId, input) {
     reserveUsedListingUnits(listing.id, requestedQuantity);
 
     insertEvent(id, "pending_payment", "Protected order created. Buyer should complete payment to reserve this item.");
-
-    const conversation = createUsedOrderConversation(userId, id);
-    db.prepare("UPDATE used_market_orders SET conversation_id = ? WHERE id = ?").run(conversation.id, id);
 
     createNotification({
       userId: listing.seller_id,

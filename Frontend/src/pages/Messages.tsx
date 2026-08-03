@@ -18,9 +18,11 @@ import LoadingState from "../components/LoadingState";
 import { useAuth } from "../context/AuthContext";
 import {
   createConversation,
+  previewConversation,
   getConversationMessages,
   getConversations,
   sendConversationMessage,
+  sendDraftConversationMessage,
 } from "../services/message.service";
 import type {
   GleencConversation,
@@ -194,12 +196,16 @@ type MessageWorkspaceProps = {
   currentUserId?: string;
   portal?: MessagePortal;
   messagesPath?: string;
+  authReady?: boolean;
+  authenticated?: boolean;
 };
 
 export function MessageWorkspace({
   currentUserId,
   portal = "user",
   messagesPath = "/messages",
+  authReady = true,
+  authenticated = true,
 }: MessageWorkspaceProps) {
   const [searchParams] = useSearchParams();
   const [conversationList, setConversationList] = useState<
@@ -211,6 +217,10 @@ export function MessageWorkspace({
   const [activeFilter, setActiveFilter] = useState<MessageFilter>("All");
   const [messageText, setMessageText] = useState("");
   const [draftContext, setDraftContext] = useState<GleencMessageContext | null>(null);
+  const [draftTarget, setDraftTarget] = useState<{
+    contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "delivery_assignment" | "delivery_offer";
+    contextId?: string;
+  } | null>(null);
   const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
@@ -223,13 +233,22 @@ export function MessageWorkspace({
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const openedContextRef = useRef("");
+  const draftConversationRef = useRef<GleencConversation | null>(null);
 
   const loadConversations = useCallback(
     async (preferredConversationId = "") => {
       const response = await getConversations(portal);
-      setConversationList(response.conversations);
+      setConversationList(() => {
+        const draft = draftConversationRef.current;
+        return draft && !response.conversations.some((item) => item.id === draft.id)
+          ? [...response.conversations, draft]
+          : response.conversations;
+      });
 
       setActiveConversationId((current) => {
+        if (draftConversationRef.current?.id === current) {
+          return current;
+        }
         if (
           preferredConversationId &&
           response.conversations.some((item) => item.id === preferredConversationId)
@@ -248,6 +267,10 @@ export function MessageWorkspace({
   );
 
   useEffect(() => {
+    if (!authReady || !authenticated) {
+      setIsLoading(false);
+      return;
+    }
     let active = true;
 
     setIsLoading(true);
@@ -274,13 +297,16 @@ export function MessageWorkspace({
       active = false;
       window.clearInterval(timer);
     };
-  }, [loadConversations]);
+  }, [authReady, authenticated, loadConversations]);
 
   useEffect(() => {
     const sellerSlug = searchParams.get("seller")?.trim() || "";
     const orderId = searchParams.get("order")?.trim() || "";
     const productId = searchParams.get("product")?.trim() || "";
     const listingId = searchParams.get("listing")?.trim() || "";
+    const usedOrderId = searchParams.get("usedOrder")?.trim() || "";
+    const assignmentId = searchParams.get("assignment")?.trim() || "";
+    const offerId = searchParams.get("offer")?.trim() || "";
     const requestedConversationId = searchParams.get("conversation")?.trim() || "";
     const supportRequested = searchParams.get("support") === "1";
     const contextKey = supportRequested
@@ -289,15 +315,21 @@ export function MessageWorkspace({
         ? `conversation:${requestedConversationId}`
       : orderId
         ? `order:${orderId}`
+        : usedOrderId
+          ? `used-order:${usedOrderId}`
         : productId
           ? `product:${productId}`
-          : listingId
-            ? `listing:${listingId}`
+      : listingId
+        ? `listing:${listingId}`
+        : assignmentId
+          ? `assignment:${assignmentId}`
+        : offerId
+          ? `offer:${offerId}`
         : sellerSlug
           ? `store:${sellerSlug}`
           : "";
 
-    if (!contextKey || openedContextRef.current === contextKey) return;
+    if (!authReady || !authenticated || !contextKey || openedContextRef.current === contextKey) return;
     openedContextRef.current = contextKey;
 
     if (requestedConversationId) {
@@ -317,15 +349,43 @@ export function MessageWorkspace({
       ? { contextType: "support" as const }
       : orderId
         ? { contextType: "order" as const, contextId: orderId }
+        : usedOrderId
+          ? { contextType: "used_order" as const, contextId: usedOrderId }
         : productId
           ? { contextType: "product" as const, contextId: productId }
           : listingId
             ? { contextType: "used_listing" as const, contextId: listingId }
+            : assignmentId
+              ? { contextType: "delivery_assignment" as const, contextId: assignmentId }
+              : offerId
+                ? { contextType: "delivery_offer" as const, contextId: offerId }
         : { contextType: "store" as const, contextId: sellerSlug };
+    const previewInput = input as {
+      contextType: "product" | "used_listing" | "used_order" | "store" | "order" | "delivery_assignment" | "delivery_offer";
+      contextId?: string;
+    };
 
-    void createConversation(input, portal)
+    const openConversation = supportRequested
+      ? createConversation(input, portal)
+      : previewConversation(previewInput, portal);
+
+    void openConversation
       .then(async (response) => {
-        await loadConversations(response.conversation.id);
+        if (supportRequested) {
+          await loadConversations(response.conversation.id);
+        } else {
+          setConversationList((current) => [
+            ...current.filter((item) => item.id !== response.conversation.id),
+            response.conversation,
+          ]);
+          if (response.conversation.isDraft) {
+            draftConversationRef.current = response.conversation;
+            setDraftTarget(previewInput);
+          } else {
+            draftConversationRef.current = null;
+            setDraftTarget(null);
+          }
+        }
         setActiveConversationId(response.conversation.id);
         setDraftContext(response.draftContext || null);
         if (response.draftContext) {
@@ -343,10 +403,10 @@ export function MessageWorkspace({
         setError(
           requestError instanceof Error
             ? requestError.message
-            : "Conversation could not be started.",
+            : "Conversation could not be opened.",
         );
       });
-  }, [loadConversations, portal, searchParams]);
+  }, [authReady, authenticated, loadConversations, portal, searchParams]);
 
   const activeConversation = useMemo(() => {
     return conversationList.find(
@@ -355,6 +415,10 @@ export function MessageWorkspace({
   }, [activeConversationId, conversationList]);
 
   const loadMessages = useCallback(async (conversationId: string, silent = false) => {
+    if (conversationId.startsWith("draft:")) {
+      setMessages([]);
+      return;
+    }
     if (!silent) setIsLoadingMessages(true);
 
     try {
@@ -430,6 +494,8 @@ export function MessageWorkspace({
     setEmojiOpen(false);
     setSelectedAttachment(null);
     setDraftContext(null);
+    setDraftTarget(null);
+    draftConversationRef.current = null;
   }
 
   function addEmoji(emoji: string) {
@@ -447,17 +513,31 @@ export function MessageWorkspace({
     setError("");
 
     try {
-      const response = await sendConversationMessage(
-        activeConversation.id,
-        cleanMessage,
-        selectedAttachment,
-        draftContext,
-        portal,
-      );
+      const response = activeConversation.isDraft && draftTarget
+        ? await sendDraftConversationMessage({
+            ...draftTarget,
+            body: cleanMessage,
+            attachment: selectedAttachment,
+            messageContext: draftContext,
+          }, portal)
+        : await sendConversationMessage(
+            activeConversation.id,
+            cleanMessage,
+            selectedAttachment,
+            draftContext,
+            portal,
+          );
       setMessages((current) => [...current, response.message]);
+      setActiveConversationId(response.conversation?.id || activeConversation.id);
+      setConversationList((current) => [
+        ...current.filter((item) => item.id !== activeConversation.id && item.id !== response.conversation?.id),
+        response.conversation || activeConversation,
+      ]);
       setMessageText("");
       setSelectedAttachment(null);
       setDraftContext(null);
+      setDraftTarget(null);
+      draftConversationRef.current = null;
       setEmojiOpen(false);
       await loadConversations(activeConversation.id);
     } catch (requestError) {
@@ -471,12 +551,29 @@ export function MessageWorkspace({
     }
   }
 
-  if (isLoading) {
+  if (!authReady || isLoading) {
     return (
       <section className="messages-page">
         <LoadingState
           title="Loading messages"
           message="Opening your live Gleenc inbox."
+        />
+      </section>
+    );
+  }
+
+  if (!authenticated) {
+    return (
+      <section className="messages-page messages-empty-page">
+        <EmptyState
+          icon={<FiMessageCircle />}
+          eyebrow="Sign in required"
+          title="Please log in to continue"
+          message="Sign in with the account that owns this inbox."
+          actionLabel="Log in"
+          onAction={() => {
+            window.location.href = `/login?redirect=${encodeURIComponent(messagesPath)}`;
+          }}
         />
       </section>
     );
@@ -881,8 +978,14 @@ export function MessageWorkspace({
 }
 
 function Messages() {
-  const { user } = useAuth();
-  return <MessageWorkspace currentUserId={user?.id} />;
+  const { user, isLoading } = useAuth();
+  return (
+    <MessageWorkspace
+      currentUserId={user?.id}
+      authReady={!isLoading}
+      authenticated={Boolean(user)}
+    />
+  );
 }
 
 export default Messages;

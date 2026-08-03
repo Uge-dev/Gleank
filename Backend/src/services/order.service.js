@@ -239,6 +239,11 @@ function serializeOrder(row, items = [], events = []) {
     deliveryLandmark: row.delivery_landmark || "",
     nearestBusStop: row.delivery_bus_stop || "",
     pickupLocation: row.pickup_location || "",
+    pickupPointId: row.pickup_point_id || "",
+    pickupPointAddress: row.pickup_point_address || "",
+    pickupPointArea: row.pickup_point_area || "",
+    pickupPointLat: row.pickup_point_lat == null ? null : Number(row.pickup_point_lat),
+    pickupPointLng: row.pickup_point_lng == null ? null : Number(row.pickup_point_lng),
     note: row.note || "",
     verificationCode:
       row.payment_status === "paid" && row.viewer_id === row.buyer_id
@@ -247,6 +252,15 @@ function serializeOrder(row, items = [], events = []) {
     packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    review: row.review_id
+      ? {
+          id: row.review_id,
+          rating: Number(row.review_rating || 0),
+          body: row.review_body || "",
+          createdAt: row.review_created_at || null,
+          updatedAt: row.review_updated_at || null,
+        }
+      : null,
     items,
     events,
   };
@@ -375,7 +389,11 @@ function hydrateOrder(row, viewerId = "") {
     .all(row.id)
     .map(serializeOrderEvent);
 
-  return serializeOrder({ ...row, viewer_id: viewerId }, items, events);
+  const review = viewerId === row.buyer_id
+    ? db.prepare("SELECT id AS review_id, rating AS review_rating, body AS review_body, created_at AS review_created_at, updated_at AS review_updated_at FROM store_reviews WHERE order_id = ? AND buyer_id = ?").get(row.id, viewerId)
+    : null;
+
+  return serializeOrder({ ...row, ...review, viewer_id: viewerId }, items, events);
 }
 
 function insertOrderEvent(orderId, status, note = "") {
@@ -517,6 +535,11 @@ export function createOrders(userId, input) {
   const requestedDeliveryLat = coordinateOrNull(input?.deliveryLat, -90, 90);
   const requestedDeliveryLng = coordinateOrNull(input?.deliveryLng, -180, 180);
   const pickupLocation = String(input?.pickupLocation || "").trim().slice(0, 240);
+  const pickupPointId = String(input?.pickupPointId || "").trim().slice(0, 140);
+  const pickupPointAddress = String(input?.pickupPointAddress || "").trim().slice(0, 300);
+  const pickupPointArea = String(input?.pickupPointArea || "").trim().slice(0, 180);
+  const requestedPickupPointLat = coordinateOrNull(input?.pickupPointLat, -90, 90);
+  const requestedPickupPointLng = coordinateOrNull(input?.pickupPointLng, -180, 180);
   const note = String(input?.note || "").trim().slice(0, 1000);
   const buyerPresence = getAccountLocationPresence(userId);
 
@@ -528,8 +551,13 @@ export function createOrders(userId, input) {
     throw new HttpError(422, "Please provide the delivery address.");
   }
 
-  if (deliveryOption === "Pickup" && !pickupLocation) {
-    throw new HttpError(422, "Please provide the pickup location.");
+  if (
+    deliveryOption === "Pickup" &&
+    (!pickupLocation ||
+      (pickupPointAddress &&
+        (requestedPickupPointLat === null || requestedPickupPointLng === null)))
+  ) {
+    throw new HttpError(422, "Search for and select an approved pickup address before continuing.");
   }
 
   const requestedItemMap = new Map();
@@ -568,6 +596,7 @@ export function createOrders(userId, input) {
           SELECT products.*, stores.owner_id AS seller_id,
                  stores.name AS store_name, stores.slug AS store_slug,
                  stores.phone AS seller_phone,
+                 stores.pickup_location AS seller_pickup_location,
                  stores.pickup_lat AS seller_pickup_lat,
                  stores.pickup_lng AS seller_pickup_lng
           FROM products
@@ -596,6 +625,7 @@ export function createOrders(userId, input) {
         storeId: product.store_id,
         sellerId: product.seller_id,
         storeName: product.store_name,
+        pickupAddress: product.seller_pickup_location || "",
         pickupLat: product.seller_pickup_lat ?? null,
         pickupLng: product.seller_pickup_lng ?? null,
         products: [],
@@ -693,6 +723,10 @@ export function createOrders(userId, input) {
         destination: deliveryOption === "Delivery" ? deliveryAddress : pickupLocation,
         deliveryAddress,
         pickupLocation,
+        originLat: pickupLat,
+        originLng: pickupLng,
+        destinationLat: deliveryOption === "Delivery" ? deliveryLat : requestedPickupPointLat,
+        destinationLng: deliveryOption === "Delivery" ? deliveryLng : requestedPickupPointLng,
       });
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
@@ -731,10 +765,12 @@ export function createOrders(userId, input) {
           subtotal_kobo, delivery_fee_kobo, total_kobo, buyer_name, buyer_phone,
           campus, delivery_option, delivery_address, delivery_details,
           delivery_landmark, delivery_bus_stop, pickup_location,
+          pickup_point_id, pickup_point_address, pickup_point_area,
+          pickup_point_lat, pickup_point_lng,
           pickup_lat, pickup_lng, delivery_lat, delivery_lng, note,
           verification_code, package_tag_code, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         orderId,
         orderCode,
@@ -761,7 +797,12 @@ export function createOrders(userId, input) {
         deliveryDetails,
         deliveryLandmark,
         deliveryBusStop,
-        pickupLocation,
+        group.pickupAddress || "",
+        pickupPointId,
+        pickupPointAddress,
+        pickupPointArea,
+        requestedPickupPointLat,
+        requestedPickupPointLng,
         pickupLat,
         pickupLng,
         deliveryLat,

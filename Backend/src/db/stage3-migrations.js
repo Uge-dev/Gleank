@@ -113,6 +113,22 @@ function migrateCanonicalConversations() {
     }
   }
 
+  // A normal conversation is created by the first real message.  Older
+  // releases created empty rows when a profile or order page was opened. Keep
+  // support threads, but safely remove only direct rows that have no message
+  // history and are not referenced by a used-market order.
+  safeExec(`
+    DELETE FROM conversations
+    WHERE context_type != 'support'
+      AND NOT EXISTS (
+        SELECT 1 FROM messages WHERE messages.conversation_id = conversations.id
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM used_market_orders
+        WHERE used_market_orders.conversation_id = conversations.id
+      )
+  `);
+
   safeExec(`
     CREATE UNIQUE INDEX IF NOT EXISTS conversations_pair_unique_idx
     ON conversations(conversation_key)

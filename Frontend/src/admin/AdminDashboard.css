@@ -2111,6 +2111,79 @@
   text-align: center;
 }
 
+.admin-notifications-page {
+  max-width: 980px;
+}
+
+.admin-notification-filters,
+.admin-notification-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.admin-notification-filters button,
+.admin-notification-pagination button {
+  border: 1px solid #d7dee8;
+  border-radius: 999px;
+  background: #fff;
+  color: #172033;
+  padding: 0.55rem 0.9rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-notification-filters button.active,
+.admin-notification-pagination button:not(:disabled):hover {
+  background: #111827;
+  border-color: #111827;
+  color: #fff;
+}
+
+.admin-full-notification-list {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.admin-full-notification-list > button {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  align-items: start;
+  width: 100%;
+  border: 1px solid #e3e8ef;
+  border-radius: 1rem;
+  background: #fff;
+  color: #172033;
+  padding: 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-full-notification-list > button.unread {
+  border-color: #9bd5b1;
+  background: #f0fbf4;
+}
+
+.admin-full-notification-list strong,
+.admin-full-notification-list small,
+.admin-full-notification-list time {
+  display: block;
+}
+
+.admin-full-notification-list small {
+  margin-top: 0.25rem;
+  color: #667085;
+}
+
+.admin-full-notification-list time {
+  margin-top: 0.45rem;
+  color: #8993a4;
+  font-size: 0.75rem;
+}
+
 .admin-notification-empty svg {
   margin-bottom: 12px;
   color: var(--admin-green);
