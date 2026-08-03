@@ -9,6 +9,7 @@ import {
   FiMinus,
   FiPlus,
   FiSend,
+  FiStar,
   FiShoppingBag,
   FiShoppingCart,
   FiTruck,
@@ -569,6 +570,16 @@ function ProductDetails() {
                   data.comments.map((comment) => (
                     <div key={comment.id}>
                       <strong>{comment.user.name}</strong>
+                      {comment.verifiedPurchase ? (
+                        <div className="product-verified-review-meta">
+                          <span>
+                            {[1, 2, 3, 4, 5].map((star) => (
+                              <FiStar key={star} className={star <= Number(comment.rating || 0) ? "active" : ""} />
+                            ))}
+                          </span>
+                          <em><FiCheckCircle /> Verified purchase</em>
+                        </div>
+                      ) : null}
                       <p>{comment.body}</p>
                       <small>
                         {new Date(comment.createdAt).toLocaleDateString()}
@@ -576,14 +587,14 @@ function ProductDetails() {
                     </div>
                   ))
                 ) : (
-                  <p>No reviews yet. Drop the first review.</p>
+                  <p>No product feedback yet.</p>
                 )}
               </div>
               <div className="product-review-form">
                 <textarea
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
-                  placeholder="Drop a review about this product..."
+                  placeholder="Ask a question or leave product feedback..."
                   maxLength={500}
                   rows={3}
                 />
@@ -592,7 +603,7 @@ function ProductDetails() {
                   onClick={() => void handleCommentSubmit()}
                   disabled={isCommenting || !commentText.trim()}
                 >
-                  {isCommenting ? "Dropping..." : "Drop Review"}
+                  {isCommenting ? "Posting..." : "Post feedback"}
                 </button>
               </div>
             </section>

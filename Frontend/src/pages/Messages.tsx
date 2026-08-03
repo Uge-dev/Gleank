@@ -798,15 +798,13 @@ export function MessageWorkspace({
                     key={message.id}
                     className={isMine ? "message-bubble-row mine" : "message-bubble-row"}
                   >
-                    {!isMine && (
-                      <span className="message-sender-avatar" aria-hidden="true">
-                        {senderAvatar ? (
-                          <img src={senderAvatar} alt="" />
-                        ) : (
-                          message.senderName.slice(0, 1).toUpperCase()
-                        )}
-                      </span>
-                    )}
+                    <span className="message-sender-avatar" aria-hidden="true">
+                      {senderAvatar ? (
+                        <img src={senderAvatar} alt="" />
+                      ) : (
+                        message.senderName.slice(0, 1).toUpperCase()
+                      )}
+                    </span>
                     <div className="message-bubble">
                       {!isMine && (
                         <strong>

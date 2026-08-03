@@ -1254,9 +1254,15 @@ export function createParentOrderForOrders({ buyerId, orderIds = [] }) {
     const summary = packageSnapshotForOrderItems(allItems);
     const pickupCount = group.orders.length;
     const sourceZone = group.sourceZoneId ? serializeZone(db.prepare("SELECT * FROM delivery_zones WHERE id = ?").get(group.sourceZoneId)) : null;
-    const deliveryFeeKobo = env.enableAutomatedDeliveryFees
-      ? batchFeeKobo({ zone: sourceZone || deliveryZone, pickupCount, summary })
-      : group.orders.reduce((sum, item) => sum + Number(item.order.delivery_fee_kobo || 0), 0);
+    const geocodedOrderFeeKobo = group.orders.reduce(
+      (sum, item) => sum + Number(item.order.delivery_fee_kobo || 0),
+      0,
+    );
+    const deliveryFeeKobo = geocodedOrderFeeKobo > 0
+      ? geocodedOrderFeeKobo
+      : env.enableAutomatedDeliveryFees
+        ? batchFeeKobo({ zone: sourceZone || deliveryZone, pickupCount, summary })
+        : 0;
     newDeliveryTotal += deliveryFeeKobo;
 
     db.prepare(`
@@ -2777,7 +2783,7 @@ function createDispatchOfferForCandidate(batch, candidate, { internal = false, a
     title: assignmentMode === "manual" ? "Seller sent a delivery offer" : "New delivery batch",
     body: "You have a delivery batch offer. Open Gleenc Rider to accept or reject it.",
     actionLabel: "View dispatch",
-    actionPath: `/rider/assignments`,
+    actionPath: "/rider/assigned",
   });
   notificationEvent({
     userId: riderId,

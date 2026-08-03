@@ -424,7 +424,20 @@ export function getLocationCatalog() {
 export async function geocodeLocation(input = {}) {
   const text = clean(input.text || input.address || input.query, 500);
   if (!text) throw new HttpError(422, "Enter an address or area to search.");
-  const cacheKey = `search:${text.toLowerCase()}:${Boolean(input.autocomplete)}:${Number(input.limit || 5)}`;
+  const biasLat = numberOrNull(input.biasLat ?? input.proximityLat ?? input.lat);
+  const biasLng = numberOrNull(input.biasLng ?? input.proximityLng ?? input.lng);
+  const limit = Math.min(20, Math.max(1, Number(input.limit || 10)));
+  const proximityBias =
+    biasLat !== null && biasLng !== null
+      ? `proximity:${biasLng},${biasLat}`
+      : "";
+  const cacheKey = [
+    "search",
+    text.toLowerCase(),
+    Boolean(input.autocomplete),
+    limit,
+    proximityBias,
+  ].join(":");
   const cached = readGeocodeCache(cacheKey);
   if (cached) return cached;
 
@@ -433,8 +446,10 @@ export async function geocodeLocation(input = {}) {
     {
       text,
       filter: "countrycode:ng",
-      limit: input.limit || 5,
+      bias: proximityBias || undefined,
+      limit,
       lang: "en",
+      format: "geojson",
     },
   );
 

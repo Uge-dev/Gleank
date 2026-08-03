@@ -941,28 +941,9 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
       coordinateOrNull(sellerLocation?.lng, -180, 180) === null
     )
   ) {
-    if (
-      coordinateOrNull(savedLocation?.pickup_lat, -90, 90) !== null &&
-      coordinateOrNull(savedLocation?.pickup_lng, -180, 180) !== null
-    ) {
-      sellerLocation = {
-        lat: savedLocation.pickup_lat,
-        lng: savedLocation.pickup_lng,
-        address: savedLocation.address || "",
-        source: "saved_seller_pickup",
-      };
-    }
-  }
-  if (
-    user.role === "seller" &&
-    (
-      coordinateOrNull(sellerLocation?.lat, -90, 90) === null ||
-      coordinateOrNull(sellerLocation?.lng, -180, 180) === null
-    )
-  ) {
     throw new HttpError(
       422,
-      "Enable precise location before confirming this order so the rider receives the correct seller pickup pin.",
+      "Enable precise location at your current position and try again. A saved campus/store address cannot be used as the rider pickup pin.",
     );
   }
   if (
@@ -1195,7 +1176,7 @@ export function sellerRejectOrder(user, orderId, note = "") {
         title: "Paid order requires refund review",
         body: `${row.order_code}: ${reason}`,
         actionLabel: "Review order",
-        actionPath: "/admin",
+        actionPath: `/admin?section=orders&record=${row.id}`,
       });
     }
 
@@ -1262,8 +1243,14 @@ export function updateOrderStatus(user, orderId, status, note = "") {
     throw new HttpError(403, "Buyers can only complete or dispute delivered orders.");
   }
 
-  if (status === "completed" && row.status !== "delivered") {
-    throw new HttpError(422, "Buyer can only complete an order after delivery is verified.");
+  const deliveryVerified = Boolean(
+    row.delivery_verified_at ||
+    row.buyer_delivery_code_verified_at ||
+    ["delivered", "completed"].includes(row.delivery_status) ||
+    ["delivered", "completed"].includes(row.fulfillment_status),
+  );
+  if (status === "completed" && row.status !== "completed" && !deliveryVerified) {
+    throw new HttpError(422, "This order can only be completed after rider delivery verification.");
   }
 
   const now = new Date().toISOString();
@@ -1274,10 +1261,14 @@ export function updateOrderStatus(user, orderId, status, note = "") {
       SET status = ?,
           stage4_status = ?,
           fulfillment_status = ?,
+          delivery_status = CASE WHEN ? = 'completed' THEN 'completed' ELSE delivery_status END,
+          dispatch_status = CASE WHEN ? = 'completed' THEN 'completed' ELSE dispatch_status END,
           buyer_confirmed_at = CASE WHEN ? = 'completed' THEN ? ELSE buyer_confirmed_at END,
           updated_at = ?
       WHERE id = ?
     `).run(
+      status,
+      status,
       status,
       status,
       status,
@@ -1395,7 +1386,19 @@ export function submitStoreReview(user, orderId, input = {}) {
   if (!order) throw new HttpError(404, "Order was not found.");
   const userId = user.user_id || user.id;
   if (order.buyer_id !== userId) throw new HttpError(403, "Only the buyer can review this delivery.");
-  if (order.payment_status !== "paid" || !["delivered", "completed"].includes(order.status)) {
+  const verifiedAssignment = db.prepare(`
+    SELECT 1 FROM rider_assignments
+    WHERE order_id = ? AND status = 'delivered'
+    LIMIT 1
+  `).get(order.id);
+  const deliveryVerified = Boolean(
+    ["delivered", "completed"].includes(order.status) ||
+    ["delivered", "completed"].includes(order.delivery_status) ||
+    order.delivery_verified_at ||
+    order.buyer_delivery_code_verified_at ||
+    verifiedAssignment,
+  );
+  if (order.payment_status !== "paid" || !deliveryVerified) {
     throw new HttpError(422, "A store can be reviewed only after a paid delivery is completed.");
   }
   const rating = Number(input.rating);
@@ -1404,6 +1407,17 @@ export function submitStoreReview(user, orderId, input = {}) {
   }
   const body = String(input.body || "").trim().slice(0, 1000);
   const now = new Date().toISOString();
+  if (order.status !== "completed") {
+    db.prepare(`
+      UPDATE orders
+      SET status = 'completed', stage4_status = 'completed',
+          fulfillment_status = 'completed', delivery_status = 'completed',
+          dispatch_status = 'completed',
+          buyer_confirmed_at = COALESCE(buyer_confirmed_at, ?),
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, now, order.id);
+  }
   const existing = db.prepare("SELECT id FROM store_reviews WHERE order_id = ?").get(order.id);
   const id = existing?.id || createId("srv");
   db.prepare(`
@@ -1411,6 +1425,40 @@ export function submitStoreReview(user, orderId, input = {}) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(order_id) DO UPDATE SET rating = excluded.rating, body = excluded.body, updated_at = excluded.updated_at
   `).run(id, order.store_id, order.id, order.buyer_id, order.seller_id, rating, body, now, now);
+
+  const reviewedProducts = db.prepare(`
+    SELECT DISTINCT product_id
+    FROM order_items
+    WHERE order_id = ?
+  `).all(order.id);
+  reviewedProducts.forEach(({ product_id: productId }) => {
+    const existingProductReview = db.prepare(`
+      SELECT id FROM product_comments
+      WHERE product_id = ? AND user_id = ? AND verified_order_id = ?
+    `).get(productId, order.buyer_id, order.id);
+    if (existingProductReview) {
+      db.prepare(`
+        UPDATE product_comments
+        SET body = ?, rating = ?, verified_purchase = 1, is_deleted = 0
+        WHERE id = ?
+      `).run(body || `${rating}/5 verified purchase`, rating, existingProductReview.id);
+    } else {
+      db.prepare(`
+        INSERT INTO product_comments (
+          id, user_id, product_id, parent_comment_id, body, is_deleted,
+          rating, verified_order_id, verified_purchase, created_at
+        ) VALUES (?, ?, ?, NULL, ?, 0, ?, ?, 1, ?)
+      `).run(
+        createId("com"),
+        order.buyer_id,
+        productId,
+        body || `${rating}/5 verified purchase`,
+        rating,
+        order.id,
+        now,
+      );
+    }
+  });
   createNotification({
     userId: order.seller_id,
     type: "order",

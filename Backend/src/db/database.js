@@ -1267,6 +1267,14 @@ ensureColumn("user_trust_profiles", "face_verified_at", "TEXT");
 
 ensureColumn("product_comments", "parent_comment_id", "TEXT");
 ensureColumn("product_comments", "is_deleted", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("product_comments", "rating", "INTEGER");
+ensureColumn("product_comments", "verified_order_id", "TEXT");
+ensureColumn("product_comments", "verified_purchase", "INTEGER NOT NULL DEFAULT 0");
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS product_verified_review_idx
+    ON product_comments(product_id, user_id, verified_order_id)
+    WHERE verified_order_id IS NOT NULL;
+`);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS product_moderation (

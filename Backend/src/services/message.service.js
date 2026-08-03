@@ -128,7 +128,12 @@ function serializeDraftConversation({
 
 function publicUser(userId) {
   const row = db.prepare(`
-    SELECT users.id, users.name, users.role,
+    SELECT users.id, users.name,
+           CASE
+             WHEN EXISTS (SELECT 1 FROM rider_profiles WHERE user_id = users.id)
+               THEN 'rider'
+             ELSE users.role
+           END AS role,
            COALESCE(
              NULLIF(users.avatar_url, ''),
              (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = users.id LIMIT 1)
@@ -159,13 +164,21 @@ function conversationSelect(extraWhere = "") {
   return `
     SELECT conversations.*,
            buyer.name AS buyer_name,
-           buyer.role AS buyer_role,
+           CASE
+             WHEN EXISTS (SELECT 1 FROM rider_profiles WHERE user_id = buyer.id)
+               THEN 'rider'
+             ELSE buyer.role
+           END AS buyer_role,
            COALESCE(
              NULLIF(buyer.avatar_url, ''),
              (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = buyer.id LIMIT 1)
            ) AS buyer_avatar_url,
            seller.name AS seller_name,
-           seller.role AS seller_role,
+           CASE
+             WHEN EXISTS (SELECT 1 FROM rider_profiles WHERE user_id = seller.id)
+               THEN 'rider'
+             ELSE seller.role
+           END AS seller_role,
            COALESCE(
              NULLIF(seller.avatar_url, ''),
              (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = seller.id LIMIT 1)
@@ -1193,7 +1206,11 @@ export function listMessages(userId, conversationId) {
     .prepare(`
       SELECT messages.*,
              users.name AS sender_name,
-             users.role AS sender_role,
+             CASE
+               WHEN EXISTS (SELECT 1 FROM rider_profiles WHERE user_id = users.id)
+                 THEN 'rider'
+               ELSE users.role
+             END AS sender_role,
              COALESCE(
                NULLIF(users.avatar_url, ''),
                (SELECT NULLIF(selfie_url, '') FROM rider_profiles WHERE user_id = users.id LIMIT 1)

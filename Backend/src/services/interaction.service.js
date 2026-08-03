@@ -85,6 +85,9 @@ function serializeComment(row, viewer = null) {
     liked,
     canDelete,
     createdAt: row.created_at,
+    rating: row.rating == null ? null : Number(row.rating),
+    verifiedPurchase: Boolean(row.verified_purchase),
+    verifiedOrderId: row.verified_order_id || null,
     user: {
       id: row.user_id,
       name: row.name,
@@ -355,6 +358,8 @@ export function productComments(productId, viewer = null) {
   return db.prepare(`
     SELECT product_comments.id, product_comments.body,
            product_comments.parent_comment_id, product_comments.is_deleted,
+           product_comments.rating, product_comments.verified_order_id,
+           product_comments.verified_purchase,
            product_comments.created_at, users.id AS user_id,
            users.name, users.avatar_url,
            reply_to_user.name AS reply_to_name,

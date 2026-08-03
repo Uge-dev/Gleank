@@ -1309,7 +1309,20 @@ function updateOrder(id, fields) {
 
   const normal = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM orders WHERE id = ? OR order_code = ?").get(id, id);
   if (normal) {
-    if (nextStatus) db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, normal.id);
+    if (nextStatus === "completed") {
+      db.prepare(`
+        UPDATE orders
+        SET status = 'completed', stage4_status = 'completed',
+            fulfillment_status = 'completed', delivery_status = 'completed',
+            dispatch_status = 'completed',
+            buyer_confirmed_at = COALESCE(buyer_confirmed_at, ?),
+            delivery_verified_at = COALESCE(delivery_verified_at, ?),
+            updated_at = ?
+        WHERE id = ?
+      `).run(now, now, now, normal.id);
+    } else if (nextStatus) {
+      db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, normal.id);
+    }
     createNotificationForUsers([normal.buyer_id, normal.seller_id], {
       type: "admin",
       title: "Order updated by admin",

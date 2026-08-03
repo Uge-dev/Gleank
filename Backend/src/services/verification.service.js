@@ -1222,7 +1222,7 @@ export function submitRequirement(auth, code, input = {}) {
       ? `${auth.name || `A ${caseRow.role}`} completed every Stage ${stageState.stage} requirement.`
       : `${auth.name || "A user"} submitted ${requirement.title} for review.`,
     actionLabel: "Review",
-    actionPath: "/admin",
+    actionPath: `/admin?section=settings&case=${caseRow.id}`,
   });
 
   return getVerificationCenter(
@@ -1323,7 +1323,7 @@ export function requestRequirementResubmission(auth, requirementId, input = {}) 
     title: `${role === "rider" ? "Rider" : "Seller"} requested verification resubmission`,
     body: `${auth.name || "A user"} wants to update ${requirement.title}: ${reason}`,
     actionLabel: "Review request",
-    actionPath: "/admin",
+    actionPath: `/admin?section=settings&case=${caseRow.id}`,
   });
 
   return getVerificationCenter(
@@ -1842,7 +1842,7 @@ export function requestVerificationLevel(auth, input = {}) {
     title: "Verification upgrade requested",
     body: `${auth.name || "A user"} requested ${role} verification level ${requestedLevel}.`,
     actionLabel: "Review",
-    actionPath: "/admin",
+    actionPath: `/admin?section=settings&case=${caseRow.id}`,
   });
 
   return getVerificationCenter(auth, { role, includeHistory: true });

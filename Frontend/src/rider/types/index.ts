@@ -199,6 +199,8 @@ export interface NotificationItem {
   message: string;
   createdAt: string;
   read: boolean;
+  actionLabel?: string;
+  actionPath?: string;
 }
 
 export interface EarningsSummary {

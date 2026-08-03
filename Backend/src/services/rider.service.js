@@ -82,7 +82,7 @@ function recordCodeFailure(row, label) {
       title: `${label} code failures detected`,
       body: `Assignment ${row.id} reached ${nextAttempts} failed code attempt(s).`,
       actionLabel: "Review delivery",
-      actionPath: "/admin",
+      actionPath: `/admin?section=orders&record=${row.order_id}`,
     });
   }
 }
@@ -1386,7 +1386,7 @@ export function createRiderAssignment(auth, input) {
           ? `A paid Gleenc delivery has been assigned to you for pickup at ${pickupPoint.address}. Accept within ${dispatchPolicy.timeoutMinutes} minutes.`
           : `A Pay at Delivery Gleenc order has been assigned for pickup at ${pickupPoint.address}. Accept within ${dispatchPolicy.timeoutMinutes} minutes. Delivery code stays locked until Paystack confirms payment.`,
       actionLabel: "View delivery",
-      actionPath: `/rider/assignments/${id}`,
+      actionPath: "/rider/assigned",
     });
     createNotification({
       userId: order.buyer_id,
@@ -1858,17 +1858,18 @@ export function completeDelivery(auth, orderId, input) {
     if (row.order_type === "store_order") {
       db.prepare(`
         UPDATE orders
-        SET status = 'delivered',
-            fulfillment_status = 'delivered',
-            stage4_status = 'delivered',
-            delivery_status = 'delivered',
-            dispatch_status = 'delivered',
+        SET status = 'completed',
+            fulfillment_status = 'completed',
+            stage4_status = 'completed',
+            delivery_status = 'completed',
+            dispatch_status = 'completed',
             delivery_verified_at = COALESCE(delivery_verified_at, ?),
             buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
             delivered_at = COALESCE(delivered_at, ?),
+            buyer_confirmed_at = COALESCE(buyer_confirmed_at, ?),
             updated_at = ?
         WHERE id = ?
-      `).run(now, now, now, now, row.order_id);
+      `).run(now, now, now, now, now, row.order_id);
     }
     if (row.delivery_batch_id) {
       const remainingAssignments = Number(db.prepare(`
@@ -1882,7 +1883,7 @@ export function completeDelivery(auth, orderId, input) {
       if (remainingAssignments === 0) {
         db.prepare(`
           UPDATE delivery_batches
-          SET status = 'delivered',
+          SET status = 'completed',
               dispatch_status = 'completed',
               delivery_workflow_status = 'completed',
               payout_workflow_status = 'ready_for_payout',
@@ -1892,7 +1893,7 @@ export function completeDelivery(auth, orderId, input) {
         `).run(now, row.delivery_batch_id);
         db.prepare(`
           UPDATE delivery_tasks
-          SET status = 'delivered',
+          SET status = 'completed',
               delivered_at = COALESCE(delivered_at, ?),
               buyer_delivery_code_verified_at = COALESCE(buyer_delivery_code_verified_at, ?),
               updated_at = ?
@@ -2049,7 +2050,7 @@ export function createRiderSafetyReport(auth, input) {
       title: "New rider dispute/compliance report",
       body: clean(input.note, 180) || "A rider submitted a safety or compliance report.",
       actionLabel: "Open admin disputes",
-      actionPath: "/admin?tab=disputes",
+      actionPath: `/admin?section=disputes&record=${id}`,
     });
   }
   return db.prepare("SELECT * FROM rider_safety_reports WHERE id = ?").get(id);

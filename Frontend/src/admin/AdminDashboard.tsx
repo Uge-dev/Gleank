@@ -108,15 +108,6 @@ type AdminTab =
 
 type AdminCollection = keyof Omit<AdminDataset, "overview">;
 
-type AdminAlert = {
-  id: string;
-  title: string;
-  message: string;
-  createdAt: string;
-  tab: AdminTab;
-  conversationId?: string;
-};
-
 type TableColumn<T> = {
   label: string;
   render: (item: T) => string | number | JSX.Element | boolean;
@@ -136,6 +127,13 @@ const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: strin
   { id: "activityLogs", label: "Activity Logs", icon: <FaHistory />, description: "Admin actions" },
   { id: "settings", label: "Settings", icon: <FaCog />, description: "Rules and setup" },
 ];
+
+function adminTabFromLocation(pathname: string, search: string): AdminTab {
+  if (pathname.replace(/\/+$/, "").endsWith("/notifications")) return "notifications";
+  const requested = new URLSearchParams(search).get("section") || new URLSearchParams(search).get("tab") || "";
+  if (["kyc", "verification"].includes(requested)) return "settings";
+  return tabs.some((tab) => tab.id === requested) ? requested as AdminTab : "overview";
+}
 
 function slugStatus(status: string) {
   return status.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -694,9 +692,7 @@ function AdminDashboard() {
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getAdminToken()));
   const [activeTab, setActiveTab] = useState<AdminTab>(() =>
-    location.pathname.replace(/\/+$/, "").endsWith("/notifications")
-      ? "notifications"
-      : "overview",
+    adminTabFromLocation(location.pathname, location.search),
   );
   const [search, setSearch] = useState("");
   const [riderFilter, setRiderFilter] = useState("all");
@@ -726,20 +722,10 @@ function AdminDashboard() {
     avatarUrl: null,
   });
   const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
-  const [notificationOpen, setNotificationOpen] = useState(false);
   const [marketFormOpen, setMarketFormOpen] = useState(false);
   const [marketSaving, setMarketSaving] = useState(false);
   const [supportConversationToOpen, setSupportConversationToOpen] = useState("");
-  const [locallyReadAlertIds, setLocallyReadAlertIds] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(window.localStorage.getItem("gleenc-admin-read-alerts") || "[]") as string[];
-    } catch {
-      return [];
-    }
-  });
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
-  const notificationPanelRef = useRef<HTMLDivElement | null>(null);
 
   const showAdminConnectionNotice = useCallback(() => {
     setLoadError("Admin data could not refresh. Please check your connection and try again.");
@@ -835,10 +821,27 @@ function AdminDashboard() {
   }, [isLoggedIn, loadAdminData]);
 
   useEffect(() => {
-    if (location.pathname.replace(/\/+$/, "").endsWith("/notifications")) {
-      setActiveTab("notifications");
-    }
-  }, [location.pathname]);
+    setActiveTab(adminTabFromLocation(location.pathname, location.search));
+    const conversationId = new URLSearchParams(location.search).get("conversation") || "";
+    if (conversationId) setSupportConversationToOpen(conversationId);
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const recordId = params.get("record") || params.get("case") || "";
+    if (!recordId) return;
+    const rows: Array<Record<string, unknown>> = activeTab === "orders"
+      ? data.orders as unknown as Array<Record<string, unknown>>
+      : activeTab === "disputes"
+        ? data.disputes as unknown as Array<Record<string, unknown>>
+        : activeTab === "riders"
+          ? riders as unknown as Array<Record<string, unknown>>
+          : activeTab === "settings"
+            ? [...verificationQueues.cases, ...kycRows] as unknown as Array<Record<string, unknown>>
+            : [];
+    const record = rows.find((item) => String(item.id || item.orderId || "") === recordId);
+    if (record) setSelectedRecord({ title: recordId, item: record });
+  }, [activeTab, data.disputes, data.orders, kycRows, location.search, riders, verificationQueues.cases]);
 
   useEffect(() => {
     if (!isLoggedIn) return undefined;
@@ -852,27 +855,6 @@ function AdminDashboard() {
       unsubscribe();
     };
   }, [isLoggedIn, loadAdminData]);
-
-  useEffect(() => {
-    if (!notificationOpen) return;
-
-    function closeOnOutsideClick(event: MouseEvent) {
-      if (!notificationPanelRef.current?.contains(event.target as Node)) {
-        setNotificationOpen(false);
-      }
-    }
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setNotificationOpen(false);
-    }
-
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [notificationOpen]);
 
   const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0];
   const payoutRows = data.payments.filter((payment) => payment.payoutStatus !== "released");
@@ -918,108 +900,13 @@ function AdminDashboard() {
     );
   }, [data.supportConversations, search]);
 
-  const adminAlerts = useMemo<AdminAlert[]>(() => {
-    const alerts: AdminAlert[] = [];
-    const locallyRead = new Set(locallyReadAlertIds);
-
-    for (const conversation of data.supportConversations) {
-      if (conversation.unreadCount <= 0) continue;
-      alerts.push({
-        id: `support:${conversation.id}:${conversation.lastMessageAt}`,
-        title: `New support message from ${conversation.userName}`,
-        message: conversation.lastMessage || "Open the support conversation.",
-        createdAt: conversation.lastMessageAt,
-        tab: "support",
-        conversationId: conversation.id,
-      });
-    }
-
-    for (const dispute of data.disputes) {
-      if (!["open", "reviewing"].includes(String(dispute.status))) continue;
-      const id = `dispute:${dispute.id}:${dispute.status}`;
-      if (locallyRead.has(id)) continue;
-      alerts.push({
-        id,
-        title: `Dispute requires review`,
-        message: `${dispute.buyer || "Buyer"} and ${dispute.seller || "seller"}: ${dispute.message || "Open dispute"}`,
-        createdAt: dispute.createdAt,
-        tab: "disputes",
-      });
-    }
-
-    for (const seller of data.sellers) {
-      if (String(seller.verificationStatus) !== "pending") continue;
-      const id = `seller:${seller.id}:${seller.verificationStatus}`;
-      if (locallyRead.has(id)) continue;
-      alerts.push({
-        id,
-        title: "Seller verification pending",
-        message: `${seller.storeName} submitted by ${seller.ownerName} needs review.`,
-        createdAt: seller.joined,
-        tab: "sellers",
-      });
-    }
-
-    for (const item of data.usedItems) {
-      if (String(item.status) !== "pending") continue;
-      const id = `used:${item.id}:${item.status}`;
-      if (locallyRead.has(id)) continue;
-      alerts.push({
-        id,
-        title: "Used-market listing pending",
-        message: `${item.name} by ${item.uploader} needs approval.`,
-        createdAt: item.dateSubmitted,
-        tab: "marketplace",
-      });
-    }
-
-    return alerts
-      .sort((first, second) => String(second.createdAt).localeCompare(String(first.createdAt)))
-      .slice(0, 30);
-  }, [data.disputes, data.sellers, data.supportConversations, data.usedItems, locallyReadAlertIds]);
-
-  function rememberReadAlerts(ids: string[]) {
-    const next = Array.from(new Set([...locallyReadAlertIds, ...ids])).slice(-300);
-    setLocallyReadAlertIds(next);
-    window.localStorage.setItem("gleenc-admin-read-alerts", JSON.stringify(next));
-  }
-
-  async function openAdminAlert(alert: AdminAlert) {
-    if (alert.conversationId) {
-      setSupportConversationToOpen(alert.conversationId);
-      const conversation = data.supportConversations.find(
-        (item) => item.id === alert.conversationId,
-      );
-      if (conversation) await markSupportRead(conversation);
-    } else {
-      rememberReadAlerts([alert.id]);
-    }
-
-    setActiveTab(alert.tab);
-    setSearch("");
-    setSidebarOpen(false);
-    setNotificationOpen(false);
-  }
-
-  async function markAllAdminAlertsRead() {
-    const supportAlerts = adminAlerts.filter((alert) => alert.conversationId);
-    const localAlerts = adminAlerts.filter((alert) => !alert.conversationId);
-
-    rememberReadAlerts(localAlerts.map((alert) => alert.id));
-    await Promise.allSettled(
-      supportAlerts.map((alert) =>
-        markAdminSupportConversationRead(alert.conversationId || ""),
-      ),
-    );
-    await loadAdminData(false);
-  }
-
   async function openAdminNotification(notification: AdminNotification) {
     await markAdminNotificationRead(notification.id).catch(() => undefined);
-    const safePath = /^\/admin(?:\/|$)/.test(notification.actionPath || "")
-      ? notification.actionPath
+    const candidatePath = (notification.actionPath || "").replace("?tab=", "?section=");
+    const safePath = /^\/admin(?:[/?#]|$)/.test(candidatePath)
+      ? candidatePath
       : "/admin";
-    window.location.assign(safePath);
+    navigate(safePath);
   }
 
   async function logout() {
@@ -1373,8 +1260,8 @@ function AdminDashboard() {
     setSidebarOpen(false);
     if (tab === "notifications") {
       navigate("/admin/notifications");
-    } else if (location.pathname.replace(/\/+$/, "").endsWith("/notifications")) {
-      navigate("/admin");
+    } else {
+      navigate(`/admin?section=${tab}`);
     }
   }
 
@@ -1432,62 +1319,18 @@ function AdminDashboard() {
               <FaSearch />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users, sellers, orders..." />
             </div>
-            <div className="admin-notification-wrap" ref={notificationPanelRef}>
+            <div className="admin-notification-wrap">
               <button
                 className="admin-notification"
                 type="button"
                 title="Notifications"
                 aria-label="Open admin notifications"
-                aria-expanded={notificationOpen}
-                onClick={() => {
-                  setNotificationOpen(false);
-                  selectTab("notifications");
-                }}
+                onClick={() => selectTab("notifications")}
               >
                 <FaBell />
                 {adminUnreadCount > 0 ? <span>{adminUnreadCount}</span> : null}
               </button>
 
-              {notificationOpen ? (
-                <section className="admin-notification-panel" aria-label="Admin notifications">
-                  <header>
-                    <div>
-                      <strong>Notifications</strong>
-                      <small>Updates refresh automatically</small>
-                    </div>
-                    {adminAlerts.length > 0 ? (
-                      <button type="button" onClick={() => void markAllAdminAlertsRead()}>
-                        Mark all read
-                      </button>
-                    ) : null}
-                  </header>
-                  <div className="admin-notification-list">
-                    {adminAlerts.length > 0 ? (
-                      adminAlerts.map((alert) => (
-                        <button
-                          type="button"
-                          key={alert.id}
-                          className="admin-notification-item"
-                          onClick={() => void openAdminAlert(alert)}
-                        >
-                          <span><FaBell /></span>
-                          <div>
-                            <strong>{alert.title}</strong>
-                            <p>{alert.message}</p>
-                            <time>{formatAdminTime(alert.createdAt)}</time>
-                          </div>
-                        </button>
-                      ))
-                    ) : (
-                      <div className="admin-notification-empty">
-                        <FaCheckCircle />
-                        <strong>You are caught up</strong>
-                        <p>No unread admin alerts right now.</p>
-                      </div>
-                    )}
-                  </div>
-                </section>
-              ) : null}
             </div>
             <input
               ref={adminAvatarInputRef}

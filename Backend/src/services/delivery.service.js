@@ -1,3 +1,4 @@
+import { db } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
 
 const DEFAULT_CAMPUS_KEY = "default";
@@ -221,4 +222,68 @@ export function calculateDeliveryQuote(input = {}) {
 
 export function calculateDeliveryFeeKobo(input = {}) {
   return calculateDeliveryQuote(input).feeKobo;
+}
+
+export function calculateCheckoutDeliveryQuote(user, input = {}) {
+  const userId = user?.user_id || user?.id;
+  if (!userId) throw new HttpError(401, "Please log in to continue.");
+
+  const productIds = [
+    ...new Set(
+      (Array.isArray(input.items) ? input.items : [])
+        .map((item) => String(item?.productId || item?.id || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (!productIds.length) return calculateDeliveryQuote(input);
+
+  const stores = productIds
+    .map((productId) => db.prepare(`
+      SELECT stores.id, stores.name, stores.campus, stores.owner_id,
+             stores.pickup_lat, stores.pickup_lng,
+             COALESCE(NULLIF(stores.pickup_location, ''), stores.name) AS pickup_location,
+             seller_presence.lat AS presence_lat,
+             seller_presence.lng AS presence_lng
+      FROM products
+      JOIN stores ON stores.id = products.store_id
+      LEFT JOIN account_location_presence AS seller_presence
+        ON seller_presence.user_id = stores.owner_id
+       AND seller_presence.permission_status = 'granted'
+      WHERE products.id = ? AND stores.status = 'active'
+    `).get(productId))
+    .filter(Boolean);
+
+  const uniqueStores = [...new Map(stores.map((store) => [store.id, store])).values()];
+  if (!uniqueStores.length) throw new HttpError(404, "The cart products are no longer available.");
+
+  const routes = uniqueStores.map((store) => calculateDeliveryQuote({
+    ...input,
+    campus: input.campus || store.campus || "Nigeria",
+    origin: store.pickup_location || store.name,
+    originLat: store.presence_lat ?? store.pickup_lat ?? null,
+    originLng: store.presence_lng ?? store.pickup_lng ?? null,
+  }));
+  const feeKobo = routes.reduce((sum, quote) => sum + Number(quote.feeKobo || 0), 0);
+  const distanceKm = Number(
+    routes.reduce((sum, quote) => sum + Number(quote.distanceKm || 0), 0).toFixed(2),
+  );
+
+  return {
+    ...routes[0],
+    feeKobo,
+    fee: toNaira(feeKobo),
+    distanceKm,
+    label:
+      routes.length === 1
+        ? routes[0].label
+        : `${routes.length} seller routes • ${distanceKm}km total`,
+    sellerRoutes: routes.map((quote, index) => ({
+      storeId: uniqueStores[index].id,
+      storeName: uniqueStores[index].name,
+      distanceKm: quote.distanceKm,
+      feeKobo: quote.feeKobo,
+      fee: quote.fee,
+    })),
+  };
 }

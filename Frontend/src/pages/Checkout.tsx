@@ -16,8 +16,8 @@ import EmptyState from "../components/EmptyState";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 import { createOrders } from "../services/order.service";
-import { quoteDeliveryFee, getDeliveryZones } from "../services/delivery.service";
-import type { DeliveryQuote, DeliveryZone } from "../services/delivery.service";
+import { quoteDeliveryFee } from "../services/delivery.service";
+import type { DeliveryQuote } from "../services/delivery.service";
 import { initializeOrdersPayment } from "../services/payment.service";
 import {
   getCheckoutGroupingPreview,
@@ -26,20 +26,14 @@ import {
 import { formatNaira } from "../utils/price";
 import {
   geocodeAddress,
+  reverseGeocode,
   type GeocodedLocation,
 } from "../services/stage3.service";
+import {
+  getCachedBrowserLocation,
+  getPreciseBrowserLocation,
+} from "../services/location-presence.service";
 import "./Checkout.css";
-
-const fallbackZones: DeliveryZone[] = [
-  { id: "main-gate", label: "Main Gate" },
-  { id: "campus-market", label: "Campus Market" },
-  { id: "student-hostel", label: "Student Hostel Area" },
-  { id: "faculty-area", label: "Faculty Area" },
-  { id: "library", label: "Library / Academic Core" },
-  { id: "admin-block", label: "Admin Block" },
-  { id: "cafeteria", label: "Cafeteria / Food Court" },
-  { id: "sports-complex", label: "Sports Complex" },
-];
 
 const FLEXIBLE_CHECKOUT_MAX_ORDER = 100_000;
 
@@ -50,14 +44,16 @@ function Checkout() {
 
   const [deliveryOption, setDeliveryOption] = useState<"Pickup" | "Delivery">("Pickup");
   const [paymentMethod, setPaymentMethod] = useState<"pay_now" | "pay_on_delivery">("pay_now");
-  const [campus, setCampus] = useState(user?.campus || "FUPRE");
+  const [campus, setCampus] = useState(user?.campus || "Nigeria");
   const [addressQuery, setAddressQuery] = useState("");
   const [addressSuggestions, setAddressSuggestions] = useState<GeocodedLocation[]>([]);
   const [selectedDeliveryLocation, setSelectedDeliveryLocation] = useState<GeocodedLocation | null>(null);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [isResolvingAddress, setIsResolvingAddress] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState("");
+  const [addressResolution, setAddressResolution] = useState("");
+  const [searchBias, setSearchBias] = useState(() => getCachedBrowserLocation());
   const [pickupLocation, setPickupLocation] = useState("");
-  const [zones, setZones] = useState<DeliveryZone[]>(fallbackZones);
   const [deliveryQuote, setDeliveryQuote] = useState<DeliveryQuote | null>(null);
   const [groupingPreview, setGroupingPreview] = useState<CheckoutGroupingPreview | null>(null);
   const [isQuoting, setIsQuoting] = useState(false);
@@ -81,10 +77,12 @@ function Checkout() {
   );
 
   const selectedLocation =
-    deliveryOption === "Delivery"
-      ? selectedDeliveryLocation?.formattedAddress || ""
-      : selectedDeliveryLocation?.formattedAddress || pickupLocation;
-  const deliveryFee = groupingPreview?.totalDeliveryFee || deliveryQuote?.fee || 0;
+    selectedDeliveryLocation
+      ? addressQuery.trim() || selectedDeliveryLocation.formattedAddress
+      : deliveryOption === "Pickup"
+        ? pickupLocation
+        : "";
+  const deliveryFee = deliveryQuote?.fee ?? groupingPreview?.totalDeliveryFee ?? 0;
   const grandTotal = cartSubtotal + deliveryFee;
   const flexibleCheckoutEligible = cartSubtotal < FLEXIBLE_CHECKOUT_MAX_ORDER;
   const doorStepDisabledReason = flexibleCheckoutEligible
@@ -108,27 +106,6 @@ function Checkout() {
   }, [deliveryOption, flexibleCheckoutEligible, paymentMethod]);
 
   useEffect(() => {
-    if (!campus.trim()) return;
-
-    let active = true;
-
-    void getDeliveryZones(campus)
-      .then((response) => {
-        if (!active) return;
-        if (response.zones.length > 0) {
-          setZones(response.zones);
-        }
-      })
-      .catch(() => {
-        if (active) setZones(fallbackZones);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [campus]);
-
-  useEffect(() => {
     const query = addressQuery.trim();
     if (query.length < 3 || selectedDeliveryLocation?.formattedAddress === query) {
       setAddressSuggestions([]);
@@ -140,7 +117,13 @@ function Checkout() {
     const timer = window.setTimeout(() => {
       setIsSearchingAddress(true);
       setAddressSearchError("");
-      void geocodeAddress({ text: query, autocomplete: true })
+      void geocodeAddress({
+        text: query,
+        autocomplete: true,
+        limit: 12,
+        biasLat: searchBias?.lat,
+        biasLng: searchBias?.lng,
+      })
         .then((response) => {
           if (!active) return;
           const validSuggestions = (response.results || []).filter(
@@ -148,7 +131,7 @@ function Checkout() {
           );
           setAddressSuggestions(validSuggestions);
           if (!validSuggestions.length) {
-            setAddressSearchError("No matching Nigerian location was found. Add a nearby town, state, or landmark.");
+            setAddressSearchError("No close match was found. You can still use the exact address you typed below.");
           }
         })
         .catch((requestError) => {
@@ -169,7 +152,7 @@ function Checkout() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [addressQuery, deliveryOption, selectedDeliveryLocation]);
+  }, [addressQuery, deliveryOption, searchBias?.lat, searchBias?.lng, selectedDeliveryLocation]);
 
   useEffect(() => {
     if (!campus.trim() || !selectedLocation) {
@@ -190,6 +173,10 @@ function Checkout() {
       originLng: undefined,
       destinationLat: selectedDeliveryLocation?.lat ?? null,
       destinationLng: selectedDeliveryLocation?.lng ?? null,
+      items: productCartItems.map((item) => ({
+        productId: item.id,
+        quantity: item.quantity,
+      })),
     })
       .then((response) => {
         if (!active) return;
@@ -217,6 +204,7 @@ function Checkout() {
     selectedDeliveryLocation?.lat,
     selectedDeliveryLocation?.lng,
     selectedLocation,
+    productCartItems,
   ]);
 
   useEffect(() => {
@@ -254,6 +242,88 @@ function Checkout() {
     return /out of stock|stock|cart is no longer available|no longer available|only \d+ item/i.test(message);
   }
 
+  async function resolveExactTypedAddress() {
+    const exactAddress = addressQuery.trim();
+    if (exactAddress.length < 3 || isResolvingAddress) {
+      setAddressSearchError("Type your exact street, estate, community, town, and state first.");
+      return;
+    }
+
+    setIsResolvingAddress(true);
+    setAddressSearchError("");
+    try {
+      const response = await geocodeAddress({
+        text: exactAddress,
+        autocomplete: false,
+        limit: 10,
+        biasLat: searchBias?.lat,
+        biasLng: searchBias?.lng,
+      });
+      const nearest = response.results.find(
+        (result) => result.lat != null && result.lng != null,
+      );
+      const fallbackPoint = searchBias || await getPreciseBrowserLocation().catch(() => null);
+      const lat = nearest?.lat ?? fallbackPoint?.lat ?? null;
+      const lng = nearest?.lng ?? fallbackPoint?.lng ?? null;
+      if (lat == null || lng == null) {
+        throw new Error("We need a nearby map pin to calculate delivery. Allow location access or include your town and state.");
+      }
+
+      if (fallbackPoint) setSearchBias(fallbackPoint);
+      const exactLocation: GeocodedLocation = {
+        provider: nearest?.provider || "manual",
+        formattedAddress: exactAddress,
+        address: exactAddress,
+        area: nearest?.area || nearest?.campus || campus || "Nigeria",
+        campus: nearest?.campus || "",
+        lat,
+        lng,
+        confidence: nearest?.confidence || 0,
+        raw: nearest?.raw,
+      };
+      setSelectedDeliveryLocation(exactLocation);
+      setPickupLocation(exactAddress);
+      setCampus(exactLocation.area || "Nigeria");
+      setAddressSuggestions([]);
+      setAddressResolution(
+        nearest
+          ? "Your exact typed address will be submitted. The nearest map pin is used only for fee and route calculation."
+          : "Your exact typed address will be submitted. Your precise device pin is used for fee and route calculation.",
+      );
+    } catch (requestError) {
+      setAddressSearchError(
+        requestError instanceof Error
+          ? requestError.message
+          : "This exact address could not be pinned.",
+      );
+    } finally {
+      setIsResolvingAddress(false);
+    }
+  }
+
+  async function resolveCurrentPreciseLocation() {
+    if (isResolvingAddress) return;
+    setIsResolvingAddress(true);
+    setAddressSearchError("");
+    try {
+      const point = await getPreciseBrowserLocation();
+      setSearchBias(point);
+      const response = await reverseGeocode({ lat: point.lat, lng: point.lng });
+      const location = response.location;
+      const formattedAddress = location.formattedAddress || location.address || "My precise location";
+      setSelectedDeliveryLocation({ ...location, formattedAddress, lat: point.lat, lng: point.lng });
+      setAddressQuery(formattedAddress);
+      setPickupLocation(formattedAddress);
+      setCampus(location.area || location.campus || "Nigeria");
+      setAddressSuggestions([]);
+      setAddressResolution("Precise device location selected. Add your house/shop details and landmark below.");
+    } catch {
+      setAddressSearchError("Precise location is unavailable. Enable browser location access, then try again.");
+    } finally {
+      setIsResolvingAddress(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -273,8 +343,11 @@ function Checkout() {
     const selectedPickupLocation = String(formData.get("pickupLocation") || "").trim();
     const note = String(formData.get("note") || "").trim();
 
-    if (deliveryOption === "Delivery" && !selectedDeliveryLocation) {
-      setError("Search for your location and select one of the Nigerian address suggestions.");
+    if (
+      deliveryOption === "Delivery" &&
+      (!selectedDeliveryLocation || selectedDeliveryLocation.lat == null || selectedDeliveryLocation.lng == null)
+    ) {
+      setError("Choose a nearby suggestion, use your current location, or confirm the exact address you typed.");
       return;
     }
 
@@ -304,11 +377,6 @@ function Checkout() {
       return;
     }
 
-    if (quoteError) {
-      setError(quoteError);
-      return;
-    }
-
     const overstockItem = productCartItems.find((item) => {
       return (
         item.stock !== undefined &&
@@ -335,12 +403,10 @@ function Checkout() {
     setIsSubmitting(true);
 
     try {
-      const selectedPickup =
-        zones.find((zone) => zone.id === selectedPickupLocation)?.label ||
-        selectedPickupLocation;
+      const selectedPickup = selectedPickupLocation;
       const deliveryAddress =
         deliveryOption === "Delivery"
-          ? selectedDeliveryLocation?.formattedAddress || addressQuery.trim()
+          ? addressQuery.trim() || selectedDeliveryLocation?.formattedAddress || ""
           : "";
       const deliveryArea =
         selectedDeliveryLocation?.area ||
@@ -552,7 +618,7 @@ function Checkout() {
               >
                 <FiShoppingCart />
                 <strong>Pickup</strong>
-                <span>Select a fixed pickup point from the campus list.</span>
+                <span>Search any real pickup point or landmark in Nigeria.</span>
               </button>
 
               <button
@@ -587,6 +653,7 @@ function Checkout() {
                       setAddressQuery(event.target.value);
                       setPickupLocation(event.target.value);
                       setSelectedDeliveryLocation(null);
+                      setAddressResolution("");
                     }}
                     placeholder="Example: FUPRE Main Gate, Warri"
                     autoComplete="off"
@@ -607,6 +674,7 @@ function Checkout() {
                             setCampus(suggestion.area || suggestion.campus || campus);
                             setAddressSuggestions([]);
                             setAddressSearchError("");
+                            setAddressResolution("Pickup point selected and pinned for route calculation.");
                           }}
                         >
                           <FiMapPin />
@@ -619,6 +687,15 @@ function Checkout() {
                     </div>
                   ) : null}
                   {addressSearchError ? <small className="checkout-address-error">{addressSearchError}</small> : null}
+                  <div className="checkout-address-actions">
+                    <button type="button" onClick={() => void resolveExactTypedAddress()} disabled={isResolvingAddress}>
+                      <FiMapPin /> Use exact address typed
+                    </button>
+                    <button type="button" onClick={() => void resolveCurrentPreciseLocation()} disabled={isResolvingAddress}>
+                      <FiNavigation /> Use my precise location
+                    </button>
+                  </div>
+                  {addressResolution ? <small className="checkout-address-resolution">{addressResolution}</small> : null}
                 </label>
 
                 <div className="delivery-quote-box">
@@ -649,6 +726,7 @@ function Checkout() {
                     onChange={(event) => {
                       setAddressQuery(event.target.value);
                       setSelectedDeliveryLocation(null);
+                      setAddressResolution("");
                     }}
                     placeholder="Example: Airport Road, Warri, Delta State"
                     autoComplete="off"
@@ -670,6 +748,7 @@ function Checkout() {
                             setCampus(suggestion.area || suggestion.campus || "Nigeria");
                             setAddressSuggestions([]);
                             setAddressSearchError("");
+                            setAddressResolution("Suggested address selected and pinned for fee calculation.");
                           }}
                         >
                           <FiMapPin />
@@ -684,6 +763,15 @@ function Checkout() {
                   {addressSearchError ? (
                     <small className="checkout-address-error">{addressSearchError}</small>
                   ) : null}
+                  <div className="checkout-address-actions">
+                    <button type="button" onClick={() => void resolveExactTypedAddress()} disabled={isResolvingAddress}>
+                      <FiMapPin /> {isResolvingAddress ? "Finding nearest pin..." : "Use exact address typed"}
+                    </button>
+                    <button type="button" onClick={() => void resolveCurrentPreciseLocation()} disabled={isResolvingAddress}>
+                      <FiNavigation /> Use my precise location
+                    </button>
+                  </div>
+                  {addressResolution ? <small className="checkout-address-resolution">{addressResolution}</small> : null}
                 </label>
 
                 <label>
@@ -724,7 +812,7 @@ function Checkout() {
                           ? `${deliveryQuote.label} • ${formatNaira(deliveryQuote.fee)}`
                           : selectedDeliveryLocation
                             ? "Location pin selected"
-                            : "Select an address suggestion"}
+                            : "Choose a pin or use the exact address typed"}
                     </strong>
                     <p>
                       {quoteError ||

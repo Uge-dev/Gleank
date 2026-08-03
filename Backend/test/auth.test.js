@@ -1795,6 +1795,7 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       campus: "FUPRE",
     });
   assert.equal(buyerRegister.status, 201);
+  const buyerId = buyerRegister.body.user.id;
 
   const riderRegister = await riderAgent
     .post("/api/rider/register")
@@ -1864,6 +1865,25 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
       currentLocation: { lat: 5.568, lng: 5.827, accuracyMeters: 12 },
     });
   assert.equal(riderLocation.status, 200);
+
+  const nationwideCheckoutQuote = await buyerAgent
+    .post("/api/delivery/quote")
+    .send({
+      items: [{ productId, quantity: 1 }],
+      campus: "Nigeria",
+      deliveryOption: "Delivery",
+      destination: "My exact typed street address, Ugbomro, Delta State",
+      destinationLat: 5.575,
+      destinationLng: 5.835,
+    });
+  assert.equal(nationwideCheckoutQuote.status, 200);
+  assert.ok(nationwideCheckoutQuote.body.quote.distanceKm > 0);
+  assert.ok(nationwideCheckoutQuote.body.quote.feeKobo > 0);
+  assert.equal(nationwideCheckoutQuote.body.quote.sellerRoutes.length, 1);
+  assert.equal(
+    nationwideCheckoutQuote.body.quote.sellerRoutes[0].storeId,
+    productResponse.body.product.storeId,
+  );
 
   const orderResponse = await buyerAgent
     .post("/api/orders")
@@ -2141,6 +2161,37 @@ test("seller-ready dispatch uses privacy-safe rider offers before assignment", a
     });
   assert.equal(completeResponse.status, 200);
   assert.equal(completeResponse.body.assignment.status, "delivered");
+
+  const completedBuyerOrder = db.prepare(`
+    SELECT status, stage4_status, fulfillment_status, delivery_status,
+           dispatch_status, buyer_confirmed_at
+    FROM orders
+    WHERE id = ?
+  `).get(orderId);
+  assert.equal(completedBuyerOrder.status, "completed");
+  assert.equal(completedBuyerOrder.stage4_status, "completed");
+  assert.equal(completedBuyerOrder.fulfillment_status, "completed");
+  assert.equal(completedBuyerOrder.delivery_status, "completed");
+  assert.equal(completedBuyerOrder.dispatch_status, "completed");
+  assert.ok(completedBuyerOrder.buyer_confirmed_at);
+
+  const verifiedReviewResponse = await buyerAgent
+    .post(`/api/orders/${orderId}/review`)
+    .send({ rating: 4, body: "Well served and delivered successfully." });
+  assert.equal(verifiedReviewResponse.status, 201);
+  assert.equal(verifiedReviewResponse.body.review.rating, 4);
+  const verifiedProductReview = db.prepare(`
+    SELECT rating, verified_order_id, verified_purchase, body
+    FROM product_comments
+    WHERE product_id = ? AND user_id = ? AND verified_order_id = ?
+  `).get(productId, buyerId, orderId);
+  assert.equal(verifiedProductReview.rating, 4);
+  assert.equal(verifiedProductReview.verified_order_id, orderId);
+  assert.equal(Number(verifiedProductReview.verified_purchase), 1);
+  assert.equal(
+    verifiedProductReview.body,
+    "Well served and delivered successfully.",
+  );
 
   const riderDashboardAfterCompletion = await riderAgent.get(
     "/api/rider/dashboard",

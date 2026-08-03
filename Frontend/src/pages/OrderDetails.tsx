@@ -363,6 +363,7 @@ function OrderDetails() {
                     <img src={image} alt={item.productName} />
                     <div>
                       <h3>{item.productName}</h3>
+                      <small className="order-product-id">Product ID: {item.productId}</small>
                       <p>Qty {item.quantity} • {formatNaira(item.unitPrice)}</p>
                     </div>
                     <strong>{formatNaira(item.total)}</strong>

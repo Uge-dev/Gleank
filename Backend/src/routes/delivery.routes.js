@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { requireAuth, requireEmailVerified } from "../middleware/auth.js";
 import {
+  calculateCheckoutDeliveryQuote,
   calculateDeliveryQuote,
   listDeliveryZones,
 } from "../services/delivery.service.js";
@@ -14,5 +15,10 @@ deliveryRouter.get("/zones", (req, res) => {
 });
 
 deliveryRouter.post("/quote", (req, res) => {
-  res.json({ quote: calculateDeliveryQuote(req.body) });
+  const hasCartItems = Array.isArray(req.body?.items) && req.body.items.length > 0;
+  res.json({
+    quote: hasCartItems
+      ? calculateCheckoutDeliveryQuote(req.auth, req.body)
+      : calculateDeliveryQuote(req.body),
+  });
 });

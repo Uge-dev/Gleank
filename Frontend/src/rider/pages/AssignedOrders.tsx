@@ -1,7 +1,8 @@
-import { FiClock, FiCopy, FiInfo, FiMap, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
+import { FiClock, FiCopy, FiInfo, FiMapPin, FiPhone, FiTruck, FiX } from 'react-icons/fi';
 import { useEffect, useState } from 'react';
 import { useRiderData } from '../context/RiderDataContext';
 import AssignmentCard from '../components/rider/AssignmentCard';
+import GleencMap from '../components/map/GleencMap';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
@@ -12,15 +13,30 @@ import { ApiClientError } from '../services/apiClient';
 import { riderApi } from '../services/riderApi';
 import type { RiderDispatchOffer } from '../services/riderApi';
 import { apiUrl } from '../../lib/api';
+import { useAuth } from '../context/AuthContext';
+
+type LivePoint = { lat: number; lng: number; accuracyMeters?: number };
+
+function distanceKmBetween(from: LivePoint | null, to?: { lat?: number | null; lng?: number | null }) {
+  if (!from || typeof to?.lat !== 'number' || typeof to?.lng !== 'number') return null;
+  const radians = (value: number) => value * Math.PI / 180;
+  const dLat = radians(to.lat - from.lat);
+  const dLng = radians(to.lng - from.lng);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(from.lat)) * Math.cos(radians(to.lat)) * Math.sin(dLng / 2) ** 2;
+  return 6_371 * 2 * Math.asin(Math.sqrt(a));
+}
 
 export default function AssignedOrders() {
   const { assignments, refresh } = useRiderData();
+  const { rider } = useAuth();
   const [dispatches, setDispatches] = useState<RiderDispatchOffer[]>([]);
   const [dispatchLoading, setDispatchLoading] = useState(false);
   const [dispatchAction, setDispatchAction] = useState('');
   const [dispatchError, setDispatchError] = useState('');
   const [detailOffer, setDetailOffer] = useState<RiderDispatchOffer | null>(null);
   const [copiedPhone, setCopiedPhone] = useState('');
+  const [livePoint, setLivePoint] = useState<LivePoint | null>(rider?.currentLocation || null);
   const assigned = assignments.filter((item) =>
     ['assigned', 'accepted', 'arrived_at_pickup'].includes(item.status),
   );
@@ -72,6 +88,28 @@ export default function AssignedOrders() {
       window.removeEventListener('focus', refreshOnFocus);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
+  }, []);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+    let lastSavedAt = 0;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const point = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          accuracyMeters: position.coords.accuracy,
+        };
+        setLivePoint(point);
+        if (navigator.onLine && Date.now() - lastSavedAt >= 30_000) {
+          lastSavedAt = Date.now();
+          void riderApi.updateLocation(point).catch(() => undefined);
+        }
+      },
+      () => undefined,
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 20_000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
   async function acceptDispatch(dispatchId: string) {
@@ -165,24 +203,14 @@ export default function AssignedOrders() {
                           <FiMapPin className="mr-1 inline" />
                           {task.pickupLocation || 'Pickup location unavailable'}
                         </p>
-                        {typeof task.distanceToPickupKm === 'number' ? (
+                        {distanceKmBetween(livePoint, task.pickupPoint) != null || typeof task.distanceToPickupKm === 'number' ? (
                           <p className="mt-1 text-xs font-black text-cyan-700">
-                            {task.distanceToPickupKm.toFixed(1)} km from your current location
+                            {(distanceKmBetween(livePoint, task.pickupPoint) ?? task.distanceToPickupKm ?? 0).toFixed(1)} km from your current location
                           </p>
                         ) : null}
                         {task.sellerPhone ? (
                           <a className="mt-1 block text-xs font-bold text-emerald-700" href={`tel:${task.sellerPhone}`}>
                             <FiPhone className="mr-1 inline" /> {task.sellerPhone}
-                          </a>
-                        ) : null}
-                        {typeof task.pickupPoint?.lat === 'number' && typeof task.pickupPoint?.lng === 'number' ? (
-                          <a
-                            className="mt-2 inline-flex items-center gap-1 rounded-lg bg-white px-2.5 py-1.5 text-xs font-black text-slate-800 shadow-sm"
-                            href={`https://www.google.com/maps/dir/?api=1&destination=${task.pickupPoint.lat},${task.pickupPoint.lng}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <FiMap /> Open seller map
                           </a>
                         ) : null}
                       </div>
@@ -304,20 +332,22 @@ export default function AssignedOrders() {
                     <FiMapPin className="mr-1 inline" />
                     {task.pickupLocation || 'Pickup location unavailable'}
                   </p>
-                  {typeof task.distanceToPickupKm === 'number' ? (
+                  {distanceKmBetween(livePoint, task.pickupPoint) != null || typeof task.distanceToPickupKm === 'number' ? (
                     <p className="mt-2 text-sm font-black text-cyan-700">
-                      {task.distanceToPickupKm.toFixed(1)} km away now
+                      {(distanceKmBetween(livePoint, task.pickupPoint) ?? task.distanceToPickupKm ?? 0).toFixed(1)} km away now
                     </p>
                   ) : null}
-                  {typeof task.pickupPoint?.lat === 'number' && typeof task.pickupPoint?.lng === 'number' ? (
-                    <a
-                      href={`https://www.google.com/maps/dir/?api=1&destination=${task.pickupPoint.lat},${task.pickupPoint.lng}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-3 inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-800"
-                    >
-                      <FiMap /> Open map to seller
-                    </a>
+                  {livePoint && typeof task.pickupPoint?.lat === 'number' && typeof task.pickupPoint?.lng === 'number' ? (
+                    <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+                      <GleencMap
+                        rider={livePoint}
+                        destination={{ lat: task.pickupPoint.lat, lng: task.pickupPoint.lng }}
+                        destinationType="pickup"
+                        destinationLabel={task.pickupLocation || task.sellerName || 'Seller'}
+                        routeGeometry={null}
+                        compact
+                      />
+                    </div>
                   ) : null}
                   {phone ? (
                     <div className="mt-3 grid grid-cols-2 gap-2">

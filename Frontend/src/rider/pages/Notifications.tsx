@@ -1,5 +1,6 @@
 import type { IconType } from 'react-icons';
 import { FiBell, FiCheckCircle, FiCreditCard, FiPackage, FiShield, FiTruck, FiUserCheck, FiXCircle } from 'react-icons/fi';
+import { useNavigate } from 'react-router-dom';
 import type { NotificationType } from '../types';
 import { useRiderData } from '../context/RiderDataContext';
 import { formatDateTime } from '../utils/format';
@@ -18,6 +19,13 @@ const iconMap: Record<NotificationType, IconType> = {
 
 export default function Notifications() {
   const { notifications, markNotificationRead } = useRiderData();
+  const navigate = useNavigate();
+
+  function openNotification(id: string, path: string) {
+    markNotificationRead(id);
+    const safePath = /^\/rider(?:[/?#]|$)/.test(path) ? path : '/rider/notifications';
+    navigate(safePath.replace('/rider/assignments', '/rider/assigned'));
+  }
 
   return (
     <div>
@@ -38,11 +46,12 @@ export default function Notifications() {
                     <p className="mt-1 text-xs font-semibold text-slate-400">{formatDateTime(notification.createdAt)}</p>
                   </div>
                 </div>
-                {!notification.read && (
-                  <button onClick={() => markNotificationRead(notification.id)} className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-                    <FiCheckCircle /> Mark Read
-                  </button>
-                )}
+                <button
+                  onClick={() => openNotification(notification.id, notification.actionPath || '/rider/notifications')}
+                  className="inline-flex items-center gap-2 rounded-2xl bg-slate-950 px-4 py-2 text-sm font-bold text-white"
+                >
+                  <FiCheckCircle /> {notification.actionLabel || 'Open'}
+                </button>
               </div>
             </Card>
           );

@@ -21,6 +21,7 @@ interface GleencMapProps {
   destinationType: 'pickup' | 'delivery';
   destinationLabel: string;
   routeGeometry: RouteGeometry | null;
+  compact?: boolean;
 }
 
 function routeFeature(geometry: RouteGeometry) {
@@ -86,6 +87,7 @@ export default function GleencMap({
   destinationType,
   destinationLabel,
   routeGeometry,
+  compact = false,
 }: GleencMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -130,10 +132,21 @@ export default function GleencMap({
       'top-right',
     );
     mapRef.current = map;
+    const resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => map.resize())
+      : null;
+    resizeObserver?.observe(containerRef.current);
+    const loadTimeout = window.setTimeout(() => {
+      if (!loadedRef.current) {
+        setMapError('The map tiles are taking too long to load. Check your connection and retry.');
+      }
+    }, 15_000);
 
     map.on('load', () => {
       loadedRef.current = true;
+      window.clearTimeout(loadTimeout);
       setMapError('');
+      map.resize();
       if (!map.getSource(ROUTE_SOURCE)) {
         map.addSource(ROUTE_SOURCE, {
           type: 'geojson',
@@ -190,6 +203,8 @@ export default function GleencMap({
       riderMarkerRef.current = null;
       destinationMarkerRef.current = null;
       loadedRef.current = false;
+      window.clearTimeout(loadTimeout);
+      resizeObserver?.disconnect();
       map.off('error', handleMapError);
       map.remove();
       mapRef.current = null;
@@ -261,7 +276,7 @@ export default function GleencMap({
   }
 
   return (
-    <div className="gleenc-map-shell">
+    <div className={`gleenc-map-shell${compact ? ' gleenc-map-shell--compact' : ''}`}>
       <div ref={containerRef} className="gleenc-map-canvas" />
       {mapError ? (
         <div className="absolute inset-0 z-10 flex min-h-[28rem] flex-col items-center justify-center gap-3 bg-white p-6 text-center">

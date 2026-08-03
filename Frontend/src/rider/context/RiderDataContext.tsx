@@ -161,7 +161,7 @@ function showRiderNotification(title: string, body: string) {
             tag: 'gleenc-rider-dispatch',
             icon: '/glc%20red%20yel%20logo.png',
             badge: '/glc%20red%20yel%20logo.png',
-            data: { url: '/rider/assignments' },
+            data: { url: '/rider/assigned' },
           });
         })
         .catch(() => {

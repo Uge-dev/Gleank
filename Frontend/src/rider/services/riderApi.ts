@@ -126,6 +126,8 @@ type BackendNotification = {
   created_at?: string;
   read?: boolean;
   unread?: boolean;
+  actionLabel?: string;
+  actionPath?: string;
 };
 
 type BackendDashboardResponse = BackendRiderAuthResponse & {
@@ -408,6 +410,8 @@ function normalizeNotification(item: BackendNotification): NotificationItem {
     message: item.message || item.body || '',
     createdAt: item.createdAt || item.created_at || new Date().toISOString(),
     read,
+    actionLabel: item.actionLabel || 'Open',
+    actionPath: item.actionPath || '/rider/notifications',
   };
 }
 
