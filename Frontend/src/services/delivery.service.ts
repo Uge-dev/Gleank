@@ -40,6 +40,10 @@ export type DeliveryQuoteInput = {
   originLng?: number | null;
   destinationLat?: number | null;
   destinationLng?: number | null;
+  items?: Array<{
+    productId: string;
+    quantity: number;
+  }>;
 };
 
 export function getDeliveryZones(campus: string) {

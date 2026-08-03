@@ -725,7 +725,16 @@ function AdminDashboard() {
   const [marketFormOpen, setMarketFormOpen] = useState(false);
   const [marketSaving, setMarketSaving] = useState(false);
   const [supportConversationToOpen, setSupportConversationToOpen] = useState("");
+  const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setCurrentTimeMs(Date.now());
+    const timer = window.setInterval(() => {
+      setCurrentTimeMs(Date.now());
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const showAdminConnectionNotice = useCallback(() => {
     setLoadError("Admin data could not refresh. Please check your connection and try again.");
@@ -2017,7 +2026,7 @@ function AdminDashboard() {
                       tone="soft"
                       disabled={Boolean(
                         rider.capacityChangeUnlockedUntil &&
-                          new Date(rider.capacityChangeUnlockedUntil).getTime() > Date.now(),
+                          new Date(rider.capacityChangeUnlockedUntil).getTime() > currentTimeMs,
                       )}
                       onClick={() => unlockRiderCapacity(rider)}
                     >

@@ -118,6 +118,9 @@ export function geocodeAddress(input: {
   area?: string;
   campus?: string;
   autocomplete?: boolean;
+  limit?: number;
+  biasLat?: number | null;
+  biasLng?: number | null;
 }) {
   return apiRequest<{
     provider: "manual" | "geoapify";

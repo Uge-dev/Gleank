@@ -5,6 +5,12 @@ const LOCATION_CACHE_KEY = "gleenc-location-cache-v1";
 const LOCATION_CACHE_COOKIE = "gleenc_location_cache_at";
 const LOCATION_CACHE_TTL_MS = 15 * 60 * 1000;
 
+export type BrowserLocationPoint = {
+  lat: number;
+  lng: number;
+  accuracyMeters: number;
+};
+
 export type AccountLocationPresence = {
   userId: string;
   role: LocationRole;
@@ -29,11 +35,7 @@ function notifyLocationStatus(
 }
 
 function browserLocation() {
-  return new Promise<{
-    lat: number;
-    lng: number;
-    accuracyMeters: number;
-  }>((resolve, reject) => {
+  return new Promise<BrowserLocationPoint>((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(Object.assign(new Error("Location is not available in this browser."), { code: 0 }));
       return;
@@ -90,6 +92,31 @@ function cachedBrowserLocation() {
   return null;
 }
 
+function cacheBrowserLocation(currentLocation: BrowserLocationPoint) {
+  const capturedAt = Date.now();
+  window.localStorage.setItem(
+    LOCATION_CACHE_KEY,
+    JSON.stringify({ ...currentLocation, capturedAt }),
+  );
+  document.cookie = [
+    `${LOCATION_CACHE_COOKIE}=${capturedAt}`,
+    `Max-Age=${Math.floor(LOCATION_CACHE_TTL_MS / 1000)}`,
+    "Path=/",
+    "SameSite=Lax",
+    window.location.protocol === "https:" ? "Secure" : "",
+  ].filter(Boolean).join("; ");
+}
+
+export function getCachedBrowserLocation() {
+  return cachedBrowserLocation();
+}
+
+export async function getPreciseBrowserLocation() {
+  const currentLocation = await browserLocation();
+  cacheBrowserLocation(currentLocation);
+  return currentLocation;
+}
+
 async function syncPermissionStatus(
   permissionStatus: "denied" | "unavailable",
   role: string,
@@ -116,19 +143,7 @@ export async function requestLocationAfterLogin(role: string) {
 
   let currentLocation: Awaited<ReturnType<typeof browserLocation>>;
   try {
-    currentLocation = cachedBrowserLocation() || await browserLocation();
-    const capturedAt = Date.now();
-    window.localStorage.setItem(
-      LOCATION_CACHE_KEY,
-      JSON.stringify({ ...currentLocation, capturedAt }),
-    );
-    document.cookie = [
-      `${LOCATION_CACHE_COOKIE}=${capturedAt}`,
-      `Max-Age=${Math.floor(LOCATION_CACHE_TTL_MS / 1000)}`,
-      "Path=/",
-      "SameSite=Lax",
-      window.location.protocol === "https:" ? "Secure" : "",
-    ].filter(Boolean).join("; ");
+    currentLocation = cachedBrowserLocation() || await getPreciseBrowserLocation();
   } catch (error) {
     const denied =
       typeof error === "object" &&

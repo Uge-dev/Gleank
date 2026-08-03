@@ -283,6 +283,8 @@ export type ProductComment = {
   likeCount: number;
   liked: boolean;
   canDelete: boolean;
+  verifiedPurchase?: boolean;
+  rating?: number | null;
   createdAt: string;
   user: {
     id: string;
