@@ -23,6 +23,10 @@ export type AuthUser = {
   role: UserRole;
   campus: string;
   phone: string;
+  country: string;
+  state: string;
+  city: string;
+  address: string;
   avatarUrl: string | null;
   emailVerified: boolean;
   emailVerifiedAt: string | null;

@@ -39,6 +39,7 @@ export const registerSchema = z
     role: z.enum(["buyer", "seller"]).default("buyer"),
     campus: z.string().trim().min(2).max(80),
     phone: z.string().trim().max(30).optional().default(""),
+    address: z.string().trim().max(240).optional().default(""),
     storeName: z.string().trim().max(100).optional().default(""),
     sellerType: z.enum(["campus", "local_market", "used_market"]).optional().default("campus"),
     country: z.string().trim().max(80).optional().default(""),

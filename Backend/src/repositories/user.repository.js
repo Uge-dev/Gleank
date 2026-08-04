@@ -17,10 +17,11 @@ export function createUser(user) {
   db.prepare(`
     INSERT INTO users (
       id, name, email, password_hash, role, campus, phone,
+      country, state, city, address,
       email_verified, email_verified_at, phone_verified, phone_verified_at,
       failed_login_count, locked_until, last_login_at, last_password_change_at,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, NULL, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, NULL, NULL, ?, ?, ?)
   `).run(
     user.id,
     user.name,
@@ -29,6 +30,10 @@ export function createUser(user) {
     role,
     user.campus,
     user.phone,
+    user.country || "Nigeria",
+    user.state || "",
+    user.city || "",
+    user.address || "",
     user.emailVerified ? 1 : 0,
     user.emailVerifiedAt || null,
     user.lastPasswordChangeAt || user.createdAt,
@@ -42,9 +47,19 @@ export function createUser(user) {
 export function updateUser(id, updates) {
   db.prepare(`
     UPDATE users
-    SET name = ?, campus = ?, phone = ?, updated_at = ?
+    SET name = ?, campus = ?, phone = ?, country = ?, state = ?, city = ?, address = ?, updated_at = ?
     WHERE id = ?
-  `).run(updates.name, updates.campus, updates.phone, updates.updatedAt, id);
+  `).run(
+    updates.name,
+    updates.campus,
+    updates.phone,
+    updates.country || "Nigeria",
+    updates.state || "",
+    updates.city || "",
+    updates.address || "",
+    updates.updatedAt,
+    id,
+  );
 
   return findUserById(id);
 }

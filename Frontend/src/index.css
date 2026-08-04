@@ -911,6 +911,41 @@ body {
   gap: 1rem;
 }
 
+.auth-account-location-fields {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--input-bg, #f8fafc) 72%, #ffffff);
+}
+
+.auth-input-box-multiline {
+  min-height: 76px;
+  height: auto;
+  align-items: flex-start;
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+
+.auth-input-box textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--text-main, #111827);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auth-input-box textarea::placeholder {
+  color: var(--text-soft, #94a3b8);
+}
+
 .auth-location-search-btn {
   min-height: 3rem;
   border: 0;

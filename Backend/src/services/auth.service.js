@@ -38,6 +38,7 @@ import {
   findStoreBySlug,
 } from "../repositories/store.repository.js";
 import { markRiderPresenceOnline } from "./rider-presence.service.js";
+import { findAfricaCountry } from "../data/africa-location-catalog.js";
 
 function uniqueStoreSlug(storeName) {
   const base = slugify(storeName);
@@ -238,6 +239,11 @@ function applyDevelopmentRiderDispatchDefaults(userId, now) {
 
 export async function registerUser(input, meta = {}, options = {}) {
   const email = String(input.email || "").trim().toLowerCase();
+  const country = String(input.country || "Nigeria").trim();
+
+  if (!findAfricaCountry(country)) {
+    throw new HttpError(422, "Choose a country from the African country list.");
+  }
 
   if (input.role === "rider" && options.allowRiderRegistration !== true) {
     throw new HttpError(
@@ -279,6 +285,10 @@ export async function registerUser(input, meta = {}, options = {}) {
       role: input.role,
       campus: input.nearestCampus || input.campus,
       phone: input.phone,
+      country,
+      state: input.state,
+      city: input.city,
+      address: input.address || input.street,
       emailVerified,
       emailVerifiedAt,
       lastPasswordChangeAt: now,
@@ -300,7 +310,7 @@ export async function registerUser(input, meta = {}, options = {}) {
         locationArea: input.city || input.state || input.campus,
         pickupLocation: input.street,
         nearestLandmark: input.nearestMarketplace || input.nearestCampus,
-        country: input.country,
+        country,
         state: input.state,
         city: input.city,
         nearestCampus: input.nearestCampus,

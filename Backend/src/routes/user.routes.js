@@ -13,6 +13,10 @@ const profileSchema = z.object({
   name: z.string().trim().min(2).max(80),
   campus: z.string().trim().min(2).max(80),
   phone: z.string().trim().max(30).default(""),
+  country: z.string().trim().max(80).default("Nigeria"),
+  state: z.string().trim().max(120).default(""),
+  city: z.string().trim().max(120).default(""),
+  address: z.string().trim().max(240).default(""),
 });
 
 userRouter.patch(

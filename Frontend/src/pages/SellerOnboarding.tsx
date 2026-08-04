@@ -286,7 +286,7 @@ function SellerOnboarding() {
     setError("");
     setIsGeocoding(true);
     try {
-      const response = await geocodeSellerLocation(text);
+      const response = await geocodeSellerLocation(text, structuredLocation.country);
       const precise = response.results.filter(
         (item) => item.placeId && item.lat !== null && item.lng !== null,
       );

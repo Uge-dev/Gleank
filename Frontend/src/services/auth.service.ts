@@ -14,6 +14,7 @@ export type RegisterInput = {
   role: "buyer" | "seller";
   campus: string;
   phone?: string;
+  address?: string;
   storeName?: string;
   sellerType?: "campus" | "local_market" | "used_market";
   country?: string;

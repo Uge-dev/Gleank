@@ -3,6 +3,7 @@ import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { nigeriaLocationCatalog } from "../data/nigeria-location-catalog.js";
+import { africaLocationCatalog, findAfricaCountry } from "../data/africa-location-catalog.js";
 import {
   expireStaleRiderPresence,
   isRiderPresenceOnline,
@@ -390,7 +391,15 @@ function writeGeocodeCache(key, value) {
   return value;
 }
 
-export function getLocationCatalog() {
+export function getLocationCatalog(input = {}) {
+  const selectedCountry = findAfricaCountry(input.country) || findAfricaCountry("Nigeria");
+  const stateQuery = clean(input.stateQuery || input.state || "", 120).toLowerCase();
+  const states = selectedCountry.states
+    .filter((state) => !stateQuery || state.name.toLowerCase().includes(stateQuery))
+    .map((state) => ({
+      name: state.name,
+      cities: state.cities || [],
+    }));
   const markets = db.prepare(`
     SELECT id, name, state, city, area, latitude, longitude
     FROM markets
@@ -414,8 +423,12 @@ export function getLocationCatalog() {
   `).all().map((row) => row.name).filter(Boolean);
 
   return {
-    country: nigeriaLocationCatalog.country,
-    states: nigeriaLocationCatalog.states,
+    country: selectedCountry.name,
+    countries: africaLocationCatalog.map((country) => ({
+      code: country.code,
+      name: country.name,
+    })),
+    states,
     campuses: [...new Set([...nigeriaLocationCatalog.campuses, ...sellerCampuses])],
     marketplaces: markets,
   };
@@ -445,7 +458,10 @@ export async function geocodeLocation(input = {}) {
     input.autocomplete ? "/geocode/autocomplete" : "/geocode/search",
     {
       text,
-      filter: "countrycode:ng",
+      filter: (() => {
+        const country = findAfricaCountry(input.country);
+        return country ? `countrycode:${country.code.toLowerCase()}` : undefined;
+      })(),
       bias: proximityBias || undefined,
       limit,
       lang: "en",

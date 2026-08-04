@@ -33,6 +33,7 @@ function Signup() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog | null>(null);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [locationMatches, setLocationMatches] = useState<GeocodedSellerLocation[]>([]);
   const [isFindingLocation, setIsFindingLocation] = useState(false);
   const [sellerLocation, setSellerLocation] = useState({
@@ -47,13 +48,49 @@ function Signup() {
     pickupLng: "",
     locationVerifiedAt: "",
   });
+  const [buyerLocation, setBuyerLocation] = useState({
+    country: "Nigeria",
+    state: "",
+    city: "",
+    address: "",
+  });
 
   useEffect(() => {
-    if (accountType !== "seller" || locationCatalog) return;
-    void getLocationCatalog()
+    if (locationCatalog) return;
+    setIsLoadingLocations(true);
+    void getLocationCatalog("Nigeria")
       .then(setLocationCatalog)
-      .catch(() => setError("Seller locations could not load. Check your connection and try again."));
-  }, [accountType, locationCatalog]);
+      .catch(() => setError("Location options could not load. You can try again in a moment."))
+      .finally(() => setIsLoadingLocations(false));
+  }, [locationCatalog]);
+
+  function refreshLocationOptions(country: string, stateQuery = "") {
+    const countryMatch = locationCatalog?.countries.find(
+      (item) => item.name.toLowerCase() === country.trim().toLowerCase() ||
+        item.code.toLowerCase() === country.trim().toLowerCase(),
+    );
+    if (!countryMatch) return;
+
+    setIsLoadingLocations(true);
+    void getLocationCatalog(countryMatch.name, stateQuery)
+      .then((nextCatalog) => {
+        setLocationCatalog((current) => ({
+          ...nextCatalog,
+          countries: current?.countries || nextCatalog.countries,
+        }));
+      })
+      .catch(() => undefined)
+      .finally(() => setIsLoadingLocations(false));
+  }
+
+  function isKnownAfricanCountry(value: string) {
+    return Boolean(
+      locationCatalog?.countries.some(
+        (item) => item.name.toLowerCase() === value.trim().toLowerCase() ||
+          item.code.toLowerCase() === value.trim().toLowerCase(),
+      ),
+    );
+  }
 
   function updateSellerLocation(
     field: keyof typeof sellerLocation,
@@ -69,6 +106,17 @@ function Signup() {
       locationVerifiedAt: "",
     }));
     setLocationMatches([]);
+  }
+
+  function updateBuyerLocation(field: keyof typeof buyerLocation, value: string) {
+    setBuyerLocation((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "country" ? { state: "", city: "" } : {}),
+      ...(field === "state" ? { city: "" } : {}),
+    }));
+    if (field === "country") refreshLocationOptions(value);
+    if (field === "state") refreshLocationOptions(buyerLocation.country, value);
   }
 
   async function findSellerLocation() {
@@ -87,12 +135,12 @@ function Signup() {
     setError("");
     setIsFindingLocation(true);
     try {
-      const response = await geocodeSellerLocation(searchText);
+      const response = await geocodeSellerLocation(searchText, sellerLocation.country);
       setLocationMatches(
         response.results.filter((result) => result.placeId && result.lat !== null && result.lng !== null),
       );
       if (!response.results.some((result) => result.placeId && result.lat !== null && result.lng !== null)) {
-        setError("No verified Nigerian map pin matched that address. Add more street or landmark detail.");
+        setError("No verified map pin matched that address. Add more street or landmark detail.");
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "The location could not be mapped.");
@@ -126,6 +174,22 @@ function Signup() {
       setIsSubmitting(false);
       return;
     }
+    if (
+      accountType === "buyer" &&
+      (!buyerLocation.country || !buyerLocation.state || !buyerLocation.city || !buyerLocation.address)
+    ) {
+      setError("Enter your country, state, city, and address before creating your account.");
+      setIsSubmitting(false);
+      return;
+    }
+    const submittedCountry = accountType === "seller"
+      ? sellerLocation.country
+      : buyerLocation.country;
+    if (locationCatalog && !isKnownAfricanCountry(submittedCountry)) {
+      setError("Choose a country from the African country list.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       const responseUser = await register({
@@ -147,6 +211,14 @@ function Signup() {
               ...sellerLocation,
               pickupLat: Number(sellerLocation.pickupLat),
               pickupLng: Number(sellerLocation.pickupLng),
+            }
+          : {}),
+        ...(accountType === "buyer"
+          ? {
+              country: buyerLocation.country,
+              state: buyerLocation.state,
+              city: buyerLocation.city,
+              address: buyerLocation.address,
             }
           : {}),
       });
@@ -248,20 +320,95 @@ function Signup() {
           </label>
 
           {accountType === "buyer" && (
-            <label>
-              <span>Nearest campus</span>
-              <div className="auth-input-box">
-                <FiMapPin />
-                <select name="campus" required defaultValue="">
-                  <option value="" disabled>Select your nearest campus</option>
-                  <option value="FUPRE">FUPRE</option>
-                  <option value="DELSU">DELSU</option>
-                  <option value="UNIBEN">UNIBEN</option>
-                  <option value="UNILAG">UNILAG</option>
-                  <option value="Other">Other</option>
-                </select>
-              </div>
-            </label>
+            <div className="auth-account-location-fields">
+              <label>
+                <span>Country</span>
+                <div className="auth-input-box">
+                  <FiMapPin />
+                  <input
+                    name="country"
+                    list="buyer-country-options"
+                    value={buyerLocation.country}
+                    onChange={(event) => updateBuyerLocation("country", event.target.value)}
+                    placeholder="Start typing an African country"
+                    autoComplete="country-name"
+                    required
+                  />
+                  <datalist id="buyer-country-options">
+                    {(locationCatalog?.countries || []).map((country) => (
+                      <option key={country.code} value={country.name} />
+                    ))}
+                  </datalist>
+                </div>
+              </label>
+              <label>
+                <span>State / region</span>
+                <div className="auth-input-box">
+                  <FiMapPin />
+                  <input
+                    name="state"
+                    list="buyer-state-options"
+                    value={buyerLocation.state}
+                    onChange={(event) => updateBuyerLocation("state", event.target.value)}
+                    placeholder={isLoadingLocations ? "Loading states..." : "Start typing your state"}
+                    autoComplete="address-level1"
+                    required
+                  />
+                  <datalist id="buyer-state-options">
+                    {(locationCatalog?.states || []).map((state) => (
+                      <option key={state.name} value={state.name} />
+                    ))}
+                  </datalist>
+                </div>
+              </label>
+              <label>
+                <span>City</span>
+                <div className="auth-input-box">
+                  <FiMapPin />
+                  <input
+                    name="city"
+                    list="buyer-city-options"
+                    value={buyerLocation.city}
+                    onChange={(event) => updateBuyerLocation("city", event.target.value)}
+                    placeholder="Enter or choose your city"
+                    autoComplete="address-level2"
+                    required
+                  />
+                  <datalist id="buyer-city-options">
+                    {(locationCatalog?.states.find((state) => state.name === buyerLocation.state)?.cities || []).map((city) => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
+                </div>
+              </label>
+              <label>
+                <span>Address</span>
+                <div className="auth-input-box auth-input-box-multiline">
+                  <FiMapPin />
+                  <textarea
+                    name="address"
+                    value={buyerLocation.address}
+                    onChange={(event) => updateBuyerLocation("address", event.target.value)}
+                    placeholder="House number, street, area or landmark"
+                    autoComplete="street-address"
+                    required
+                  />
+                </div>
+              </label>
+              <label>
+                <span>Nearest campus</span>
+                <div className="auth-input-box">
+                  <FiMapPin />
+                  <select name="campus" required defaultValue="">
+                    <option value="" disabled>Select your nearest campus</option>
+                    {(locationCatalog?.campuses || []).map((campus) => (
+                      <option key={campus} value={campus}>{campus}</option>
+                    ))}
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </label>
+            </div>
           )}
 
           {accountType === "seller" && (
@@ -288,29 +435,63 @@ function Signup() {
                 <span>Country</span>
                 <div className="auth-input-box">
                   <FiMapPin />
-                  <select value={sellerLocation.country} onChange={(event) => updateSellerLocation("country", event.target.value)} required>
-                    <option value="Nigeria">Nigeria</option>
-                  </select>
+                  <input
+                    list="seller-country-options"
+                    value={sellerLocation.country}
+                    onChange={(event) => {
+                      updateSellerLocation("country", event.target.value);
+                      refreshLocationOptions(event.target.value);
+                    }}
+                    placeholder="Start typing an African country"
+                    autoComplete="country-name"
+                    required
+                  />
+                  <datalist id="seller-country-options">
+                    {(locationCatalog?.countries || []).map((country) => (
+                      <option key={country.code} value={country.name} />
+                    ))}
+                  </datalist>
                 </div>
               </label>
               <label>
-                <span>State</span>
+                <span>State / region</span>
                 <div className="auth-input-box">
                   <FiMapPin />
-                  <select value={sellerLocation.state} onChange={(event) => updateSellerLocation("state", event.target.value)} required>
-                    <option value="">Select state</option>
-                    {(locationCatalog?.states || []).map((state) => <option key={state.name} value={state.name}>{state.name}</option>)}
-                  </select>
+                  <input
+                    list="seller-state-options"
+                    value={sellerLocation.state}
+                    onChange={(event) => {
+                      updateSellerLocation("state", event.target.value);
+                      refreshLocationOptions(sellerLocation.country, event.target.value);
+                    }}
+                    placeholder={isLoadingLocations ? "Loading states..." : "Start typing your state"}
+                    autoComplete="address-level1"
+                    required
+                  />
+                  <datalist id="seller-state-options">
+                    {(locationCatalog?.states || []).map((state) => (
+                      <option key={state.name} value={state.name} />
+                    ))}
+                  </datalist>
                 </div>
               </label>
               <label>
                 <span>City</span>
                 <div className="auth-input-box">
                   <FiMapPin />
-                  <select value={sellerLocation.city} onChange={(event) => updateSellerLocation("city", event.target.value)} required>
-                    <option value="">Select city</option>
-                    {(locationCatalog?.states.find((state) => state.name === sellerLocation.state)?.cities || []).map((city) => <option key={city} value={city}>{city}</option>)}
-                  </select>
+                  <input
+                    list="seller-city-options"
+                    value={sellerLocation.city}
+                    onChange={(event) => updateSellerLocation("city", event.target.value)}
+                    placeholder="Enter or choose your city"
+                    autoComplete="address-level2"
+                    required
+                  />
+                  <datalist id="seller-city-options">
+                    {(locationCatalog?.states.find((state) => state.name === sellerLocation.state)?.cities || []).map((city) => (
+                      <option key={city} value={city} />
+                    ))}
+                  </datalist>
                 </div>
               </label>
               <label>

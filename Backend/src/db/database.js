@@ -32,6 +32,10 @@ db.exec(`
     role TEXT NOT NULL CHECK (role IN ('buyer', 'seller', 'admin', 'rider')),
     campus TEXT NOT NULL DEFAULT '',
     phone TEXT NOT NULL DEFAULT '',
+    country TEXT NOT NULL DEFAULT 'Nigeria',
+    state TEXT NOT NULL DEFAULT '',
+    city TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
     avatar_url TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
@@ -1034,6 +1038,10 @@ ensureColumn("users", "email_verified", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "email_verified_at", "TEXT");
 ensureColumn("users", "phone_verified", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "phone_verified_at", "TEXT");
+ensureColumn("users", "country", "TEXT NOT NULL DEFAULT 'Nigeria'");
+ensureColumn("users", "state", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("users", "city", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("users", "address", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "failed_login_count", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "locked_until", "TEXT");
 ensureColumn("users", "last_login_at", "TEXT");

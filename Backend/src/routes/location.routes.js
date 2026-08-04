@@ -32,11 +32,24 @@ const geocodeLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-locationRouter.use(requireAuth);
-
-locationRouter.get("/catalog", (_req, res) => {
-  res.json(getLocationCatalog());
+const catalogLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
 });
+
+// Signup must be able to load Africa country/state data before a session
+// exists. Keep this read-only catalog public; all location actions below it
+// remain authenticated.
+locationRouter.get("/catalog", catalogLimiter, (req, res) => {
+  res.json(getLocationCatalog({
+    country: req.query?.country,
+    stateQuery: req.query?.stateQuery,
+  }));
+});
+
+locationRouter.use(requireAuth);
 
 locationRouter.post("/geocode", geocodeLimiter, asyncRoute(async (req, res) => {
   res.json(await geocodeLocation(req.body || {}));
