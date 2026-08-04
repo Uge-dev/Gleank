@@ -25243,8 +25243,8 @@ html[data-theme="dark"] .notification-card {
 .section-title-row {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
+  
+  gap: 7px;
   margin-bottom: 16px;
 }
 
