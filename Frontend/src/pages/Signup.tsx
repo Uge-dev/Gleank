@@ -16,9 +16,7 @@ import AuthLayout from "../components/AuthLayout";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
 import { useAuth } from "../context/AuthContext";
 import {
-  geocodeSellerLocation,
   getLocationCatalog,
-  type GeocodedSellerLocation,
   type LocationCatalog,
 } from "../services/structured-location.service";
 
@@ -34,8 +32,8 @@ function Signup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog | null>(null);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
-  const [locationMatches, setLocationMatches] = useState<GeocodedSellerLocation[]>([]);
-  const [isFindingLocation, setIsFindingLocation] = useState(false);
+  const [campusQuery, setCampusQuery] = useState("");
+  const [campusSuggestions, setCampusSuggestions] = useState<string[]>([]);
   const [sellerLocation, setSellerLocation] = useState({
     country: "Nigeria",
     state: "",
@@ -105,7 +103,6 @@ function Signup() {
       pickupLng: "",
       locationVerifiedAt: "",
     }));
-    setLocationMatches([]);
   }
 
   function updateBuyerLocation(field: keyof typeof buyerLocation, value: string) {
@@ -119,49 +116,23 @@ function Signup() {
     if (field === "state") refreshLocationOptions(buyerLocation.country, value);
   }
 
-  async function findSellerLocation() {
-    const searchText = [
-      sellerLocation.street,
-      sellerLocation.nearestMarketplace,
-      sellerLocation.nearestCampus,
-      sellerLocation.city,
-      sellerLocation.state,
-      sellerLocation.country,
-    ].filter(Boolean).join(", ");
-    if (!sellerLocation.state || !sellerLocation.city || !sellerLocation.street) {
-      setError("Choose your state and city, then enter your street before finding the map pin.");
+  useEffect(() => {
+    if (!locationCatalog) return;
+    if (!campusQuery.trim()) {
+      setCampusSuggestions(locationCatalog.campuses);
       return;
     }
-    setError("");
-    setIsFindingLocation(true);
-    try {
-      const response = await geocodeSellerLocation(searchText, sellerLocation.country);
-      setLocationMatches(
-        response.results.filter((result) => result.placeId && result.lat !== null && result.lng !== null),
-      );
-      if (!response.results.some((result) => result.placeId && result.lat !== null && result.lng !== null)) {
-        setError("No verified map pin matched that address. Add more street or landmark detail.");
-      }
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "The location could not be mapped.");
-    } finally {
-      setIsFindingLocation(false);
-    }
-  }
 
-  function confirmSellerLocation(result: GeocodedSellerLocation) {
-    setSellerLocation((current) => ({
-      ...current,
-      state: result.state || current.state,
-      city: result.city || current.city,
-      pickupPlaceId: result.placeId,
-      pickupLat: String(result.lat ?? ""),
-      pickupLng: String(result.lng ?? ""),
-      locationVerifiedAt: new Date().toISOString(),
-    }));
-    setLocationMatches([]);
-    setError("");
-  }
+    const timeout = window.setTimeout(() => {
+      setIsLoadingLocations(true);
+      void getLocationCatalog(locationCatalog.country || "Nigeria", undefined, campusQuery)
+        .then((catalog) => setCampusSuggestions(catalog.campuses))
+        .catch(() => undefined)
+        .finally(() => setIsLoadingLocations(false));
+    }, 250);
+
+    return () => window.clearTimeout(timeout);
+  }, [campusQuery, locationCatalog]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -169,11 +140,6 @@ function Signup() {
     setIsSubmitting(true);
     const formData = new FormData(event.currentTarget);
 
-    if (accountType === "seller" && !sellerLocation.pickupPlaceId) {
-      setError("Find and confirm your real pickup map pin before creating a seller account.");
-      setIsSubmitting(false);
-      return;
-    }
     if (
       accountType === "buyer" &&
       (!buyerLocation.country || !buyerLocation.state || !buyerLocation.city || !buyerLocation.address)
@@ -208,9 +174,16 @@ function Signup() {
                 | "campus"
                 | "local_market"
                 | "used_market",
-              ...sellerLocation,
-              pickupLat: Number(sellerLocation.pickupLat),
-              pickupLng: Number(sellerLocation.pickupLng),
+              country: sellerLocation.country,
+              state: sellerLocation.state,
+              city: sellerLocation.city,
+              nearestCampus: sellerLocation.nearestCampus,
+              nearestMarketplace: sellerLocation.nearestMarketplace,
+              street: sellerLocation.street,
+              pickupPlaceId: sellerLocation.pickupPlaceId,
+              locationVerifiedAt: sellerLocation.locationVerifiedAt,
+              ...(sellerLocation.pickupLat ? { pickupLat: Number(sellerLocation.pickupLat) } : {}),
+              ...(sellerLocation.pickupLng ? { pickupLng: Number(sellerLocation.pickupLng) } : {}),
             }
           : {}),
         ...(accountType === "buyer"
@@ -399,13 +372,20 @@ function Signup() {
                 <span>Nearest campus</span>
                 <div className="auth-input-box">
                   <FiMapPin />
-                  <select name="campus" required defaultValue="">
-                    <option value="" disabled>Select your nearest campus</option>
-                    {(locationCatalog?.campuses || []).map((campus) => (
-                      <option key={campus} value={campus}>{campus}</option>
+                  <input
+                    name="campus"
+                    list="buyer-campus-options"
+                    placeholder="Start typing your nearest campus"
+                    autoComplete="off"
+                    onInput={(event) => setCampusQuery(event.currentTarget.value)}
+                    required
+                  />
+                  <datalist id="buyer-campus-options">
+                    {(campusSuggestions.length > 0 ? campusSuggestions : locationCatalog?.campuses || []).map((campus) => (
+                      <option key={campus} value={campus} />
                     ))}
-                    <option value="Other">Other</option>
-                  </select>
+                    <option value="Other" />
+                  </datalist>
                 </div>
               </label>
             </div>
@@ -498,10 +478,23 @@ function Signup() {
                 <span>Nearest campus</span>
                 <div className="auth-input-box">
                   <FiMapPin />
-                  <select value={sellerLocation.nearestCampus} onChange={(event) => updateSellerLocation("nearestCampus", event.target.value)} required>
-                    <option value="">Select nearest campus</option>
-                    {(locationCatalog?.campuses || []).map((campus) => <option key={campus} value={campus}>{campus}</option>)}
-                  </select>
+                  <input
+                    list="seller-campus-options"
+                    value={sellerLocation.nearestCampus}
+                    onChange={(event) => {
+                      updateSellerLocation("nearestCampus", event.target.value);
+                      setCampusQuery(event.target.value);
+                    }}
+                    placeholder="Start typing or choose your nearest campus"
+                    autoComplete="off"
+                    required
+                  />
+                  <datalist id="seller-campus-options">
+                    {(campusSuggestions.length > 0 ? campusSuggestions : locationCatalog?.campuses || []).map((campus) => (
+                      <option key={campus} value={campus} />
+                    ))}
+                    <option value="Other" />
+                  </datalist>
                 </div>
               </label>
               <label>
@@ -521,22 +514,6 @@ function Signup() {
                   <input value={sellerLocation.street} onChange={(event) => updateSellerLocation("street", event.target.value)} placeholder="Enter the real street or shop address" required />
                 </div>
               </label>
-              <button className="auth-location-search-btn" type="button" disabled={isFindingLocation} onClick={() => void findSellerLocation()}>
-                <FiMapPin /> {isFindingLocation ? "Finding address..." : "Find real map pin"}
-              </button>
-              {locationMatches.length > 0 && (
-                <div className="auth-location-matches">
-                  {locationMatches.map((result) => (
-                    <button type="button" key={result.placeId} onClick={() => confirmSellerLocation(result)}>
-                      <strong>{result.formattedAddress}</strong>
-                      <small>{result.city || result.area}, {result.state}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className={`auth-location-status ${sellerLocation.pickupPlaceId ? "confirmed" : ""}`}>
-                {sellerLocation.pickupPlaceId ? "Mapped pickup address confirmed." : "A verified Nigerian map pin is required."}
-              </p>
             </div>
           )}
 

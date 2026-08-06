@@ -394,6 +394,7 @@ function writeGeocodeCache(key, value) {
 export function getLocationCatalog(input = {}) {
   const selectedCountry = findAfricaCountry(input.country) || findAfricaCountry("Nigeria");
   const stateQuery = clean(input.stateQuery || input.state || "", 120).toLowerCase();
+  const campusQuery = clean(input.campusQuery || "", 120).toLowerCase();
   const states = selectedCountry.states
     .filter((state) => !stateQuery || state.name.toLowerCase().includes(stateQuery))
     .map((state) => ({
@@ -414,13 +415,24 @@ export function getLocationCatalog(input = {}) {
     lat: row.latitude ?? null,
     lng: row.longitude ?? null,
   }));
-  const sellerCampuses = db.prepare(`
+
+  const sellerCampusesQuery = db.prepare(`
     SELECT DISTINCT COALESCE(NULLIF(nearest_campus, ''), NULLIF(campus, '')) AS name
     FROM stores
     WHERE status = 'active'
       AND COALESCE(NULLIF(nearest_campus, ''), NULLIF(campus, '')) IS NOT NULL
-    LIMIT 200
-  `).all().map((row) => row.name).filter(Boolean);
+      ${campusQuery ? "AND LOWER(COALESCE(NULLIF(nearest_campus, ''), NULLIF(campus, ''))) LIKE '%' || ? || '%'" : ""}
+    LIMIT 300
+  `);
+  const sellerCampuses = (campusQuery
+    ? sellerCampusesQuery.all(campusQuery)
+    : sellerCampusesQuery.all())
+    .map((row) => row.name)
+    .filter(Boolean);
+
+  const builtinCampuses = campusQuery
+    ? nigeriaLocationCatalog.campuses.filter((campus) => campus.toLowerCase().includes(campusQuery))
+    : nigeriaLocationCatalog.campuses;
 
   return {
     country: selectedCountry.name,
@@ -429,7 +441,7 @@ export function getLocationCatalog(input = {}) {
       name: country.name,
     })),
     states,
-    campuses: [...new Set([...nigeriaLocationCatalog.campuses, ...sellerCampuses])],
+    campuses: [...new Set([...builtinCampuses, ...sellerCampuses])],
     marketplaces: markets,
   };
 }

@@ -30,10 +30,11 @@ export type GeocodedSellerLocation = {
   confidence: number;
 };
 
-export function getLocationCatalog(country?: string, stateQuery?: string) {
+export function getLocationCatalog(country?: string, stateQuery?: string, campusQuery?: string) {
   const params = new URLSearchParams();
   if (country?.trim()) params.set("country", country.trim());
   if (stateQuery?.trim()) params.set("stateQuery", stateQuery.trim());
+  if (campusQuery?.trim()) params.set("campusQuery", campusQuery.trim());
   const query = params.toString();
   return apiRequest<LocationCatalog>(`/location/catalog${query ? `?${query}` : ""}`);
 }

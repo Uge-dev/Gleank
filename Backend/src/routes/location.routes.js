@@ -43,9 +43,14 @@ const catalogLimiter = rateLimit({
 // exists. Keep this read-only catalog public; all location actions below it
 // remain authenticated.
 locationRouter.get("/catalog", catalogLimiter, (req, res) => {
+  const campusQuery = Array.isArray(req.query?.campusQuery)
+    ? req.query?.campusQuery[0]
+    : req.query?.campusQuery;
+
   res.json(getLocationCatalog({
     country: req.query?.country,
     stateQuery: req.query?.stateQuery,
+    campusQuery,
   }));
 });
 
