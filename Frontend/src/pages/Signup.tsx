@@ -32,6 +32,7 @@ function Signup() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [locationCatalog, setLocationCatalog] = useState<LocationCatalog | null>(null);
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
+  const [isLoadingCampusSuggestions, setIsLoadingCampusSuggestions] = useState(false);
   const [campusQuery, setCampusQuery] = useState("");
   const [campusSuggestions, setCampusSuggestions] = useState<string[]>([]);
   const [sellerLocation, setSellerLocation] = useState({
@@ -124,11 +125,11 @@ function Signup() {
     }
 
     const timeout = window.setTimeout(() => {
-      setIsLoadingLocations(true);
+      setIsLoadingCampusSuggestions(true);
       void getLocationCatalog(locationCatalog.country || "Nigeria", undefined, campusQuery)
         .then((catalog) => setCampusSuggestions(catalog.campuses))
         .catch(() => undefined)
-        .finally(() => setIsLoadingLocations(false));
+        .finally(() => setIsLoadingCampusSuggestions(false));
     }, 250);
 
     return () => window.clearTimeout(timeout);
@@ -375,7 +376,7 @@ function Signup() {
                   <input
                     name="campus"
                     list="buyer-campus-options"
-                    placeholder="Start typing your nearest campus"
+                    placeholder={isLoadingCampusSuggestions ? "Searching campuses..." : "Start typing your nearest campus"}
                     autoComplete="off"
                     onInput={(event) => setCampusQuery(event.currentTarget.value)}
                     required
@@ -485,7 +486,7 @@ function Signup() {
                       updateSellerLocation("nearestCampus", event.target.value);
                       setCampusQuery(event.target.value);
                     }}
-                    placeholder="Start typing or choose your nearest campus"
+                    placeholder={isLoadingCampusSuggestions ? "Searching campuses..." : "Start typing or choose your nearest campus"}
                     autoComplete="off"
                     required
                   />
