@@ -1,3 +1,5 @@
+import { getAccountProfile } from '../services/account-profile.service.js';
+
 function safeJsonArray(value) {
   try {
     const parsed = JSON.parse(value || "[]");
@@ -51,6 +53,7 @@ export function serializeUser(row) {
     name: row.name,
     email: row.email,
     role: row.role,
+    profile: getAccountProfile(row.user_id || row.id),
     campus: row.campus || "",
     phone: row.phone || "",
     country: row.country || "Nigeria",

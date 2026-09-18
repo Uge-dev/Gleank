@@ -1,3 +1,4 @@
+import { ZodError } from 'zod';
 import multer from "multer";
 import { HttpError } from "../lib/http-error.js";
 import { safeErrorMessage, shouldLogTechnicalError } from "../lib/safe-error-message.js";
@@ -32,6 +33,7 @@ export function errorHandler(error, req, res, _next) {
     return;
   }
 
+  if(error instanceof ZodError) return res.status(422).json({message:error.issues[0]?.message || "Check the submitted details."});
   const status = error.status || 500;
 
   if (shouldLogTechnicalError(error, status)) {

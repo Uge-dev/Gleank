@@ -9,7 +9,7 @@ import {
   FiLock,
   FiMail,
   FiShield,
-  FiTruck,
+
   FiX,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
@@ -96,11 +96,6 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
           <div className="auth-inline-message error" role="alert">
             <FiAlertCircle />
             <span>{error}</span>
-            {error.toLowerCase().includes("rider account") && (
-              <Link to="/rider/login" onClick={onClose}>
-                Login/create rider account
-              </Link>
-            )}
           </div>
         )}
 
@@ -171,9 +166,6 @@ function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
             Create one
           </Link>
         </div>
-        <Link className="auth-rider-link" to="/rider/login" onClick={onClose}>
-          <FiTruck /> Login/create rider account
-        </Link>
       </div>
     </div>
   );

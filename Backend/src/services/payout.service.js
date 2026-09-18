@@ -1,3 +1,4 @@
+import { assertSettlementReady } from './fulfillment.service.js';
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
@@ -75,8 +76,9 @@ export function ensurePayoutForStoreOrder(orderId) {
   if (existing) return serializePayout(existing);
 
   const now = nowIso();
-  const platformFeeKobo = platformFeeFromSubtotal(order.subtotal_kobo);
-  const sellerAmountKobo = Math.max(0, Number(order.subtotal_kobo || 0) - platformFeeKobo);
+  const terms=db.prepare('SELECT * FROM order_financial_terms WHERE order_id=?').get(order.id);
+  const platformFeeKobo = terms?.platform_fee_kobo ?? platformFeeFromSubtotal(order.subtotal_kobo);
+  const sellerAmountKobo = terms?.seller_amount_kobo ?? Math.max(0, Number(order.subtotal_kobo || 0) + Number(order.delivery_fee_kobo || 0) - platformFeeKobo);
 
   db.prepare(`
     INSERT INTO payouts (
@@ -92,7 +94,7 @@ export function ensurePayoutForStoreOrder(orderId) {
     platformFeeKobo,
     order.delivery_fee_kobo || 0,
     sellerAmountKobo,
-    "Waiting for delivery verification and return window.",
+    "Waiting for buyer confirmation of every package.",
     now,
     now,
   );
@@ -129,7 +131,7 @@ export function ensurePayoutForUsedOrder(orderId) {
     order.protection_fee_kobo || 0,
     order.delivery_fee_kobo || 0,
     sellerAmountKobo,
-    "Waiting for delivery verification and return window.",
+    "Waiting for buyer confirmation of every package.",
     now,
     now,
   );
@@ -218,21 +220,28 @@ export function adminUpdatePayout(auth, payoutId, input = {}) {
   const payout = db.prepare("SELECT * FROM payouts WHERE id = ?").get(payoutId);
   if (!payout) throw new HttpError(404, "Payout was not found.");
 
+  if (["released", "refunded"].includes(payout.status)) throw new HttpError(409, "A settled payout cannot be reopened.");
+  const transfer = db.prepare("SELECT status FROM settlement_transfers WHERE payout_id=?").get(payoutId);
+  if (transfer) throw new HttpError(409, "A submitted transfer requires provider reconciliation before any payout change.");
   const action = clean(input.action || input.status, 40);
   const note = clean(input.note || "", 700);
   const now = nowIso();
   let status = payout.status;
   let releasedAt = payout.released_at || null;
 
+  if (['release','released','eligible'].includes(action)) {
+    if(payout.source_type !== 'store_order') throw new HttpError(409,'Historical payouts require reconciliation.');
+    assertSettlementReady(payout.order_id);
+  }
   if (action === "release" || action === "released") {
-    status = "released";
-    releasedAt = now;
+    throw new HttpError(409,'Use a verified payout transfer; a manual status change cannot release money.');
+
   } else if (action === "hold" || action === "blocked") {
     status = "blocked";
   } else if (action === "eligible") {
     status = "eligible";
   } else if (action === "refund" || action === "refunded") {
-    status = "refunded";
+    throw new HttpError(409, "Refunds require provider reconciliation; a manual status change cannot refund money.");
   } else {
     throw new HttpError(422, "Choose release, hold, eligible, or refund.");
   }

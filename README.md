@@ -1,17 +1,25 @@
 # Gleenc
 
-Gleenc is a campus marketplace for buyers, verified sellers, service providers,
-used-item sellers, dispatch riders, and platform administrators.
+Gleenc is a social-commerce marketplace built around one member account for
+shopping, actual selling, dropshipping and digital marketing. Only administrators
+use a separate control dashboard.
+
+The current implementation milestone adds shared profile completion, seller-owned
+product listings, prepaid checkout, seller-managed fulfillment, and buyer QR/code
+delivery confirmation. Supplier-linked dropshipping and affiliate commission
+tracking are planned next; onboarding captures interest without claiming those
+transactions are already supported.
+
+See [the commerce MVP implementation and rollout notes](docs/commerce-mvp.md) for
+current behavior, configuration, test coverage and remaining work. Older sections
+below describe historical integrations; rider, Local Market and Used Market
+entry points have been retired in this milestone. Historical records remain intact.
 
 This repository contains:
 
 - `Frontend/` — React, TypeScript, React Router, and Vite.
-- `Backend/` — Express REST API, SQLite local persistence, Neon/Postgres production persistence, authentication, uploads,
-  stores, products, services, saved items, and Used Market listings.
-- `scripts/` — one-command local setup and development startup.
-
-Home, global search, product details, public stores, account-synced saved items,
-and the Used Market all use the same backend database.
+- `Backend/` — Express API with SQLite locally and PostgreSQL support.
+- `scripts/` — local setup and development startup.
 
 ## Quick start
 

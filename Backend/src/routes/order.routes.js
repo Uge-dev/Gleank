@@ -21,6 +21,10 @@ import {
 export const orderRouter = Router();
 
 orderRouter.use(requireAuth, requireEmailVerified);
+orderRouter.use((req,res,next)=>{
+ if (/\/(seller-confirm|seller-reject|verify-delivery)$/.test(req.path)) return res.status(410).json({message:'Use the seller-managed package fulfillment flow.'});
+ next();
+});
 
 orderRouter.get("/", (req, res) => {
   res.json({ orders: listOrders(req.auth.user_id) });

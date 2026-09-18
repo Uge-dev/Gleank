@@ -34,7 +34,6 @@ const searchTabs: {
   { label: "Products", value: "products", icon: <FiShoppingBag /> },
   { label: "Services", value: "services", icon: <FiMessageCircle /> },
   { label: "Sellers", value: "sellers", icon: <FiUser /> },
-  { label: "Used Market", value: "used", icon: <FiRefreshCw /> },
 ];
 
 const emptyResults: SearchResults = {

@@ -672,3 +672,6 @@ export async function updateAdminVerificationOperationalStatus(
     },
   );
 }
+
+export type AdminDeliveryPackage = {id:string;status:string;method:string;transport_name:string;tracking_reference:string;expected_arrival:string;dispatched_at:string|null;confirmed_at:string|null;has_receipt:number;product_name:string;quantity:number};
+export function fetchAdminDeliveryPackages(id:string){return request<{packages:AdminDeliveryPackage[]}>(`/admin/commerce/orders/${encodeURIComponent(id)}/packages`);}

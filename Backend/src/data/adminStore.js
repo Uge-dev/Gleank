@@ -1298,52 +1298,8 @@ function updateUsedItem(id, fields) {
   }
 }
 
-function updateOrder(id, fields) {
-  const now = new Date().toISOString();
-  const nextStatus = normalizeOrderStatus(fields.orderStatus || fields.deliveryStatus || fields.status || "");
-  const payment = fields.paymentStatus || "";
-
-  if (payment) {
-    throw new HttpError(403, "Payment status can only change through Paystack verification.");
-  }
-
-  const normal = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM orders WHERE id = ? OR order_code = ?").get(id, id);
-  if (normal) {
-    if (nextStatus === "completed") {
-      db.prepare(`
-        UPDATE orders
-        SET status = 'completed', stage4_status = 'completed',
-            fulfillment_status = 'completed', delivery_status = 'completed',
-            dispatch_status = 'completed',
-            buyer_confirmed_at = COALESCE(buyer_confirmed_at, ?),
-            delivery_verified_at = COALESCE(delivery_verified_at, ?),
-            updated_at = ?
-        WHERE id = ?
-      `).run(now, now, now, normal.id);
-    } else if (nextStatus) {
-      db.prepare("UPDATE orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, normal.id);
-    }
-    createNotificationForUsers([normal.buyer_id, normal.seller_id], {
-      type: "admin",
-      title: "Order updated by admin",
-      body: `Order ${normal.order_code} was updated${nextStatus ? ` to ${nextStatus}` : ""}.`,
-      actionLabel: "View order",
-      actionPath: `/orders/${normal.id}`,
-    });
-    return;
-  }
-
-  const used = db.prepare("SELECT id, order_code, buyer_id, seller_id FROM used_market_orders WHERE id = ? OR order_code = ?").get(id, id);
-  if (used) {
-    if (nextStatus) db.prepare("UPDATE used_market_orders SET status = ?, updated_at = ? WHERE id = ?").run(nextStatus, now, used.id);
-    createNotificationForUsers([used.buyer_id, used.seller_id], {
-      type: "admin",
-      title: "Used Market order updated by admin",
-      body: `Order ${used.order_code} was updated${nextStatus ? ` to ${nextStatus}` : ""}.`,
-      actionLabel: "View order",
-      actionPath: `/used-orders/${used.id}`,
-    });
-  }
+function updateOrder() {
+  throw new HttpError(409, "Order fulfillment is controlled by seller dispatch and buyer package confirmation. Use dispute review for exceptions.");
 }
 
 function updatePayment(id, fields) {
@@ -1398,6 +1354,9 @@ function updateCategoryApproval(id, fields) {
 
 export function updateRecordFields(collection, id, fields) {
   assertKnownCollection(collection);
+  if (["usedItems", "markets", "marketRequests", "categoryApprovals"].includes(collection)) {
+    throw new HttpError(410, "This marketplace section has been retired.");
+  }
   transaction(() => {
     if (collection === "users") updateUser(id, fields);
     if (collection === "sellers") updateSeller(id, fields);

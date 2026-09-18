@@ -32,10 +32,7 @@ import {
   emptyAdminDataset,
   type AdminActivityLog,
   type AdminDataset,
-  type AdminCategoryApproval,
   type AdminDispute,
-  type AdminMarket,
-  type AdminMarketRequest,
   type AdminOrder,
   type AdminPayment,
   type AdminProduct,
@@ -43,14 +40,12 @@ import {
   type AdminSeller,
   type AdminStatus,
   type AdminSupportConversation,
-  type AdminUsedItem,
   type AdminUser,
 } from "./adminData";
 import {
   adminLogin,
   adminLogout,
   clearAdminToken,
-  createAdminMarket,
   createAdminPriceRange,
   deleteAdminRecord,
   deleteAdminPriceRange,
@@ -91,6 +86,7 @@ import LogoutConfirmModal from "../components/LogoutConfirmModal";
 import NetworkFailureState from "../components/NetworkFailureState";
 import { apiUrl } from "../lib/api";
 import "./AdminDashboard.css";
+import DeliveryReview from "./DeliveryReview";
 
 type AdminTab =
   | "overview"
@@ -115,12 +111,11 @@ type TableColumn<T> = {
 
 const tabs: { id: AdminTab; label: string; icon: JSX.Element; description: string }[] = [
   { id: "overview", label: "Overview", icon: <FaChartLine />, description: "Platform summary" },
-  { id: "users", label: "Users", icon: <FaUsers />, description: "Buyer accounts" },
+  { id: "users", label: "Users", icon: <FaUsers />, description: "Member accounts" },
   { id: "sellers", label: "Sellers", icon: <FaStore />, description: "Store approvals" },
-  { id: "marketplace", label: "Marketplace", icon: <FaShoppingBag />, description: "Markets and listings" },
+  { id: "marketplace", label: "Marketplace", icon: <FaShoppingBag />, description: "Product moderation" },
   { id: "orders", label: "Orders", icon: <FaClipboardList />, description: "Order control" },
   { id: "finance", label: "Finance", icon: <FaMoneyBillWave />, description: "Payments and payouts" },
-  { id: "riders", label: "Riders", icon: <FaTruck />, description: "Rider approvals" },
   { id: "disputes", label: "Disputes", icon: <FaExclamationTriangle />, description: "Complaints" },
   { id: "support", label: "Support", icon: <FaCommentDots />, description: "Live support inbox" },
   { id: "notifications", label: "Notifications", icon: <FaBell />, description: "All platform alerts" },
@@ -722,8 +717,7 @@ function AdminDashboard() {
     avatarUrl: null,
   });
   const [isUploadingAdminAvatar, setIsUploadingAdminAvatar] = useState(false);
-  const [marketFormOpen, setMarketFormOpen] = useState(false);
-  const [marketSaving, setMarketSaving] = useState(false);
+  const [deliveryOrderId,setDeliveryOrderId]=useState("");
   const [supportConversationToOpen, setSupportConversationToOpen] = useState("");
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
   const adminAvatarInputRef = useRef<HTMLInputElement | null>(null);
@@ -948,38 +942,6 @@ function AdminDashboard() {
       await loadAdminData(false);
     } catch {
       showAdminConnectionNotice();
-    }
-  }
-
-  async function submitMarket(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMarketSaving(true);
-    setLoadError("");
-    try {
-      const form = new FormData(event.currentTarget);
-      await createAdminMarket({
-        name: String(form.get("name") || ""),
-        state: String(form.get("state") || ""),
-        city: String(form.get("city") || ""),
-        area: String(form.get("area") || ""),
-        address: String(form.get("address") || ""),
-        landmark: String(form.get("landmark") || ""),
-        latitude: Number(form.get("latitude")),
-        longitude: Number(form.get("longitude")),
-        radiusKm: Number(form.get("radiusKm") || 3),
-        allowedCategories: String(form.get("allowedCategories") || "")
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-        status: String(form.get("status")) === "active" ? "active" : "pending",
-      });
-      setMarketFormOpen(false);
-      event.currentTarget.reset();
-      await loadAdminData(false);
-    } catch (requestError) {
-      setLoadError(requestError instanceof Error ? requestError.message : "The market could not be created.");
-    } finally {
-      setMarketSaving(false);
     }
   }
 
@@ -1210,17 +1172,6 @@ function AdminDashboard() {
     } catch {
       showAdminConnectionNotice();
     }
-  }
-
-  async function rejectUsedItem(item: AdminUsedItem) {
-    const reason = window.prompt("Enter rejection reason for this used-market listing:", item.rejectionReason || "Listing needs clearer images or safer item details.");
-    if (reason === null) return;
-
-    await changeFields("usedItems", item.id, {
-      status: "rejected",
-      safetyStatus: "unsafe",
-      rejectionReason: reason.trim() || "Rejected by admin review.",
-    });
   }
 
   async function markProductInStock(product: AdminProduct) {
@@ -1575,109 +1526,6 @@ function AdminDashboard() {
           ) : null}
 
           {activeTab === "marketplace" ? (
-            <div className="admin-stage3-grid">
-              <section className="admin-market-create-card">
-                <div>
-                  <span>Approved local market directory</span>
-                  <h2>Add a mapped marketplace</h2>
-                  <p>Create real market records that local sellers can select during onboarding.</p>
-                </div>
-                <button type="button" onClick={() => setMarketFormOpen((open) => !open)}>
-                  {marketFormOpen ? "Close form" : "Add marketplace"}
-                </button>
-                {marketFormOpen ? (
-                  <form onSubmit={submitMarket}>
-                    <label>Market name<input name="name" required /></label>
-                    <label>State<input name="state" required /></label>
-                    <label>City<input name="city" required /></label>
-                    <label>Area<input name="area" /></label>
-                    <label className="wide">Real address<input name="address" required /></label>
-                    <label>Landmark<input name="landmark" /></label>
-                    <label>Latitude<input name="latitude" type="number" step="any" min="-90" max="90" required /></label>
-                    <label>Longitude<input name="longitude" type="number" step="any" min="-180" max="180" required /></label>
-                    <label>Coverage radius (km)<input name="radiusKm" type="number" min="0.1" max="100" step="0.1" defaultValue="3" required /></label>
-                    <label className="wide">Allowed categories<input name="allowedCategories" placeholder="Food, Fashion, Electronics" required /></label>
-                    <label>Status<select name="status" defaultValue="active"><option value="active">Active</option><option value="pending">Pending</option></select></label>
-                    <button type="submit" disabled={marketSaving}>{marketSaving ? "Saving..." : "Create marketplace"}</button>
-                  </form>
-                ) : null}
-              </section>
-              <DataTable<AdminMarket>
-                title="Local Market Management"
-                subtitle="Create, activate, disable and inspect approved Local Markets that buyers can browse publicly."
-                rows={data.markets}
-                search={search}
-                onView={(market) => openRecord(market.name, market as unknown as Record<string, unknown>)}
-                columns={[
-                  { label: "Market", render: (market) => market.name },
-                  { label: "Location", render: (market) => [market.area, market.city, market.state].filter(Boolean).join(", ") || "Not set" },
-                  { label: "Sellers", render: (market) => market.counts?.sellers || 0 },
-                  { label: "Products", render: (market) => market.counts?.products || 0 },
-                  { label: "Categories", render: (market) => market.allowedCategories?.slice(0, 3).join(", ") || "Default" },
-                  { label: "Status", render: (market) => <StatusBadge status={market.status} /> },
-                  { label: "Updated", render: (market) => formatAdminTime(market.updatedAt) },
-                ]}
-                actions={(market) => (
-                  <>
-                    <ActionButton tone="success" onClick={() => changeStatus("markets", market.id, "active")}>Activate</ActionButton>
-                    <ActionButton tone="soft" onClick={() => changeStatus("markets", market.id, "disabled")}>Disable</ActionButton>
-                    <ActionButton tone="soft" onClick={() => openRecord(`${market.name} categories`, { allowedCategories: market.allowedCategories, deliveryNote: market.deliveryNote })}>Categories</ActionButton>
-                  </>
-                )}
-              />
-
-              <DataTable<AdminMarketRequest>
-                title="Pending Market Requests"
-                subtitle="Seller-submitted markets do not become public until admin approves, merges, rejects, or asks for more information."
-                rows={data.marketRequests}
-                search={search}
-                onView={(request) => openRecord(request.marketName, request as unknown as Record<string, unknown>)}
-                columns={[
-                  { label: "Market", render: (request) => request.marketName },
-                  { label: "Seller", render: (request) => request.sellerName || request.storeName || "Seller" },
-                  { label: "Location", render: (request) => [request.area, request.city, request.state].filter(Boolean).join(", ") || request.address },
-                  { label: "Sells", render: (request) => request.whatSells || "Not set" },
-                  { label: "Shop details", render: (request) => request.shopDetails || "Not set" },
-                  { label: "Status", render: (request) => <StatusBadge status={request.status} /> },
-                  { label: "Updated", render: (request) => formatAdminTime(request.updatedAt) },
-                ]}
-                actions={(request) => (
-                  <>
-                    <ActionButton tone="success" onClick={() => changeFields("marketRequests", request.id, { status: "approved", adminNote: "Market approved by admin." })}>Approve</ActionButton>
-                    <ActionButton tone="soft" onClick={() => changeFields("marketRequests", request.id, { status: "needs_more_info", adminNote: "Admin needs more details before approval." })}>More Info</ActionButton>
-                    <ActionButton tone="danger" onClick={() => changeFields("marketRequests", request.id, { status: "rejected", adminNote: "Market request rejected by admin." })}>Reject</ActionButton>
-                  </>
-                )}
-              />
-
-              <DataTable<AdminCategoryApproval>
-                title="Seller Category Approvals"
-                subtitle="Review category access for sellers while keeping dangerous and prohibited categories blocked."
-                rows={data.categoryApprovals}
-                search={search}
-                onView={(approval) => openRecord(`${approval.storeName} · ${approval.categoryName}`, approval as unknown as Record<string, unknown>)}
-                columns={[
-                  { label: "Store", render: (approval) => approval.storeName },
-                  { label: "Seller", render: (approval) => approval.sellerName },
-                  { label: "Market", render: (approval) => approval.marketName || "Platform" },
-                  { label: "Category", render: (approval) => approval.categoryName },
-                  { label: "Status", render: (approval) => <StatusBadge status={approval.status} /> },
-                  { label: "Note", render: (approval) => approval.adminNote || "—" },
-                  { label: "Updated", render: (approval) => formatAdminTime(approval.updatedAt) },
-                ]}
-                actions={(approval) => (
-                  <>
-                    <ActionButton tone="success" onClick={() => changeFields("categoryApprovals", approval.id, { status: "approved", adminNote: "Category approved by admin." })}>Approve</ActionButton>
-                    <ActionButton tone="soft" onClick={() => changeFields("categoryApprovals", approval.id, { status: "needs_more_info", adminNote: "Admin needs more category details." })}>More Info</ActionButton>
-                    <ActionButton tone="danger" onClick={() => changeFields("categoryApprovals", approval.id, { status: "rejected", adminNote: "Category rejected by admin." })}>Reject</ActionButton>
-                    <ActionButton tone="danger" onClick={() => changeFields("categoryApprovals", approval.id, { status: "suspended", adminNote: "Category suspended by admin." })}>Suspend</ActionButton>
-                  </>
-                )}
-              />
-            </div>
-          ) : null}
-
-          {activeTab === "marketplace" ? (
             <DataTable<AdminProduct>
               title="Product Moderation Queue"
               subtitle="Only large-value, restricted, illegal, or contact/link-flagged listings require admin approval. Ordinary listings publish automatically."
@@ -1714,37 +1562,7 @@ function AdminDashboard() {
             />
           ) : null}
 
-          {activeTab === "marketplace" ? (
-            <DataTable<AdminUsedItem>
-              title="Used Market Approvals"
-              subtitle="Approve, reject, remove and mark used-item listings as safe or unsafe from the user dashboard."
-              rows={data.usedItems}
-              search={search}
-              onView={(item) => openRecord(item.name, item)}
-              columns={[
-                { label: "Item", render: (item) => <RecordThumb src={item.image} name={item.name} /> },
-                { label: "Uploader", render: (item) => item.uploader },
-                { label: "Phone", render: (item) => item.uploaderPhone },
-                { label: "Contact", render: (item) => <StatusBadge status={item.contactStatus} /> },
-                { label: "Campus", render: (item) => item.campus },
-                { label: "Condition", render: (item) => <StatusBadge status={item.condition} /> },
-                { label: "Price", render: (item) => item.price },
-                { label: "Approval", render: (item) => <StatusBadge status={item.status} /> },
-                { label: "Safety", render: (item) => <StatusBadge status={item.safetyStatus} /> },
-                { label: "Submitted", render: (item) => item.dateSubmitted },
-              ]}
-              actions={(item) => (
-                <>
-                  <ActionButton tone="success" onClick={() => changeFields("usedItems", item.id, { status: "approved", safetyStatus: "safe" })}>Approve</ActionButton>
-                  <ActionButton tone="danger" onClick={() => rejectUsedItem(item)}>Reject</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("usedItems", item.id, "removed")}>Remove</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeFields("usedItems", item.id, { safetyStatus: "safe" })}>Safe</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeFields("usedItems", item.id, { safetyStatus: "unsafe", status: item.status === "approved" ? "removed" : item.status })}>Unsafe</ActionButton>
-                </>
-              )}
-            />
-          ) : null}
-
+          {activeTab === "orders" && deliveryOrderId && <DeliveryReview orderId={deliveryOrderId} onClose={()=>setDeliveryOrderId("")}/>}
           {activeTab === "orders" ? (
             <DataTable<AdminOrder>
               title="Order Management"
@@ -1765,13 +1583,9 @@ function AdminDashboard() {
               ]}
               actions={(order) => (
                 <>
-                  <ActionButton tone="soft" onClick={() => openRecord(`${order.id} delivery code`, { order: order.id, deliveryCode: order.deliveryCode, codeStatus: order.deliveryStatus, pickupPoint: order.pickupPoint })}>Code</ActionButton>
+                  <ActionButton tone="soft" onClick={() => setDeliveryOrderId(order.id)}>Delivery evidence</ActionButton>
                   <ActionButton tone="soft" onClick={() => openRecord(`${order.id} parties`, { buyer: order.buyer, seller: order.seller, campus: order.campus, item: order.item })}>Buyer/Seller</ActionButton>
-                  <ActionButton tone="success" onClick={() => changeStatus("orders", order.id, "completed", "orderStatus")}>Complete</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("orders", order.id, "preparing", "orderStatus")}>Preparing</ActionButton>
-                  <ActionButton tone="soft" onClick={() => changeStatus("orders", order.id, "out_for_delivery", "deliveryStatus")}>Out Delivery</ActionButton>
                   <ActionButton tone="danger" onClick={() => openRecord(`${order.id} refund review`, { order: order.id, paymentStatus: order.paymentStatus, note: "Refunds must be reconciled through the payment provider workflow." })}>Refund Review</ActionButton>
-                  <ActionButton tone="danger" onClick={() => changeStatus("orders", order.id, "cancelled", "orderStatus")}>Cancel</ActionButton>
                 </>
               )}
             />

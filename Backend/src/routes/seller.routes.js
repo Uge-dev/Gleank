@@ -63,6 +63,10 @@ import {
 import { scanUploadedImagesForModeration } from "../services/ocr.service.js";
 
 export const sellerRouter = Router();
+sellerRouter.use((req,res,next)=> {
+ if (/rider|^\/markets(?:\/|$)|^\/onboarding(?:\/|$)/.test(req.path)) return res.status(410).json({message:'This feature has been retired. Use your profile and selling settings.'});
+ next();
+});
 
 function sellerOnboardingPayload(req, verification) {
   if (req.auth.role === "seller") {
