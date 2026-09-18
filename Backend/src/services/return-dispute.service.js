@@ -161,7 +161,7 @@ export function createReturnRequest(auth, orderId, input = {}) {
     db.prepare(`
       UPDATE payouts
       SET status = 'blocked', hold_reason = ?, updated_at = ?
-      WHERE source_type = ?
+      WHERE status NOT IN ('released','refunded') AND source_type = ?
         AND ${sourceType === "used_order" ? "used_order_id" : "order_id"} = ?
     `).run("Return request opened by buyer.", now, sourceType, order.id);
 
@@ -240,9 +240,10 @@ export function createDispute(auth, orderId, input = {}) {
     db.prepare(`
       UPDATE payouts
       SET status = 'blocked', hold_reason = ?, updated_at = ?
-      WHERE source_type = ?
+      WHERE status NOT IN ('released','refunded') AND source_type = ?
         AND ${sourceType === "used_order" ? "used_order_id" : "order_id"} = ?
     `).run("Dispute opened.", now, sourceType, order.id);
+    db.prepare(`UPDATE ${table} SET payout_status=COALESCE((SELECT status FROM payouts WHERE ${sourceType === 'used_order' ? 'used_order_id' : 'order_id'}=?),payout_status) WHERE id=?`).run(order.id,order.id);
 
     insertOrderEvent(sourceType, order.id, clean(input.reason || "Dispute opened.", 500));
     createNotificationForUsers([order.buyer_id, order.seller_id], {
@@ -337,15 +338,19 @@ export function adminDecideDispute(auth, disputeId, input = {}) {
 
     const table = dispute.source_type === "used_order" ? "used_market_orders" : "orders";
     const orderId = dispute.source_type === "used_order" ? dispute.used_order_id : dispute.order_id;
-    const orderStatus = status === "resolved_seller" || status === "dismissed" ? "completed" : "disputed";
-    const payoutStatus = status === "resolved_seller" || status === "dismissed" ? "eligible" : "blocked";
+    const resolvedForSeller = status === "resolved_seller" || status === "dismissed";
+    const currentOrder=db.prepare(`SELECT * FROM ${table} WHERE id=?`).get(orderId);
+    const verified=Boolean(currentOrder.buyer_confirmed_at && currentOrder.delivery_verified_at);
+    const orderStatus = resolvedForSeller ? (verified ? "completed" : "out_for_delivery") : "disputed";
+    const payoutStatus = resolvedForSeller ? (verified ? "eligible" : "on_hold") : "blocked";
     db.prepare(`UPDATE ${table} SET status = ?, payout_status = ?, updated_at = ? WHERE id = ?`).run(orderStatus, payoutStatus, now, orderId);
     db.prepare(`
       UPDATE payouts
       SET status = ?, hold_reason = ?, updated_at = ?
-      WHERE source_type = ?
+      WHERE status NOT IN ('released','refunded') AND source_type = ?
         AND ${dispute.source_type === "used_order" ? "used_order_id" : "order_id"} = ?
     `).run(payoutStatus, note, now, dispute.source_type, orderId);
+    db.prepare(`UPDATE ${table} SET payout_status=COALESCE((SELECT status FROM payouts WHERE ${dispute.source_type === 'used_order' ? 'used_order_id' : 'order_id'}=?),payout_status) WHERE id=?`).run(orderId,orderId);
   });
 
   return serializeDispute(db.prepare("SELECT * FROM disputes WHERE id = ?").get(dispute.id));

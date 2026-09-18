@@ -1,15 +1,15 @@
+import { startSettlementWorker } from './services/settlement.service.js';
 import { app } from "./app.js";
 import { env } from "./config/env.js";
-import { startRiderPresenceMonitor } from "./services/rider-presence.service.js";
 
 const server = app.listen(env.port, () => {
   console.log(`Gleenc API running at http://localhost:${env.port}`);
 });
-const stopRiderPresenceMonitor = startRiderPresenceMonitor();
+const stopSettlementWorker = startSettlementWorker();
 
 function shutdown(signal) {
   console.log(`\n${signal} received. Closing Gleenc API...`);
-  stopRiderPresenceMonitor();
+  stopSettlementWorker();
 
   server.close(() => {
     console.log("Gleenc API closed successfully.");

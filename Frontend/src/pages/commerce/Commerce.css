@@ -1,0 +1,200 @@
+.commerce-page {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 24px 110px;
+  color: var(--text-main, #202124);
+}
+.commerce-page h1 {
+  font-size: clamp(26px, 4vw, 38px);
+  line-height: 1.15;
+  margin: 12px 0;
+}
+.commerce-page h2 {
+  font-size: 21px;
+  margin: 12px 0;
+}
+.commerce-page p {
+  line-height: 1.65;
+  margin: 10px 0 20px;
+}
+.commerce-eyebrow {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #c24531;
+}
+.commerce-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+.commerce-card {
+  border: 1px solid #ddd;
+  border-radius: 16px;
+  padding: 22px;
+  background: var(--card-bg, #fff);
+  color: var(--text-main, #202124);
+}
+.commerce-card.selected {
+  border: 2px solid #c24531;
+  background: var(--soft-bg, #fff8f3);
+}
+.commerce-page label {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.commerce-page input:not([type="checkbox"]),
+.commerce-page textarea,
+.commerce-page select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #bbb;
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  font: inherit;
+}
+.commerce-page button,
+.commerce-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 1px solid #ccc;
+  border-radius: 10px;
+  background: var(--card-bg, #fff);
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.commerce-page button.primary,
+.commerce-action.primary {
+  background: #a93625;
+  border-color: #a93625;
+  color: white;
+}
+.commerce-page button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.commerce-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 18px 0;
+}
+.commerce-error {
+  color: #a51e20;
+  background: #fff0ee;
+  border-radius: 8px;
+  padding: 12px;
+}
+.commerce-note {
+  padding: 14px;
+  background: #f4f1e9;
+  border-radius: 10px;
+  color: #433a2d;
+}
+.commerce-code {
+  font-family: monospace;
+  font-size: 21px;
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+.commerce-page .check-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.commerce-page .check-label input {
+  margin-top: 4px;
+}
+.commerce-page small {
+  line-height: 1.5;
+  display: block;
+}
+.commerce-page a {
+  color: #a93625;
+}
+.commerce-page .primary {
+  color: white;
+}
+.commerce-page .package-label img {
+  display: block;
+  width: 180px;
+  height: 180px;
+}
+.commerce-status {
+  text-transform: capitalize;
+  font-weight: 600;
+}
+.commerce-page .choice-card {
+  text-align: left;
+  display: block;
+  width: 100%;
+}
+.commerce-page .choice-card strong {
+  display: block;
+  margin-bottom: 8px;
+}
+.commerce-page .choice-card span {
+  display: block;
+  line-height: 1.5;
+  font-size: 14px;
+}
+.commerce-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0;
+}
+.commerce-tabs .active {
+  background: #a93625;
+  color: white;
+}
+.commerce-page .order-row {
+  display: block;
+  margin: 12px 0;
+  text-decoration: none;
+}
+.commerce-page .order-row strong {
+  display: block;
+}
+.gleenc-print-labels {
+  display: none;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+  body > :not(.gleenc-print-labels) {
+    display: none !important;
+  }
+  .gleenc-print-labels {
+    display: block !important;
+  }
+  .gleenc-print-labels .package-label {
+    break-inside: avoid;
+    break-after: page;
+    background: white !important;
+    color: black !important;
+    padding: 24px;
+    border: 1px solid black;
+  }
+  .gleenc-print-labels .package-label:last-child {
+    break-after: auto;
+  }
+  .gleenc-print-labels img {
+    display: block;
+    width: 240px;
+    height: 240px;
+  }
+}

@@ -27,7 +27,7 @@ function Login() {
         return;
       }
 
-      navigate(user.role === "seller" ? "/dashboard" : "/profile");
+      navigate(user.profile ? "/" : "/complete-profile");
     } catch (requestError) {
       setError(
         requestError instanceof Error
@@ -53,9 +53,6 @@ function Login() {
           <div className="auth-inline-message error" role="alert">
             <FiAlertCircle />
             <span>{error}</span>
-            {error.toLowerCase().includes("rider account") && (
-              <Link to="/rider/login">Login/create rider account</Link>
-            )}
           </div>
         )}
 
@@ -116,9 +113,6 @@ function Login() {
         <p className="auth-switch-text">
           New to Gleenc? <Link to="/signup">Create account</Link>
         </p>
-        <Link className="auth-rider-link" to="/rider/login">
-          Login/create rider account
-        </Link>
       </div>
       </div>
     </section>

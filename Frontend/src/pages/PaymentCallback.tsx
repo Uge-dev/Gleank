@@ -56,7 +56,7 @@ function PaymentCallback() {
 
   useEffect(() => {
     let active = true;
-    let timeoutId: ReturnType<typeof window.setTimeout> | undefined;
+    let timeoutId: number | undefined;
 
     if (!reference) {
       setState("failed");

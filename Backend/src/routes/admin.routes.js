@@ -1,3 +1,4 @@
+import { HttpError } from "../lib/http-error.js";
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
@@ -68,6 +69,25 @@ import {
 import { listAdminAuditLogs, logAdminAudit } from "../services/audit-log.service.js";
 
 const router = Router();
+router.use((req,res,next)=>{
+  if(req.method!=='GET' && (/^\/(riders|markets)(\/|$)/.test(req.path) || /market-approval$/.test(req.path))) return res.status(410).json({message:'This section has been retired.'});
+  next();
+});
+router.get('/commerce/orders/:id/packages', requireAdmin, (req,res)=>{
+  const order=db.prepare('SELECT id FROM orders WHERE id=? OR order_code=?').get(req.params.id,req.params.id);
+  if(!order) throw new HttpError(404,'Order not found.');
+  const packages=db.prepare(`SELECT p.id,p.order_id,p.status,p.method,p.transport_name,p.tracking_reference,
+    p.expected_arrival,p.dispatched_at,p.confirmed_at,p.confirmed_by,
+    CASE WHEN p.receipt_path != '' THEN 1 ELSE 0 END AS has_receipt,
+    i.product_name,i.quantity FROM order_packages p JOIN order_items i ON i.id=p.order_item_id WHERE p.order_id=?`).all(order.id);
+  res.json({packages});
+});
+router.get('/commerce/packages/:id/receipt',requireAdmin,(req,res)=>{
+  const row=db.prepare('SELECT receipt_path FROM order_packages WHERE id=?').get(req.params.id);
+  if(!row?.receipt_path) throw new HttpError(404,'Receipt not found.');
+  res.setHeader('Cache-Control','private, no-store');res.sendFile(row.receipt_path);
+});
+
 
 const adminLoginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

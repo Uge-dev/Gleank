@@ -80,7 +80,7 @@ function parseCart(value: string | null): CartItem[] {
     if (!Array.isArray(parsed)) return [];
 
     return parsed
-      .filter((item) => item && typeof item === "object")
+      .filter((item) => item && typeof item === "object" && item.itemType !== "used_listing")
       .map((item) => ({
         id: String(item.id || ""),
         itemType:
@@ -200,6 +200,7 @@ export function CartProvider({ children }: CartProviderProps) {
   }
 
   function addToCart(item: AddToCartItem) {
+    if (item.itemType === "used_listing") return;
     if (!currentUserId) {
       window.dispatchEvent(new Event("gleank-cart-auth-required"));
       return;

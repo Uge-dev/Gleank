@@ -100,7 +100,7 @@ function MoreDrawer({
           <div className="more-drawer-auth-card">
             <div>
               <h3>{user?.name || "Gleenc User"}</h3>
-              <p>{user?.role === "seller" ? "Seller account" : "Buyer account"}</p>
+              <p>{user?.role === "seller" ? "Gleenc member" : "Gleenc member"}</p>
             </div>
 
             <button type="button" onClick={() => setLogoutModalOpen(true)}>
@@ -111,11 +111,11 @@ function MoreDrawer({
         )}
 
         <div className="more-section">
-          <h4>Seller Tools</h4>
+          <h4>Your tools</h4>
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/dashboard" : "/seller/onboarding"}
+            to="/my-products"
             onClick={onClose}
           >
             <span className="more-row-icon green">
@@ -123,8 +123,8 @@ function MoreDrawer({
             </span>
 
             <div>
-              <strong>Seller Dashboard</strong>
-              <small>Manage your campus business profile</small>
+              <strong>My products</strong>
+              <small>Manage products and stock</small>
             </div>
 
             <FiChevronRight />
@@ -132,7 +132,7 @@ function MoreDrawer({
 
           <Link
             className="more-menu-row"
-            to={user?.role === "seller" ? "/create" : "/seller/onboarding"}
+            to="/selling-settings"
             onClick={onClose}
           >
             <span className="more-row-icon orange">

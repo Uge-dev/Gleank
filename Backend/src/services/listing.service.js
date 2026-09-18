@@ -8,7 +8,6 @@ import {
   serializeService,
 } from "../lib/serializers.js";
 import { findStoreByOwnerId } from "../repositories/store.repository.js";
-import { assertCategoryAllowedForStore } from "./market.service.js";
 import {
   evaluateListingModeration,
   moderationSqlPatch,
@@ -155,7 +154,7 @@ export function sellerWorkspace(userId) {
 
 export function createProduct(userId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
-  assertCategoryAllowedForStore(store, input.category, { itemType: "product" });
+
   const now = new Date().toISOString();
   const id = createId("prd");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
@@ -222,7 +221,7 @@ export function createProduct(userId, input, uploadedUrls, imageModeration = nul
 
 export function updateProduct(userId, productId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
-  assertCategoryAllowedForStore(store, input.category, { itemType: "product" });
+
   const existing = db
     .prepare("SELECT * FROM products WHERE id = ? AND store_id = ?")
     .get(productId, store.id);
@@ -322,7 +321,7 @@ export function deleteProduct(userId, productId) {
 
 export function createService(userId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
-  assertCategoryAllowedForStore(store, input.category, { itemType: "service" });
+
   const now = new Date().toISOString();
   const id = createId("svc");
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
@@ -391,7 +390,7 @@ export function createService(userId, input, uploadedUrls, imageModeration = nul
 
 export function updateService(userId, serviceId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
-  assertCategoryAllowedForStore(store, input.category, { itemType: "service" });
+
   const existing = db
     .prepare("SELECT * FROM services WHERE id = ? AND store_id = ?")
     .get(serviceId, store.id);

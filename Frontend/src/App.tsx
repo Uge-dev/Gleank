@@ -9,34 +9,18 @@ import { SavedProvider } from "./context/SavedContext";
 import GleencNav from "./components/GleencNav";
 import CartDrawer from "./components/CartDrawer";
 import ProtectedPage from "./components/ProtectedPage";
-import LocationPermissionNotice from "./components/LocationPermissionNotice";
 
 const Home = lazy(() => import("./pages/Home"));
 const Search = lazy(() => import("./pages/Search"));
-const Market = lazy(() => import("./pages/Market"));
-const CampusMarket = lazy(() => import("./pages/CampusMarket"));
-const LocalMarkets = lazy(() => import("./pages/LocalMarkets"));
-const LocalMarketDetails = lazy(() => import("./pages/LocalMarketDetails"));
-const NearbySellers = lazy(() => import("./pages/NearbySellers"));
-const MarketSearchResults = lazy(() => import("./pages/MarketSearchResults"));
-const UsedMarket = lazy(() => import("./pages/UsedMarket"));
-const SubmitUsedProduct = lazy(() => import("./pages/SubmitUsedProduct"));
-const UsedProductDetails = lazy(() => import("./pages/UsedProductDetails"));
-const UsedCheckout = lazy(() => import("./pages/UsedCheckout"));
-const UsedOrderDetails = lazy(() => import("./pages/UsedOrderDetails"));
-const UsedMarketDashboard = lazy(() => import("./pages/UsedMarketDashboard"));
 const ProductDetails = lazy(() => import("./pages/ProductDetails"));
 const SellerStore = lazy(() => import("./pages/SellerStore"));
 const Messages = lazy(() => import("./pages/Messages"));
 const Notifications = lazy(() => import("./pages/Notifications"));
-const Create = lazy(() => import("./pages/Create"));
-const Orders = lazy(() => import("./pages/Orders"));
-const SellerOrders = lazy(() => import("./pages/SellerOrders"));
-const SellerRiderSelection = lazy(() => import("./pages/SellerRiderSelection"));
-const OrderDetails = lazy(() => import("./pages/OrderDetails"));
+const Create = lazy(() => import("./pages/commerce/MyProducts"));
+const Orders = lazy(() => import("./pages/commerce/Orders"));
+const OrderDetails = lazy(() => import("./pages/commerce/OrderDetails"));
 const OrderSuccess = lazy(() => import("./pages/OrderSuccess"));
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Profile = lazy(() => import("./pages/Profile"));
+const Profile = lazy(() => import("./pages/commerce/Account"));
 const More = lazy(() => import("./pages/More"));
 const Cart = lazy(() => import("./pages/Cart"));
 const Saved = lazy(() => import("./pages/Saved"));
@@ -46,24 +30,23 @@ const Signup = lazy(() => import("./pages/Signup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
 const AccountSecurity = lazy(() => import("./pages/AccountSecurity"));
-const SellerOnboarding = lazy(() => import("./pages/SellerOnboarding"));
-const SellerSubscription = lazy(() => import("./pages/SellerSubscription"));
 const Help = lazy(() => import("./pages/Help"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const AdminDashboard = lazy(() => import("./admin/AdminDashboard"));
 const PaymentCallback = lazy(() => import("./pages/PaymentCallback"));
-const RiderModule = lazy(() => import("./rider/RiderModule"));
 
+const CompleteProfile=lazy(()=>import('./pages/commerce/CompleteProfile'));
+const SellingSettings=lazy(()=>import('./pages/commerce/SellingSettings'));
+const Earnings=lazy(()=>import('./pages/commerce/Earnings'));
+const Opportunities=lazy(()=>import('./pages/commerce/Opportunities'));
+function OnboardingGate(){
+ const {user,isLoading}=useAuth(); const location=useLocation();
+ if(!isLoading && user && !user.profile && !['/complete-profile','/verify-email','/payment/callback'].includes(location.pathname))
+  return <Navigate to={'/complete-profile?next='+encodeURIComponent(location.pathname+location.search+location.hash)} replace />;
+ return null;
+}
 function RouteFallback() {
   return <div className="app-route-loading" role="status">Loading page...</div>;
-}
-
-function AccountOrders() {
-  const { user } = useAuth();
-
-  return user?.role === "seller" || user?.role === "admin"
-    ? <SellerOrders />
-    : <Orders />;
 }
 
 function App() {
@@ -74,17 +57,6 @@ function App() {
 
   const location = useLocation();
   const isAdminRoute = location.pathname.startsWith("/admin");
-  const isRiderRoute = location.pathname.startsWith("/rider");
-  const shouldRestoreRiderPortal =
-    location.pathname === "/" &&
-    typeof window !== "undefined" &&
-    (window.sessionStorage.getItem("gleenc-current-portal") ||
-      window.localStorage.getItem("gleenc-last-portal")) === "rider";
-
-  if (shouldRestoreRiderPortal) {
-    return <Navigate to="/rider" replace />;
-  }
-
   if (isAdminRoute) {
     return (
       <div className="gleank-app admin-app-shell">
@@ -98,16 +70,12 @@ function App() {
     );
   }
 
-  if (isRiderRoute) {
-    return <Suspense fallback={<RouteFallback />}><RiderModule /></Suspense>;
-  }
-
   return (
     <AuthProvider>
       <SavedProvider>
         <CartProvider>
           <div className="gleank-app">
-            <LocationPermissionNotice />
+            <OnboardingGate />
             <GleencNav />
             <CartDrawer />
 
@@ -116,57 +84,10 @@ function App() {
                 <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/search" element={<Search />} />
-          <Route path="/market" element={<Market />} />
-          <Route path="/market/search" element={<MarketSearchResults />} />
-          <Route path="/market/campus" element={<CampusMarket />} />
-          <Route path="/market/local" element={<LocalMarkets />} />
-          <Route path="/market/local/:marketId" element={<LocalMarketDetails />} />
-          <Route path="/market/nearby" element={<NearbySellers />} />
-
-          <Route path="/used-market" element={<UsedMarket />} />
-          <Route
-            path="/used-market/dashboard"
-            element={
-              <ProtectedPage>
-                <UsedMarketDashboard />
-              </ProtectedPage>
-            }
-          />
-          <Route
-            path="/used-market/submit"
-            element={
-              <ProtectedPage>
-                <SubmitUsedProduct />
-              </ProtectedPage>
-            }
-          />
-          <Route
-            path="/used-market/:id/checkout"
-            element={
-              <ProtectedPage>
-                <UsedCheckout />
-              </ProtectedPage>
-            }
-          />
-          <Route path="/used-market/:id" element={<UsedProductDetails />} />
-          <Route
-            path="/used-orders/:id"
-            element={
-              <ProtectedPage>
-                <UsedOrderDetails />
-              </ProtectedPage>
-            }
-          />
-          <Route
-            path="/used-messages"
-            element={
-              <ProtectedPage>
-                <Navigate to="/messages" replace />
-              </ProtectedPage>
-            }
-          />
-
-
+          <Route path="/market/*" element={<Navigate to="/search" replace />} />
+          <Route path="/used-market/*" element={<Navigate to="/search" replace />} />
+          <Route path="/used-orders/*" element={<Navigate to="/orders" replace />} />
+          <Route path="/rider/*" element={<Navigate to="/" replace />} />
           <Route path="/products/:id" element={<ProductDetails />} />
           <Route path="/stores/:id" element={<SellerStore />} />
           <Route path="/more" element={<More />} />
@@ -192,7 +113,7 @@ function App() {
           <Route
             path="/create"
             element={
-              <ProtectedPage roles={["seller", "admin"]}>
+              <ProtectedPage >
                 <Create />
               </ProtectedPage>
             }
@@ -202,16 +123,7 @@ function App() {
             path="/orders"
             element={
               <ProtectedPage>
-                <AccountOrders />
-              </ProtectedPage>
-            }
-          />
-
-          <Route
-            path="/seller/orders/:orderId/riders"
-            element={
-              <ProtectedPage roles={["seller", "admin"]}>
-                <SellerRiderSelection />
+                <Orders />
               </ProtectedPage>
             }
           />
@@ -242,8 +154,8 @@ function App() {
           <Route
             path="/dashboard"
             element={
-              <ProtectedPage roles={["seller", "admin"]}>
-                <Dashboard />
+              <ProtectedPage >
+                <Navigate to="/my-products" replace />
               </ProtectedPage>
             }
           />
@@ -288,6 +200,11 @@ function App() {
   element={<PaymentCallback />}
 />
 
+          <Route path="/complete-profile" element={<ProtectedPage><CompleteProfile /></ProtectedPage>} />
+          <Route path="/selling-settings" element={<ProtectedPage><SellingSettings /></ProtectedPage>} />
+          <Route path="/my-products" element={<ProtectedPage><Create /></ProtectedPage>} />
+          <Route path="/earnings" element={<ProtectedPage><Earnings /></ProtectedPage>} />
+          <Route path="/opportunities" element={<ProtectedPage><Opportunities /></ProtectedPage>} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -304,15 +221,15 @@ function App() {
             path="/seller/onboarding"
             element={
               <ProtectedPage>
-                <SellerOnboarding />
+                <SellingSettings />
               </ProtectedPage>
             }
           />
           <Route
             path="/seller/subscription"
             element={
-              <ProtectedPage roles={["seller", "admin"]}>
-                <SellerSubscription />
+              <ProtectedPage >
+                <SellingSettings />
               </ProtectedPage>
             }
           />

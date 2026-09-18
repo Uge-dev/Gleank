@@ -17,6 +17,7 @@ export type AvailabilityStatus =
   | "substitute_available";
 
 export type AuthUser = {
+  profile?: import("../services/commerce.service").AccountProfile | null;
   id: string;
   name: string;
   email: string;

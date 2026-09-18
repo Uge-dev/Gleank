@@ -1,3 +1,4 @@
+import { applyTransfer } from './settlement.service.js';
 import crypto from "node:crypto";
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
@@ -339,7 +340,7 @@ function findRecentPendingSellerSubscriptionPayment(userId) {
 }
 
 function createLocalAuthorizationUrl(paymentReference) {
-  return `${env.frontendUrl}/payments/local/${encodeURIComponent(paymentReference)}`;
+  return `${env.frontendUrl}/payment/callback?reference=${encodeURIComponent(paymentReference)}`;
 }
 
 function requirePaystackConfig() {
@@ -684,7 +685,7 @@ function markStoreOrderPaid(row) {
   );
   clearPurchasedCartLines(row);
   ensurePayoutForStoreOrder(order.id);
-  syncOrderReadinessForDispatch(order.id);
+
 }
 
 function markUsedOrderPaid(row) {
@@ -944,6 +945,7 @@ async function verifyPaymentRow(row) {
 }
 
 export async function initializePayment(userId, input) {
+  if(input?.purpose === "used_order") throw new HttpError(410, "Used Market is no longer available.");
   const user = findUser(userId);
   const purpose = clean(input?.purpose, 80);
   const targetId = clean(input?.targetId || input?.orderId || input?.usedOrderId, 160);
@@ -1057,6 +1059,7 @@ export async function initializePayment(userId, input) {
 }
 
 export async function initializePayAtDeliveryPayment(userId, orderId) {
+  throw new HttpError(410, "Payment on delivery has been removed. Pay at checkout.");
   const order = db
     .prepare("SELECT * FROM orders WHERE id = ? AND buyer_id = ?")
     .get(clean(orderId, 160), userId);
@@ -1127,6 +1130,7 @@ export async function handlePaystackWebhook({ rawBody, body, signature }) {
   }
 
   const eventType = String(payload?.event || "");
+  if(eventType.startsWith("transfer.")) return applyTransfer(payload.data);
   const data = payload?.data || {};
   const paymentReference = clean(data.reference || payload?.reference || "", 200);
   const row = paymentReference ? findPaymentByReference(paymentReference) : null;
