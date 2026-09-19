@@ -231,7 +231,7 @@ function serializeOrder(row, items = [], events = []) {
     totalKobo: row.total_kobo,
     total: toNaira(row.total_kobo),
     buyerName: row.buyer_name || "",
-    buyerPhone: "",
+    buyerPhone: row.payment_status === "paid" ? row.buyer_phone || "" : "",
     campus: row.campus || "",
     deliveryOption: row.delivery_option,
     deliveryAddress: row.delivery_address || "",
@@ -245,10 +245,7 @@ function serializeOrder(row, items = [], events = []) {
     pickupPointLat: row.pickup_point_lat == null ? null : Number(row.pickup_point_lat),
     pickupPointLng: row.pickup_point_lng == null ? null : Number(row.pickup_point_lng),
     note: row.note || "",
-    verificationCode:
-      row.payment_status === "paid" && row.viewer_id === row.buyer_id
-        ? row.verification_code || ""
-        : "",
+    verificationCode: "",
     packageTagCode: row.package_tag_code || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -514,6 +511,9 @@ export function getPendingBuyerOrderCount(userId) {
 }
 
 export function createOrders(userId, input) {
+  if (!db.prepare("SELECT user_id FROM account_profiles WHERE user_id=?").get(userId)) throw new HttpError(422, "Complete your profile before checkout.");
+  if (input?.paymentMethod && input.paymentMethod !== 'pay_now') throw new HttpError(422, 'All orders must be paid at checkout.');
+
   const items = Array.isArray(input?.items) ? input.items : [];
 
 
@@ -525,9 +525,8 @@ export function createOrders(userId, input) {
   const buyerPhone = String(input?.buyerPhone || "").trim().slice(0, 40);
   const campus = String(input?.deliveryArea || input?.campus || "Nigeria").trim().slice(0, 120);
   const deliveryOption =
-    input?.deliveryOption === "Delivery" ? "Delivery" : "Pickup";
-  const paymentMethod =
-    input?.paymentMethod === "pay_on_delivery" ? "pay_on_delivery" : "pay_now";
+    "Delivery";
+  const paymentMethod = "pay_now";
   const deliveryAddress = String(input?.deliveryAddress || "").trim().slice(0, 240);
   const deliveryDetails = String(input?.deliveryDetails || "").trim().slice(0, 300);
   const deliveryLandmark = String(input?.deliveryLandmark || "").trim().slice(0, 240);
@@ -641,54 +640,6 @@ export function createOrders(userId, input) {
       grouped.set(product.store_id, group);
     }
 
-    const allProducts = Array.from(grouped.values()).flatMap((group) => group.products);
-    const totalKoboForEligibility = allProducts.reduce(
-      (total, item) => total + item.lineTotalKobo,
-      0,
-    );
-
-    if (paymentMethod === "pay_on_delivery") {
-      if (totalKoboForEligibility >= FLEXIBLE_CHECKOUT_MAX_ORDER_KOBO) {
-        throw new HttpError(
-          422,
-          "Payment on Delivery is available only when the order subtotal is below ₦100,000. Choose Pay Now for this order.",
-        );
-      }
-
-      const eligibility = evaluatePayAtDeliveryEligibility(userId, {
-        products: allProducts,
-        totalKobo: totalKoboForEligibility,
-      });
-
-      if (!eligibility.eligible) {
-        throw new HttpError(
-          422,
-          eligibility.reason ||
-            "Pay at Delivery is not available for this order. Please use Pay Now.",
-        );
-      }
-    }
-
-    if (
-      deliveryOption === "Delivery" &&
-      (!deliveryDetails || !deliveryLandmark || !deliveryBusStop)
-    ) {
-      throw new HttpError(
-        422,
-        "Enter the exact delivery details, a nearby landmark, and the nearest bus stop.",
-      );
-    }
-
-    if (
-      deliveryOption === "Delivery" &&
-      (requestedDeliveryLat === null || requestedDeliveryLng === null)
-    ) {
-      throw new HttpError(
-        422,
-        "Select a suggested Nigerian delivery location so the rider receives an exact map pin.",
-      );
-    }
-
     const now = new Date().toISOString();
     const output = [];
 
@@ -716,42 +667,17 @@ export function createOrders(userId, input) {
         (total, item) => total + item.lineTotalKobo,
         0,
       );
-      const deliveryFeeKobo = calculateDeliveryFeeKobo({
-        campus,
-        deliveryOption,
-        origin: group.storeName || "Campus Market",
-        destination: deliveryOption === "Delivery" ? deliveryAddress : pickupLocation,
-        deliveryAddress,
-        pickupLocation,
-        originLat: pickupLat,
-        originLng: pickupLng,
-        destinationLat: deliveryOption === "Delivery" ? deliveryLat : requestedPickupPointLat,
-        destinationLng: deliveryOption === "Delivery" ? deliveryLng : requestedPickupPointLng,
-      });
+      const fulfillment = db.prepare('SELECT * FROM seller_fulfillment_settings WHERE user_id=?').get(group.sellerId);
+      if (!fulfillment) throw new HttpError(422, `${group.storeName} must configure delivery before accepting orders.`);
+      const deliveryFeeKobo = fulfillment.delivery_fee_kobo;
       const totalKobo = subtotalKobo + deliveryFeeKobo;
       const orderId = createId("ord");
       const orderCode = generateOrderCode();
-      const sellerConfirmationRequired = group.products.some(
-        (item) =>
-          item.product.seller_confirmation_required ||
-          item.product.availability_status === "confirm_before_payment",
-      );
+      const sellerConfirmationRequired = false;
       const initialStatus = "pending_payment";
-      const stage4Status = sellerConfirmationRequired
-        ? "pending_seller_confirmation"
-        : paymentMethod === "pay_on_delivery"
-          ? "seller_confirmation_pending"
-          : "awaiting_payment";
-      const stage4PaymentStatus =
-        paymentMethod === "pay_on_delivery"
-          ? "pay_at_delivery_pending"
-          : "awaiting_payment";
-      const initialNote =
-        paymentMethod === "pay_on_delivery"
-          ? "Buyer selected Pay at Delivery. Payment must still be completed through Gleenc/Paystack before the delivery code unlocks."
-          : sellerConfirmationRequired
-            ? "You can pay now. The seller must still confirm availability before fulfilment starts."
-            : "Your order has been created and is waiting for payment.";
+      const stage4Status = "awaiting_payment";
+      const stage4PaymentStatus = "awaiting_payment";
+      const initialNote = "Your order has been created and is waiting for payment.";
 
       for (const item of group.products) {
         reserveProductStock(item.product, item.quantity, now);
@@ -814,6 +740,10 @@ export function createOrders(userId, input) {
         now,
       );
 
+      const sellerProceeds = group.products.reduce((sum,item)=>sum + Number(item.product.seller_price_kobo ?? item.product.price_kobo) * item.quantity, 0) + deliveryFeeKobo;
+      db.prepare('INSERT INTO order_financial_terms(order_id,platform_fee_kobo,seller_amount_kobo,created_at) VALUES(?,?,?,?)')
+        .run(orderId,totalKobo-sellerProceeds,sellerProceeds,now);
+
       for (const item of group.products) {
         db.prepare(`
           INSERT INTO order_items (
@@ -852,16 +782,8 @@ export function createOrders(userId, input) {
       createNotification({
         userId: group.sellerId,
         type: "order",
-        title:
-          paymentMethod === "pay_on_delivery"
-            ? "New Pay at Delivery order"
-            : "New order received",
-        body:
-          paymentMethod === "pay_on_delivery"
-            ? `${buyerName} placed a Pay at Delivery order for ${firstProductName}. Confirm availability before rider pickup.`
-            : sellerConfirmationRequired
-              ? `${buyerName} placed an order for ${firstProductName}. The buyer can pay now; confirm availability before fulfilment starts.`
-            : `${buyerName} placed an order for ${firstProductName}.`,
+        title: "New order received",
+        body: `${buyerName} placed an order for ${firstProductName}. Prepare shipment after payment is confirmed.`,
         actionLabel: "View order",
         actionPath: `/orders/${orderId}`,
         imageUrl: firstImage(group.products[0]?.product?.image_urls),
@@ -870,16 +792,8 @@ export function createOrders(userId, input) {
       createNotification({
         userId,
         type: "order",
-        title:
-          paymentMethod === "pay_on_delivery"
-            ? "Pay at Delivery order created"
-            : "Order created",
-        body:
-          paymentMethod === "pay_on_delivery"
-            ? `Your order ${orderCode} was sent to the seller. You will still pay securely through Gleenc/Paystack before the delivery code unlocks.`
-            : sellerConfirmationRequired
-              ? `Your order ${orderCode} is ready for payment. The seller will confirm availability before fulfilment starts.`
-            : `Your order ${orderCode} is waiting for payment.`,
+        title: "Order created",
+        body: `Your order ${orderCode} is waiting for payment.`,
         actionLabel: "Continue order",
         actionPath: `/orders/${orderId}`,
         imageUrl: firstImage(group.products[0]?.product?.image_urls),
@@ -892,17 +806,6 @@ export function createOrders(userId, input) {
   });
 
   const createdOrderIds = createdOrders.map((order) => order.id);
-
-  try {
-    transaction(() => {
-      createParentOrderForOrders({
-        buyerId: userId,
-        orderIds: createdOrderIds,
-      });
-    });
-  } catch (error) {
-    console.error("Order logistics grouping failed after checkout order creation:", error);
-  }
 
   return createdOrderIds
     .map((orderId) => getOrderRowByIdForUser(userId, orderId))
@@ -997,7 +900,7 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
   if (row.seller_confirmed_at) {
     return transaction(() => {
       ensureOrderDeliverySetup(row.id);
-      syncOrderReadinessForDispatch(row.id);
+
       return getOrder(user.user_id, row.id);
     });
   }
@@ -1067,7 +970,7 @@ export function sellerConfirmOrder(user, orderId, input = {}) {
       actionPath: `/orders/${row.id}`,
     });
 
-    syncOrderReadinessForDispatch(row.id);
+
 
     return getOrder(user.user_id, row.id);
   });
@@ -1221,6 +1124,8 @@ export function getOrderPaymentState(userId, orderId) {
 }
 
 export function updateOrderStatus(user, orderId, status, note = "") {
+  if (status !== 'disputed') throw new HttpError(409, 'Use package dispatch and buyer delivery confirmation.');
+
   if (!ORDER_STATUSES.has(status)) {
     throw new HttpError(422, "Invalid order status.");
   }
@@ -1359,7 +1264,7 @@ export function markOrderPaidLocally(userId, orderId, paymentReference = "") {
       actionPath: `/orders/${row.id}`,
     });
 
-    syncOrderReadinessForDispatch(row.id);
+
 
     return getOrder(userId, row.id);
   });

@@ -41,10 +41,14 @@ import { buyerRouter } from "./routes/buyer.routes.js";
 import { webhookRouter } from "./routes/webhook.routes.js";
 import { verificationRouter } from "./routes/verification.routes.js";
 
+import { runCommerceMigrations } from './db/commerce-migrations.js';
+import { commerceRouter } from './routes/commerce.routes.js';
+
 export const app = express();
 
 cleanExpiredSessions();
 runStage3Migrations();
+runCommerceMigrations();
 
 function normalizeCorsOrigin(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -118,7 +122,7 @@ app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "gleank-api",
-    riderPresenceModel: "session-heartbeat-v3",
+    fulfillmentModel: "seller-managed-buyer-confirmed-v1",
     release:
       process.env.RENDER_GIT_COMMIT ||
       process.env.GIT_COMMIT_SHA ||
@@ -127,8 +131,9 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api/commerce", commerceRouter);
 app.use("/api/auth", authRouter);
-app.use("/api", logisticsRouter);
+
 app.use("/api/products", productRouter);
 app.use("/api/orders", orderRouter);
 app.use("/api/delivery", deliveryRouter);
@@ -136,10 +141,10 @@ app.use("/api/saved", savedRouter);
 app.use("/api/users", userRouter);
 app.use("/api/buyer", buyerRouter);
 app.use("/api/stores", storeRouter);
-app.use("/api/market", marketRouter);
+
 app.use("/api/seller", sellerRouter);
-app.use("/api/used-market", usedMarketRouter);
-app.use("/api/used-orders", usedOrderRouter);
+
+
 app.use("/api/messages", messageRouter);
 app.use("/api/trust", trustRouter);
 app.use("/api/kyc", kycRouter);
@@ -155,6 +160,6 @@ app.use("/api/notifications", notificationRouter);
 app.use("/api/diagnostics", diagnosticsRouter);
 app.use("/api/admin", adminRoutes);
 
-app.use("/api/rider", riderRouter);
+
 app.use(notFoundHandler);
 app.use(errorHandler);

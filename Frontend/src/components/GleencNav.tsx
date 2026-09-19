@@ -5,8 +5,6 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   IoHome,
   IoHomeOutline,
-  IoSearch,
-  IoSearchOutline,
   IoBagHandle,
   IoBagHandleOutline,
   IoAddCircle,
@@ -23,8 +21,6 @@ import {
   IoReceipt,
   IoReceiptOutline,
   IoLogOutOutline,
-  IoStorefront,
-  IoStorefrontOutline,
 } from "react-icons/io5";
 
 import AuthModal from "./AuthModal";
@@ -167,18 +163,9 @@ function GleencNav() {
       showOnMobile: true,
     },
     {
-      label: "Search",
-      mobileLabel: "Search",
+      label: "Explore",
+      mobileLabel: "Explore",
       path: "/search",
-      icon: <IoSearchOutline />,
-      activeIcon: <IoSearch />,
-      showOnDesktop: true,
-      showOnMobile: false,
-    },
-    {
-      label: "Market",
-      mobileLabel: "Market",
-      path: "/market",
       icon: <IoBagHandleOutline />,
       activeIcon: <IoBagHandle />,
       showOnDesktop: true,
@@ -192,7 +179,6 @@ function GleencNav() {
       activeIcon: <IoNotifications />,
       showOnDesktop: true,
       showOnMobile: true,
-      buyerOnly: true,
     },
     {
       label: "Messages",
@@ -211,17 +197,6 @@ function GleencNav() {
       activeIcon: <IoAddCircle />,
       showOnDesktop: true,
       showOnMobile: false,
-      sellerOnly: true,
-    },
-    {
-      label: "Store",
-      mobileLabel: "Store",
-      path: "/dashboard",
-      icon: <IoStorefrontOutline />,
-      activeIcon: <IoStorefront />,
-      showOnDesktop: true,
-      showOnMobile: true,
-      sellerOnly: true,
     },
     {
       label: "Orders",
@@ -231,17 +206,6 @@ function GleencNav() {
       activeIcon: <IoReceipt />,
       showOnDesktop: true,
       showOnMobile: true,
-      sellerOnly: true,
-    },
-    {
-      label: "Your Orders",
-      mobileLabel: "Your Orders",
-      path: "/purchases",
-      icon: <IoBagHandleOutline />,
-      activeIcon: <IoBagHandle />,
-      showOnDesktop: true,
-      showOnMobile: false,
-      sellerOnly: true,
     },
     {
       label: "Cart",
@@ -290,9 +254,7 @@ function GleencNav() {
     return 0;
   }
 
-  const mobileNavLabels = isSellerExperience
-    ? ["For You", "Market", "Store", "Orders", "Your Orders", "Profile"]
-    : ["For You", "Market", "Cart", "Notifications", "Profile"];
+  const mobileNavLabels = ["For You", "Explore", "Create", "Messages", "Profile"];
   const mobileNavItems = mobileNavLabels
     .map((label) => navItems.find((item) => item.label === label))
     .filter((item): item is NavItem => {
@@ -430,11 +392,7 @@ function GleencNav() {
                 <div>
                   <strong>{user?.name || "Gleenc User"}</strong>
                   <small>
-                    {user?.role === "seller"
-                      ? "Seller"
-                      : user?.role === "rider"
-                        ? "Rider"
-                        : "Buyer"}
+                    Gleenc member
                   </small>
                 </div>
               </NavLink>
@@ -471,13 +429,7 @@ function GleencNav() {
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onLoginSuccess={(loggedInUser) => {
-          navigate(
-            loggedInUser.role === "seller"
-              ? "/dashboard"
-              : loggedInUser.role === "rider"
-                ? "/rider"
-                : "/profile",
-          );
+          navigate(loggedInUser.profile ? "/" : "/complete-profile");
         }}
       />
 

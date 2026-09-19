@@ -40,34 +40,16 @@ function ProtectedPage({ children, roles }: ProtectedPageProps) {
   }
 
   if (isAuthenticated && !roleAllowed) {
-    if (user?.role === "rider") {
-      return (
-        <section className="protected-popup-page">
-          <div className="protected-popup-card role-blocked-card">
-            <FiShield />
-            <span>Rider account</span>
-            <h1>Open your rider dashboard</h1>
-            <p>
-              This account is registered for deliveries, so rider tools stay
-              separate from buyer and seller pages.
-            </p>
-            <Link to="/rider">Go to rider dashboard</Link>
-          </div>
-        </section>
-      );
-    }
-
     return (
       <section className="protected-popup-page">
         <div className="protected-popup-card role-blocked-card">
           <FiShield />
-          <span>Seller access</span>
-          <h1>This workspace requires a seller account</h1>
+          <span>Account access</span>
+          <h1>Complete your account setup</h1>
           <p>
-            Your buyer account is active, but product, service, store, and
-            inventory tools need a completed seller profile first.
+            Use your shared profile to set up product and fulfillment details.
           </p>
-          <Link to="/seller/onboarding">Set up seller profile</Link>
+          <Link to="/selling-settings">Selling settings</Link>
         </div>
       </section>
     );

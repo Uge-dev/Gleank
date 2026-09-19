@@ -124,27 +124,7 @@ function feedEngagementScore(product: FeedProduct) {
 }
 
 function productSource(store?: SearchResults["stores"][number]) {
-  if (!store) return { sourceTag: "Marketplace", sourceDetail: "" };
-
-  if (store.sellerType === "local_market") {
-    return {
-      sourceTag: "Local Market",
-      sourceDetail:
-        store.marketName ||
-        store.pickupLocation ||
-        store.locationArea ||
-        store.campus,
-    };
-  }
-
-  if (store.sellerType === "used_market") {
-    return { sourceTag: "Used Market", sourceDetail: "" };
-  }
-
-  return {
-    sourceTag: "Marketplace",
-    sourceDetail: "",
-  };
+  return { sourceTag: "Product owner", sourceDetail: store?.name || "" };
 }
 
 function Home() {
@@ -439,7 +419,7 @@ async function shareProduct(productId: string, productName: string) {
       query: "Fashion",
     },
     {
-      title: "Verified used phones",
+      title: "Verified electronics",
       subtitle: "Affordable gadgets",
       icon: <FiSmartphone />,
       tone: "blue",

@@ -267,36 +267,7 @@ storeRouter.get("/", (req, res) => {
       storeCampus: row.store_campus || "",
     }));
 
-  const usedListings = db
-    .prepare(`
-      SELECT used_listings.*, users.name AS seller_name,
-             users.phone AS seller_phone, users.role AS seller_role,
-             stores.slug AS seller_store_slug,
-             stores.name AS seller_store_name
-      FROM used_listings
-      JOIN users ON users.id = used_listings.seller_id
-      LEFT JOIN stores ON stores.owner_id = used_listings.seller_id
-      WHERE used_listings.status = 'active'
-        AND (
-          ? = ''
-          OR used_listings.name LIKE ? ESCAPE '\\'
-          OR used_listings.description LIKE ? ESCAPE '\\'
-          OR used_listings.category LIKE ? ESCAPE '\\'
-          OR used_listings.condition LIKE ? ESCAPE '\\'
-          OR used_listings.campus LIKE ? ESCAPE '\\'
-          OR users.name LIKE ? ESCAPE '\\'
-        )
-      ORDER BY
-        CASE WHEN ? != '' AND LOWER(used_listings.campus) = LOWER(?) THEN 0 ELSE 1 END,
-        used_listings.updated_at DESC
-      LIMIT 50
-    `)
-    .all(query, pattern, pattern, pattern, pattern, pattern, pattern, campusPriority, campusPriority)
-    .map((row) => ({
-      ...serializeUsedListing(row),
-      interaction: usedListingInteraction(row.id, req.auth),
-    }));
-
+  const usedListings = [];
   res.json({ stores, products, services, usedListings });
 });
 
