@@ -79,11 +79,12 @@ export function friendlyApiErrorMessage(error: unknown) {
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
+  timeoutMs: number = API_TIMEOUT_MS,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   const isFormData = init.body instanceof FormData;
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   if (init.body && !isFormData && !headers.has("content-type")) {
     headers.set("content-type", "application/json");

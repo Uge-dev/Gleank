@@ -43,6 +43,8 @@ import { verificationRouter } from "./routes/verification.routes.js";
 
 import { runCommerceMigrations } from './db/commerce-migrations.js';
 import { commerceRouter } from './routes/commerce.routes.js';
+import { socialRouter } from './routes/social.routes.js';
+import { earningRouter } from './routes/earning.routes.js';
 
 export const app = express();
 
@@ -132,6 +134,8 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/commerce", commerceRouter);
+app.use("/api/social", socialRouter);
+app.use("/api/earning", earningRouter);
 app.use("/api/auth", authRouter);
 
 app.use("/api/products", productRouter);

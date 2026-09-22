@@ -1,0 +1,11 @@
+import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { requireAuth, requireEmailVerified } from '../middleware/auth.js';
+import { opportunities, getOffer, saveOffer, createEarningLink, earningsFor } from '../services/earning.service.js';
+export const earningRouter = Router();
+earningRouter.get('/opportunities', (_req, res) => res.json({ products: opportunities() }));
+earningRouter.get('/offers/:id', (req, res) => res.json({ offer: getOffer(req.params.id, req.auth?.user_id) }));
+earningRouter.use(requireAuth, requireEmailVerified);
+earningRouter.get('/earnings', (req, res) => res.json({ earnings: earningsFor(req.auth.user_id) }));
+earningRouter.put('/offers/:id', (req, res) => res.json({ offer: saveOffer(req.auth.user_id, req.params.id, req.body) }));
+earningRouter.post('/offers/:id/share', rateLimit({ windowMs: 60 * 60 * 1000, limit: 30 }), (req, res) => res.status(201).json(createEarningLink(req.auth.user_id, req.params.id, req.body)));

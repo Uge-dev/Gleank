@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import EarningActions from '../components/EarningActions';
+import {rememberAuthReturn} from '../utils/authReturn';
 import {
   FiArrowLeft,
   FiBookmark,
@@ -55,6 +57,8 @@ function formatPrice(price: number) {
 
 function ProductDetails() {
   const { id = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  useEffect(()=>{if(searchParams.get('ref')) rememberAuthReturn();},[searchParams]);
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const { addToCart } = useCart();
@@ -202,6 +206,7 @@ function ProductDetails() {
     }
     addToCart({
       id: product.id,
+      referralId: searchParams.get('ref') || undefined,
       name: product.name,
       price: formatPrice(product.price),
       numericPrice: product.price,
@@ -358,6 +363,8 @@ function ProductDetails() {
             </div>
 
             <h1>{product.name}</h1>
+            {searchParams.get('ref') && <p>You are shopping through an earning link. The sharer may earn after confirmed delivery, at no extra charge. <Link to={'/products/'+product.id}>Shop without this link</Link></p>}
+            <EarningActions productId={product.id}/>
             <p className="product-category-line">
               {product.category} •{" "}
               {inStock ? `${product.stock} In stock` : "Out of stock"}

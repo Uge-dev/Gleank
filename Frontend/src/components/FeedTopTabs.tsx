@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { FiBell, FiSearch, FiShoppingCart } from "react-icons/fi";
+import './SocialCommerce.css';
+import { FiBell, FiSearch, FiShoppingCart, FiVideo, FiPlus } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 
-type FeedTopTab = "hot" | "vendors" | "following";
+type FeedTopTab = "latest" | "hot" | "vendors" | "following";
 
 type FeedTopTabsProps = {
   activeTab: FeedTopTab;
@@ -22,11 +23,12 @@ function FeedTopTabs({
 
   return (
     <div className="for-you-fixed-tabs">
+      <button className={activeTab === 'latest' ? 'active' : ''} onClick={() => onTabChange('latest')}>Latest</button>
       <button
         className={activeTab === "hot" ? "active" : ""}
         onClick={() => onTabChange("hot")}
       >
-        Hot Product
+        Trending
       </button>
 
       <button
@@ -47,6 +49,8 @@ function FeedTopTabs({
       </button>
 
       <div className="for-you-top-icons">
+        <Link to="/reels" className="for-you-search-link" aria-label="Watch videos"><FiVideo /></Link>
+        <Link to="/create" className="for-you-search-link" aria-label="Create a post or earning share"><FiPlus /></Link>
         <Link
           to="/notifications"
           className="for-you-notification-link"

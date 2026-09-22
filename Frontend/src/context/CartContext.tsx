@@ -22,6 +22,7 @@ export type CartItem = {
   category?: string;
   availableSizes?: string[];
   selectedSize?: string;
+  referralId?: string;
   deliveryReadinessLabel?: string;
   stock?: number;
   quantity: number;
@@ -99,6 +100,7 @@ function parseCart(value: string | null): CartItem[] {
           ? item.availableSizes.map((size: unknown) => String(size || "")).filter(Boolean)
           : undefined,
         selectedSize: item.selectedSize ? String(item.selectedSize) : undefined,
+        referralId: item.referralId ? String(item.referralId) : undefined,
         deliveryReadinessLabel: item.deliveryReadinessLabel
           ? String(item.deliveryReadinessLabel)
           : undefined,
@@ -236,6 +238,7 @@ export function CartProvider({ children }: CartProviderProps) {
 
           return {
             ...cartItem,
+            referralId: item.referralId,
             stock: incomingStock ?? cartItem.stock,
             deliveryReadinessLabel:
               item.deliveryReadinessLabel || cartItem.deliveryReadinessLabel,

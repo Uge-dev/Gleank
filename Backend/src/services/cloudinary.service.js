@@ -49,12 +49,12 @@ export function uploadCloudinaryBuffer(buffer, options = {}) {
   });
 }
 
-export function destroyCloudinaryAsset(publicId) {
+export function destroyCloudinaryAsset(publicId, resourceType = 'image') {
   if (!isCloudinaryEnabled() || !publicId) return;
 
   configureCloudinary();
 
-  cloudinary.uploader.destroy(publicId).catch((error) => {
+  cloudinary.uploader.destroy(publicId, { resource_type: resourceType }).catch((error) => {
     console.error("Cloudinary delete failed:", error.message);
   });
 }

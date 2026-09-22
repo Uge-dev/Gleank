@@ -1,0 +1,19 @@
+/* Keep discovery and creation controls reachable on small screens. */
+.for-you-fixed-tabs {
+  justify-content: flex-start !important;
+  overflow-x: auto !important;
+  scrollbar-width: thin;
+}
+.for-you-fixed-tabs > button {
+  flex: 0 0 auto !important;
+  white-space: nowrap;
+}
+.commerce-card form label {
+  display: block;
+  margin: 12px 0;
+}
+.commerce-card textarea,
+.commerce-card input[aria-label="Your earning link"] {
+  width: 100%;
+  box-sizing: border-box;
+}

@@ -21,6 +21,7 @@ export default function MyProducts() {
   return (
     <section className="commerce-page">
       <h1>My products</h1>
+      <div className="commerce-actions"><Link className="commerce-action" to="/create-video">Post a video</Link><Link className="commerce-action" to="/opportunities">Dropship or promote</Link></div>
       <p>
         Manage products from your shared Gleenc account. You are responsible for
         stock and delivery.
@@ -174,6 +175,7 @@ export default function MyProducts() {
             {products.map((product) => (
               <article className="commerce-card" key={product.id}>
                 <h2>{product.name}</h2>
+                <Link to={'/earning-terms/'+product.id}>Enable dropshipping & marketing rewards</Link>
                 <p>
                   ₦{product.price.toLocaleString()} · {product.stock} in stock
                 </p>

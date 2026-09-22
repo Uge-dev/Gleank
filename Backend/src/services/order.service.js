@@ -1,4 +1,5 @@
 import { db, transaction } from "../db/database.js";
+import { resolveEarning, recordEarnings } from './earning.service.js';
 import { HttpError } from "../lib/http-error.js";
 import { createId } from "../lib/ids.js";
 import { calculateDeliveryFeeKobo } from "./delivery.service.js";
@@ -571,11 +572,14 @@ export function createOrders(userId, input) {
     }
 
     const key = `${productId}::${selectedSize}`;
+    const referralId=String(item.referralId||'').trim();
     const current = requestedItemMap.get(key) || {
       productId,
       selectedSize,
       quantity: 0,
+      referralId,
     };
+    if(current.referralId!==referralId) throw new HttpError(422,'Use one earning link for each product and size.');
     current.quantity += quantity;
     requestedItemMap.set(key, current);
   }
@@ -632,6 +636,7 @@ export function createOrders(userId, input) {
 
       group.products.push({
         product,
+        earning: resolveEarning(requested.referralId,product.id,userId),
         selectedSize,
         quantity: requested.quantity,
         lineTotalKobo: product.price_kobo * requested.quantity,
@@ -740,9 +745,12 @@ export function createOrders(userId, input) {
         now,
       );
 
-      const sellerProceeds = group.products.reduce((sum,item)=>sum + Number(item.product.seller_price_kobo ?? item.product.price_kobo) * item.quantity, 0) + deliveryFeeKobo;
+      const originalProceeds = group.products.reduce((sum,item)=>sum + Number(item.product.seller_price_kobo ?? item.product.price_kobo) * item.quantity, 0) + deliveryFeeKobo;
+      const earningTotal=group.products.reduce((sum,item)=>sum+(item.earning?.unitAmountKobo||0)*item.quantity,0);
+      const sellerProceeds=originalProceeds-earningTotal;
       db.prepare('INSERT INTO order_financial_terms(order_id,platform_fee_kobo,seller_amount_kobo,created_at) VALUES(?,?,?,?)')
-        .run(orderId,totalKobo-sellerProceeds,sellerProceeds,now);
+        .run(orderId,totalKobo-originalProceeds,sellerProceeds,now);
+      recordEarnings(orderId,group.products);
 
       for (const item of group.products) {
         db.prepare(`

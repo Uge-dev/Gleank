@@ -634,3 +634,121 @@ test("social product likes, shares and views remain available to the same accoun
   assert.ok(r.body.interaction.likeCount >= 1);
   assert.ok(r.body.interaction.shareCount >= 1);
 });
+
+test('video posts allow ordinary verified users, reject disguised files, and protect removal',async()=>{
+  assert.equal((await request(app).post('/api/social/posts')).status,401);
+  const bad=await buyer.post('/api/social/posts').field('caption','A review').attach('video',Buffer.from('<script>alert(1)</script>'),{filename:'bad.mp4',contentType:'video/mp4'});
+  assert.equal(bad.status,415);
+  // Container-header fixture exercises local storage; real codec playback is a staging check.
+  const fixture=Buffer.from('000000186674797069736f6d0000000069736f6d6d703432','hex');
+  const created=await buyer.post('/api/social/posts').field('caption','A real community review').field('productId',productId).attach('video',fixture,{filename:'review.mp4',contentType:'video/mp4'});
+  assert.equal(created.status,201,JSON.stringify(created.body));
+  const posts=await request(app).get('/api/social/posts?userId='+buyerId);
+  assert.equal(posts.status,200);
+  assert.equal(posts.body.posts[0].caption,'A real community review');
+  assert.equal((await stranger.delete('/api/social/posts/'+created.body.id)).status,403);
+  assert.equal((await buyer.delete('/api/social/posts/'+created.body.id)).status,200);
+  assert.equal((await request(app).get('/api/social/posts?userId='+buyerId)).body.posts.length,0);
+});
+
+let earningLink, attributedOrderId, earningId;
+test('owner-approved offers generate idempotent reshares without separate seller registration',async()=>{
+  assert.equal((await buyer.put('/api/earning/offers/'+productId).send({dropshipMargin:1000,commissionPercent:10})).status,403);
+  assert.equal((await seller.put('/api/earning/offers/'+productId).send({dropshipMargin:10000,commissionPercent:10})).status,422);
+  const offer=await seller.put('/api/earning/offers/'+productId).send({dropshipMargin:1000,commissionPercent:10});
+  assert.equal(offer.status,200,JSON.stringify(offer.body));
+  const share=await stranger.post('/api/earning/offers/'+productId+'/share').send({mode:'marketing',acceptTerms:true,caption:'Recommended headset'});
+  assert.equal(share.status,201,JSON.stringify(share.body));
+  earningLink=share.body.id;
+  const repeat=await stranger.post('/api/earning/offers/'+productId+'/share').send({mode:'marketing',acceptTerms:true});
+  assert.equal(repeat.body.id,earningLink);
+  const posts=(await request(app).get('/api/social/posts')).body.posts;
+  assert.equal(posts.filter(p=>p.referralId===earningLink).length,1);
+  assert.equal((await seller.post('/api/earning/offers/'+productId+'/share').send({mode:'marketing',acceptTerms:true})).status,422);
+});
+
+test('checkout snapshots commission and conserves buyer total across all participants',async()=>{
+  const body=orderBody();body.items=[{productId,quantity:2,referralId:earningLink,commission:999999}];
+  assert.equal((await stranger.post('/api/orders').send(body)).status,422);
+  assert.equal((await buyer.post('/api/orders').send({...body,items:[{productId:secondProductId,quantity:1,referralId:earningLink}]})).status,422);
+  const r=await buyer.post('/api/orders').send(body);
+  assert.equal(r.status,201,JSON.stringify(r.body));attributedOrderId=r.body.orders[0].id;
+  const earning=db.prepare('SELECT * FROM earning_payouts WHERE order_id=?').get(attributedOrderId);earningId=earning.id;
+  assert.equal(earning.seller_amount_kobo,200000);
+  const terms=db.prepare('SELECT * FROM order_financial_terms WHERE order_id=?').get(attributedOrderId);
+  const order=db.prepare('SELECT * FROM orders WHERE id=?').get(attributedOrderId);
+  assert.equal(terms.platform_fee_kobo+terms.seller_amount_kobo+earning.seller_amount_kobo,order.total_kobo);
+  const {settleEarning}=await import('../src/services/settlement.service.js');
+  await assert.rejects(()=>settleEarning(earningId),/Buyer-confirmed paid delivery/);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM earning_transfers').get().n,0);
+});
+
+test('changing owner terms invalidates old links but never rewrites placed-order earnings',async()=>{
+  await seller.put('/api/earning/offers/'+productId).send({dropshipMargin:500,commissionPercent:5});
+  assert.equal((await buyer.post('/api/orders').send({...orderBody(),items:[{productId,quantity:1,referralId:earningLink}]})).status,409);
+  assert.equal(db.prepare('SELECT seller_amount_kobo FROM earning_payouts WHERE id=?').get(earningId).seller_amount_kobo,200000);
+  const drop=await stranger.post('/api/earning/offers/'+productId+'/share').send({mode:'dropshipping',acceptTerms:true});
+  assert.equal(drop.status,201);
+  const {resolveEarning}=await import('../src/services/earning.service.js');
+  assert.equal(resolveEarning(drop.body.id,productId,buyerId).unitAmountKobo,50000);
+  assert.equal((await buyer.get('/api/earning/earnings')).body.earnings.length,0);
+  assert.equal((await stranger.get('/api/earning/earnings')).body.earnings[0].amountKobo,200000);
+});
+
+test('earning transfer webhooks validate amount and recipient and handle duplicates and reversal',async()=>{
+  db.prepare("INSERT INTO earning_transfers(payout_id,reference,recipient_code,status,updated_at) VALUES(?,?,?,'pending',?)").run(earningId,'earning-test-ref','RCP_earner',new Date().toISOString());
+  const data={reference:'earning-test-ref',amount:200000,currency:'NGN',recipient:{recipient_code:'RCP_earner'},status:'success',transfer_code:'TRF_earning'};
+  assert.throws(()=>applyTransfer({...data,amount:1}),/do not match/);
+  assert.throws(()=>applyTransfer({...data,recipient:{recipient_code:'wrong'}}),/do not match/);
+  applyTransfer(data);applyTransfer(data);applyTransfer({...data,status:'pending'});
+  assert.equal(db.prepare('SELECT status FROM earning_payouts WHERE id=?').get(earningId).status,'released');
+  applyTransfer({...data,status:'reversed'});applyTransfer(data);
+  assert.equal(db.prepare('SELECT status FROM earning_payouts WHERE id=?').get(earningId).status,'blocked');
+});
+
+test('latest catalog ignores engagement ranking and sorts by upload timestamp',async()=>{
+  db.prepare('UPDATE products SET created_at=? WHERE id=?').run('2026-01-01T00:00:00.000Z',productId);
+  db.prepare('UPDATE products SET created_at=? WHERE id=?').run('2026-02-01T00:00:00.000Z',secondProductId);
+  const r=await request(app).get('/api/stores?sort=latest');
+  assert.equal(r.status,200,JSON.stringify(r.body));
+  assert.equal(r.body.products[0].id,secondProductId);
+});
+
+test('earning settlement waits for delivery, respects admin holds, and reconciles the same transfer reference',async()=>{
+  const share=await stranger.post('/api/earning/offers/'+productId+'/share').send({mode:'dropshipping',acceptTerms:true});
+  const created=await buyer.post('/api/orders').send({...orderBody(),items:[{productId,quantity:1,referralId:share.body.id}]});
+  assert.equal(created.status,201,JSON.stringify(created.body));
+  const id=created.body.orders[0].id;
+  const e=db.prepare('SELECT * FROM earning_payouts WHERE order_id=?').get(id);
+  const payment=await buyer.post('/api/payments/initialize').send({purpose:'store_order',targetId:id});
+  assert.equal((await buyer.post('/api/payments/verify').send({reference:payment.body.payment.reference})).status,200);
+  const {settleEarning}=await import('../src/services/settlement.service.js');
+  await assert.rejects(()=>settleEarning(e.id),/Buyer-confirmed paid delivery/);
+  const labels=await seller.post(`/api/commerce/orders/${id}/packages`);
+  for(const p of labels.body.packages){
+    assert.equal((await seller.post(`/api/commerce/orders/${id}/packages/${p.id}/dispatch`).field('method','personal').field('expectedArrival','2026-10-01')).status,200);
+    assert.equal((await buyer.post(`/api/commerce/orders/${id}/packages/${p.id}/confirm`).send({code:p.code,confirmReceived:true})).status,200);
+  }
+  db.prepare('INSERT INTO commerce_payout_recipients(user_id,recipient_code,account_name,bank_code,account_last4,updated_at) VALUES(?,?,?,?,?,?)').run(e.seller_id,'RCP_EARNING_TEST','Test Earner','001','5678',new Date().toISOString());
+  db.prepare("UPDATE payouts SET status='blocked' WHERE order_id=?").run(id);
+  await settleEarning(e.id);
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM earning_transfers WHERE payout_id=?').get(e.id).n,0);
+  db.prepare("UPDATE payouts SET status='eligible' WHERE order_id=?").run(id);
+  const previousFetch=globalThis.fetch,previousProvider=env.paymentProvider;
+  let posts=0,reference='';env.paymentProvider='paystack';
+  globalThis.fetch=async(url,options)=>{
+    if(String(url).endsWith('/transfer')){
+      posts++;const body=JSON.parse(options.body);reference=body.reference;assert.equal(body.amount,50000);assert.equal(body.recipient,'RCP_EARNING_TEST');
+      return {ok:true,json:async()=>({status:true,data:{status:'pending',transfer_code:'TRF_EARNING_TEST'}})};
+    }
+    assert.ok(String(url).endsWith('/transfer/verify/'+reference));
+    return {ok:true,json:async()=>({status:true,data:{status:'success',reference,amount:50000,currency:'NGN',recipient:{recipient_code:'RCP_EARNING_TEST'},transfer_code:'TRF_EARNING_TEST'}})};
+  };
+  try{
+    await settleEarning(e.id);
+    assert.equal(db.prepare('SELECT status FROM earning_payouts WHERE id=?').get(e.id).status,'on_hold');
+    await settleEarning(e.id);await settleEarning(e.id);
+    assert.equal(posts,1);
+    assert.equal(db.prepare('SELECT status FROM earning_payouts WHERE id=?').get(e.id).status,'released');
+  }finally{globalThis.fetch=previousFetch;env.paymentProvider=previousProvider;}
+});

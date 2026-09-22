@@ -39,6 +39,10 @@ const CompleteProfile=lazy(()=>import('./pages/commerce/CompleteProfile'));
 const SellingSettings=lazy(()=>import('./pages/commerce/SellingSettings'));
 const Earnings=lazy(()=>import('./pages/commerce/Earnings'));
 const Opportunities=lazy(()=>import('./pages/commerce/Opportunities'));
+const VideoStudio=lazy(()=>import('./pages/commerce/VideoStudio'));
+const EarningTerms=lazy(()=>import('./pages/commerce/EarningTerms'));
+const CreateHub=lazy(()=>import('./pages/commerce/CreateHub'));
+const CommunityFeed=lazy(()=>import('./pages/commerce/CommunityFeed'));
 function OnboardingGate(){
  const {user,isLoading}=useAuth(); const location=useLocation();
  if(!isLoading && user && !user.profile && !['/complete-profile','/verify-email','/payment/callback'].includes(location.pathname))
@@ -114,7 +118,7 @@ function App() {
             path="/create"
             element={
               <ProtectedPage >
-                <Create />
+                <CreateHub />
               </ProtectedPage>
             }
           />
@@ -205,6 +209,10 @@ function App() {
           <Route path="/my-products" element={<ProtectedPage><Create /></ProtectedPage>} />
           <Route path="/earnings" element={<ProtectedPage><Earnings /></ProtectedPage>} />
           <Route path="/opportunities" element={<ProtectedPage><Opportunities /></ProtectedPage>} />
+          <Route path="/create-video" element={<ProtectedPage><VideoStudio /></ProtectedPage>} />
+          <Route path="/earning-terms/:id" element={<ProtectedPage><EarningTerms /></ProtectedPage>} />
+          <Route path="/reels" element={<CommunityFeed />} />
+          <Route path="/community/:userId" element={<CommunityFeed />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />

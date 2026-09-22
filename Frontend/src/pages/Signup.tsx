@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import {authReturn} from '../utils/authReturn';
 import { useAuth } from "../context/AuthContext";
 import PasswordStrengthMeter from "../components/PasswordStrengthMeter";
 import "./commerce/Commerce.css";
@@ -30,7 +31,7 @@ export default function Signup() {
               campus: "",
               country: "Nigeria",
             });
-            navigate("/complete-profile", { replace: true });
+            navigate('/complete-profile?next='+encodeURIComponent(authReturn()), { replace: true });
           } catch (err) {
             setError(
               err instanceof Error ? err.message : "Could not create account.",

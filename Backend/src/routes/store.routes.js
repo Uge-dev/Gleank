@@ -224,6 +224,7 @@ storeRouter.get("/", (req, res) => {
           OR stores.name LIKE ? ESCAPE '\\'
         )
       ORDER BY
+        ${req.query.sort === 'latest' ? 'products.created_at DESC, products.id DESC,' : ''}
         CASE WHEN ? != '' AND LOWER(stores.campus) = LOWER(?) THEN 0 ELSE 1 END,
         ${productEngagementOrderSql}
       LIMIT 50

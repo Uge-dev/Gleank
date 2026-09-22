@@ -5,6 +5,7 @@ import "./Commerce.css";
 type Bank = { name: string; code: string };
 export default function Earnings() {
   const [payouts, setPayouts] = useState<SellerPayout[]>([]);
+  const [rewards,setRewards]=useState<{id:string;mode:string;amountKobo:number;status:string;holdReason:string;productName:string;paymentStatus:string;orderStatus:string}[]>([]);
   const [banks, setBanks] = useState<Bank[]>([]);
   const [account, setAccount] = useState<{
     accountName: string;
@@ -14,6 +15,7 @@ export default function Earnings() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   useEffect(() => {
+    apiRequest<{earnings:typeof rewards}>('/earning/earnings').then(r=>setRewards(r.earnings)).catch(e=>setError(e.message));
     apiRequest<{ payouts: SellerPayout[] }>("/commerce/earnings")
       .then((r) => setPayouts(r.payouts))
       .catch((e) => setError(e.message));
@@ -24,6 +26,10 @@ export default function Earnings() {
   return (
     <section className="commerce-page">
       <h1>Earnings</h1>
+      <h2>Dropshipping & marketing</h2>
+      <p>Pending amounts are not withdrawable. Cancelled/refunded orders do not qualify. Release requires buyer-confirmed delivery and a verified bank transfer.</p>
+      {rewards.length===0 ? <p>No attributed purchases yet. Share your earning link from Discover opportunities.</p> : rewards.map(r=><article className="commerce-card" key={r.id}><h3>{r.productName}</h3><p>{r.mode} · ₦{(r.amountKobo/100).toLocaleString()} · {r.status==='released'?'released':r.orderStatus==='cancelled'||r.paymentStatus==='refunded'?'cancelled / refunded':r.paymentStatus!=='paid'?'awaiting buyer payment':r.status.replaceAll('_',' ')}</p>{r.holdReason&&<p>{r.holdReason}</p>}</article>)}
+      <h2>Owned-product sales</h2>
       <p>
         Payments remain held until verified completion. “Eligible” means ready
         for payout checks; “released” means a successful provider transfer was
