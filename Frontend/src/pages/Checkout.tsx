@@ -108,6 +108,7 @@ export default function Checkout() {
                 pickupLocation: "",
                 items: items.map((i) => ({
                   productId: i.id,
+                  referralId: i.referralId,
                   quantity: i.quantity,
                   selectedSize: i.selectedSize || "",
                 })),

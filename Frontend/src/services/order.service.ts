@@ -5,6 +5,7 @@ export type CreateOrderItemInput = {
   productId: string;
   quantity: number;
   selectedSize?: string;
+  referralId?: string;
 };
 
 export type CreateOrderInput = {

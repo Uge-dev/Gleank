@@ -18,6 +18,8 @@ export default function Account() {
         </p>
       )}
       <div className="commerce-actions">
+        <Link className="commerce-action" to={'/community/'+user?.id}>My public feed</Link>
+        <Link className="commerce-action" to="/create-video">Post a video</Link>
         <Link className="commerce-action" to="/complete-profile">
           Edit profile
         </Link>

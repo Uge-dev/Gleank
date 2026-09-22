@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FiAlertCircle, FiEye, FiEyeOff, FiLock, FiMail } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
+import {authReturn} from '../utils/authReturn';
 
 function Login() {
   const navigate = useNavigate();
@@ -27,7 +28,9 @@ function Login() {
         return;
       }
 
-      navigate(user.profile ? "/" : "/complete-profile");
+      const next=authReturn();
+      sessionStorage.removeItem('gleenc-auth-return');
+      navigate(user.profile ? next : '/complete-profile?next='+encodeURIComponent(next));
     } catch (requestError) {
       setError(
         requestError instanceof Error

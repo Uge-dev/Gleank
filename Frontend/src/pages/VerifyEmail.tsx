@@ -5,11 +5,11 @@ import AuthLayout from "../components/AuthLayout";
 import { useAuth } from "../context/AuthContext";
 import { resendVerification, verifyEmail } from "../services/auth.service";
 import type { AuthUser } from "../types/domain";
+import {authReturn} from '../utils/authReturn';
 
 function verifiedRedirectPath(user: AuthUser | null | undefined) {
-  if (user?.role === "rider") return "/rider";
-  if (user?.role === "seller") return "/seller/onboarding";
-  return "/";
+  const next=authReturn();
+  return user?.profile ? next : '/complete-profile?next='+encodeURIComponent(next);
 }
 
 function VerifyEmail() {

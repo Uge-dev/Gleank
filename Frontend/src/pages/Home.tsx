@@ -12,6 +12,8 @@ import {
 } from "react-icons/fi";
 
 import FeedTopTabs from "../components/FeedTopTabs";
+import VideoPostCard from '../components/VideoPostCard';
+import { social, type SocialPost } from '../services/social.service';
 import AuthModal from "../components/AuthModal";
 import EmptyState from "../components/EmptyState";
 import FeedPostCard from "../components/FeedPostCard";
@@ -40,7 +42,7 @@ import {
 import type { SavedItemType, SearchResults } from "../types/domain";
 import { resolveMediaUrl } from "../utils/media";
 
-type FeedTab = "hot" | "vendors" | "following";
+type FeedTab = "latest" | "hot" | "vendors" | "following";
 
 const emptyResults: SearchResults = {
   stores: [],
@@ -135,7 +137,9 @@ function Home() {
   const viewedUsedListingIdsRef = useRef<Set<string>>(new Set());
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [activeRightTab, setActiveRightTab] = useState<FeedTab>("hot");
+  const [activeRightTab, setActiveRightTab] = useState<FeedTab>("latest");
+  const [posts,setPosts] = useState<SocialPost[]>([]);
+  const [videoError,setVideoError] = useState('');
   const [feedOpenedAt] = useState(() => Date.now());
   const [marketplace, setMarketplace] = useState<SearchResults>(emptyResults);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,10 +150,12 @@ function Home() {
   const loadMarketplace = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
+    setVideoError('');
 
     try {
-      const response = await searchMarketplace("");
+      const [response, socialResponse] = await Promise.all([searchMarketplace('', 'latest'), social.posts().catch(()=>{setVideoError('Videos and community shares could not load.');return {posts:[]};})]);
       setMarketplace(response);
+      setPosts(socialResponse.posts);
     } catch (error) {
       setLoadError(error);
     } finally {
@@ -434,15 +440,12 @@ async function shareProduct(productId: string, productName: string) {
   );
 
   const visibleFeedItems = useMemo<FeedItem[]>(() => {
-    const productsOnly = marketplace.products.filter((product) => {
-      const store = storeBySlug.get(product.storeSlug);
-      return Boolean(store);
-    });
+    const productsOnly = [...marketplace.products];
 
     if (activeRightTab === "following") {
       return productsOnly
         .filter((product) => storeBySlug.get(product.storeSlug)?.interaction.isFollowing)
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .map((product) => ({ kind: "product" as const, product }));
     }
 
@@ -498,7 +501,18 @@ async function shareProduct(productId: string, productName: string) {
     storeBySlug,
   ]);
 
+  const renderedFeedItems = useMemo(() => {
+    if(activeRightTab !== 'latest') return visibleFeedItems;
+    const entries: (FeedItem | {kind:'video'; post:SocialPost})[] = [
+      ...visibleFeedItems.filter(item=>item.kind==='product'),
+      ...posts.map(post=>({kind:'video' as const,post})),
+    ];
+    const date=(item:typeof entries[number])=>item.kind==='video'?item.post.createdAt:item.kind==='product'?item.product.createdAt:item.listing.createdAt;
+    return entries.sort((a,b)=>date(b).localeCompare(date(a)));
+  },[visibleFeedItems,posts,activeRightTab]);
+
   const feedEmptyCopy = {
+    latest: { eyebrow: 'Latest uploads', title: 'Your community starts here', message: 'New products and videos appear here first.' },
     hot: {
       eyebrow: "Marketplace ready",
       title: "No published products yet",
@@ -539,6 +553,7 @@ async function shareProduct(productId: string, productName: string) {
         <div className="feed-layout">
           <div className="main-feed-area">
             <div className="feed-column">
+              {videoError && <p role="alert">{videoError} <button onClick={()=>void loadMarketplace()}>Retry</button></p>}
               {loadError ? (
                 loadError instanceof ApiError &&
                 [0, 408, 502, 503, 504].includes(loadError.status) ? (
@@ -555,7 +570,7 @@ async function shareProduct(productId: string, productName: string) {
                     variant="card"
                   />
                 )
-              ) : visibleFeedItems.length === 0 ? (
+              ) : renderedFeedItems.length === 0 ? (
                 <EmptyState
                   icon={<FiShoppingBag />}
                   eyebrow={feedEmptyCopy.eyebrow}
@@ -565,7 +580,8 @@ async function shareProduct(productId: string, productName: string) {
                   onAction={() => navigate("/search")}
                 />
               ) : (
-                visibleFeedItems.map((feedItem) => {
+                renderedFeedItems.map((feedItem) => {
+                  if(feedItem.kind==='video') return <VideoPostCard key={'video-'+feedItem.post.id} post={feedItem.post}/>;
                   if (feedItem.kind === "used") {
                     const listing = feedItem.listing;
                     const listingStore = listing.sellerStoreSlug

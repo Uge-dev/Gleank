@@ -99,7 +99,7 @@ export function applyTransfer(data) {
   const transfer = db
     .prepare("SELECT * FROM settlement_transfers WHERE reference=?")
     .get(String(data?.reference || ""));
-  if (!transfer) return { ignored: true };
+  if (!transfer) return applyEarningTransfer(data);
   const payout = db
     .prepare("SELECT * FROM payouts WHERE id=?")
     .get(transfer.payout_id);
@@ -223,6 +223,14 @@ export function startSettlementWorker() {
     if (running) return;
     running = true;
     try {
+      for(const e of process.env.ENABLE_EARNING_SETTLEMENT === 'true' ? db.prepare(`SELECT e.id FROM earning_payouts e
+        JOIN payouts p ON p.order_id=e.order_id JOIN orders o ON o.id=e.order_id
+        JOIN commerce_payout_recipients r ON r.user_id=e.seller_id
+        WHERE e.status='on_hold' AND p.status IN ('eligible','released') AND o.status='completed' AND o.payment_status='paid'
+        ORDER BY e.updated_at LIMIT 25`).all() : []) {
+        try { await settleEarning(e.id); } catch { console.error('[settlement] Earning transfer held or pending reconciliation.'); }
+        db.prepare('UPDATE earning_payouts SET updated_at=? WHERE id=?').run(now(),e.id);
+      }
       for (const p of db
         .prepare(
           "SELECT id FROM payouts WHERE status='eligible' AND source_type='store_order' ORDER BY created_at LIMIT 25",
@@ -243,4 +251,44 @@ export function startSettlementWorker() {
   const timer = setInterval(() => void tick(), 30000);
   timer.unref();
   return () => clearInterval(timer);
+}
+
+export function applyEarningTransfer(data) {
+  const t=db.prepare('SELECT * FROM earning_transfers WHERE reference=?').get(String(data?.reference||''));
+  if(!t) return {ignored:true};
+  const p=db.prepare('SELECT * FROM earning_payouts WHERE id=?').get(t.payout_id);
+  if(Number(data.amount)!==p.seller_amount_kobo || data.currency!=='NGN' || data.recipient?.recipient_code!==t.recipient_code)
+    throw new HttpError(422,'Transfer details do not match the earning.');
+  const status=String(data.status||'pending');
+  if(t.status==='reversed'||(t.status==='success'&&status!=='reversed')) return {received:true,idempotent:true};
+  transaction(()=>{
+    db.prepare('UPDATE earning_transfers SET status=?,provider_transfer_code=?,updated_at=? WHERE payout_id=?').run(status,String(data.transfer_code||''),now(),p.id);
+    if(status==='success') db.prepare("UPDATE earning_payouts SET status='released',released_at=?,hold_reason='',updated_at=? WHERE id=?").run(now(),now(),p.id);
+    else if(['failed','reversed'].includes(status)) db.prepare("UPDATE earning_payouts SET status='blocked',hold_reason=?,updated_at=? WHERE id=?").run('Transfer '+status+'. Administrator reconciliation required.',now(),p.id);
+  });
+  return {received:true};
+}
+
+export async function settleEarning(id) {
+  let transfer;
+  const p=transaction(()=>{
+    const payout=db.prepare('SELECT * FROM earning_payouts WHERE id=?').get(id);
+    if(!payout||payout.status!=='on_hold') return null;
+    assertSettlementReady(payout.order_id);
+    const parent=db.prepare('SELECT status FROM payouts WHERE order_id=?').get(payout.order_id);
+    if(!parent||!['eligible','released'].includes(parent.status)) return null;
+    const account=db.prepare('SELECT recipient_code FROM commerce_payout_recipients WHERE user_id=?').get(payout.seller_id);
+    if(!account) return null;
+    db.prepare(`INSERT INTO earning_transfers(payout_id,reference,recipient_code,status,updated_at) VALUES(?,?,?,'created',?) ON CONFLICT(payout_id) DO NOTHING`).run(id,crypto.randomUUID(),account.recipient_code,now());
+    transfer=db.prepare('SELECT * FROM earning_transfers WHERE payout_id=?').get(id);
+    return payout;
+  });
+  if(!p||!transfer||['success','failed','reversed','otp'].includes(transfer.status)) return;
+  const verify=async()=>applyEarningTransfer(await paystack('/transfer/verify/'+encodeURIComponent(transfer.reference)));
+  if(transfer.status!=='created') return verify();
+  let data;
+  try {data=await paystack('/transfer',{source:'balance',amount:p.seller_amount_kobo,currency:'NGN',recipient:transfer.recipient_code,reference:transfer.reference,reason:'Gleenc verified '+p.mode+' earning'});}
+  catch(error){try{return await verify();}catch{throw error;}}
+  if(data.status==='success') return verify();
+  db.prepare("UPDATE earning_transfers SET status=?,provider_transfer_code=?,updated_at=? WHERE payout_id=? AND status NOT IN ('success','failed','reversed')").run(String(data.status||'pending'),String(data.transfer_code||''),now(),id);
 }
