@@ -86,8 +86,8 @@ export function recordEarnings(orderId, items) {
     }
 }
 export function earningsFor(userId) {
-    return db.prepare(`SELECT e.id,e.mode,e.seller_amount_kobo AS amountKobo,e.status,e.hold_reason AS holdReason,
-    e.created_at AS createdAt,p.name AS productName,o.payment_status AS paymentStatus,o.status AS orderStatus
+    return db.prepare(`SELECT e.id,e.mode,e.seller_amount_kobo AS "amountKobo",e.status,e.hold_reason AS "holdReason",
+    e.created_at AS "createdAt",p.name AS "productName",o.payment_status AS "paymentStatus",o.status AS "orderStatus"
     FROM earning_payouts e JOIN products p ON p.id=e.product_id JOIN orders o ON o.id=e.order_id
     WHERE e.seller_id=? ORDER BY e.created_at DESC LIMIT 100`).all(userId);
 }
