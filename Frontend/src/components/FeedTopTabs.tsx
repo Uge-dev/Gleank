@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import './SocialCommerce.css';
-import { FiBell, FiSearch, FiShoppingCart, FiVideo, FiPlus } from "react-icons/fi";
+import { FiBell, FiSearch, FiShoppingCart } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import { useCart } from "../context/CartContext";
 
@@ -49,8 +49,6 @@ function FeedTopTabs({
       </button>
 
       <div className="for-you-top-icons">
-        <Link to="/reels" className="for-you-search-link" aria-label="Watch videos"><FiVideo /></Link>
-        <Link to="/create" className="for-you-search-link" aria-label="Create a post or earning share"><FiPlus /></Link>
         <Link
           to="/notifications"
           className="for-you-notification-link"

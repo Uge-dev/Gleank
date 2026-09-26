@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom';
 import type { SocialPost } from '../services/social.service';
 import { resolveMediaUrl } from '../utils/media';
+import ImmersiveVideo from './ImmersiveVideo';
 export default function VideoPostCard({ post }: {
     post: SocialPost;
 }) {
+    if (post.videoUrl) return <ImmersiveVideo post={post}/>;
     return <article className="feed-card" id={'post-' + post.id}>
     <header className="feed-card-header"><Link to={'/community/' + post.userId}>{post.author} {post.username && '@' + post.username}</Link><time dateTime={post.createdAt}>{new Date(post.createdAt).toLocaleDateString()}</time></header>
     {post.videoUrl ? <video controls playsInline preload="metadata" src={resolveMediaUrl(post.videoUrl, '')} style={{ width: '100%', maxHeight: 560, background: '#111' }} aria-label={post.caption}/> : post.imageUrl && <img loading="lazy" src={resolveMediaUrl(post.imageUrl, '')} alt={post.productName} style={{ width: '100%', maxHeight: 560, objectFit: 'contain' }}/>}

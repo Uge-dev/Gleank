@@ -43,6 +43,7 @@ const VideoStudio=lazy(()=>import('./pages/commerce/VideoStudio'));
 const EarningTerms=lazy(()=>import('./pages/commerce/EarningTerms'));
 const CreateHub=lazy(()=>import('./pages/commerce/CreateHub'));
 const CommunityFeed=lazy(()=>import('./pages/commerce/CommunityFeed'));
+const Reels=lazy(()=>import('./pages/Reels'));
 function OnboardingGate(){
  const {user,isLoading}=useAuth(); const location=useLocation();
  if(!isLoading && user && !user.profile && !['/complete-profile','/verify-email','/payment/callback'].includes(location.pathname))
@@ -211,7 +212,7 @@ function App() {
           <Route path="/opportunities" element={<ProtectedPage><Opportunities /></ProtectedPage>} />
           <Route path="/create-video" element={<ProtectedPage><VideoStudio /></ProtectedPage>} />
           <Route path="/earning-terms/:id" element={<ProtectedPage><EarningTerms /></ProtectedPage>} />
-          <Route path="/reels" element={<CommunityFeed />} />
+          <Route path="/reels" element={<Reels />} />
           <Route path="/community/:userId" element={<CommunityFeed />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
