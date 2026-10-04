@@ -1,0 +1,139 @@
+
+/* ========================================================= */
+/* FOR YOU — RECONNECTED REELS                               */
+/* Reuses the original Reels.tsx experience inside Home.     */
+/* ========================================================= */
+
+.for-you-reels-block {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.for-you-reels-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 2px;
+}
+
+.for-you-reels-heading span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text-muted, #64748b);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.for-you-reels-heading h2 {
+  margin: 0;
+  color: var(--text-primary, #0f172a);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.for-you-reels-heading > a {
+  flex: 0 0 auto;
+  color: var(--text-primary, #0f172a);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.for-you-reels-feed {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+}
+
+.for-you-reels-feed .for-you-reel-card {
+  width: 100%;
+  height: min(76vh, 760px);
+  min-height: 560px;
+  max-height: 760px;
+  flex: none;
+  border-radius: 24px;
+  scroll-snap-align: none;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.16);
+}
+
+.for-you-reels-feed .for-you-reel-card video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+@media (max-width: 768px) {
+  .for-you-reels-block {
+    margin-inline: -4.35vw;
+    width: calc(100% + 8.7vw);
+  }
+
+  .for-you-reels-heading {
+    padding-inline: 4.35vw;
+  }
+
+  .for-you-reels-feed {
+    gap: 12px;
+  }
+
+  .for-you-reels-feed .for-you-reel-card {
+    width: 100%;
+    height: calc(100dvh - var(--mobile-top-tabs-height, 54px) - var(--gleank-bottom-nav-total-height, 64px));
+    min-height: 520px;
+    max-height: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+html[data-theme="dark"] .for-you-reels-heading h2,
+html[data-theme="dark"] .for-you-reels-heading > a {
+  color: var(--text-primary, #f8fafc);
+}
+
+/* Integration of the supplied layout with the live feed and current app shell. */
+.gleenc-reel-card { isolation: isolate; background: #000; }
+.gleenc-reel-card video { display: block; object-position: center; }
+.gleenc-reel-card .reel-play-surface { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; color: white; display: grid; place-items: center; cursor: pointer; }
+.gleenc-reel-card .reel-play-surface svg { width: 56px; height: 56px; padding: 12px; background: #0006; border-radius: 50%; }
+.gleenc-reel-card .reel-sound-btn, .gleenc-reel-card .reel-expand-btn { z-index: 2; min-width: 44px; min-height: 44px; }
+.gleenc-reel-card .reel-expand-btn { position: absolute; top: 16px; left: 16px; display: grid; place-items: center; border-radius: 50%; background: #0007; color: white; }
+.gleenc-reel-card .reel-info { z-index: 1; }
+.gleenc-reel-card .reel-info h2 { margin: 0 0 6px; font-size: 20px; line-height: 1.2; }
+.gleenc-reel-card .reel-info > p { max-height: 16dvh; overflow-y: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
+.gleenc-reel-card .reel-product-link { color: white; text-decoration: none; }
+.gleenc-reel-card .reel-avatar, .gleenc-reel-card .reel-cart-btn { background: #087c47 !important; }
+.gleenc-reel-card .reel-actions { z-index: 2; }
+.gleenc-reel-card .reel-actions button { min-width: 44px; min-height: 44px; cursor: pointer; }
+.gleenc-reel-card .reel-actions button:disabled { opacity: .45; cursor: default; }
+.gleenc-reel-card .reel-actions button[aria-pressed="true"] svg { fill: #20ce78; }
+.gleenc-reel-card :focus-visible { outline: 3px solid #20ce78; outline-offset: 2px; }
+.supplied-reels-page { background: var(--bg-primary, #fff); }
+.supplied-reels-page .reels-layout { grid-template-columns: minmax(0, 560px) minmax(240px, 310px); max-width: 940px; gap: 24px; margin-inline: auto; }
+.supplied-reels-page .reels-feed { width: 100%; position: relative; }
+.supplied-reels-page .reels-right-panel { height: calc(100dvh - 58px); overflow-y: auto; padding: 18px 0; }
+.supplied-reels-page .reels-ad-track { animation: none; width: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: thin; }
+.supplied-reels-page .reels-ad-card { width: 100%; min-width: 100%; margin: 0; scroll-snap-align: start; }
+.supplied-reels-page .ad-actions a { background: white; color: #111; padding: 10px 16px; border-radius: 999px; text-decoration: none; }
+.supplied-reels-page .service-offer-list a { display: block; padding: 12px 0; color: inherit; text-decoration: none; border-bottom: 1px solid #8883; }
+.supplied-reels-page .reels-status { min-height: 100%; flex: 0 0 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 12px; padding: 24px; scroll-snap-align: start; text-align: center; }
+.supplied-reels-page .reels-status a, .supplied-reels-page .reels-status button { padding: 12px; border: 0; border-radius: 8px; background: #087c47; color: white; }
+@media (max-width: 1100px) {
+  .supplied-reels-page .reels-layout { grid-template-columns: minmax(0, 560px); justify-content: center; }
+  .supplied-reels-page .reels-right-panel { display: none; }
+}
+@media (max-width: 768px) {
+  .for-you-reels-feed .for-you-reel-card { min-height: 0; }
+  .supplied-reels-page .reels-layout { overflow: hidden !important; }
+  .supplied-reels-page .reels-feed { min-height: 0 !important; }
+  .gleenc-reel-card .reel-info { left: 16px; right: 78px; }
+  .gleenc-reel-card .reel-actions { right: 12px; gap: 12px; }
+}
+html[data-theme="dark"] .supplied-reels-page { background: #111; color: #fff; }
+html[data-theme="dark"] .supplied-reels-page .trending-services-box { background: #1b1b1b; color: #fff; }
+html[data-theme="dark"] .supplied-reels-page .trending-services-box h3 { color: #fff; }
