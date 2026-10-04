@@ -137,7 +137,10 @@ function Home() {
   const viewedUsedListingIdsRef = useRef<Set<string>>(new Set());
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [activeRightTab, setActiveRightTab] = useState<FeedTab>("latest");
+  const [activeRightTab, setActiveRightTab] = useState<FeedTab>(() => {
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    return tab === 'hot' || tab === 'vendors' || tab === 'following' ? tab : 'latest';
+  });
   const [posts,setPosts] = useState<SocialPost[]>([]);
   const [videoError,setVideoError] = useState('');
   const [feedOpenedAt] = useState(() => Date.now());
