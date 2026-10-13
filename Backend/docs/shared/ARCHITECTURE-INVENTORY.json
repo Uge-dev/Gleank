@@ -1,0 +1,2653 @@
+[
+  {
+    "file": "src/app.js",
+    "lines": 176,
+    "sha256": "b18b1d65f4e69ffafab85c1b41bf8b225fe808417ddfedf528a1518e7dec3e3c",
+    "imports": [
+      "express",
+      "cors",
+      "cookie-parser",
+      "helmet",
+      "node:crypto",
+      "node:path",
+      "./config/env.js",
+      "./db/database.js",
+      "./db/stage3-migrations.js",
+      "./middleware/auth.js",
+      "./middleware/error-handler.js",
+      "./routes/auth.routes.js",
+      "./routes/product.routes.js",
+      "./routes/order.routes.js",
+      "./routes/saved.routes.js",
+      "./routes/seller.routes.js",
+      "./routes/store.routes.js",
+      "./routes/market.routes.js",
+      "./routes/used-market.routes.js",
+      "./routes/used-order.routes.js",
+      "./routes/message.routes.js",
+      "./routes/trust.routes.js",
+      "./routes/security.routes.js",
+      "./routes/subscription.routes.js",
+      "./routes/seller-verification.routes.js",
+      "./routes/payment.routes.js",
+      "./routes/cart.routes.js",
+      "./routes/user.routes.js",
+      "./routes/notification.routes.js",
+      "./routes/diagnostics.routes.js",
+      "./routes/admin.routes.js",
+      "./routes/delivery.routes.js",
+      "./routes/rider.routes.js",
+      "./routes/logistics.routes.js",
+      "./routes/kyc.routes.js",
+      "./routes/location.routes.js",
+      "./routes/buyer.routes.js",
+      "./routes/webhook.routes.js",
+      "./routes/verification.routes.js",
+      "./db/commerce-migrations.js",
+      "./routes/commerce.routes.js",
+      "./routes/social.routes.js",
+      "./routes/earning.routes.js",
+      "./shared/migrations.js",
+      "./shared/discovery.js",
+      "./routes/shared/api.routes.js"
+    ],
+    "exports": [
+      "app"
+    ]
+  },
+  {
+    "file": "src/config/env.js",
+    "lines": 444,
+    "sha256": "a18f484b38aeb36fc51f89fe9441dcc3690243e25b607e081570e85250a2ae93",
+    "imports": [
+      "dotenv/config",
+      "node:path",
+      "node:url"
+    ],
+    "exports": [
+      "env"
+    ]
+  },
+  {
+    "file": "src/data/adminStore.js",
+    "lines": 1399,
+    "sha256": "6a5c0092477a0495794a710db4f4f7ffaf3407e51782a89db73b35fa4ca83028",
+    "imports": [
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../lib/ids.js",
+      "../services/notification.service.js",
+      "../services/market.service.js"
+    ],
+    "exports": [
+      "buildAdminOverview",
+      "getAdminDataset",
+      "markSupportConversationRead",
+      "sendAdminSupportMessage",
+      "updateRecordFields",
+      "updateRecordStatus",
+      "deleteRecord",
+      "resetAdminDataset"
+    ]
+  },
+  {
+    "file": "src/data/africa-location-catalog.js",
+    "lines": 91,
+    "sha256": "01f8b9e264de91d258f32d2ba8b41cb45b96c8b41a695ae84df50a9008168640",
+    "imports": [
+      "./nigeria-location-catalog.js"
+    ],
+    "exports": [
+      "africaLocationCatalog",
+      "africaCountryCodes",
+      "findAfricaCountry"
+    ]
+  },
+  {
+    "file": "src/data/nigeria-location-catalog.js",
+    "lines": 301,
+    "sha256": "e8fdbf25b1d3f7439cd78f6c726a942de92d419741786cb33b19ba769b22ad59",
+    "imports": [],
+    "exports": [
+      "nigeriaLocationCatalog"
+    ]
+  },
+  {
+    "file": "src/db/commerce-migrations.js",
+    "lines": 76,
+    "sha256": "de4fefe113f9fdc30a7b521dc0f92b48a71f1d83f2a54e1ede15a7172b7e5504",
+    "imports": [
+      "./database.js"
+    ],
+    "exports": [
+      "runCommerceMigrations"
+    ]
+  },
+  {
+    "file": "src/db/database.js",
+    "lines": 1946,
+    "sha256": "38d937454ceb92276312480ff8e0c73b7e2af1bffaa10f8fe73f8b3f1cc6d7ff",
+    "imports": [
+      "node:fs",
+      "node:path",
+      "better-sqlite3",
+      "../config/env.js",
+      "./postgres-sync-adapter.js"
+    ],
+    "exports": [
+      "db",
+      "transaction",
+      "cleanExpiredSessions"
+    ]
+  },
+  {
+    "file": "src/db/logistics-migrations.js",
+    "lines": 755,
+    "sha256": "148a7fe7e482cd0040ca4d73e362a26fb11b5876edb634ebe3ca5f6f7aa7bb3c",
+    "imports": [
+      "./database.js"
+    ],
+    "exports": [
+      "runLogisticsMigrations"
+    ]
+  },
+  {
+    "file": "src/db/postgres-sync-adapter.js",
+    "lines": 274,
+    "sha256": "e4da2195a6a793e34a6257967a5de2851922faea7cd976eed5a55f1783778217",
+    "imports": [
+      "node:fs",
+      "node:os",
+      "node:path",
+      "node:worker_threads",
+      "node:url",
+      "../config/env.js"
+    ],
+    "exports": [
+      "PostgresSyncDatabase"
+    ]
+  },
+  {
+    "file": "src/db/postgres-sync-worker.js",
+    "lines": 107,
+    "sha256": "b7954ac518b56c47c2ad2bcefd053aaed169f008f480c4d60398de426cc2eee9",
+    "imports": [
+      "node:fs/promises",
+      "pg",
+      "node:worker_threads"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/db/rider-migrations.js",
+    "lines": 457,
+    "sha256": "8a007eb2f82e8819211bc91efaf7667f08e4e1a60f3cf0c4a32cca3c272d9be5",
+    "imports": [
+      "../config/env.js",
+      "./database.js"
+    ],
+    "exports": [
+      "runRiderMigrations"
+    ]
+  },
+  {
+    "file": "src/db/stage3-migrations.js",
+    "lines": 417,
+    "sha256": "1a7f736acb4fe80aeef1f0de73a6b681b522a518b143ffd3478b899f307c932e",
+    "imports": [
+      "./rider-migrations.js",
+      "./database.js"
+    ],
+    "exports": [
+      "runStage3Migrations"
+    ]
+  },
+  {
+    "file": "src/lib/http-error.js",
+    "lines": 8,
+    "sha256": "ba9f92bc41e16550498c20bb33c03c952007defa0ddf697497bf27cf470e6469",
+    "imports": [],
+    "exports": [
+      "HttpError"
+    ]
+  },
+  {
+    "file": "src/lib/ids.js",
+    "lines": 17,
+    "sha256": "ea3803b85a82c3700f988662737527e13af951013c8ce586712a5c0c9d4215d2",
+    "imports": [
+      "nanoid"
+    ],
+    "exports": [
+      "createId",
+      "slugify"
+    ]
+  },
+  {
+    "file": "src/lib/password-policy.js",
+    "lines": 17,
+    "sha256": "a2dc0f39fedaf40dcc57f0c6996f4d230534bf560c0513321bf8d84ff144e616",
+    "imports": [],
+    "exports": [
+      "validatePasswordStrength"
+    ]
+  },
+  {
+    "file": "src/lib/roles.js",
+    "lines": 30,
+    "sha256": "808d2c3f8a6a4253cb743d7f4e8cc150a34c235cddb191923f427f9d41f0a308",
+    "imports": [
+      "./http-error.js"
+    ],
+    "exports": [
+      "USER_ROLES",
+      "USER_ROLE_SET",
+      "normalizeRole",
+      "assertKnownRole",
+      "assertRole"
+    ]
+  },
+  {
+    "file": "src/lib/safe-error-message.js",
+    "lines": 68,
+    "sha256": "dca83c4b758c11ac9a60824b68d24df53ec0539f9d4d075c514e65b6df5e85ed",
+    "imports": [],
+    "exports": [
+      "isTechnicalErrorMessage",
+      "safeErrorMessage",
+      "shouldLogTechnicalError"
+    ]
+  },
+  {
+    "file": "src/lib/serializers.js",
+    "lines": 304,
+    "sha256": "3300e9ad5496dbb00cc4b53a267f28042133c4f6bb3ac6525425d1aee143e175",
+    "imports": [
+      "../services/account-profile.service.js"
+    ],
+    "exports": [
+      "serializeUser",
+      "serializeStore",
+      "serializePublicStore",
+      "serializeProduct",
+      "serializeService",
+      "serializeUsedListing"
+    ]
+  },
+  {
+    "file": "src/lib/session.js",
+    "lines": 198,
+    "sha256": "1ffaec690bb323f77e96b71decca52fe73ebe6e725cba1a657903bfc037e1840",
+    "imports": [
+      "node:crypto",
+      "jsonwebtoken",
+      "../config/env.js",
+      "../db/database.js",
+      "./ids.js"
+    ],
+    "exports": [
+      "sessionCookieName",
+      "riderSessionCookieName",
+      "adminSessionCookieName",
+      "sessionPortalForRole",
+      "sessionCookieNameForPortal",
+      "createSession",
+      "verifySessionToken",
+      "deleteSession",
+      "deleteSessionsForUser",
+      "listActiveSessionsForUser",
+      "sessionCookieOptions"
+    ]
+  },
+  {
+    "file": "src/middleware/auth.js",
+    "lines": 122,
+    "sha256": "91a91a246b23adf01506a4f7d47592e7d457725b74f519913ed45ba7280613ac",
+    "imports": [
+      "../lib/session.js",
+      "../lib/http-error.js",
+      "../lib/roles.js",
+      "../shared/sessions.js"
+    ],
+    "exports": [
+      "optionalAuth",
+      "requireAuth",
+      "requireEmailVerified",
+      "requireRole",
+      "requireBuyer",
+      "requireSeller",
+      "requireRider",
+      "requireAdminRole",
+      "requireVerifiedSellerAccess"
+    ]
+  },
+  {
+    "file": "src/middleware/error-handler.js",
+    "lines": 54,
+    "sha256": "4513d60ed8c296cb1e0a649c084d12f1aa61bd32b2f65fc1fa14c229daf29030",
+    "imports": [
+      "zod",
+      "multer",
+      "../lib/http-error.js",
+      "../lib/safe-error-message.js",
+      "./upload.js"
+    ],
+    "exports": [
+      "notFoundHandler",
+      "errorHandler"
+    ]
+  },
+  {
+    "file": "src/middleware/requireAdmin.js",
+    "lines": 7,
+    "sha256": "903b26af1ebf6228883bf969b90759c352066221686bbc3c5f0b3c973eca5025",
+    "imports": [],
+    "exports": [
+      "requireAdmin"
+    ]
+  },
+  {
+    "file": "src/middleware/upload.js",
+    "lines": 336,
+    "sha256": "56e9b1c19798a5ca88c0dd848689e90ba47b6ba28160ef055651cf53b1d59e7e",
+    "imports": [
+      "node:fs",
+      "node:path",
+      "multer",
+      "sharp",
+      "nanoid",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../services/cloudinary.service.js"
+    ],
+    "exports": [
+      "upload",
+      "fileUrl",
+      "deleteUploadedFiles"
+    ]
+  },
+  {
+    "file": "src/middleware/validate.js",
+    "lines": 18,
+    "sha256": "5fb99714219559b05ff23040e63289925137e8d34b0709b2944293aba75c656f",
+    "imports": [
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "validate"
+    ]
+  },
+  {
+    "file": "src/repositories/password-reset.repository.js",
+    "lines": 42,
+    "sha256": "0246d07d7d31daba739e4ae7005b06a00f0e0ad214f73753b0291a4df09a2ce2",
+    "imports": [
+      "../db/database.js"
+    ],
+    "exports": [
+      "deletePasswordResetsForUser",
+      "createPasswordReset",
+      "findPasswordResetByTokenHash",
+      "markPasswordResetUsed",
+      "recordPasswordResetAttempt"
+    ]
+  },
+  {
+    "file": "src/repositories/store.repository.js",
+    "lines": 99,
+    "sha256": "9cb71066dd683107727ceffdc270a3fcb4a859c7a4701c45b8a673632e923160",
+    "imports": [
+      "../db/database.js"
+    ],
+    "exports": [
+      "findStoreByOwnerId",
+      "findStoreBySlug",
+      "createStore",
+      "updateStore"
+    ]
+  },
+  {
+    "file": "src/repositories/user.repository.js",
+    "lines": 121,
+    "sha256": "db8e66b801ce1e924c0cd98fb4993f2bf87afa47bf82d7f90ded602e67b7a65f",
+    "imports": [
+      "../db/database.js",
+      "../lib/roles.js"
+    ],
+    "exports": [
+      "findUserByEmail",
+      "findUserById",
+      "createUser",
+      "updateUser",
+      "updateUserAvatar",
+      "updateUserRole",
+      "updateUserPassword",
+      "markUserEmailVerified",
+      "recordSuccessfulLogin",
+      "recordFailedLogin"
+    ]
+  },
+  {
+    "file": "src/routes/admin.routes.js",
+    "lines": 833,
+    "sha256": "a670e0f6a9bc8ed6c8215cf0c3605c53970cfd53918aeaabf75874abef074fd9",
+    "imports": [
+      "../lib/http-error.js",
+      "express",
+      "express-rate-limit",
+      "bcryptjs",
+      "../db/database.js",
+      "../data/adminStore.js",
+      "../middleware/upload.js",
+      "../middleware/requireAdmin.js",
+      "../lib/session.js",
+      "../lib/safe-error-message.js",
+      "../services/market.service.js",
+      "../services/rider.service.js",
+      "../services/moderation.service.js",
+      "../services/payout.service.js",
+      "../services/return-dispute.service.js",
+      "../services/kyc.service.js",
+      "../services/price-validation.service.js",
+      "../services/audit-log.service.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/routes/auth.routes.js",
+    "lines": 157,
+    "sha256": "f1c0377d2180a3d792185aeaa13b69618a224d813403cc56ba0891f06bac7f5f",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../lib/session.js",
+      "../lib/serializers.js",
+      "../middleware/auth.js",
+      "../middleware/validate.js",
+      "../repositories/store.repository.js",
+      "../schemas/auth.schemas.js",
+      "../services/auth.service.js",
+      "../services/rider-presence.service.js"
+    ],
+    "exports": [
+      "authRouter"
+    ]
+  },
+  {
+    "file": "src/routes/buyer.routes.js",
+    "lines": 22,
+    "sha256": "803a6bc6c8026d6d95575c09afba58cc51c73be00c5e1b9daa05a5462434a18c",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/location.service.js"
+    ],
+    "exports": [
+      "buyerRouter"
+    ]
+  },
+  {
+    "file": "src/routes/cart.routes.js",
+    "lines": 49,
+    "sha256": "8450dbca5f06d8ea5d3411095a2d36420f73ccfa70302325f05056996d771329",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/cart.service.js"
+    ],
+    "exports": [
+      "cartRouter"
+    ]
+  },
+  {
+    "file": "src/routes/commerce.routes.js",
+    "lines": 193,
+    "sha256": "72e5b8acfbf6a17dce894a333f8c64ff3c56d2d9722d103d2922e7e472207906",
+    "imports": [
+      "express-rate-limit",
+      "../services/settlement.service.js",
+      "express",
+      "node:fs",
+      "node:path",
+      "node:crypto",
+      "multer",
+      "sharp",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../middleware/auth.js",
+      "../services/account-profile.service.js",
+      "../services/fulfillment.service.js",
+      "../services/order.service.js",
+      "../services/payout.service.js"
+    ],
+    "exports": [
+      "commerceRouter"
+    ]
+  },
+  {
+    "file": "src/routes/delivery.routes.js",
+    "lines": 24,
+    "sha256": "dac0af47681286c513f4427ec83f5d2b4dffc0da3d2f7ae6877d220d776bc5bd",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/delivery.service.js"
+    ],
+    "exports": [
+      "deliveryRouter"
+    ]
+  },
+  {
+    "file": "src/routes/diagnostics.routes.js",
+    "lines": 66,
+    "sha256": "1e6f0ce9532436cf9c53fd0295b8dd50de5d2ec0dd5509a675404198b5ce46c7",
+    "imports": [
+      "express",
+      "zod",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../services/email.service.js"
+    ],
+    "exports": [
+      "diagnosticsRouter"
+    ]
+  },
+  {
+    "file": "src/routes/earning.routes.js",
+    "lines": 11,
+    "sha256": "313805460d6cfd9a4b5153592bb2f411f1e2ef6687f90f11b472374e7a60352d",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../services/earning.service.js"
+    ],
+    "exports": [
+      "earningRouter"
+    ]
+  },
+  {
+    "file": "src/routes/kyc.routes.js",
+    "lines": 83,
+    "sha256": "f9da6cb9faae9668765aa3285d59e07c4fe491bf8e0783cf73ec58d1213d42b1",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../services/kyc.service.js"
+    ],
+    "exports": [
+      "kycRouter"
+    ]
+  },
+  {
+    "file": "src/routes/location.routes.js",
+    "lines": 84,
+    "sha256": "93c046cdf6483e123a395aaddcc9d6e02f5db171aa8541773a894b717df94e75",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../middleware/validate.js",
+      "../schemas/location.schemas.js",
+      "../services/location.service.js"
+    ],
+    "exports": [
+      "locationRouter"
+    ]
+  },
+  {
+    "file": "src/routes/logistics.routes.js",
+    "lines": 286,
+    "sha256": "72a26b722eb1c03f52b3e3c7eca29e48b42663ac2f8c0f7ce440090517797f8d",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/logistics.service.js"
+    ],
+    "exports": [
+      "logisticsRouter"
+    ]
+  },
+  {
+    "file": "src/routes/market.routes.js",
+    "lines": 97,
+    "sha256": "cb7db19b7405cee3be177fc3e66297a0ed87b7ed7ebb2a2fa99accb5a2ab50fe",
+    "imports": [
+      "express",
+      "../services/market.service.js"
+    ],
+    "exports": [
+      "marketRouter"
+    ]
+  },
+  {
+    "file": "src/routes/message.routes.js",
+    "lines": 124,
+    "sha256": "cb0dc3abb5df4c47c20d7b855fb1a521d1f520fdb1034adfc0effab386bdbb5d",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../services/message.service.js"
+    ],
+    "exports": [
+      "messageRouter"
+    ]
+  },
+  {
+    "file": "src/routes/notification.routes.js",
+    "lines": 50,
+    "sha256": "0c97a4c31f7abb160bc6a52960331254119821ae36d546651270000863dde497",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/notification.service.js",
+      "../services/realtime.service.js"
+    ],
+    "exports": [
+      "notificationRouter"
+    ]
+  },
+  {
+    "file": "src/routes/order.routes.js",
+    "lines": 128,
+    "sha256": "f9d95c658dce7765e19094849d8d4fa33d10cda13f645d1038a289939ea20564",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/order.service.js"
+    ],
+    "exports": [
+      "orderRouter"
+    ]
+  },
+  {
+    "file": "src/routes/payment.routes.js",
+    "lines": 149,
+    "sha256": "c916969525d60c62392944bdf31f932279a8f9397ac0a0d46583708b078804b6",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../services/payment.service.js",
+      "../shared/payments.js"
+    ],
+    "exports": [
+      "paymentRouter"
+    ]
+  },
+  {
+    "file": "src/routes/product.routes.js",
+    "lines": 110,
+    "sha256": "bb332bb1d38e141af5bb7fbd6a92b29be7f9c9780c288a132c409efd798b4514",
+    "imports": [
+      "express",
+      "../services/catalog.service.js",
+      "../middleware/auth.js",
+      "../services/interaction.service.js",
+      "../services/moderation.service.js",
+      "../services/price-validation.service.js"
+    ],
+    "exports": [
+      "productRouter"
+    ]
+  },
+  {
+    "file": "src/routes/rider.routes.js",
+    "lines": 412,
+    "sha256": "d56b5570f6cac05f5eb088959da2d669b6d17e3dc7720498a27fc338973537a1",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../middleware/auth.js",
+      "../middleware/validate.js",
+      "../middleware/upload.js",
+      "../lib/session.js",
+      "../services/rider.service.js",
+      "../schemas/rider.schemas.js",
+      "../services/location.service.js",
+      "../services/verification.service.js",
+      "../services/rider-presence.service.js"
+    ],
+    "exports": [
+      "riderRouter"
+    ]
+  },
+  {
+    "file": "src/routes/saved.routes.js",
+    "lines": 26,
+    "sha256": "bcc5279da35c2fe31428b339713ab99df2d0bb7ad7b568787d31cf3bf43d6837",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../middleware/validate.js",
+      "../schemas/marketplace.schemas.js",
+      "../services/saved.service.js"
+    ],
+    "exports": [
+      "savedRouter"
+    ]
+  },
+  {
+    "file": "src/routes/security.routes.js",
+    "lines": 77,
+    "sha256": "ecaf44d158ef0661e8642388900b82d50ec4d6111fbd9620489bcf776aa82d84",
+    "imports": [
+      "express",
+      "../schemas/auth.schemas.js",
+      "../middleware/validate.js",
+      "../middleware/auth.js",
+      "../services/security.service.js"
+    ],
+    "exports": [
+      "securityRouter"
+    ]
+  },
+  {
+    "file": "src/routes/seller-verification.routes.js",
+    "lines": 102,
+    "sha256": "c04032a9e17b1ae1bfb5aa05e3ae34b70d064a9bbbff89b650cc57c88f16d742",
+    "imports": [
+      "express",
+      "../middleware/upload.js",
+      "../middleware/auth.js",
+      "../services/seller-verification.service.js",
+      "../services/subscription.service.js"
+    ],
+    "exports": [
+      "sellerVerificationRouter"
+    ]
+  },
+  {
+    "file": "src/routes/seller.routes.js",
+    "lines": 524,
+    "sha256": "fe7faf46330319c4e10905962bf97afc622ed531e0d938f24259095858d7c5ee",
+    "imports": [
+      "express",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../lib/ids.js",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../middleware/validate.js",
+      "../lib/serializers.js",
+      "../repositories/store.repository.js",
+      "../schemas/seller.schemas.js",
+      "../services/rider.service.js",
+      "../services/order.service.js",
+      "../services/listing.service.js",
+      "../services/market.service.js",
+      "../services/seller-verification.service.js",
+      "../services/subscription.service.js",
+      "../services/payout.service.js",
+      "../services/location.service.js",
+      "../services/ocr.service.js"
+    ],
+    "exports": [
+      "sellerRouter"
+    ]
+  },
+  {
+    "file": "src/routes/shared/api.routes.js",
+    "lines": 1150,
+    "sha256": "fea1c6bd838a7deb8b8e0b44b65c627164f1dbb83a6159d65a73bd86af861f23",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "multer",
+      "node:path",
+      "zod",
+      "../../db/database.js",
+      "../../config/env.js",
+      "../../lib/http-error.js",
+      "../../lib/serializers.js",
+      "../../lib/session.js",
+      "../../middleware/auth.js",
+      "../../schemas/auth.schemas.js",
+      "../../services/auth.service.js",
+      "../../services/account-profile.service.js",
+      "../../services/interaction.service.js",
+      "../../shared/sessions.js",
+      "../../shared/identity.js",
+      "../../shared/core.js",
+      "../../shared/media.js",
+      "../../shared/account.js",
+      "../../shared/catalogue.js",
+      "../../shared/social.js",
+      "../../shared/checkout.js",
+      "../../shared/payments.js",
+      "../../shared/orders.js",
+      "../../shared/downloads.js",
+      "../../shared/reviews.js",
+      "../../shared/chat.js",
+      "../../shared/discovery.js",
+      "../../shared/recovery.js",
+      "../../shared/push.js",
+      "../../services/settlement.service.js"
+    ],
+    "exports": [
+      "sharedRouter"
+    ]
+  },
+  {
+    "file": "src/routes/social.routes.js",
+    "lines": 89,
+    "sha256": "81f9c5e2d48d8243aa6ab86905904ab755e2613ea37a575624873ec9b43c978a",
+    "imports": [
+      "express",
+      "multer",
+      "express-rate-limit",
+      "node:fs/promises",
+      "node:path",
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../middleware/auth.js",
+      "../services/cloudinary.service.js"
+    ],
+    "exports": [
+      "socialRouter",
+      "videoType"
+    ]
+  },
+  {
+    "file": "src/routes/store.routes.js",
+    "lines": 324,
+    "sha256": "3506224636f1a13e65d3c7a7ef3251781111ff9cfc788d20abeafadf94eb409b",
+    "imports": [
+      "express",
+      "../db/database.js",
+      "../lib/serializers.js",
+      "../lib/http-error.js",
+      "../middleware/auth.js",
+      "../repositories/store.repository.js",
+      "../services/interaction.service.js",
+      "../services/used-listing-interaction.service.js"
+    ],
+    "exports": [
+      "storeRouter"
+    ]
+  },
+  {
+    "file": "src/routes/subscription.routes.js",
+    "lines": 29,
+    "sha256": "212c98b41eb800e6969ba672f663ad36769f1ff078c1c7c336d66f6313164ee6",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../services/subscription.service.js"
+    ],
+    "exports": [
+      "subscriptionRouter"
+    ]
+  },
+  {
+    "file": "src/routes/trust.routes.js",
+    "lines": 37,
+    "sha256": "41ecec7379b7c654d8223f7cf0a023c47b1dd07563a22a7d8d795a3d5a3599fb",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../services/trust.service.js"
+    ],
+    "exports": [
+      "trustRouter"
+    ]
+  },
+  {
+    "file": "src/routes/used-market.routes.js",
+    "lines": 175,
+    "sha256": "5198308376e4366fab11af64c19f257d8ee88e1f9f428ec0b5e7e222d67c713a",
+    "imports": [
+      "express",
+      "../middleware/upload.js",
+      "../middleware/auth.js",
+      "../lib/http-error.js",
+      "../services/used-market.service.js",
+      "../services/trust.service.js",
+      "../services/used-listing-interaction.service.js"
+    ],
+    "exports": [
+      "usedMarketRouter"
+    ]
+  },
+  {
+    "file": "src/routes/used-order.routes.js",
+    "lines": 130,
+    "sha256": "2ba9550972c7239a18afd836576dedf2257eb1a2968e9f26ae819f4043dc4a0f",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../services/used-order.service.js",
+      "../services/rider.service.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "usedOrderRouter"
+    ]
+  },
+  {
+    "file": "src/routes/user.routes.js",
+    "lines": 59,
+    "sha256": "2a844b91db736c708c4a70f6e666e54d3d427552e3046aad85d656561fecbd65",
+    "imports": [
+      "express",
+      "zod",
+      "../middleware/auth.js",
+      "../middleware/validate.js",
+      "../lib/serializers.js",
+      "../repositories/user.repository.js",
+      "../middleware/upload.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "userRouter"
+    ]
+  },
+  {
+    "file": "src/routes/verification.routes.js",
+    "lines": 146,
+    "sha256": "ba4311c1fcf7c8c6ba80e607256a2fb2a198781be95927522fa42d05af9a2691",
+    "imports": [
+      "express",
+      "../middleware/auth.js",
+      "../middleware/upload.js",
+      "../services/verification.service.js"
+    ],
+    "exports": [
+      "verificationRouter"
+    ]
+  },
+  {
+    "file": "src/routes/webhook.routes.js",
+    "lines": 22,
+    "sha256": "b12ad914b35416e686d02f55fca61ad243e7ab2c54d16a223ed6e64e529a8387",
+    "imports": [
+      "express",
+      "express-rate-limit",
+      "../services/kyc.service.js"
+    ],
+    "exports": [
+      "webhookRouter"
+    ]
+  },
+  {
+    "file": "src/schemas/auth.schemas.js",
+    "lines": 110,
+    "sha256": "180c87834eab17b0a2c538745d2edd8008fa3d197d31fbfe70c2c3a1984a791a",
+    "imports": [
+      "zod",
+      "../lib/password-policy.js"
+    ],
+    "exports": [
+      "registerSchema",
+      "loginSchema",
+      "verifyEmailSchema",
+      "forgotPasswordSchema",
+      "resetPasswordSchema",
+      "changePasswordSchema",
+      "securityPasswordResetCodeSchema",
+      "securityPasswordResetCompleteSchema"
+    ]
+  },
+  {
+    "file": "src/schemas/location.schemas.js",
+    "lines": 19,
+    "sha256": "11ddad05c30397c159617ea8aed0e3986edbad32644e7c159faf3377b35ce36e",
+    "imports": [
+      "zod"
+    ],
+    "exports": [
+      "locationRouteSchema"
+    ]
+  },
+  {
+    "file": "src/schemas/marketplace.schemas.js",
+    "lines": 36,
+    "sha256": "826ef1675dc4939a5ca201752bedb5d1e6469eef3ea1351988c3b58efec6dd20",
+    "imports": [
+      "zod"
+    ],
+    "exports": [
+      "saveItemSchema",
+      "usedListingSchema"
+    ]
+  },
+  {
+    "file": "src/schemas/rider.schemas.js",
+    "lines": 184,
+    "sha256": "693d8120a7293409ed7bbe469d4bc3667d020bf0403b0c9245111cc3288b22f8",
+    "imports": [
+      "zod",
+      "../lib/password-policy.js"
+    ],
+    "exports": [
+      "riderRegisterSchema",
+      "riderDocumentUploadSchema",
+      "riderLoginSchema",
+      "riderPresenceHeartbeatSchema",
+      "riderLocationSchema",
+      "routeEstimateQuerySchema",
+      "createRiderAssignmentSchema",
+      "riderPickupSchema",
+      "riderCompleteDeliverySchema",
+      "riderVerifyDeliveryCodeSchema",
+      "riderFailSchema",
+      "riderSecurityReportSchema",
+      "riderContactAuditSchema",
+      "riderAdminVerificationSchema"
+    ]
+  },
+  {
+    "file": "src/schemas/seller.schemas.js",
+    "lines": 140,
+    "sha256": "23854bb911bc9d6b6157f5ff78fde5d998058d03249ca43b7255482ee20743a6",
+    "imports": [
+      "zod"
+    ],
+    "exports": [
+      "storeUpdateSchema",
+      "productSchema",
+      "serviceSchema"
+    ]
+  },
+  {
+    "file": "src/scripts/backfill-verification.js",
+    "lines": 11,
+    "sha256": "c34728cd21158c50890e0f3406a0f7dd6e2048e594249afb3fc8c975af85c4cd",
+    "imports": [
+      "../services/verification.service.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/bootstrap-admin.js",
+    "lines": 109,
+    "sha256": "88aede74e8651cc36b66d3620ddd130d55534e8c0ec60460b9fe4a7fdb074e14",
+    "imports": [
+      "bcryptjs",
+      "../db/database.js",
+      "../db/stage3-migrations.js",
+      "../lib/ids.js",
+      "../lib/password-policy.js",
+      "../lib/session.js",
+      "../services/audit-log.service.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/migrate-sqlite-to-postgres.js",
+    "lines": 239,
+    "sha256": "2a3112e7cce3688aa1a80959f1e62301d865d347ee09c1e590213200bd572b66",
+    "imports": [
+      "dotenv/config",
+      "node:fs",
+      "node:path",
+      "node:url",
+      "better-sqlite3",
+      "pg"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/neon-check.js",
+    "lines": 44,
+    "sha256": "9d63609028a93d1c92bdbe0c7d8d96fa73e49394d97400a3898ce248d8db5a2b",
+    "imports": [
+      "dotenv/config",
+      "pg"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/production-check.js",
+    "lines": 108,
+    "sha256": "a050d908b9996e4e22580c28b3902e822977c90d0621a90cea8b4db0546dc896",
+    "imports": [
+      "dotenv/config"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/reconcile-accounts.js",
+    "lines": 129,
+    "sha256": "c7f5b592ecdc551f016dd7b95d842ef46713ce62f93e88269f8c37a735b7f844",
+    "imports": [
+      "../db/database.js",
+      "../db/stage3-migrations.js",
+      "../lib/session.js",
+      "../services/audit-log.service.js",
+      "../lib/roles.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/seed.js",
+    "lines": 45,
+    "sha256": "a884efc8be25cccefaf4ae626e028c55d6c35eefd4c5cfb66a1a9a69eccdc2c4",
+    "imports": [
+      "bcryptjs",
+      "../db/database.js",
+      "../lib/ids.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/scripts/test-postgres-parity.js",
+    "lines": 65,
+    "sha256": "2ad59c35d085fa2a07023672d2f80852eaf857cc3bff83e8dc92b5ca4d25f345",
+    "imports": [
+      "node:fs/promises",
+      "node:os",
+      "node:path",
+      "node:url",
+      "node:child_process",
+      "node:module",
+      "node:fs/promises",
+      "node:worker_threads"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/server.js",
+    "lines": 24,
+    "sha256": "6ae65aba53bb40e3302d4935709dab8e47f9bfd3cbd9718aad8b154f3dd8cdf9",
+    "imports": [
+      "./shared/worker.js",
+      "./services/settlement.service.js",
+      "./app.js",
+      "./config/env.js"
+    ],
+    "exports": []
+  },
+  {
+    "file": "src/services/account-profile.service.js",
+    "lines": 145,
+    "sha256": "a6d5b18b5b5e75b244e4ca3dce0c4d7287e3e9bbdd6e7215cbd6c69210adf4ed",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../lib/ids.js",
+      "../repositories/store.repository.js"
+    ],
+    "exports": [
+      "getAccountProfile",
+      "completeAccountProfile",
+      "saveFulfillmentSettings",
+      "getFulfillmentSettings"
+    ]
+  },
+  {
+    "file": "src/services/audit-log.service.js",
+    "lines": 93,
+    "sha256": "cecc99b204a331cbfc1535b51742d357ce75132f3e687d3cdf6010c1b48f3c7d",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js"
+    ],
+    "exports": [
+      "logAdminAudit",
+      "listAdminAuditLogs"
+    ]
+  },
+  {
+    "file": "src/services/auth.service.js",
+    "lines": 617,
+    "sha256": "101d88afaeedf9072fff71da1d6985c67114d580f0bff69ca477373e4da25861",
+    "imports": [
+      "bcryptjs",
+      "node:crypto",
+      "../db/rider-migrations.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/session.js",
+      "../lib/serializers.js",
+      "../db/database.js",
+      "../lib/password-policy.js",
+      "./email.service.js",
+      "./security.service.js",
+      "./subscription.service.js",
+      "../repositories/password-reset.repository.js",
+      "../repositories/user.repository.js",
+      "../repositories/store.repository.js",
+      "./rider-presence.service.js",
+      "../data/africa-location-catalog.js"
+    ],
+    "exports": [
+      "registerUser",
+      "loginUser",
+      "resendEmailVerification",
+      "verifyEmail",
+      "requestPasswordReset",
+      "resetPassword"
+    ]
+  },
+  {
+    "file": "src/services/cart.service.js",
+    "lines": 184,
+    "sha256": "309bc27a102aeb3ac7f49f9e1f1b073d50cb2f1fd108cd47c3e2b02e01605962",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./product-size.service.js"
+    ],
+    "exports": [
+      "listCart",
+      "addCartItem",
+      "setCartItemQuantity",
+      "removeCartItem",
+      "clearCart",
+      "replaceCart",
+      "mergeCart"
+    ]
+  },
+  {
+    "file": "src/services/catalog.service.js",
+    "lines": 79,
+    "sha256": "716efb4756e807d4e540758192bdb3a413b580bc71af046a526dfabded1bfb2d",
+    "imports": [
+      "../db/database.js",
+      "../lib/serializers.js",
+      "../lib/http-error.js",
+      "./interaction.service.js"
+    ],
+    "exports": [
+      "getPublicProduct"
+    ]
+  },
+  {
+    "file": "src/services/cloudinary.service.js",
+    "lines": 85,
+    "sha256": "04e6f2a4e9e6031c5076bea1bc41f8cb810aedfc9a773be12d986aefd8ec6ef7",
+    "imports": [
+      "cloudinary",
+      "../config/env.js"
+    ],
+    "exports": [
+      "isCloudinaryEnabled",
+      "configureCloudinary",
+      "uploadCloudinaryBuffer",
+      "destroyCloudinaryAsset",
+      "extractCloudinaryPublicId"
+    ]
+  },
+  {
+    "file": "src/services/delivery.service.js",
+    "lines": 289,
+    "sha256": "f7611b2ed917162afabf4ed7f161926b0774562e241fa4035bff05b4dcc085e7",
+    "imports": [
+      "../db/database.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "listDeliveryZones",
+      "calculateDeliveryQuote",
+      "calculateDeliveryFeeKobo",
+      "calculateCheckoutDeliveryQuote"
+    ]
+  },
+  {
+    "file": "src/services/dispatch-timeout.service.js",
+    "lines": 96,
+    "sha256": "2fe1d4d57df3c8cb70c3e24544483ec7fc02ead30718cbdec0e8c49b07313a70",
+    "imports": [
+      "../config/env.js"
+    ],
+    "exports": [
+      "resolveDispatchTimeoutPolicy",
+      "buildDispatchExpiresAt",
+      "dispatchRemainingSeconds"
+    ]
+  },
+  {
+    "file": "src/services/dojah.service.js",
+    "lines": 99,
+    "sha256": "7afec5b351b817487e60bef39ad9188d8d9b7d41d70ecbffdd056100a418bcf2",
+    "imports": [
+      "node:crypto",
+      "../config/env.js",
+      "../lib/ids.js"
+    ],
+    "exports": [
+      "isDojahConfigured",
+      "createDojahVerificationSession",
+      "verifyDojahWebhookSignature",
+      "normalizeDojahWebhook"
+    ]
+  },
+  {
+    "file": "src/services/earning.service.js",
+    "lines": 93,
+    "sha256": "c41dbf33c171c2b623fd8e019490593580bb3d4c9d01ca5f00d9b3a88e7b072a",
+    "imports": [
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "saveOffer",
+      "getOffer",
+      "opportunities",
+      "createEarningLink",
+      "resolveEarning",
+      "recordEarnings",
+      "earningsFor"
+    ]
+  },
+  {
+    "file": "src/services/email.service.js",
+    "lines": 344,
+    "sha256": "6fc3b18d63e67f7c49f6770e0e4d6aeca4a5020bc3bc06b5ca9ae2f76ffc64af",
+    "imports": [
+      "nodemailer",
+      "../config/env.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "buildFrontendUrl",
+      "getEmailConfigReport",
+      "verifyEmailTransport",
+      "sendDiagnosticEmail",
+      "sendEmailVerificationEmail",
+      "sendPasswordResetEmail"
+    ]
+  },
+  {
+    "file": "src/services/fulfillment.service.js",
+    "lines": 345,
+    "sha256": "6500a1ed556b59072e42baa2fc72b623bb345b345b396131897804612394eb4a",
+    "imports": [
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../lib/ids.js",
+      "./notification.service.js",
+      "./payout.service.js"
+    ],
+    "exports": [
+      "ownedOrder",
+      "listPackages",
+      "preparePackages",
+      "dispatchPackage",
+      "hasOpenIssue",
+      "assertSettlementReady",
+      "confirmPackage",
+      "remindBuyer"
+    ]
+  },
+  {
+    "file": "src/services/interaction.service.js",
+    "lines": 462,
+    "sha256": "3261eec29c660d6c6801ae036d25a71f149755b825156e6ab134043accfbe317",
+    "imports": [
+      "../shared/core.js",
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js"
+    ],
+    "exports": [
+      "followStore",
+      "unfollowStore",
+      "storeInteraction",
+      "likeProduct",
+      "unlikeProduct",
+      "addProductComment",
+      "productInteraction",
+      "recordProductShare",
+      "recordProductView",
+      "productComments",
+      "likeProductComment",
+      "unlikeProductComment",
+      "deleteProductComment"
+    ]
+  },
+  {
+    "file": "src/services/kyc.service.js",
+    "lines": 808,
+    "sha256": "e698750341cf479a9075d63aac4ac2edca5d92a48becfa52b5deeb08bd458ea3",
+    "imports": [
+      "node:crypto",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js",
+      "./audit-log.service.js",
+      "./dojah.service.js"
+    ],
+    "exports": [
+      "startKyc",
+      "submitManualKyc",
+      "getOwnKycStatus",
+      "getKycStatusForUser",
+      "adminListKyc",
+      "adminGetKyc",
+      "adminApproveKyc",
+      "adminRejectKyc",
+      "adminRequestKycResubmission",
+      "handleDojahWebhook"
+    ]
+  },
+  {
+    "file": "src/services/listing.service.js",
+    "lines": 500,
+    "sha256": "0c019e99533d410f40405e79836a646333d6c15f17faf769d81e307bd7c14302",
+    "imports": [
+      "../db/database.js",
+      "../shared/legacy-compat.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../config/env.js",
+      "../middleware/upload.js",
+      "../lib/serializers.js",
+      "../repositories/store.repository.js",
+      "./moderation.service.js",
+      "./logistics.service.js"
+    ],
+    "exports": [
+      "sellerWorkspace",
+      "createProduct",
+      "updateProduct",
+      "deleteProduct",
+      "createService",
+      "updateService",
+      "deleteService"
+    ]
+  },
+  {
+    "file": "src/services/location.service.js",
+    "lines": 785,
+    "sha256": "7957ded7555e7ec58348f7485d9002609aa13a95d04afeebb0bbfdfa2db8754b",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../data/nigeria-location-catalog.js",
+      "../data/africa-location-catalog.js",
+      "./rider-presence.service.js"
+    ],
+    "exports": [
+      "getAccountLocationPresence",
+      "upsertAccountLocationPresence",
+      "calculateRoute",
+      "routeLocation",
+      "getLocationCatalog",
+      "geocodeLocation",
+      "reverseGeocodeLocation",
+      "upsertSellerPickupLocation",
+      "getSellerPickupLocation",
+      "createBuyerDeliveryLocation",
+      "listBuyerDeliveryLocations",
+      "upsertRiderLocation",
+      "getRiderLocationStatus"
+    ]
+  },
+  {
+    "file": "src/services/logistics.service.js",
+    "lines": 4308,
+    "sha256": "8503861dd8c82fd3e4bde615014a7e35633e65f95a624875179468484ee181ee",
+    "imports": [
+      "node:crypto",
+      "../db/database.js",
+      "../shared/legacy-compat.js",
+      "../db/logistics-migrations.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/serializers.js",
+      "./notification.service.js",
+      "./dispatch-timeout.service.js",
+      "./verification.service.js",
+      "./message.service.js",
+      "./rider-presence.service.js",
+      "./rider-capacity.service.js"
+    ],
+    "exports": [
+      "generateOrderVerificationCode",
+      "serializePackageProfile",
+      "suggestPackageProfile",
+      "applyProductPackageProfile",
+      "listZones",
+      "saveZone",
+      "deleteZone",
+      "listPackageRules",
+      "savePackageRule",
+      "createParentOrderForOrders",
+      "ensureOrderDeliverySetup",
+      "getParentOrder",
+      "createBatchesForOrder",
+      "getBatchesForOrder",
+      "getDeliveryBatchById",
+      "requireBatchForAuth",
+      "getDeliveryBatch",
+      "listSellerReadinessTasks",
+      "sellerConfirmAvailability",
+      "sellerRejectAvailability",
+      "markPickupTaskReady",
+      "syncOrderReadinessForDispatch",
+      "advanceExpiredDispatchAttempts",
+      "advanceDueReadinessAndDispatch",
+      "listRiderCandidatesForBatch",
+      "startDispatchForBatch",
+      "offerNextRiderForBatch",
+      "sendDeliveryOfferToRider",
+      "riderAcceptDispatch",
+      "riderRejectDispatch",
+      "riderTimeoutDispatch",
+      "listRiderDispatches",
+      "updateRiderCapacity",
+      "getRiderCapacity",
+      "updateRiderServiceZones",
+      "updateRiderCurrentZone",
+      "updateRiderLocationPermission",
+      "listAdminDispatches",
+      "listInterventionQueue",
+      "adminReassignBatch",
+      "adminHoldBatch",
+      "adminCancelBatch",
+      "adminSplitBatch",
+      "updateReliabilityScore",
+      "listReliabilityScores",
+      "getOwnReliability",
+      "checkoutGroupingPreview",
+      "updateSellerProductStock",
+      "listSubstitutionOptions",
+      "acceptSubstitution",
+      "removeUnavailableItem",
+      "verifyPickupTask",
+      "verifyDeliveryTask",
+      "addTaskProof"
+    ]
+  },
+  {
+    "file": "src/services/market.service.js",
+    "lines": 2241,
+    "sha256": "56eb748cafe8d25930421c901fe6ad2c8ac6c877a60a081baeb5cecdb3577c76",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/serializers.js",
+      "./interaction.service.js",
+      "./used-market.service.js",
+      "./notification.service.js"
+    ],
+    "exports": [
+      "serializeMarket",
+      "getMarketCategories",
+      "getMarketHub",
+      "getUsedMarket",
+      "getCampusMarket",
+      "listLocalMarkets",
+      "getLocalMarketById",
+      "getNearbySellers",
+      "searchMarket",
+      "listApprovedMarketsForSeller",
+      "listSellerCategoryApprovals",
+      "listSellerMarketRequests",
+      "getSellerMarketStatus",
+      "getSellerOnboardingOptions",
+      "ensureSellerCategoryRequest",
+      "assertCategoryAllowedForStore",
+      "createMarketRequestForSeller",
+      "applySellerToLocalMarket",
+      "adminListMarketRequests",
+      "adminUpdateMarketRequestStatus",
+      "adminListSellerCategoryApprovals",
+      "adminUpdateSellerCategoryApproval",
+      "adminListMarkets",
+      "adminCreateMarket",
+      "adminUpdateMarket",
+      "adminUpdateMarketStatus",
+      "adminListMarketSellers",
+      "adminUpdateMarketSellerStatus",
+      "adminUpdateSellerMarketApproval",
+      "adminUpdateMarketCategories"
+    ]
+  },
+  {
+    "file": "src/services/message.service.js",
+    "lines": 1346,
+    "sha256": "85758e930c2f898dea44614851b273eb0b51191ac09b1f1b9f1554c5bd7a6b56",
+    "imports": [
+      "../shared/core.js",
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js",
+      "./payment-protection.service.js"
+    ],
+    "exports": [
+      "getConversationDraftContext",
+      "createProductConversation",
+      "getConversationPreview",
+      "sendDraftMessage",
+      "createUsedListingConversation",
+      "createUsedOrderConversation",
+      "createStoreConversation",
+      "createStoreOrderConversation",
+      "createDeliveryAssignmentConversation",
+      "createDeliveryOfferConversation",
+      "recordAdminConversationAccess",
+      "createSupportConversation",
+      "listConversations",
+      "getUnreadMessageCount",
+      "getConversation",
+      "listMessages",
+      "sendMessage"
+    ]
+  },
+  {
+    "file": "src/services/moderation.service.js",
+    "lines": 752,
+    "sha256": "41eac53a0a35a40621ffe21bb2d6e2bbfe68fc1be35d51139e525cb03b5e5f07",
+    "imports": [
+      "../db/database.js",
+      "../shared/legacy-compat.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/serializers.js",
+      "./notification.service.js",
+      "./price-validation.service.js",
+      "./payment-protection.service.js"
+    ],
+    "exports": [
+      "evaluateListingModeration",
+      "upsertModerationRecord",
+      "moderationSqlPatch",
+      "listProductModeration",
+      "validateProductForPublication",
+      "publishProductAfterValidation",
+      "adminReviewProduct",
+      "updateProductAvailability",
+      "getProductModerationStatus",
+      "shouldTreatAsPublic",
+      "isInReview"
+    ]
+  },
+  {
+    "file": "src/services/notification.service.js",
+    "lines": 204,
+    "sha256": "47d1e09a403ec59dc3cc6a65a16ebd1ee374a398b7064f900601d765c4cb049d",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./realtime.service.js"
+    ],
+    "exports": [
+      "createNotification",
+      "createNotificationForUsers",
+      "listNotifications",
+      "getNotificationUnreadCount",
+      "markNotificationRead",
+      "markAllNotificationsRead",
+      "clearNotifications"
+    ]
+  },
+  {
+    "file": "src/services/ocr.service.js",
+    "lines": 178,
+    "sha256": "2c013e6682f600f38b69caef7f987c4fc53ca7ec4e8ceafded7c4a6a4a27d6bc",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "./payment-protection.service.js"
+    ],
+    "exports": [
+      "scanAssetText",
+      "scanUploadedImagesForModeration"
+    ]
+  },
+  {
+    "file": "src/services/order.service.js",
+    "lines": 1394,
+    "sha256": "5224586c7dad8bea2974aa6f4dd7f3b09beccb1285fceef477d8cbbf1914d0bf",
+    "imports": [
+      "../db/database.js",
+      "./earning.service.js",
+      "../lib/http-error.js",
+      "../lib/ids.js",
+      "./delivery.service.js",
+      "./notification.service.js",
+      "./payment-protection.service.js",
+      "./product-size.service.js",
+      "./location.service.js",
+      "./return-dispute.service.js",
+      "./logistics.service.js"
+    ],
+    "exports": [
+      "listOrders",
+      "listSellerOrders",
+      "getSellerActionableOrderCount",
+      "getOrder",
+      "getPendingBuyerOrderCount",
+      "createOrders",
+      "sellerConfirmOrder",
+      "sellerRejectOrder",
+      "getOrderPaymentState",
+      "updateOrderStatus",
+      "verifyOrderDelivery",
+      "markOrderPaidLocally",
+      "openOrderReturn",
+      "replyToOrderReturn",
+      "openOrderDispute",
+      "listReturnsForOrder",
+      "submitStoreReview"
+    ]
+  },
+  {
+    "file": "src/services/payment-protection.service.js",
+    "lines": 371,
+    "sha256": "41deef3222859ba98da9f56cd027a0e81faf858d932c8cd7c9e242c9be26159f",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js"
+    ],
+    "exports": [
+      "scanForCircumvention",
+      "logPaymentProtectionEvent",
+      "protectMessageContent",
+      "scanListingContent",
+      "recordPayAtDeliveryFailure",
+      "evaluatePayAtDeliveryEligibility"
+    ]
+  },
+  {
+    "file": "src/services/payment.service.js",
+    "lines": 1197,
+    "sha256": "4c1654f43de121f92644100c336383ac2e2c7805ce748c82ee20a379e08ff710",
+    "imports": [
+      "./settlement.service.js",
+      "node:crypto",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./subscription.service.js",
+      "./payout.service.js",
+      "./logistics.service.js"
+    ],
+    "exports": [
+      "initializePayment",
+      "initializePayAtDeliveryPayment",
+      "verifyPayment",
+      "verifyPublicPayment",
+      "handlePaystackWebhook"
+    ]
+  },
+  {
+    "file": "src/services/payout.service.js",
+    "lines": 272,
+    "sha256": "9c2a6c66291b69ba82652e0bd9bf59ea94d3fbe50553d745ce5b2800d29cfa2a",
+    "imports": [
+      "./fulfillment.service.js",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js"
+    ],
+    "exports": [
+      "ensurePayoutForStoreOrder",
+      "ensurePayoutForUsedOrder",
+      "markPayoutDeliveryVerified",
+      "listSellerPayouts",
+      "adminListPayouts",
+      "adminUpdatePayout"
+    ]
+  },
+  {
+    "file": "src/services/price-validation.service.js",
+    "lines": 365,
+    "sha256": "c3b4826b37efacbc949a96b5765f47947ab7710d73858ecdd3d6a01e9dd4607a",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./audit-log.service.js"
+    ],
+    "exports": [
+      "validateProductPrice",
+      "validateAndStoreProductPrice",
+      "adminListPriceRanges",
+      "adminCreatePriceRange",
+      "adminUpdatePriceRange",
+      "adminDeletePriceRange"
+    ]
+  },
+  {
+    "file": "src/services/product-size.service.js",
+    "lines": 51,
+    "sha256": "41e8c047b55f92a11fe7413ed12fcefc11a92ddf144a93b6cd8f1d354393fa2d",
+    "imports": [
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "normalizeAvailableSizes",
+      "validateSelectedSize"
+    ]
+  },
+  {
+    "file": "src/services/realtime.service.js",
+    "lines": 184,
+    "sha256": "a195028b71f406e629b081b126f65c7a4bbf4425fb011c35aa291e068240a136",
+    "imports": [],
+    "exports": [
+      "subscribeMessageStream",
+      "publishMessageEvent",
+      "subscribeNotificationStream",
+      "publishNotificationEvent"
+    ]
+  },
+  {
+    "file": "src/services/return-dispute.service.js",
+    "lines": 366,
+    "sha256": "0b47b66691e889f6ce1d82bd1ebb6a00c719525b4f1442fe9d30f78d537c55f0",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js"
+    ],
+    "exports": [
+      "createReturnRequest",
+      "respondToReturnRequest",
+      "createDispute",
+      "addDisputeEvidence",
+      "adminListDisputes",
+      "adminDecideDispute",
+      "listOrderReturns"
+    ]
+  },
+  {
+    "file": "src/services/rider-capacity.service.js",
+    "lines": 55,
+    "sha256": "aec6523c068a8b3a85d7a6824f531037d4771175f5668d3d73aeeb2b4c21124d",
+    "imports": [
+      "../db/database.js"
+    ],
+    "exports": [
+      "MAX_INCOMPLETE_DISPATCHES",
+      "INCOMPLETE_DISPATCH_STATUSES",
+      "lockRiderCapacity",
+      "activeDispatchCount",
+      "hasRiderCapacity"
+    ]
+  },
+  {
+    "file": "src/services/rider-presence.service.js",
+    "lines": 299,
+    "sha256": "5f3bef54e1650696dd331b5acdd1b16f3940cde33771bddc6126f0eb0bb99d33",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js"
+    ],
+    "exports": [
+      "markRiderPresenceOnline",
+      "heartbeatRiderPresence",
+      "markRiderPresenceOffline",
+      "markAuthenticatedRiderOffline",
+      "expireStaleRiderPresence",
+      "isRiderPresenceOnline",
+      "normalizeRiderPresenceState",
+      "startRiderPresenceMonitor"
+    ]
+  },
+  {
+    "file": "src/services/rider.service.js",
+    "lines": 2397,
+    "sha256": "85718d6e6f068dc26405f989a6a0b3120271344e2adc0c723630da0338c22465",
+    "imports": [
+      "node:crypto",
+      "../db/database.js",
+      "../db/rider-migrations.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/session.js",
+      "../lib/serializers.js",
+      "./auth.service.js",
+      "./notification.service.js",
+      "./payout.service.js",
+      "./payment.service.js",
+      "./dispatch-timeout.service.js",
+      "./logistics.service.js",
+      "./verification.service.js",
+      "./rider-presence.service.js",
+      "./location.service.js",
+      "./message.service.js",
+      "./rider-capacity.service.js"
+    ],
+    "exports": [
+      "hashOtp",
+      "registerRider",
+      "loginRider",
+      "logoutRider",
+      "updateRiderVerificationDocuments",
+      "getRiderSession",
+      "updateRiderLocation",
+      "riderDashboard",
+      "listRiderAssignments",
+      "getRiderAssignment",
+      "listAvailableRiders",
+      "createRiderAssignment",
+      "acceptRiderAssignment",
+      "getRouteEstimate",
+      "verifyPickup",
+      "verifyPickupByOrder",
+      "verifyDeliveryCode",
+      "completeDelivery",
+      "generateRiderPaymentLink",
+      "failAssignment",
+      "createRiderSafetyReport",
+      "auditRiderContact",
+      "markRiderNotificationRead",
+      "getSellerAssignedRider",
+      "cancelSellerRiderAssignment",
+      "cookieConfig",
+      "adminListRiders",
+      "adminUpdateRiderVerification",
+      "adminUnlockRiderCapacityChange"
+    ]
+  },
+  {
+    "file": "src/services/saved.service.js",
+    "lines": 185,
+    "sha256": "9dd2e539b64690bf407a6741920b4dc64776921c4638e7b6c2e74381c27272db",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js",
+      "../lib/serializers.js"
+    ],
+    "exports": [
+      "listSavedItems",
+      "saveItem",
+      "removeSavedItem"
+    ]
+  },
+  {
+    "file": "src/services/security.service.js",
+    "lines": 401,
+    "sha256": "24fc72bbf82bd0ed75b8a6e257d5e96f9bc30771e5be4d1c687ec098a93b378c",
+    "imports": [
+      "bcryptjs",
+      "node:crypto",
+      "nodemailer",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/session.js",
+      "../lib/password-policy.js",
+      "../repositories/user.repository.js",
+      "../lib/serializers.js"
+    ],
+    "exports": [
+      "hashToken",
+      "createSecurityEvent",
+      "createLoginAttempt",
+      "createEmailVerificationToken",
+      "verifyEmailToken",
+      "changePassword",
+      "requestLoggedInPasswordReset",
+      "verifyLoggedInPasswordResetCode",
+      "completeLoggedInPasswordReset",
+      "getAccountSecurity",
+      "logoutAllDevices"
+    ]
+  },
+  {
+    "file": "src/services/seller-verification.service.js",
+    "lines": 1508,
+    "sha256": "2bbdf6704f44d664be045b263758b7f1ea0a35c86f48cd7c0265e5badd8447f1",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../repositories/store.repository.js",
+      "../repositories/user.repository.js",
+      "./trust.service.js",
+      "./market.service.js",
+      "./verification.service.js"
+    ],
+    "exports": [
+      "ensureSellerStoreForUser",
+      "serializeSellerVerification",
+      "getSellerVerification",
+      "updateSellerOnboardingDraft",
+      "submitSellerVerificationStage",
+      "upsertSellerVerification",
+      "getSellerReadiness",
+      "assertSellerVerified"
+    ]
+  },
+  {
+    "file": "src/services/settlement.service.js",
+    "lines": 390,
+    "sha256": "61d5bb4925c8e6b04ad8375f7071a1332b66b1a3f1092ed737f7b50276e3aa17",
+    "imports": [
+      "node:crypto",
+      "bcryptjs",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "./fulfillment.service.js"
+    ],
+    "exports": [
+      "banks",
+      "recipient",
+      "saveRecipient",
+      "applyTransfer",
+      "settlePayout",
+      "startSettlementWorker",
+      "applyEarningTransfer",
+      "settleEarning"
+    ]
+  },
+  {
+    "file": "src/services/subscription.service.js",
+    "lines": 355,
+    "sha256": "7608094e41da0fc17d1c6914fc7b61e16ceaafeb4c1aab9973aa15f073161536",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../repositories/store.repository.js"
+    ],
+    "exports": [
+      "SELLER_SUBSCRIPTION_DAYS",
+      "SELLER_SUBSCRIPTION_GRACE_DAYS",
+      "SELLER_SUBSCRIPTION_RENEWAL_WINDOW_DAYS",
+      "serializeSubscription",
+      "getSellerSubscription",
+      "ensureSellerSubscription",
+      "activateSellerSubscriptionForDevelopment",
+      "renewSellerSubscriptionFromPayment",
+      "assertSellerSubscriptionCanStartCheckout",
+      "assertSellerSubscriptionActive"
+    ]
+  },
+  {
+    "file": "src/services/trust.service.js",
+    "lines": 260,
+    "sha256": "6117b8ebb0516ece24c8d3ba97daca085f0ce127f3487d37b54305147d538912",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "serializeTrustProfile",
+      "serializePayoutAccount",
+      "getTrustProfile",
+      "getPayoutAccount",
+      "getTrustStatus",
+      "upsertTrustProfile",
+      "upsertPayoutAccount",
+      "ensureUsedMarketTrust"
+    ]
+  },
+  {
+    "file": "src/services/used-listing-interaction.service.js",
+    "lines": 401,
+    "sha256": "d42d8b6e03130b20043ea56497195e88ad1ed112dffc6a7be3d18ab0e1a07877",
+    "imports": [
+      "../db/database.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js"
+    ],
+    "exports": [
+      "usedListingInteraction",
+      "likeUsedListing",
+      "unlikeUsedListing",
+      "recordUsedListingShare",
+      "recordUsedListingView",
+      "usedListingComments",
+      "addUsedListingComment",
+      "likeUsedListingComment",
+      "unlikeUsedListingComment",
+      "deleteUsedListingComment"
+    ]
+  },
+  {
+    "file": "src/services/used-market.service.js",
+    "lines": 450,
+    "sha256": "9ce6f4a5e7acb81f95743680a0ad2d7ce2e943054f321a37df8b537f92a1c59b",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./trust.service.js",
+      "./notification.service.js",
+      "./used-listing-interaction.service.js"
+    ],
+    "exports": [
+      "listUsedListings",
+      "getUsedListing",
+      "listOwnUsedListings",
+      "createUsedListing",
+      "updateOwnUsedListingStatus",
+      "reportUsedListing"
+    ]
+  },
+  {
+    "file": "src/services/used-order.service.js",
+    "lines": 673,
+    "sha256": "f96d8a1be548be47ca0f90ca6be0abd703ad0147d716d489a84ffe7e39018fdc",
+    "imports": [
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "./notification.service.js",
+      "./return-dispute.service.js",
+      "./logistics.service.js"
+    ],
+    "exports": [
+      "releaseExpiredUsedOrderReservations",
+      "listUsedOrders",
+      "getUsedOrder",
+      "createUsedOrder",
+      "markUsedOrderPaid",
+      "updateUsedOrderStatus",
+      "chooseUsedOrderFulfillment",
+      "verifyUsedOrderDelivery",
+      "openUsedOrderReturn",
+      "replyToUsedOrderReturn",
+      "openUsedOrderDispute",
+      "listReturnsForUsedOrder",
+      "submitUsedDeliveryProof"
+    ]
+  },
+  {
+    "file": "src/services/verification.service.js",
+    "lines": 2334,
+    "sha256": "d43c57401808b0ca9a5bc2b40eac2d9ee5e82845ea25256c3b17ee46fff333f0",
+    "imports": [
+      "../db/database.js",
+      "../db/rider-migrations.js",
+      "../lib/ids.js",
+      "../lib/http-error.js",
+      "../lib/serializers.js",
+      "./notification.service.js",
+      "./dojah.service.js",
+      "./rider-presence.service.js",
+      "./rider-capacity.service.js"
+    ],
+    "exports": [
+      "ensureVerificationCase",
+      "getVerificationCenter",
+      "submitRequirement",
+      "submitRequirementForUser",
+      "requestRequirementResubmission",
+      "reviewRequirementResubmission",
+      "reviewRequirement",
+      "approveCaseLevel",
+      "requestVerificationLevel",
+      "setCaseOperationalStatus",
+      "evaluateRiderEligibility",
+      "adminListVerificationQueues",
+      "backfillLegacyVerification",
+      "verificationRequirementDefinitions"
+    ]
+  },
+  {
+    "file": "src/shared/account.js",
+    "lines": 345,
+    "sha256": "dd1e0956921c1f0225800eb705ace771d071ecf933d33ad79163a0f6a2c84667",
+    "imports": [
+      "bcryptjs",
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../lib/serializers.js",
+      "../lib/session.js",
+      "../services/account-profile.service.js",
+      "./core.js",
+      "./media.js"
+    ],
+    "exports": [
+      "account",
+      "acceptTerms",
+      "editProfile",
+      "saveSettings",
+      "addresses",
+      "saveAddress",
+      "blockAccount",
+      "requestDeletion",
+      "deletionCandidates",
+      "finalizeDeletion"
+    ]
+  },
+  {
+    "file": "src/shared/catalogue.js",
+    "lines": 480,
+    "sha256": "8bb2ac1e7b08c13af029ad4103113eb265d7148c1eefc482ee5e2ded7fe24613",
+    "imports": [
+      "zod",
+      "../config/env.js",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../services/moderation.service.js",
+      "./core.js",
+      "./schemas.js",
+      "./media.js"
+    ],
+    "exports": [
+      "profileCatalogue",
+      "saveCatalogue",
+      "productRow",
+      "publicProduct",
+      "saveProduct",
+      "publishDue",
+      "assertEditableInventory",
+      "setProductState",
+      "reviewSharedProduct",
+      "ownerProduct"
+    ]
+  },
+  {
+    "file": "src/shared/chat.js",
+    "lines": 435,
+    "sha256": "af24fd1c0d50d74138155a3a2a0e125aa28dd1b32d1ed33a1de1dc10a0019cda",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../services/payment-protection.service.js",
+      "./core.js",
+      "./media.js",
+      "./social.js",
+      "./catalogue.js"
+    ],
+    "exports": [
+      "ownedConversation",
+      "directConversation",
+      "messageView",
+      "conversationMessages",
+      "conversations",
+      "sendChat",
+      "acknowledge",
+      "changeMessage",
+      "chatSettings"
+    ]
+  },
+  {
+    "file": "src/shared/checkout.js",
+    "lines": 580,
+    "sha256": "fbb61bfb3937f1a48563ee3879c0b1443a7a9395b6dfd212a46ba045ce861da3",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./schemas.js",
+      "./catalogue.js"
+    ],
+    "exports": [
+      "quoteSelection",
+      "publicQuote",
+      "listCartV2",
+      "putCartV2",
+      "changeStock",
+      "beginCheckout",
+      "checkoutView",
+      "ownedCheckout",
+      "cancelCheckout",
+      "releaseCheckoutStock",
+      "walletChange",
+      "completeCheckout",
+      "payFromWallet",
+      "walletView"
+    ]
+  },
+  {
+    "file": "src/shared/core.js",
+    "lines": 107,
+    "sha256": "a014134082f5437732c19f62b975879e603d82fab46f00f6e291c944bb42032e",
+    "imports": [
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "TERMS_VERSION",
+      "now",
+      "id",
+      "hash",
+      "json",
+      "parse",
+      "identifier",
+      "money",
+      "page",
+      "assertUser",
+      "lockUsers",
+      "assertUnblocked",
+      "assertTerms",
+      "audit",
+      "notify",
+      "assertAmount",
+      "assertAdmin"
+    ]
+  },
+  {
+    "file": "src/shared/discovery.js",
+    "lines": 83,
+    "sha256": "935ca792816ad5a5a658da0830fd2a57eece6d111e2c33b47111ce83e5637456",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "./core.js",
+      "./catalogue.js",
+      "./social.js"
+    ],
+    "exports": [
+      "search",
+      "categories",
+      "saved",
+      "saveItem",
+      "syncLegacyPosts"
+    ]
+  },
+  {
+    "file": "src/shared/downloads.js",
+    "lines": 61,
+    "sha256": "46e2f108a2b6b516d6881a951def396646cbf33d7c13cc046553d20949e0d6af",
+    "imports": [
+      "node:crypto",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js"
+    ],
+    "exports": [
+      "library",
+      "downloadToken",
+      "consumeDownload"
+    ]
+  },
+  {
+    "file": "src/shared/identity.js",
+    "lines": 196,
+    "sha256": "256bff07ad9e7921e883c6a953582b4403daa2a6cc395d29a67f37f036488593",
+    "imports": [
+      "node:crypto",
+      "jsonwebtoken",
+      "bcryptjs",
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "../lib/session.js",
+      "./core.js",
+      "./sessions.js"
+    ],
+    "exports": [
+      "identityChallenge",
+      "signInIdentity"
+    ]
+  },
+  {
+    "file": "src/shared/legacy-compat.js",
+    "lines": 25,
+    "sha256": "752ce2db57a27ce0eda5a155a605bec67b810f4a06e91c2348f2ced9e3f6a7fd",
+    "imports": [
+      "../db/database.js",
+      "../lib/http-error.js"
+    ],
+    "exports": [
+      "assertLegacyProductMutation"
+    ]
+  },
+  {
+    "file": "src/shared/media.js",
+    "lines": 277,
+    "sha256": "7ba858df38d333845dc22f12ab00b1018a5721ed7039bf023c59ae97d0f7fb3d",
+    "imports": [
+      "node:fs/promises",
+      "node:path",
+      "node:net",
+      "sharp",
+      "node:zlib",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "../services/cloudinary.service.js",
+      "./core.js"
+    ],
+    "exports": [
+      "privateRoot",
+      "storeMedia",
+      "ownedMedia"
+    ]
+  },
+  {
+    "file": "src/shared/migrations.js",
+    "lines": 77,
+    "sha256": "8bbd31fe4410404643c8873da67e3adcaef8667650f769762580b6f8a6ecee1f",
+    "imports": [
+      "../db/database.js"
+    ],
+    "exports": [
+      "migrateShared"
+    ]
+  },
+  {
+    "file": "src/shared/orders.js",
+    "lines": 703,
+    "sha256": "e4d0cc2e4462fa612e34c983d637b6abb6110cba3802eabb3569e4da4f93d05d",
+    "imports": [
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./checkout.js",
+      "./media.js",
+      "./payments.js"
+    ],
+    "exports": [
+      "ownedOrderV2",
+      "orderView",
+      "listOrdersV2",
+      "prepareOrder",
+      "dispatchV2",
+      "confirmV2",
+      "releaseEligible",
+      "openIssue",
+      "resolveIssue",
+      "applyRefund",
+      "processRefund",
+      "receiptView",
+      "replyIssue"
+    ]
+  },
+  {
+    "file": "src/shared/payments.js",
+    "lines": 412,
+    "sha256": "0026c1a3ff55bcfc45e3b7f4c75cd2be5e74ab7eef693ace9e49b00174d9420a",
+    "imports": [
+      "node:crypto",
+      "zod",
+      "../db/database.js",
+      "../config/env.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./checkout.js",
+      "./recovery.js"
+    ],
+    "exports": [
+      "providerRequest",
+      "initializeCheckout",
+      "applyCharge",
+      "verifyCheckout",
+      "createTopup",
+      "verifyTopup",
+      "requestWithdrawal",
+      "applyWithdrawal",
+      "verifyWithdrawal",
+      "sharedWebhook"
+    ]
+  },
+  {
+    "file": "src/shared/push.js",
+    "lines": 164,
+    "sha256": "2b9083271161c90208fcd7397fdbe8918157e61690a067c93c746e07e87827d0",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js"
+    ],
+    "exports": [
+      "registerPush",
+      "sendPushJobs"
+    ]
+  },
+  {
+    "file": "src/shared/recovery.js",
+    "lines": 111,
+    "sha256": "6b30bf5231d0465b8b2bdd3c7c77d9061f8e31bf87d786039be78df977a8ec30",
+    "imports": [
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./payments.js"
+    ],
+    "exports": [
+      "queueLatePayment",
+      "recoverPayment",
+      "linkProviderRefund"
+    ]
+  },
+  {
+    "file": "src/shared/reviews.js",
+    "lines": 139,
+    "sha256": "bb0fdf37c5b46b2286a60ad5091e6d570f01d71b13e68ebdb19810fb82dd09c3",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./media.js",
+      "./social.js"
+    ],
+    "exports": [
+      "reviewsFor",
+      "saveReview",
+      "reviewAction"
+    ]
+  },
+  {
+    "file": "src/shared/schemas.js",
+    "lines": 157,
+    "sha256": "eb53463757308ebb5f04d00d69fca7634e4c1eda15174dd015c58dcd4fd36da5",
+    "imports": [
+      "zod",
+      "./core.js"
+    ],
+    "exports": [
+      "componentSchema",
+      "orderingSchema",
+      "variantSchema",
+      "productSchema",
+      "selectionSchema",
+      "checkoutSchema"
+    ]
+  },
+  {
+    "file": "src/shared/sessions.js",
+    "lines": 114,
+    "sha256": "3c6fc7e2af3c32d8d50bc13748d63b78e6a40f7c98fa96ba7e278121800846c6",
+    "imports": [
+      "node:crypto",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js"
+    ],
+    "exports": [
+      "issueMobileSession",
+      "verifyMobileToken",
+      "rotateMobileSession",
+      "revokeMobileSession"
+    ]
+  },
+  {
+    "file": "src/shared/social.js",
+    "lines": 480,
+    "sha256": "a225453971bd4ecdd1e79d448a834e8313703c64bf744282429f4f2b52460aa6",
+    "imports": [
+      "zod",
+      "../db/database.js",
+      "../lib/http-error.js",
+      "./core.js",
+      "./catalogue.js",
+      "./checkout.js",
+      "./chat.js",
+      "../services/interaction.service.js"
+    ],
+    "exports": [
+      "person",
+      "followPerson",
+      "connections",
+      "feed",
+      "reshare",
+      "trackPost",
+      "makeOffer",
+      "answerOffer",
+      "report",
+      "notificationFeed",
+      "activityCounts",
+      "reshareAnalytics"
+    ]
+  },
+  {
+    "file": "src/shared/worker.js",
+    "lines": 107,
+    "sha256": "4fc916da552fbb140a3c44d34f7d5c51cc675829f00b0cbb8a61054b58aab02e",
+    "imports": [
+      "../db/database.js",
+      "./core.js",
+      "./catalogue.js",
+      "./checkout.js",
+      "./payments.js",
+      "./orders.js",
+      "./recovery.js",
+      "./discovery.js",
+      "./push.js"
+    ],
+    "exports": [
+      "runSharedJobs",
+      "startSharedWorker"
+    ]
+  }
+]

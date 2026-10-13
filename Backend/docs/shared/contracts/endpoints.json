@@ -1,0 +1,470 @@
+[
+  {
+    "method": "GET",
+    "path": "/activity/counts"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/deletions"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/deletions/:id/finalize"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/finance"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/issues/:id/resolve"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/products"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/products/:id/review"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recoveries/:id/link-provider"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/recoveries/:id/reconcile"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/refunds/:id/link-provider"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/refunds/:id/reconcile"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/reports"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/reports/:id/resolve"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/challenge"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/identity"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/login"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/logout"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/refresh"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/register"
+  },
+  {
+    "method": "GET",
+    "path": "/capabilities"
+  },
+  {
+    "method": "GET",
+    "path": "/cart"
+  },
+  {
+    "method": "POST",
+    "path": "/cart"
+  },
+  {
+    "method": "DELETE",
+    "path": "/cart/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/cart/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/catalogue"
+  },
+  {
+    "method": "PUT",
+    "path": "/catalogue/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/categories"
+  },
+  {
+    "method": "POST",
+    "path": "/checkouts"
+  },
+  {
+    "method": "GET",
+    "path": "/checkouts/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/checkouts/:id/cancel"
+  },
+  {
+    "method": "POST",
+    "path": "/checkouts/:id/initialize"
+  },
+  {
+    "method": "POST",
+    "path": "/checkouts/:id/pay"
+  },
+  {
+    "method": "POST",
+    "path": "/checkouts/:id/verify"
+  },
+  {
+    "method": "GET",
+    "path": "/conversations"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations/:id/ack"
+  },
+  {
+    "method": "GET",
+    "path": "/conversations/:id/messages"
+  },
+  {
+    "method": "POST",
+    "path": "/conversations/:id/messages"
+  },
+  {
+    "method": "PATCH",
+    "path": "/conversations/:id/messages/:messageId"
+  },
+  {
+    "method": "PUT",
+    "path": "/conversations/:id/settings"
+  },
+  {
+    "method": "GET",
+    "path": "/feed"
+  },
+  {
+    "method": "GET",
+    "path": "/issues"
+  },
+  {
+    "method": "POST",
+    "path": "/issues/:id/reply"
+  },
+  {
+    "method": "GET",
+    "path": "/library"
+  },
+  {
+    "method": "POST",
+    "path": "/library/:id/download-token"
+  },
+  {
+    "method": "POST",
+    "path": "/library/download"
+  },
+  {
+    "method": "POST",
+    "path": "/lines/:id/issues"
+  },
+  {
+    "method": "POST",
+    "path": "/lines/:id/review"
+  },
+  {
+    "method": "GET",
+    "path": "/me"
+  },
+  {
+    "method": "GET",
+    "path": "/me/addresses"
+  },
+  {
+    "method": "POST",
+    "path": "/me/addresses"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/addresses/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/addresses/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/me/blocks"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/blocks/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/blocks/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/me/deletion"
+  },
+  {
+    "method": "GET",
+    "path": "/me/devices"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/devices/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/me/presence"
+  },
+  {
+    "method": "GET",
+    "path": "/me/products"
+  },
+  {
+    "method": "GET",
+    "path": "/me/products/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/me/profile"
+  },
+  {
+    "method": "DELETE",
+    "path": "/me/push-devices"
+  },
+  {
+    "method": "POST",
+    "path": "/me/push-devices"
+  },
+  {
+    "method": "GET",
+    "path": "/me/reshare-analytics"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/selling"
+  },
+  {
+    "method": "PUT",
+    "path": "/me/settings"
+  },
+  {
+    "method": "POST",
+    "path": "/me/terms"
+  },
+  {
+    "method": "POST",
+    "path": "/media"
+  },
+  {
+    "method": "GET",
+    "path": "/media/:id/private"
+  },
+  {
+    "method": "GET",
+    "path": "/media/:id/public"
+  },
+  {
+    "method": "GET",
+    "path": "/notifications"
+  },
+  {
+    "method": "POST",
+    "path": "/notifications/read"
+  },
+  {
+    "method": "GET",
+    "path": "/offers"
+  },
+  {
+    "method": "POST",
+    "path": "/offers"
+  },
+  {
+    "method": "POST",
+    "path": "/offers/:id/answer"
+  },
+  {
+    "method": "GET",
+    "path": "/orders"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/packages/:packageId/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/packages/:packageId/dispatch"
+  },
+  {
+    "method": "POST",
+    "path": "/orders/:id/prepare"
+  },
+  {
+    "method": "GET",
+    "path": "/orders/:id/receipt"
+  },
+  {
+    "method": "GET",
+    "path": "/people/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/people/:id/catalogue"
+  },
+  {
+    "method": "GET",
+    "path": "/people/:id/connections"
+  },
+  {
+    "method": "DELETE",
+    "path": "/people/:id/follow"
+  },
+  {
+    "method": "POST",
+    "path": "/people/:id/follow"
+  },
+  {
+    "method": "DELETE",
+    "path": "/posts/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/posts/:id/events"
+  },
+  {
+    "method": "POST",
+    "path": "/posts/:id/reshare"
+  },
+  {
+    "method": "POST",
+    "path": "/products"
+  },
+  {
+    "method": "DELETE",
+    "path": "/products/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/products/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/products/:id/availability"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:id/comments"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:id/comments"
+  },
+  {
+    "method": "DELETE",
+    "path": "/products/:id/comments/:commentId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/products/:id/like"
+  },
+  {
+    "method": "POST",
+    "path": "/products/:id/like"
+  },
+  {
+    "method": "GET",
+    "path": "/products/:id/reviews"
+  },
+  {
+    "method": "POST",
+    "path": "/quote"
+  },
+  {
+    "method": "POST",
+    "path": "/reports"
+  },
+  {
+    "method": "PATCH",
+    "path": "/reviews/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/saved"
+  },
+  {
+    "method": "DELETE",
+    "path": "/saved/:id"
+  },
+  {
+    "method": "PUT",
+    "path": "/saved/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/search"
+  },
+  {
+    "method": "GET",
+    "path": "/wallet"
+  },
+  {
+    "method": "GET",
+    "path": "/wallet/banks"
+  },
+  {
+    "method": "GET",
+    "path": "/wallet/recipient"
+  },
+  {
+    "method": "PUT",
+    "path": "/wallet/recipient"
+  },
+  {
+    "method": "POST",
+    "path": "/wallet/topups"
+  },
+  {
+    "method": "POST",
+    "path": "/wallet/topups/:id/verify"
+  },
+  {
+    "method": "POST",
+    "path": "/wallet/withdrawals"
+  },
+  {
+    "method": "POST",
+    "path": "/wallet/withdrawals/:id/verify"
+  }
+]

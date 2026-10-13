@@ -1,0 +1,40 @@
+{
+  "verifiedOn": "2026-10-12",
+  "preChangeRegression": {
+    "passed": 56,
+    "failed": 0
+  },
+  "regression": {
+    "passed": 61,
+    "failed": 0
+  },
+  "sharedEmbeddedPostgres": {
+    "passed": 28,
+    "failed": 0
+  },
+  "clientPostUpdate": {
+    "passed": 3,
+    "failed": 0
+  },
+  "javascriptSyntax": {
+    "checkedJavaScriptFiles": 142,
+    "errors": []
+  },
+  "serverBuild": "passed",
+  "dependencyAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "liveProductionTouched": false,
+  "limits": [
+    "No live Neon/provider checks",
+    "No multi-process load/network verification",
+    "No exhaustive legacy security audit",
+    "Native digital billing not implemented",
+    "Frontend screens require API wiring"
+  ]
+}

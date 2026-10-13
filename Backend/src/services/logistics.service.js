@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { db, transaction } from "../db/database.js";
+import { assertLegacyProductMutation } from "../shared/legacy-compat.js";
 import "../db/logistics-migrations.js";
 import { env } from "../config/env.js";
 import { createId } from "../lib/ids.js";
@@ -819,6 +820,14 @@ function normalizeProfileInput(input = {}, product = {}) {
 export function applyProductPackageProfile(productId, input = {}, { actorId = null, adminVerified = false } = {}) {
   const product = db.prepare("SELECT * FROM products WHERE id = ?").get(productId);
   if (!product) throw new HttpError(404, "Product was not found.");
+  if (actorId) {
+    const actor = db.prepare('SELECT role,is_active FROM users WHERE id=?').get(actorId);
+    const store = db.prepare('SELECT owner_id FROM stores WHERE id=?').get(product.store_id);
+    if (!actor?.is_active || (actor.role !== 'admin' && store?.owner_id !== actorId)) {
+      throw new HttpError(403, 'Only the product owner or admin can change its package profile.');
+    }
+    adminVerified = adminVerified && actor.role === 'admin';
+  }
   const profile = normalizeProfileInput(input, product);
   const now = nowIso();
 
@@ -3911,6 +3920,7 @@ export function checkoutGroupingPreview(input = {}) {
 }
 
 export function updateSellerProductStock(auth, productId, input = {}) {
+  return transaction(() => {
   if (!["seller", "admin"].includes(auth.role)) throw new HttpError(403, "Seller access is required.");
   const product = db.prepare(`
     SELECT products.*, stores.owner_id
@@ -3922,6 +3932,7 @@ export function updateSellerProductStock(auth, productId, input = {}) {
   if (auth.role !== "admin" && product.owner_id !== auth.user_id) {
     throw new HttpError(403, "You can only update your own product stock.");
   }
+  assertLegacyProductMutation(productId);
   const oldQuantity = Number(product.stock || 0);
   const oldStatus = product.stock_status || product.availability_status || "";
   const nextQuantity = input.quantity === undefined ? oldQuantity : Math.max(0, Number(input.quantity || 0));
@@ -3961,6 +3972,7 @@ export function updateSellerProductStock(auth, productId, input = {}) {
     now,
   );
   return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  });
 }
 
 export function listSubstitutionOptions(auth, orderId) {

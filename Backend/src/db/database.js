@@ -1913,17 +1913,22 @@ db.exec(`
     ON account_location_presence(role, permission_status, updated_at);
 `);
 
+let transactionDepth = 0;
 export function transaction(callback) {
-  db.exec("BEGIN IMMEDIATE");
-
+  const level = transactionDepth++;
+  const savepoint = `gleenc_nested_${level}`;
   try {
-    const result = callback();
-    db.exec("COMMIT");
-    return result;
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+    db.exec(level ? `SAVEPOINT ${savepoint}` : 'BEGIN IMMEDIATE');
+    try {
+      const result = callback();
+      if (result && typeof result.then === 'function') throw new Error('Database transactions must be synchronous; perform network I/O outside them.');
+      db.exec(level ? `RELEASE SAVEPOINT ${savepoint}` : 'COMMIT');
+      return result;
+    } catch (error) {
+      try { db.exec(level ? `ROLLBACK TO SAVEPOINT ${savepoint}` : 'ROLLBACK'); if(level) db.exec(`RELEASE SAVEPOINT ${savepoint}`); } catch {}
+      throw error;
+    }
+  } finally { transactionDepth--; }
 }
 
 export function cleanExpiredSessions() {

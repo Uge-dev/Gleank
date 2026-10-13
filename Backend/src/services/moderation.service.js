@@ -1,4 +1,5 @@
 import { db, transaction } from "../db/database.js";
+import { assertLegacyProductMutation } from "../shared/legacy-compat.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { serializeProduct, serializeService } from "../lib/serializers.js";
@@ -467,9 +468,11 @@ function upsertStage3ModerationReview(product, result) {
 }
 
 export function validateProductForPublication(auth, productId) {
+  return transaction(() => {
   const product = productWithOwner(productId);
   if (!product) throw new HttpError(404, "Product was not found.");
   assertProductOwner(auth, product);
+  assertLegacyProductMutation(productId);
 
   const imageUrls = safeJsonArray(product.image_urls);
   const moderation = getProductModerationStatus(productId);
@@ -532,12 +535,15 @@ export function validateProductForPublication(auth, productId) {
     moderation,
     price,
   };
+  });
 }
 
 export function publishProductAfterValidation(auth, productId) {
+  return transaction(() => {
   const product = productWithOwner(productId);
   if (!product) throw new HttpError(404, "Product was not found.");
   assertProductOwner(auth, product);
+  assertLegacyProductMutation(productId);
 
   const validation = validateProductForPublication(auth, productId);
 
@@ -581,6 +587,7 @@ export function publishProductAfterValidation(auth, productId) {
       product: updated,
     },
   };
+  });
 }
 
 export function adminReviewProduct(auth, productId, input = {}) {
@@ -618,6 +625,16 @@ export function adminReviewProduct(auth, productId, input = {}) {
   }
 
   transaction(() => {
+    const configured = db.prepare('SELECT data_json FROM shared_products WHERE product_id=?').get(productId);
+    if (configured) {
+      const details = JSON.parse(configured.data_json);
+      const state = moderationStatus === 'approved'
+        ? (details.publication === 'schedule' ? 'scheduled' : 'published')
+        : moderationStatus === 'rejected' ? 'rejected' : 'paused';
+      status = state === 'published' ? (Number(product.stock) > 0 ? 'active' : 'out_of_stock') : 'draft';
+      db.prepare('UPDATE shared_products SET state=?,version=version+1,updated_at=? WHERE product_id=?').run(state, now, productId);
+      db.prepare('UPDATE shared_posts SET active=? WHERE product_id=? AND original_id IS NULL').run(state === 'published' ? 1 : 0, productId);
+    }
     db.prepare(`
       UPDATE products
       SET status = ?,
@@ -675,6 +692,7 @@ export function updateProductAvailability(auth, productId, input = {}) {
         : product.status;
 
   transaction(() => {
+    assertLegacyProductMutation(productId);
     db.prepare(`
       UPDATE products
       SET availability_status = ?,

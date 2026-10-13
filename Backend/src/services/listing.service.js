@@ -1,4 +1,5 @@
-import { db } from "../db/database.js";
+import { db, transaction } from "../db/database.js";
+import { assertLegacyProductMutation } from "../shared/legacy-compat.js";
 import { createId, slugify } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
 import { env } from "../config/env.js";
@@ -220,6 +221,7 @@ export function createProduct(userId, input, uploadedUrls, imageModeration = nul
 }
 
 export function updateProduct(userId, productId, input, uploadedUrls, imageModeration = null) {
+  return transaction(() => {
   const store = storeForUser(userId);
 
   const existing = db
@@ -227,6 +229,8 @@ export function updateProduct(userId, productId, input, uploadedUrls, imageModer
     .get(productId, store.id);
 
   if (!existing) throw new HttpError(404, "Product was not found.");
+
+  assertLegacyProductMutation(productId);
 
   const images = [...retainedImages(input.retainedImageUrls), ...uploadedUrls].slice(0, MAX_LISTING_IMAGES);
   assertListingImages(images, "product");
@@ -304,19 +308,24 @@ export function updateProduct(userId, productId, input, uploadedUrls, imageModer
   deleteUploadedFiles(oldImages.filter((url) => !images.includes(url)));
 
   return serializeProduct(db.prepare("SELECT * FROM products WHERE id = ?").get(productId));
+  });
 }
 
 export function deleteProduct(userId, productId) {
+  return transaction(() => {
   const store = storeForUser(userId);
   const existing = db
     .prepare("SELECT * FROM products WHERE id = ? AND store_id = ?")
     .get(productId, store.id);
+  if (!existing) throw new HttpError(404, "Product was not found.");
+  assertLegacyProductMutation(productId, { deleting: true });
   const result = db
     .prepare("DELETE FROM products WHERE id = ? AND store_id = ?")
     .run(productId, store.id);
 
   if (!result.changes) throw new HttpError(404, "Product was not found.");
   deleteUploadedFiles(storedImages(existing.image_urls));
+  });
 }
 
 export function createService(userId, input, uploadedUrls, imageModeration = null) {
