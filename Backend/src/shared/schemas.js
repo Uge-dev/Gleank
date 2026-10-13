@@ -24,6 +24,7 @@ export const orderingSchema = z
       .default("single"),
     unit: text(60).min(1).default("piece"),
     unitDescription: text(200).default(""),
+    groups: z.array(z.object({name:text(80).min(1),min:z.number().int().min(0).max(999),max:z.number().int().min(1).max(999)}).strict().refine(g=>g.max>=g.min)).max(30).default([]),
     packSize: z.number().int().min(1).max(1000).default(1),
     components: z.array(componentSchema).max(100).default([]),
     packagingKobo: money.default(0),
@@ -47,6 +48,8 @@ export const orderingSchema = z
 export const variantSchema = z
   .object({
     id: identifier,
+    labels: z.record(z.string().max(60),text(100)).default({}),
+    sku: text(100).default(""),
     size: text(60).default(""),
     color: text(60).default(""),
     colorHex: z
@@ -76,6 +79,7 @@ export const productSchema = z
     ordering: orderingSchema.default(() => orderingSchema.parse({})),
     catalogueId: identifier.optional(),
     offersEnabled: z.boolean().default(true),
+    minimumOfferPercent: z.number().int().min(80).max(100).default(80),
     reshareEnabled: z.boolean().default(true),
     returnDays: z.number().int().min(0).max(30).default(7),
     deliveryKobo: money.optional(),

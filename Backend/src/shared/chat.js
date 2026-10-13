@@ -413,14 +413,16 @@ export function changeMessage(userId, key, messageId, raw) {
 export function chatSettings(userId, key, raw) {
   const d = z
     .object({
-      muted: z.boolean().default(false),
-      archived: z.boolean().default(false),
-      pinned: z.boolean().default(false),
+      muted: z.boolean().optional(),
+      archived: z.boolean().optional(),
+      pinned: z.boolean().optional(),
       clear: z.boolean().default(false),
     })
     .strict()
     .parse(raw);
   ownedConversation(userId, key);
+  const existing=db.prepare("SELECT muted,archived,pinned FROM shared_chat_settings WHERE conversation_id=? AND user_id=?").get(key,userId);
+  d.muted=d.muted??!!existing?.muted;d.archived=d.archived??!!existing?.archived;d.pinned=d.pinned??!!existing?.pinned;
   db.prepare(
     "INSERT INTO shared_chat_settings(conversation_id,user_id,muted,archived,pinned,cleared_before) VALUES(?,?,?,?,?,?) ON CONFLICT(conversation_id,user_id) DO UPDATE SET muted=excluded.muted,archived=excluded.archived,pinned=excluded.pinned,cleared_before=CASE WHEN excluded.cleared_before<>'' THEN excluded.cleared_before ELSE shared_chat_settings.cleared_before END",
   ).run(

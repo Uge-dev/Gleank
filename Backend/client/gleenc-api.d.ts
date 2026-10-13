@@ -11,6 +11,7 @@ export interface Session {
   tokenType: "Bearer";
 }
 export interface Person {
+  followed?: boolean;
   id: string;
   name: string;
   username: string;
@@ -31,11 +32,13 @@ export interface Component {
   max?: number;
   required?: boolean;
   photoId?: string;
+  photoUrl?: string|null;
 }
 export interface Ordering {
   format: "single" | "fixed_pack" | "menu" | "pack_extras";
   unit?: string;
   unitDescription?: string;
+  groups?: {name:string;min:number;max:number}[];
   packSize?: number;
   components?: Component[];
   packagingKobo?: number;
@@ -47,6 +50,9 @@ export interface Ordering {
   delivery?: boolean;
 }
 export interface Variant {
+  photoUrls?:string[];
+  labels?: Record<string,string>;
+  sku?: string;
   id: string;
   size?: string;
   color?: string;
@@ -72,6 +78,7 @@ export interface ProductInput {
   ordering?: Ordering;
   catalogueId?: string;
   offersEnabled?: boolean;
+  minimumOfferPercent?: number;
   reshareEnabled?: boolean;
   returnDays?: number;
   deliveryKobo?: number;
@@ -178,7 +185,16 @@ export interface GleencApi {
     intervalMs?: number;
   }): Promise<void>;
   capabilities(): Promise<Data>;
+  legal: { get(kind:'privacy'|'terms'|'community'):Promise<{kind:string;title:string;version:string;effectiveDate:string;supportEmail:string;sections:[string,string][]}> };
+  verification: {
+    get():Promise<Data>;
+    policy():Promise<Data>;
+    submit(body:{tier:2|3;legalName:string;documentType:'national_id'|'passport'|'drivers_licence'|'voters_card';documentIds:string[];address:string;addressEvidenceIds?:string[];businessName?:string;sourceOfGoods?:string}):Promise<Data>;
+    requestPhone(phone:string):Promise<Data>;
+    confirmPhone(code:string):Promise<Data>;
+  };
   auth: {
+    googleExchange(body:{code:string;verifier:string}):Promise<AuthResult>;
     login(body: {
       email: string;
       password: string;
@@ -208,6 +224,7 @@ export interface GleencApi {
   };
   account: {
     get(): Promise<Data>;
+    blocks():Promise<Data[]>;
     acceptTerms(version: string): Promise<Data>;
     editProfile(body: Data): Promise<Data>;
     settings(body: Data): Promise<Data>;
@@ -246,7 +263,7 @@ export interface GleencApi {
     save(body: ProductInput, key?: string): Promise<Product>;
     availability(key: string, active: boolean): Promise<Data>;
     like(key: string, liked?: boolean): Promise<Data>;
-    comments(key: string): Promise<Data[]>;
+    comments(key: string,params?:Record<string,string|number>): Promise<Data[]>;
     comment(
       key: string,
       body: { body: string; parentCommentId?: string },
@@ -288,6 +305,8 @@ export interface GleencApi {
     analytics(): Promise<Data>;
   };
   offers: {
+    get(key:string):Promise<Data>;
+    preview(body:Selection & {discountPercent:number}):Promise<Quote>;
     create(body: Selection & { discountPercent: number }): Promise<Data>;
     list(params?: Record<string, string | number>): Promise<Data[]>;
     answer(key: string, decision: "accept" | "reject"): Promise<Data>;
@@ -300,6 +319,7 @@ export interface GleencApi {
     remove(key: string): Promise<Data>;
   };
   checkout: {
+    list(params?:Record<string,string|number>):Promise<Checkout[]>;
     create(body: CheckoutInput, key: string): Promise<Checkout>;
     get(key: string): Promise<Checkout>;
     cancel(key: string): Promise<Checkout>;

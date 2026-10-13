@@ -360,7 +360,9 @@ export function recordProductView(userId, productId, anonKey = "") {
   return productInteraction(productId, userId);
 }
 
-export function productComments(productId, viewer = null) {
+export function productComments(productId, viewer = null, pagination = {}) {
+  const limit=Math.min(100,Math.max(1,Number(pagination.limit)||100)),offset=Math.max(0,Number(pagination.offset)||0);
+  const sort=pagination.sort==='popular'?'(SELECT COUNT(*) FROM product_comment_likes l WHERE l.comment_id=product_comments.id) DESC, product_comments.created_at DESC':'product_comments.created_at DESC';
   return db.prepare(`
     SELECT product_comments.id, product_comments.body,
            product_comments.parent_comment_id, product_comments.is_deleted,
@@ -378,9 +380,9 @@ export function productComments(productId, viewer = null) {
       ON parent_comments.id = product_comments.parent_comment_id
     LEFT JOIN users reply_to_user ON reply_to_user.id = parent_comments.user_id
     WHERE product_comments.product_id = ?
-    ORDER BY product_comments.created_at DESC
-    LIMIT 100
-  `).all(productId).map((row) => serializeComment(row, viewer));
+    ORDER BY ${sort}
+    LIMIT ? OFFSET ?
+  `).all(productId,limit,offset).map((row) => serializeComment(row, viewer));
 }
 
 export function likeProductComment(userId, productId, commentId) {

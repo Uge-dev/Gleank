@@ -1,3 +1,4 @@
+import { assertListingTier } from './verification.js';
 import { z } from "zod";
 import { env } from "../config/env.js";
 import { db, transaction } from "../db/database.js";
@@ -41,6 +42,7 @@ export function saveCatalogue(userId, catalogueId, input) {
     .parse(input);
   return transaction(() => {
     lockUsers([userId]);
+    if(catalogueId && db.prepare("SELECT product_id FROM shared_products WHERE catalogue_id=? AND state IN ('published','scheduled') LIMIT 1").get(catalogueId))assertListingTier(userId,data.priceKobo);
     const old = catalogueId
       ? db
           .prepare("SELECT * FROM shared_catalogue WHERE id=? AND owner_id=?")
@@ -165,6 +167,8 @@ export function publicProduct(row) {
     storeName: row.store_name,
     storeSlug: row.store_slug,
     ...d,
+    ordering: d.ordering?{...d.ordering,components:(d.ordering.components||[]).map(c=>({...c,photoUrl:c.photoId?db.prepare("SELECT public_url FROM shared_media WHERE id=? AND owner_id=? AND kind='image'").get(c.photoId,row.owner_id)?.public_url||null:null}))}:undefined,
+    variants:(d.variants||[]).map(v=>({...v,photoUrls:(v.photoIds||[]).map(mediaId=>db.prepare("SELECT public_url FROM shared_media WHERE id=? AND owner_id=? AND kind='image'").get(mediaId,row.owner_id)?.public_url).filter(Boolean)})),
     stock: row.stock,
     version: row.version,
     media,
@@ -216,6 +220,10 @@ export function saveProduct(userId, productId, body) {
       Date.parse(data.publishAt) > Date.now() + 365 * 86400000)
   )
     throw new HttpError(422, "Schedule between one minute and one year ahead.");
+  if (data.publication !== 'draft') {
+    const highest = Math.max(data.priceKobo,...data.variants.map(v => v.priceKobo ?? data.priceKobo));
+    assertListingTier(userId,highest);
+  }
   const moderation = evaluateListingModeration({
     store,
     input: {
@@ -372,6 +380,8 @@ export function publishDue() {
       )
         continue;
       lockUsers([p.owner_id]);
+      const d=parse(db.prepare('SELECT data_json FROM shared_products WHERE product_id=?').get(productId)?.data_json);
+      try{assertListingTier(p.owner_id,Math.max(d.priceKobo||0,...(d.variants||[]).map(v=>v.priceKobo??d.priceKobo??0)));}catch(error){if(error.status!==403)throw error;db.prepare("UPDATE shared_products SET state='blocked_verification',updated_at=? WHERE product_id=?").run(now(),productId);continue;}
       const updated = db
         .prepare(
           "UPDATE shared_products SET state='published',updated_at=? WHERE product_id=? AND state='scheduled' AND publish_at<=?",
@@ -423,6 +433,7 @@ export function setProductState(userId, productId, active) {
     const p = productRow(productId, userId, true);
     if (active && !p.data_json)
       throw new HttpError(409, "Manage this legacy product through the existing web product API.");
+    if(active)assertListingTier(userId,Math.max(p.details.priceKobo,...p.details.variants.map(v=>v.priceKobo??p.details.priceKobo)));
     if (active && (!['published', 'paused'].includes(p.state) || !['approved', 'auto_approved'].includes(p.moderation_status)))
       throw new HttpError(409, "Publish or obtain approval first.");
     db.prepare(
@@ -445,8 +456,9 @@ export function reviewSharedProduct(admin, productId, approved) {
       .prepare("SELECT * FROM shared_products WHERE product_id=?")
       .get(productId);
     if (!p) throw new HttpError(404, "Product not found.");
-    const d = parse(p.data_json),
-      state = approved
+    const d = parse(p.data_json);
+    if(approved){const owner=db.prepare('SELECT s.owner_id FROM products p JOIN stores s ON s.id=p.store_id WHERE p.id=?').get(productId);assertListingTier(owner.owner_id,Math.max(d.priceKobo,...(d.variants||[]).map(v=>v.priceKobo??d.priceKobo)));}
+    const state = approved
         ? d.publication === "schedule"
           ? "scheduled"
           : "published"
@@ -473,6 +485,7 @@ export function ownerProduct(userId, productId) {
   return {
     ...publicProduct(row),
     fileIds: row.details.fileIds || [],
+    files: (row.details.fileIds || []).map(id => {const file=db.prepare("SELECT id,name,mime_type,bytes FROM shared_media WHERE id=? AND owner_id=?").get(id,userId);return file?{id:file.id,name:file.name,mimeType:file.mime_type,bytes:file.bytes}:null;}).filter(Boolean),
     publication: row.details.publication || "draft",
     state: row.state || row.status,
     publishAt: row.publish_at,

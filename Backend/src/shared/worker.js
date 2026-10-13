@@ -1,3 +1,4 @@
+import { expireGoogleFlows } from './google-flow.js';
 import { db, transaction } from "../db/database.js";
 import { now, lockUsers } from "./core.js";
 import { publishDue } from "./catalogue.js";
@@ -8,6 +9,7 @@ import { recoverPayment } from "./recovery.js";
 import { syncLegacyPosts } from "./discovery.js";
 import { sendPushJobs } from "./push.js";
 export async function runSharedJobs() {
+  expireGoogleFlows();
   syncLegacyPosts();
   publishDue();
   const expired = db

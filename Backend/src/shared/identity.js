@@ -106,6 +106,7 @@ export async function signInIdentity(raw, authenticatedUserId = "") {
       nonce: z.string().max(100),
       name: z.string().trim().min(2).max(80).default("Gleenc user"),
       client: z.enum(["web", "mobile"]).default("mobile"),
+      password: z.string().max(72).optional(),
       deviceName: z.string().max(100).default("Gleenc mobile"),
     })
     .strict()
@@ -121,6 +122,11 @@ export async function signInIdentity(raw, authenticatedUserId = "") {
     (challenge.user_id || "") !== authenticatedUserId
   )
     throw new HttpError(401, "Sign-in challenge expired or invalid.");
+  if(authenticatedUserId){
+    const proof=db.prepare('SELECT * FROM shared_link_proofs WHERE challenge_id=? AND user_id=? AND expires_at>?').get(input.challengeId,authenticatedUserId,now());
+    const user=assertUser(authenticatedUserId);
+    if(!proof&&(!input.password||!(await bcrypt.compare(input.password,user.password_hash))))throw new HttpError(401,'Confirm your account password before linking a sign-in provider.');
+  }
   const claims = await verifyIdentity(
     input.provider,
     input.idToken,

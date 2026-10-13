@@ -2,6 +2,12 @@ import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
 import { HttpError } from "../lib/http-error.js";
 
+function authLink(path,kind,token) {
+  if(!process.env.AUTH_LINK_ORIGIN)return buildFrontendUrl(path);
+  const base=new URL(process.env.AUTH_LINK_ORIGIN);
+  if(base.protocol!=='https:' && !(env.nodeEnv!=='production' && base.protocol==='http:' && ['localhost','127.0.0.1'].includes(base.hostname)))throw new Error('Use a secure authentication-link origin.');
+  base.pathname='/api/v2/auth/'+kind+'-link';base.search=new URLSearchParams({token}).toString();return base.toString();
+}
 export function buildFrontendUrl(path) {
   const base = env.frontendUrl.replace(/\/$/, "");
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
@@ -280,7 +286,7 @@ If you received this email, the deployed backend can connect to Brevo and delive
 }
 
 export async function sendEmailVerificationEmail({ to, name, token }) {
-  const verificationUrl = buildFrontendUrl(`/verify-email?token=${encodeURIComponent(token)}`);
+  const verificationUrl = authLink(`/verify-email?token=${encodeURIComponent(token)}`,"verification",token);
   const safeName = escapeHtml(name || "there");
 
   await sendTransactionalEmail({
@@ -310,7 +316,7 @@ This link expires soon. If you did not create a Gleenc account, ignore this emai
 
 export async function sendPasswordResetEmail({ to, name, token, role = "" }) {
   const resetPath = role === "rider" ? "/rider/reset-password" : "/forgot-password";
-  const resetUrl = buildFrontendUrl(`${resetPath}?token=${encodeURIComponent(token)}`);
+  const resetUrl = role === "rider" ? buildFrontendUrl(`${resetPath}?token=${encodeURIComponent(token)}`) : authLink(`${resetPath}?token=${encodeURIComponent(token)}`,"reset",token);
   const safeName = escapeHtml(name || "there");
 
   await sendTransactionalEmail({

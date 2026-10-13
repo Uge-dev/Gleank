@@ -52,8 +52,44 @@
     "path": "/admin/reports/:id/resolve"
   },
   {
+    "method": "GET",
+    "path": "/admin/verifications"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/verifications/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/admin/verifications/:id/media/:mediaId"
+  },
+  {
+    "method": "POST",
+    "path": "/admin/verifications/:id/review"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/"
+  },
+  {
     "method": "POST",
     "path": "/auth/challenge"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/google/callback"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/google/exchange"
+  },
+  {
+    "method": "POST",
+    "path": "/auth/google/start"
   },
   {
     "method": "POST",
@@ -74,6 +110,14 @@
   {
     "method": "POST",
     "path": "/auth/register"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/reset-link"
+  },
+  {
+    "method": "GET",
+    "path": "/auth/verification-link"
   },
   {
     "method": "GET",
@@ -173,6 +217,14 @@
   },
   {
     "method": "GET",
+    "path": "/legal/:kind"
+  },
+  {
+    "method": "GET",
+    "path": "/legal/:kind/page"
+  },
+  {
+    "method": "GET",
     "path": "/library"
   },
   {
@@ -224,6 +276,10 @@
     "path": "/me/blocks/:id"
   },
   {
+    "method": "GET",
+    "path": "/me/checkouts"
+  },
+  {
     "method": "POST",
     "path": "/me/deletion"
   },
@@ -234,6 +290,14 @@
   {
     "method": "DELETE",
     "path": "/me/devices/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/me/phone/confirm"
+  },
+  {
+    "method": "POST",
+    "path": "/me/phone/request"
   },
   {
     "method": "POST",
@@ -276,6 +340,14 @@
     "path": "/me/terms"
   },
   {
+    "method": "GET",
+    "path": "/me/verification"
+  },
+  {
+    "method": "POST",
+    "path": "/me/verification"
+  },
+  {
     "method": "POST",
     "path": "/media"
   },
@@ -304,8 +376,16 @@
     "path": "/offers"
   },
   {
+    "method": "GET",
+    "path": "/offers/:id"
+  },
+  {
     "method": "POST",
     "path": "/offers/:id/answer"
+  },
+  {
+    "method": "POST",
+    "path": "/offers/preview"
   },
   {
     "method": "GET",
@@ -397,6 +477,14 @@
   },
   {
     "method": "DELETE",
+    "path": "/products/:id/comments/:commentId/like"
+  },
+  {
+    "method": "PUT",
+    "path": "/products/:id/comments/:commentId/like"
+  },
+  {
+    "method": "DELETE",
     "path": "/products/:id/like"
   },
   {
@@ -434,6 +522,10 @@
   {
     "method": "GET",
     "path": "/search"
+  },
+  {
+    "method": "GET",
+    "path": "/verification-policy"
   },
   {
     "method": "GET",

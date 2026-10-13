@@ -1,3 +1,6 @@
+import { googleConfigured,startGoogle,googleCallback,finishGoogle } from '../../shared/google-flow.js';
+import { legalDocument } from '../../shared/legal.js';
+import { verification, tierPolicy, submitVerification, reviewVerification, requestPhone, confirmPhone } from '../../shared/verification.js';
 import { Router } from "express";
 import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import multer from "multer";
@@ -26,6 +29,7 @@ import {
   addProductComment,
   productComments,
   deleteProductComment,
+  likeProductComment,unlikeProductComment,
   recordProductShare,
 } from "../../services/interaction.service.js";
 import {
@@ -180,6 +184,21 @@ sharedRouter.use((req, res, next) => {
   }
   next();
 });
+for(const [kind,route] of [['verification','verify-email'],['reset','reset-password']])sharedRouter.get('/auth/'+kind+'-link',(req,res)=>{
+ const token=z.string().regex(/^[A-Za-z0-9_-]{32,256}$/).parse(req.query.token);
+ const mobile='gleencexpo://'+route+'?token='+encodeURIComponent(token);
+ const web=new URL('/'+route,env.frontendUrl);web.search=new URLSearchParams({token}).toString();
+ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ res.set({'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'"});
+ res.send(`<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gleenc account</title></head><body style="font-family:system-ui;padding:32px;max-width:520px;margin:auto"><h1>${kind==='verification'?'Verify your email':'Reset your password'}</h1><p>Choose where to complete this account action.</p><p><a href="${escape(mobile)}">Open Gleenc app</a></p><p><a href="${escape(web.toString())}">Continue on the website</a></p><p>This link does not complete verification until you confirm the action.</p></body></html>`);
+});
+sharedRouter.get('/legal/:kind/page',(req,res)=>{
+ const document=legalDocument(req.params.kind);if(!document)throw new HttpError(404,'Document not found.');
+ const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ res.set({'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'",'Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'});
+ res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escape(document.title)} · Gleenc</title></head><body style="font-family:system-ui;line-height:1.7;max-width:760px;margin:40px auto;padding:0 24px;color:#171717"><header><h1>${escape(document.title)}</h1><p>Effective ${escape(document.effectiveDate)} · Version ${escape(document.version)}</p><nav><a href="/api/v2/legal/privacy/page">Privacy</a> · <a href="/api/v2/legal/terms/page">Terms</a> · <a href="/api/v2/legal/community/page">Community</a></nav></header><main>${document.sections.map(([title,body])=>`<section><h2>${escape(title)}</h2><p>${escape(body)}</p></section>`).join('')}</main><footer><p>Contact: <a href="mailto:${escape(document.supportEmail)}">${escape(document.supportEmail)}</a></p></footer></body></html>`);
+});
+sharedRouter.get('/legal/:kind',run(req => {const document=legalDocument(req.params.kind);if(!document)throw new HttpError(404,'Policy not found.');return document;}));
 sharedRouter.get(
   "/capabilities",
   run(() => ({
@@ -189,9 +208,20 @@ sharedRouter.get(
     maxResharePercent: 20,
     maxOfferDiscountPercent: 20,
     digitalNativeBilling: false,
+    appleSignInAvailable: !!(process.env.APPLE_CLIENT_IDS||'').trim(),
+    paymentsAvailable: env.paymentProvider==='paystack' && !!env.paystackSecretKey,
+    uploadsAvailable: env.nodeEnv==='test' || !!process.env.CLAMAV_HOST,
+    emailAvailable: !env.autoVerifyAuth && !!(env.brevoApiKey || (env.smtpHost && env.smtpUser && env.smtpPass)) && !!(env.emailFrom || env.smtpFromEmail),
+    googleSignInAvailable: googleConfigured(),
+    autoVerifyAuth: !env.isProduction && env.autoVerifyAuth,
+    frontendUrl: env.frontendUrl,
+    phoneVerificationAvailable: tierPolicy().phoneAvailable,
     ordering: ["single", "fixed_pack", "menu", "pack_extras"],
   })),
 );
+sharedRouter.post('/auth/google/start',authLimit,run(req=>startGoogle(req.body,uid(req))));
+sharedRouter.get('/auth/google/callback',authLimit,async(req,res)=>{res.redirect(await googleCallback(req.query));});
+sharedRouter.post('/auth/google/exchange',authLimit,run(req=>finishGoogle(req.body)));
 for (const mode of ["login", "register"])
   sharedRouter.post(
     "/auth/" + mode,
@@ -305,14 +335,14 @@ sharedRouter.get(
   "/people/:id",
   run((req) => {
     if (uid(req)) assertUnblocked(uid(req), req.params.id);
-    return person(req.params.id);
+    return person(req.params.id,uid(req));
   }),
 );
 sharedRouter.get(
   "/people/:id/catalogue",
   run((req) => {
     if (uid(req)) assertUnblocked(uid(req), req.params.id);
-    person(req.params.id);
+    person(req.params.id,uid(req));
     return profileCatalogue(req.params.id, req.query);
   }),
 );
@@ -328,7 +358,7 @@ sharedRouter.get(
   "/products/:id/comments",
   run((req) => {
     productRow(req.params.id, uid(req));
-    return productComments(req.params.id, req.auth);
+    return productComments(req.params.id, req.auth,{...page(req.query),sort:req.query.sort});
   }),
 );
 function sendAsset(res, row, attachment = false) {
@@ -357,7 +387,12 @@ sharedRouter.get("/media/:id/public", (req, res) => {
     throw new HttpError(404, "Media not found.");
   sendAsset(res, row);
 });
+sharedRouter.get('/verification-policy',run(() => tierPolicy()));
 sharedRouter.use(requireAuth);
+sharedRouter.get('/me/verification',run(req => verification(uid(req))));
+sharedRouter.post('/me/phone/request',authLimit,run(req => requestPhone(uid(req),req.body)));
+sharedRouter.post('/me/phone/confirm',authLimit,run(req => confirmPhone(uid(req),req.body)));
+sharedRouter.post('/me/verification',requireEmailVerified,authLimit,run(req => submitVerification(uid(req),req.body)));
 sharedRouter.post(
   "/me/push-devices",
   run((req) => registerPush(uid(req), req.body)),
@@ -387,6 +422,7 @@ sharedRouter.delete(
   "/saved/:id",
   run((req) => saveItem(uid(req), req.params.id, false)),
 );
+sharedRouter.get('/me/checkouts',run(req => db.prepare('SELECT * FROM shared_checkouts WHERE buyer_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?').all(uid(req),page(req.query).limit,page(req.query).offset).map(checkoutView)));
 sharedRouter.get(
   "/me",
   run((req) => account(uid(req))),
@@ -443,7 +479,7 @@ sharedRouter.get(
   run((req) =>
     db
       .prepare("SELECT target_id,created_at FROM shared_blocks WHERE user_id=?")
-      .all(uid(req)),
+      .all(uid(req)).map(row=>({...row,name:db.prepare("SELECT name FROM users WHERE id=?").get(row.target_id)?.name||"Blocked account"})),
   ),
 );
 sharedRouter.post(
@@ -760,6 +796,8 @@ sharedRouter.delete(
     return unlikeProduct(uid(req), req.params.id);
   }),
 );
+sharedRouter.put('/products/:id/comments/:commentId/like',run(req=>{assertTerms(uid(req));productRow(req.params.id,uid(req));return likeProductComment(uid(req),req.params.id,req.params.commentId);}));
+sharedRouter.delete('/products/:id/comments/:commentId/like',run(req=>{productRow(req.params.id,uid(req));return unlikeProductComment(uid(req),req.params.id,req.params.commentId);}));
 sharedRouter.post(
   "/products/:id/comments",
   run((req) => {
@@ -790,6 +828,7 @@ sharedRouter.post(
   "/reports",
   run((req) => report(uid(req), req.body)),
 );
+sharedRouter.post('/offers/preview',run(req=>{const {discountPercent,...selection}=req.body||{};return publicQuote(quoteSelection(uid(req),selection,{offer:false,previewDiscountPercent:z.number().min(0).max(20).parse(discountPercent)}));}));
 sharedRouter.post(
   "/offers",
   run((req) => makeOffer(uid(req), req.body)),
@@ -816,6 +855,7 @@ sharedRouter.get(
       }));
   }),
 );
+sharedRouter.get('/offers/:id',run(req => {const o=db.prepare('SELECT * FROM shared_offers WHERE id=? AND (buyer_id=? OR seller_id=?)').get(req.params.id,uid(req),uid(req));if(!o)throw new HttpError(404,'Offer not found.');return {id:o.id,buyerId:o.buyer_id,sellerId:o.seller_id,productId:o.product_id,input:parse(o.input_json),quote:parse(o.quoted_json),discountBps:o.discount_bps,status:o.status,expiresAt:o.expires_at};}));
 sharedRouter.post(
   "/offers/:id/answer",
   run((req) => answerOffer(uid(req), req.params.id, req.body)),
@@ -850,7 +890,8 @@ sharedRouter.post(
   "/checkouts",
   run((req) => {
     assertTerms(uid(req));
-    return beginCheckout(uid(req), req.body, key(req));
+    const clientPlatform=req.mobileAuth?(req.body?.clientPlatform==='ios'?'ios':'android'):'web';
+    return beginCheckout(uid(req), {...req.body,clientPlatform}, key(req));
   }),
 );
 sharedRouter.get(
@@ -863,11 +904,11 @@ sharedRouter.post(
 );
 sharedRouter.post(
   "/checkouts/:id/pay",
-  run((req) => payFromWallet(uid(req), req.params.id)),
+  run((req) => {rejectNativeDigitalPayment(req,ownedCheckout(uid(req),req.params.id));return payFromWallet(uid(req),req.params.id);}),
 );
 sharedRouter.post(
   "/checkouts/:id/initialize",
-  run((req) => initializeCheckout(uid(req), req.params.id)),
+  run((req) => {rejectNativeDigitalPayment(req,ownedCheckout(uid(req),req.params.id));return initializeCheckout(uid(req),req.params.id);}),
 );
 sharedRouter.post(
   "/checkouts/:id/verify",
@@ -915,7 +956,7 @@ sharedRouter.get(
     const p = page(req.query);
     return db
       .prepare(
-        "SELECT i.* FROM shared_issues i JOIN shared_order_lines l ON l.id=i.line_id JOIN shared_orders o ON o.id=l.order_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY i.created_at DESC LIMIT ? OFFSET ?",
+        "SELECT i.*,o.seller_id,o.buyer_id,o.id AS order_id FROM shared_issues i JOIN shared_order_lines l ON l.id=i.line_id JOIN shared_orders o ON o.id=l.order_id WHERE o.buyer_id=? OR o.seller_id=? ORDER BY i.created_at DESC LIMIT ? OFFSET ?",
       )
       .all(uid(req), uid(req), p.limit, p.offset);
   }),
@@ -1002,6 +1043,15 @@ sharedRouter.post("/library/download", (req, res) =>
   ),
 );
 sharedRouter.use("/admin", requireAdminRole);
+sharedRouter.get('/admin/verifications',run(req => db.prepare("SELECT user_id,approved_tier,requested_tier,status,updated_at FROM shared_verification WHERE status='under_review' ORDER BY updated_at LIMIT ? OFFSET ?").all(page(req.query).limit,page(req.query).offset)));
+sharedRouter.get('/admin/verifications/:id',run(req => verification(req.params.id)));
+sharedRouter.post('/admin/verifications/:id/review',run(req => reviewVerification(uid(req),req.params.id,req.body)));
+sharedRouter.get('/admin/verifications/:id/media/:mediaId',run((req,res) => {
+ const submission=verification(req.params.id).submission;
+ if(![...(submission.documentIds||[]),...(submission.addressEvidenceIds||[])].includes(req.params.mediaId)) throw new HttpError(404,'Evidence not found.');
+ const row=db.prepare("SELECT * FROM shared_media WHERE id=? AND owner_id=? AND scan_status='clean'").get(req.params.mediaId,req.params.id);
+ if(!row)throw new HttpError(404,'Evidence not found.'); sendAsset(res,row,true);
+}));
 sharedRouter.get(
   "/admin/deletions",
   run(() => deletionCandidates()),
@@ -1148,3 +1198,5 @@ sharedRouter.get(
       .all(),
   })),
 );
+
+function rejectNativeDigitalPayment(req,row){if(req.mobileAuth&&row.status!=='paid'&&checkoutView(row).items.some(item=>item.product?.kind==='digital'))throw new HttpError(422,'Digital purchases are not currently available in this mobile app.');}

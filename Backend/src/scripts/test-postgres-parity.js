@@ -39,21 +39,26 @@ import {PGlite} from ${JSON.stringify(pglite)};
 const database=new PGlite();await database.waitReady;let queue=Promise.resolve();
 parentPort.on('message',message=>{queue=queue.then(async()=>{try{let result;if(message.type==='exec'){await database.exec(message.sql);result={rowCount:0,rows:[]};}else{const r=await database.query(message.sql,message.params||[]);result={rowCount:r.affectedRows||0,rows:r.rows||[]};}await fs.writeFile(message.responsePath,JSON.stringify({ok:true,result}));Atomics.store(new Int32Array(message.signal),0,1);}catch(error){await fs.writeFile(message.responsePath,JSON.stringify({ok:false,error:{message:error.message,code:error.code,detail:error.detail}}));Atomics.store(new Int32Array(message.signal),0,2);}Atomics.notify(new Int32Array(message.signal),0);});});`,
   );
-  const testFile = path.join(copy, "test/shared.test.js");
-  let source = await fs.readFile(testFile, "utf8");
-  source = source.replace(
-    /DATABASE_PROVIDER:\s*["']sqlite["']/,
-    "DATABASE_PROVIDER:'postgres',DATABASE_URL:'postgresql://test:test@localhost:5432/gleenc?sslmode=disable'",
-  );
-  source += "\ntest.after(async()=>{await db.close();});\n";
-  await fs.writeFile(testFile, source);
+  const suites = ['shared.test.js', 'mobile-completion.test.js'];
+  for (const suite of suites) {
+    const testFile = path.join(copy, 'test', suite);
+    let source = await fs.readFile(testFile, 'utf8');
+    source = source.replace(/DATABASE_PROVIDER:\s*["']sqlite["']/, "DATABASE_PROVIDER:'postgres'");
+    if (suite === 'mobile-completion.test.js') {
+      source = source.replace("DATABASE_URL:''", "DATABASE_URL:'postgresql://test:test@localhost:5432/gleenc?sslmode=disable'");
+    } else {
+      source = source.replace("DATABASE_PROVIDER:'postgres'", "DATABASE_PROVIDER:'postgres',DATABASE_URL:'postgresql://test:test@localhost:5432/gleenc?sslmode=disable'");
+    }
+    source += "\ntest.after(async()=>{await db.close();});\n";
+    await fs.writeFile(testFile, source);
+  }
   console.log(
     "Testing with embedded PostgreSQL. Network, Neon TLS and multi-process concurrency need a staging check.",
   );
   const exitCode = await new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ["--test", "--test-isolation=process", "test/shared.test.js"],
+      ["--test", "--test-isolation=process", ...suites.map(suite=>"test/"+suite)],
       { cwd: copy, stdio: "inherit" },
     );
     child.once("error", reject);

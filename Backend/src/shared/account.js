@@ -284,6 +284,8 @@ export function finalizeDeletion(adminId, userId) {
     db.prepare("DELETE FROM shared_profiles WHERE user_id=?").run(userId);
     db.prepare("DELETE FROM shared_settings WHERE user_id=?").run(userId);
     db.prepare("DELETE FROM shared_addresses WHERE user_id=?").run(userId);
+    db.prepare("DELETE FROM shared_verification WHERE user_id=?").run(userId);
+    db.prepare("DELETE FROM shared_phone_checks WHERE user_id=?").run(userId);
     db.prepare("DELETE FROM shared_cart WHERE user_id=?").run(userId);
     db.prepare("DELETE FROM shared_push_devices WHERE user_id=?").run(userId);
     db.prepare("DELETE FROM shared_follows WHERE user_id=? OR target_id=?").run(

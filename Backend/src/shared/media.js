@@ -21,7 +21,7 @@ async function scan(buffer) {
   if (!host)
     throw new HttpError(
       503,
-      "File scanning is not configured. Uploads are temporarily unavailable.",
+      "File uploads are temporarily unavailable. Try again later.",
     );
   await new Promise((resolve, reject) => {
     const socket = net.createConnection({
@@ -108,7 +108,9 @@ export async function storeMedia(userId, file, kind) {
   await scan(file.buffer);
   let buffer = file.buffer,
     detected;
-  if (
+  const imageHeader=(buffer[0]===255&&buffer[1]===216) || buffer.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])) || (buffer.subarray(0,4).toString()==='RIFF' && buffer.subarray(8,12).toString()==='WEBP');
+  if(kind==='digital'&&imageHeader){const meta=await sharp(buffer,{limitInputPixels:24000000}).metadata();if(!['jpeg','png','webp'].includes(meta.format))throw new HttpError(415,'Choose a supported image.');detected={extension:meta.format==='jpeg'?'jpg':meta.format,mime:'image/'+meta.format};}
+  else if ((kind==='document'&&imageHeader) ||
     [
       "image",
       "review",

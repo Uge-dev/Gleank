@@ -32,6 +32,8 @@ const tokens = {},
   users = {},
   products = {},
   posts = {};
+const {createSession,sessionCookieName}=await import('../src/lib/session.js');
+const webApi=(who,method,url,body,key)=>{const r=request(app)[method]('/api/v2'+url).set('Cookie',sessionCookieName+'='+createSession(users[who]).token).set('Origin','http://localhost:5173');if(body)r.send(body);if(key)r.set('Idempotency-Key',key);return r;};
 const api = (who, method, url, body, key) => {
   const r = request(app)[method]("/api/v2" + url);
   if (tokens[who]) r.set("Authorization", "Bearer " + tokens[who]);
@@ -505,7 +507,7 @@ test("selected cart checkout leaves unselected items, cancellation restores menu
 });
 test("digital payments unlock only buyer-bound, expiring single-use file grants", async () => {
   const c = await expectOK(
-    api(
+    webApi(
       "buyer",
       "post",
       "/checkouts",
@@ -517,7 +519,9 @@ test("digital payments unlock only buyer-bound, expiring single-use file grants"
       "digital-001",
     ),
   );
-  await expectOK(api("buyer", "post", "/checkouts/" + c.id + "/pay", {}));
+  assert.equal((await api('buyer','post','/checkouts',{items:[{productId:products.digital.id}],method:'wallet',clientPlatform:'web'},'native-spoof-web')).status,422);
+  assert.equal((await api('buyer','post','/checkouts/'+c.id+'/pay',{})).status,422);
+  await expectOK(webApi("buyer", "post", "/checkouts/" + c.id + "/pay", {}));
   const lib = await expectOK(api("buyer", "get", "/library"));
   assert.equal(lib.length, 1);
   const grant = await expectOK(

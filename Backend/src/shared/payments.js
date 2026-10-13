@@ -13,7 +13,7 @@ import {
 import { queueLatePayment } from "./recovery.js";
 export async function providerRequest(route, body) {
   if (env.paymentProvider !== "paystack" || !env.paystackSecretKey)
-    throw new HttpError(503, "Payment services are not configured.");
+    throw new HttpError(503, "Payments are temporarily unavailable. Try again later.");
   if (
     env.isProduction &&
     !env.paystackSecretKey.startsWith("sk_live_") &&
@@ -42,7 +42,7 @@ export async function providerRequest(route, body) {
 }
 export async function initializeCheckout(userId, checkoutId) {
   if (env.paymentProvider !== "paystack" || !env.paystackSecretKey)
-    throw new HttpError(503, "Payment services are not configured.");
+    throw new HttpError(503, "Payments are temporarily unavailable. Try again later.");
   const c = transaction(() => {
     lockUsers([userId]);
     const r = ownedCheckout(userId, checkoutId);
@@ -168,7 +168,7 @@ export async function verifyCheckout(userId, checkoutId) {
 }
 export async function createTopup(userId, amountKobo, key) {
   if (env.paymentProvider !== "paystack" || !env.paystackSecretKey)
-    throw new HttpError(503, "Payment services are not configured.");
+    throw new HttpError(503, "Payments are temporarily unavailable. Try again later.");
   money.min(10000).parse(amountKobo);
   z.string()
     .min(8)
@@ -240,7 +240,7 @@ export async function verifyTopup(userId, topupId) {
 }
 export async function requestWithdrawal(userId, amountKobo, key) {
   if (env.paymentProvider !== "paystack" || !env.paystackSecretKey)
-    throw new HttpError(503, "Payment services are not configured.");
+    throw new HttpError(503, "Payments are temporarily unavailable. Try again later.");
   money.min(10000).parse(amountKobo);
   z.string()
     .min(8)

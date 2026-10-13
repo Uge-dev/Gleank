@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { z } from "zod";
 import { db } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
-export const TERMS_VERSION = "2026-10-08";
+export const TERMS_VERSION = "2026-10-13";
 export const now = () => new Date().toISOString();
 export const id = (prefix) => `${prefix}_${crypto.randomUUID()}`;
 export const hash = (value) =>

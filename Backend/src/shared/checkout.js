@@ -1,3 +1,4 @@
+import { assertListingTier } from './verification.js';
 import { z } from "zod";
 import { db, transaction } from "../db/database.js";
 import { env } from "../config/env.js";
@@ -16,7 +17,7 @@ import {
 } from "./core.js";
 import { checkoutSchema, selectionSchema } from "./schemas.js";
 import { productRow, publicProduct } from "./catalogue.js";
-export function quoteSelection(userId, raw, { offer = true } = {}) {
+export function quoteSelection(userId, raw, { offer = true, previewDiscountPercent } = {}) {
   const input = selectionSchema.parse(raw),
     p = productRow(input.productId, userId),
     d = p.details;
@@ -62,6 +63,10 @@ export function quoteSelection(userId, raw, { offer = true } = {}) {
         throw new HttpError(422, `Check the quantity for ${c.name}.`);
       base += q * c.priceKobo;
       total += q;
+    }
+    for (const group of d.ordering.groups || []) {
+      const chosen=components.filter(c=>c.group===group.name).reduce((sum,c)=>sum+(selections.get(c.id)||0),0);
+      if(chosen<group.min || chosen>group.max)throw new HttpError(422,`Choose between ${group.min} and ${group.max} units from ${group.name}.`);
     }
     if (d.ordering.format === "menu" && !total)
       throw new HttpError(422, "Choose at least one menu item.");
@@ -109,6 +114,11 @@ export function quoteSelection(userId, raw, { offer = true } = {}) {
       );
     discountBps = Number(o.discount_bps);
   }
+  if(previewDiscountPercent!==undefined){
+    const discount=z.number().min(0).max(20).parse(previewDiscountPercent);
+    if(!d.offersEnabled || discount>100-(d.minimumOfferPercent||80))throw new HttpError(422,'This offer exceeds the seller’s discount limit.');
+    discountBps=Math.round(discount*100);
+  }
   const sellerUnit = assertAmount(
     base - Math.floor((base * discountBps) / 10000),
   );
@@ -132,6 +142,7 @@ export function quoteSelection(userId, raw, { offer = true } = {}) {
             : 0,
         ),
   );
+  assertListingTier(p.owner_id,(sellerUnit + commissionUnit) * input.quantity);
   const unitPriceKobo = assertAmount(
     sellerUnit + commissionUnit + platformUnit,
   );
@@ -322,7 +333,7 @@ export function beginCheckout(userId, raw, key) {
     )
       throw new HttpError(
         422,
-        "Use the web checkout for digital products until native store billing is connected.",
+        "Digital purchases are not currently available in this mobile app.",
       );
     const deliveries = new Map();
     for (const q of quotes)

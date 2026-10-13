@@ -1,3 +1,4 @@
+import { assertListingTier } from '../shared/verification.js';
 import { db, transaction } from "../db/database.js";
 import { assertLegacyProductMutation } from "../shared/legacy-compat.js";
 import { createId, slugify } from "../lib/ids.js";
@@ -141,6 +142,7 @@ function assertListingImages(images, itemType) {
 
 export function sellerWorkspace(userId) {
   const store = storeForUser(userId);
+  if (input.status !== 'draft') assertListingTier(userId,Math.round(Number(input.price || 0)*100));
   const products = db
     .prepare("SELECT * FROM products WHERE store_id = ? ORDER BY created_at DESC")
     .all(store.id)
@@ -155,6 +157,7 @@ export function sellerWorkspace(userId) {
 
 export function createProduct(userId, input, uploadedUrls, imageModeration = null) {
   const store = storeForUser(userId);
+  if (input.status !== 'draft') assertListingTier(userId,Math.round(Number(input.price || 0)*100));
 
   const now = new Date().toISOString();
   const id = createId("prd");
@@ -223,6 +226,7 @@ export function createProduct(userId, input, uploadedUrls, imageModeration = nul
 export function updateProduct(userId, productId, input, uploadedUrls, imageModeration = null) {
   return transaction(() => {
   const store = storeForUser(userId);
+  if (input.status !== 'draft') assertListingTier(userId,Math.round(Number(input.price || 0)*100));
 
   const existing = db
     .prepare("SELECT * FROM products WHERE id = ? AND store_id = ?")

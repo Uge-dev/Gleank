@@ -1,3 +1,4 @@
+import { assertListingTier } from './verification.js';
 import { z } from "zod";
 import { db, transaction } from "../db/database.js";
 import { HttpError } from "../lib/http-error.js";
@@ -20,7 +21,7 @@ import { productRow, publicProduct } from "./catalogue.js";
 import { quoteSelection, publicQuote } from "./checkout.js";
 import { directConversation, sendChat } from "./chat.js";
 import { productInteraction } from "../services/interaction.service.js";
-export function person(userId) {
+export function person(userId,viewerId="") {
   const u = assertUser(userId),
     a = db
       .prepare("SELECT * FROM account_profiles WHERE user_id=?")
@@ -30,6 +31,7 @@ export function person(userId) {
       .get(userId);
   return {
     id: u.id,
+    followed: !!(viewerId && db.prepare("SELECT 1 FROM shared_follows WHERE user_id=? AND target_id=?").get(viewerId,userId)),
     name: a?.display_name || u.name,
     username: a?.username || "",
     avatarUrl: u.avatar_url || null,
@@ -97,12 +99,16 @@ export function connections(viewerId, userId, query = {}) {
   };
 }
 export function feed(viewerId, query = {}) {
-  const p = page(query),
-    rows = db
-      .prepare(
-        "SELECT * FROM shared_posts WHERE active=1 ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
-      )
-      .all(p.limit, p.offset);
+  const p=page(query),conditions=['p.active=1','u.is_active=1','seller.is_active=1',"s.status='active'","((x.state IS NOT NULL AND x.state='published') OR (x.state IS NULL AND pr.status IN ('active','out_of_stock')))"],values=[];
+  if(query.userId){conditions.push('p.author_id=?');values.push(String(query.userId));}
+  if(query.mode==='following'){
+    if(!viewerId)return {posts:[],nextOffset:null};
+    conditions.push('EXISTS(SELECT 1 FROM shared_follows f WHERE f.user_id=? AND f.target_id=p.author_id)');values.push(viewerId);
+  }
+  if(query.mode==='vendors')conditions.push('p.original_id IS NULL');
+  if(viewerId){conditions.push('NOT EXISTS(SELECT 1 FROM shared_blocks b WHERE (b.user_id=? AND b.target_id IN (p.author_id,s.owner_id)) OR (b.target_id=? AND b.user_id IN (p.author_id,s.owner_id)))');values.push(viewerId,viewerId);}
+  const ordering=query.mode==='vendors'?'u.created_at DESC,p.created_at DESC,p.id DESC':query.mode==='hot'?'((SELECT COUNT(*) FROM product_likes l WHERE l.product_id=p.product_id)+(SELECT COUNT(*) FROM product_comments c WHERE c.product_id=p.product_id)*2) DESC,p.created_at DESC,p.id DESC':'p.created_at DESC,p.id DESC';
+  const rows=db.prepare(`SELECT p.* FROM shared_posts p JOIN users u ON u.id=p.author_id JOIN products pr ON pr.id=p.product_id JOIN stores s ON s.id=pr.store_id JOIN users seller ON seller.id=s.owner_id LEFT JOIN shared_products x ON x.product_id=pr.id WHERE ${conditions.join(' AND ')} ORDER BY ${ordering} LIMIT ? OFFSET ?`).all(...values,p.limit,p.offset);
   const posts = rows
     .map((row) => {
       try {
@@ -128,7 +134,7 @@ export function feed(viewerId, query = {}) {
         if (query.userId && row.author_id !== query.userId) return null;
         return {
           id: row.id,
-          author: person(row.author_id),
+          author: person(row.author_id,viewerId),
           originalOwner: person(product.owner_id),
           product: {
             ...publicProduct(product),
@@ -144,6 +150,7 @@ export function feed(viewerId, query = {}) {
           createdAt: row.created_at,
           counts: {
             ...productInteraction(product.id, viewerId),
+            reshared:viewerId?!!db.prepare("SELECT 1 FROM shared_posts WHERE product_id=? AND author_id=? AND original_id IS NOT NULL AND active=1 LIMIT 1").get(product.id,viewerId):false,
             reshareCount: Number(
               db
                 .prepare(
@@ -184,6 +191,7 @@ export function reshare(userId, postId, body) {
         422,
         "This product cannot be reshared for commission.",
       );
+    assertListingTier(p.owner_id,Math.ceil(p.details.priceKobo*(1+data.markupPercent/100)));
     const originalId = original.original_id || original.id;
     const old = db
       .prepare(
@@ -238,6 +246,7 @@ export function makeOffer(userId, raw) {
         "Request a new offer without an existing offer ID.",
       );
     const q = quoteSelection(userId, selection);
+    if(discountPercent>100-(q.product.minimumOfferPercent||80))throw new HttpError(422,"This seller has a stricter offer limit.");
     if (!q.product.offersEnabled)
       throw new HttpError(422, "This seller is not accepting offers.");
     const key = id("offer");

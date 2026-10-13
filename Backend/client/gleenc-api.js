@@ -58,6 +58,7 @@ export function createGleencApi({
   }
   const base = baseUrl.replace(/\/+$/, "");
   let refreshing;
+  let sessionGeneration = 0;
   const endpoint = (value) => {
     if (
       !value.startsWith("/") ||
@@ -74,25 +75,33 @@ export function createGleencApi({
   };
   async function refresh() {
     if (platform === "web") return false;
-    if (!refreshing)
+    if (!refreshing) {
+      const generation = sessionGeneration;
       refreshing = (async () => {
         const session = await getSession?.();
         if (!session?.refreshToken) return false;
         const response = await timedFetch(endpoint("/auth/refresh"), {
           method: "POST",
+          credentials: "omit",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refreshToken: session.refreshToken }),
           signal: undefined,
         });
         if (!response.ok) {
-          if (response.status === 401) await clearSession?.();
+          if (response.status === 401 && generation === sessionGeneration) {
+            sessionGeneration++;
+            await clearSession?.();
+          }
           return false;
         }
-        await saveSession?.((await response.json()).data);
+        const rotated = (await response.json()).data;
+        if (generation !== sessionGeneration) return false;
+        await saveSession?.(rotated);
         return true;
       })().finally(() => {
         refreshing = undefined;
       });
+    }
     return refreshing;
   }
   async function request(
@@ -106,11 +115,13 @@ export function createGleencApi({
       retry = true,
     } = {},
   ) {
+    const generation = sessionGeneration;
     const session = platform === "web" ? null : await getSession?.();
     const headers = {
       Accept: binary ? "application/octet-stream" : "application/json",
     };
-    if (session?.accessToken)
+    const publicAuth = ['/auth/login','/auth/register','/auth/refresh','/auth/google/exchange','/auth/challenge'].includes(path) || (path==='/auth/identity'&&!body?.link) || (path==='/auth/google/start' && !body?.link);
+    if (session?.accessToken && !publicAuth)
       headers.Authorization = "Bearer " + session.accessToken;
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     const multipart =
@@ -120,12 +131,14 @@ export function createGleencApi({
     const response = await timedFetch(endpoint(path), {
       method,
       headers,
-      ...(platform === "web" ? { credentials: "include" } : {}),
+      credentials: platform === "web" ? "include" : "omit",
       ...(body !== undefined
         ? { body: multipart ? body : JSON.stringify(body) }
         : {}),
       signal,
     });
+    if (generation !== sessionGeneration)
+      throw new GleencApiError(409, "The account changed. Please try again.", null);
     if (
       response.status === 401 &&
       retry &&
@@ -152,8 +165,10 @@ export function createGleencApi({
       );
     }
     if (response.status === 204) return null;
-    if (binary) return response.blob();
-    return resolveAssets((await response.json()).data);
+    const payload = binary ? await response.blob() : (await response.json()).data;
+    if (generation !== sessionGeneration)
+      throw new GleencApiError(409, "Your sign-in changed. Please retry this request.");
+    return binary ? payload : resolveAssets(payload);
   }
   async function watchActivity({ onChange, signal, intervalMs = 5000 }) {
     let previous = "";
@@ -184,11 +199,14 @@ export function createGleencApi({
   const post = (path, body, key) =>
     request(path, { method: "POST", body, idempotencyKey: key });
   async function authenticate(action, body) {
+    const generation = ++sessionGeneration;
     const result = await post("/auth/" + action, {
       ...body,
       client: platform === "web" ? "web" : "mobile",
     });
-    if (result.session) await saveSession?.(result.session);
+    if (generation !== sessionGeneration)
+      throw new GleencApiError(409, "The account changed. Please try again.", null);
+    if (platform !== "web" && result.session) await saveSession?.(result.session);
     return result;
   }
   return {
@@ -197,21 +215,32 @@ export function createGleencApi({
     watchActivity,
     activityCounts: () => request("/activity/counts"),
     capabilities: () => request("/capabilities"),
+    legal: { get: kind => request('/legal/'+segment(kind)) },
+    verification: {
+      get: () => request('/me/verification'),
+      policy: () => request('/verification-policy'),
+      submit: body => post('/me/verification',body),
+      requestPhone: phone => post('/me/phone/request',{phone}),
+      confirmPhone: code => post('/me/phone/confirm',{code}),
+    },
     auth: {
+      googleExchange: body => authenticate("google/exchange",body),
       login: (body) => authenticate("login", body),
       register: (body) => authenticate("register", body),
       challenge: () => post("/auth/challenge", {}),
       identity: (body) => authenticate("identity", body),
       logout: async () => {
+        const generation = ++sessionGeneration;
         try {
           return await post("/auth/logout", {});
         } finally {
-          await clearSession?.();
+          if (generation === sessionGeneration) await clearSession?.();
         }
       },
     },
     account: {
       get: () => request("/me"),
+      blocks: () => request("/me/blocks"),
       acceptTerms: (version) => post("/me/terms", { version }),
       editProfile: (body) => request("/me/profile", { method: "PATCH", body }),
       settings: (body) => request("/me/settings", { method: "PUT", body }),
@@ -256,7 +285,7 @@ export function createGleencApi({
           method: liked ? "POST" : "DELETE",
           ...(liked ? { body: {} } : {}),
         }),
-      comments: (key) => request("/products/" + segment(key) + "/comments"),
+      comments: (key,params) => request("/products/" + segment(key) + "/comments"+query(params)),
       comment: (key, body) =>
         post("/products/" + segment(key) + "/comments", body),
       reviews: (key) => request("/products/" + segment(key) + "/reviews"),
@@ -291,6 +320,8 @@ export function createGleencApi({
       analytics: () => request("/me/reshare-analytics"),
     },
     offers: {
+      get: key => request("/offers/"+segment(key)),
+      preview: body => post("/offers/preview",body),
       create: (body) => post("/offers", body),
       list: (params) => request("/offers" + query(params)),
       answer: (key, decision) =>
@@ -305,6 +336,7 @@ export function createGleencApi({
       remove: (key) => request("/cart/" + segment(key), { method: "DELETE" }),
     },
     checkout: {
+      list: params => request("/me/checkouts"+query(params)),
       create: (body, key) =>
         post("/checkouts", { ...body, clientPlatform: platform }, key),
       get: (key) => request("/checkouts/" + segment(key)),

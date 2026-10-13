@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Gleenc Shared API",
-    "version": "2.0.0",
-    "description": "The existing v1 web APIs remain available. Request body definitions for core product and checkout operations derive from Zod input schemas; generic action bodies are documented in the implementation and integration guide."
+    "version": "2.1.0",
+    "description": "The existing v1 web APIs remain available. Request body definitions for core product and checkout operations derive from Zod input schemas; generic action bodies are documented in the implementation and integration guide. Mobile-completion additions include verification tiers, Google browser exchange, policy documents, offer previews and checkout history. Request validation in the server remains authoritative."
   },
   "servers": [
     {
@@ -37,6 +37,7 @@
     },
     "schemas": {
       "Product": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "name": {
@@ -138,6 +139,23 @@
                   "maxLength": 140,
                   "pattern": "^[a-zA-Z0-9_.:-]+$"
                 },
+                "labels": {
+                  "default": {},
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "additionalProperties": {
+                    "type": "string",
+                    "maxLength": 100
+                  }
+                },
+                "sku": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 100
+                },
                 "size": {
                   "default": "",
                   "type": "string",
@@ -186,6 +204,7 @@
               "format": "single",
               "unit": "piece",
               "unitDescription": "",
+              "groups": [],
               "packSize": 1,
               "components": [],
               "packagingKobo": 0,
@@ -218,6 +237,37 @@
                 "default": "",
                 "type": "string",
                 "maxLength": 200
+              },
+              "groups": {
+                "default": [],
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "min": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 999
+                    },
+                    "max": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 999
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "min",
+                    "max"
+                  ],
+                  "additionalProperties": false
+                }
               },
               "packSize": {
                 "default": 1,
@@ -353,6 +403,12 @@
             "default": true,
             "type": "boolean"
           },
+          "minimumOfferPercent": {
+            "default": 80,
+            "type": "integer",
+            "minimum": 80,
+            "maximum": 100
+          },
           "reshareEnabled": {
             "default": true,
             "type": "boolean"
@@ -393,6 +449,7 @@
         "additionalProperties": false
       },
       "Ordering": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "format": {
@@ -415,6 +472,37 @@
             "default": "",
             "type": "string",
             "maxLength": 200
+          },
+          "groups": {
+            "default": [],
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "min": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 999
+                },
+                "max": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 999
+                }
+              },
+              "required": [
+                "name",
+                "min",
+                "max"
+              ],
+              "additionalProperties": false
+            }
           },
           "packSize": {
             "default": 1,
@@ -541,6 +629,7 @@
         "additionalProperties": false
       },
       "Selection": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "productId": {
@@ -606,6 +695,7 @@
         "additionalProperties": false
       },
       "Checkout": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
         "properties": {
           "items": {
@@ -6352,6 +6442,815 @@
           },
           "409": {
             "description": "Cannot change this publication state"
+          }
+        }
+      }
+    },
+    "/auth/reset-link": {
+      "get": {
+        "summary": "GET /auth/reset-link",
+        "operationId": "get_auth_reset_link",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/legal/{kind}/page": {
+      "get": {
+        "summary": "GET /legal/:kind/page",
+        "operationId": "get_legal_kind_page",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/admin/verifications/{id}/media/{mediaId}": {
+      "get": {
+        "summary": "GET /admin/verifications/:id/media/:mediaId",
+        "operationId": "get_admin_verifications_id_media_mediaId",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mediaId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/offers/preview": {
+      "post": {
+        "summary": "POST /offers/preview",
+        "operationId": "post_offers_preview",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/auth/google/exchange": {
+      "post": {
+        "summary": "POST /auth/google/exchange",
+        "operationId": "post_auth_google_exchange",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/auth/verification-link": {
+      "get": {
+        "summary": "GET /auth/verification-link",
+        "operationId": "get_auth_verification_link",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/offers/{id}": {
+      "get": {
+        "summary": "GET /offers/:id",
+        "operationId": "get_offers_id",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/me/phone/request": {
+      "post": {
+        "summary": "POST /me/phone/request",
+        "operationId": "post_me_phone_request",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/legal/{kind}": {
+      "get": {
+        "summary": "GET /legal/:kind",
+        "operationId": "get_legal_kind",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/admin/verifications": {
+      "get": {
+        "summary": "GET /admin/verifications",
+        "operationId": "get_admin_verifications",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/auth/google/callback": {
+      "get": {
+        "summary": "GET /auth/google/callback",
+        "operationId": "get_auth_google_callback",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/auth/": {
+      "post": {
+        "summary": "POST /auth/",
+        "operationId": "post_auth_",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      },
+      "get": {
+        "summary": "GET /auth/",
+        "operationId": "get_auth_",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/me/checkouts": {
+      "get": {
+        "summary": "GET /me/checkouts",
+        "operationId": "get_me_checkouts",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/me/phone/confirm": {
+      "post": {
+        "summary": "POST /me/phone/confirm",
+        "operationId": "post_me_phone_confirm",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/auth/google/start": {
+      "post": {
+        "summary": "POST /auth/google/start",
+        "operationId": "post_auth_google_start",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/verification-policy": {
+      "get": {
+        "summary": "GET /verification-policy",
+        "operationId": "get_verification_policy",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/admin/verifications/{id}": {
+      "get": {
+        "summary": "GET /admin/verifications/:id",
+        "operationId": "get_admin_verifications_id",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/me/verification": {
+      "post": {
+        "summary": "POST /me/verification",
+        "operationId": "post_me_verification",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      },
+      "get": {
+        "summary": "GET /me/verification",
+        "operationId": "get_me_verification",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        }
+      }
+    },
+    "/admin/verifications/{id}/review": {
+      "post": {
+        "summary": "POST /admin/verifications/:id/review",
+        "operationId": "post_admin_verifications_id_review",
+        "tags": [
+          "mobile-completion"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation; JSON success envelope except HTML policy/account landing pages."
+          },
+          "401": {
+            "description": "Missing or invalid authentication/proof"
+          },
+          "403": {
+            "description": "Role, ownership, verification or browser-origin restriction"
+          },
+          "409": {
+            "description": "State conflict or expired action"
+          },
+          "422": {
+            "description": "Invalid input"
+          }
+        },
+        "description": "See docs/shared/MOBILE-COMPLETION.md and the route validator for exact request fields. No generic client object can bypass validation."
+      }
+    },
+    "/products/{id}/comments/{commentId}/like": {
+      "put": {
+        "summary": "PUT /products/:id/comments/:commentId/like",
+        "operationId": "put_products_id_comments_commentId_like",
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "commentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account-scoped comment reaction"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Permission or verification restriction"
+          },
+          "404": {
+            "description": "Product or comment unavailable"
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /products/:id/comments/:commentId/like",
+        "operationId": "delete_products_id_comments_commentId_like",
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "commentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful account-scoped comment reaction"
+          },
+          "401": {
+            "description": "Sign-in required"
+          },
+          "403": {
+            "description": "Permission or verification restriction"
+          },
+          "404": {
+            "description": "Product or comment unavailable"
           }
         }
       }

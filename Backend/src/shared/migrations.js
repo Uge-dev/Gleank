@@ -1,6 +1,10 @@
+import { migrateGoogleFlow } from './google-flow.js';
+import { migrateVerification } from './verification.js';
 import { db, transaction } from "../db/database.js";
 // Additive only. Existing production data and web contracts remain intact.
 export function migrateShared() {
+  migrateVerification();
+  migrateGoogleFlow();
   transaction(() =>
     db.exec(`
     CREATE TABLE IF NOT EXISTS shared_saved (user_id TEXT NOT NULL REFERENCES users(id),product_id TEXT NOT NULL REFERENCES products(id),created_at TEXT NOT NULL,PRIMARY KEY(user_id,product_id));
