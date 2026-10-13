@@ -1,0 +1,394 @@
+{
+  "sourceArchive": "01-Backend.zip",
+  "sourceArchiveSha256": "3b8e43e69e84f3a08225f63a3533878328c3819a0b5c1d2080de5cacece384f9",
+  "verifiedOn": "2026-10-12",
+  "gitCheckoutAvailable": false,
+  "productionModified": false,
+  "files": [
+    {
+      "path": ".env.shared.example",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "230da7075306a41ed3046e89d99f58937b08195d41e79119aed49bbfd44e2868",
+      "bytes": 904
+    },
+    {
+      "path": "README-SHARED-START-HERE.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "01189b5e51310527856d5c71da2f61e83280ee5fbe74e187e28b1d04cd6f1ee3",
+      "bytes": 1549
+    },
+    {
+      "path": "client/gleenc-api.d.ts",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "b058fae8643b58ab09055ac816aa2e8ff6c2dcc442cd1d7d4b4894af0b6f2b26",
+      "bytes": 11141
+    },
+    {
+      "path": "client/gleenc-api.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "da7c2390be3bbb4276d5547cdfe82f3f5595405343c43049ad8ee4b474f05f40",
+      "bytes": 14363
+    },
+    {
+      "path": "docs/shared/ARCHITECTURE-INVENTORY.json",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "5f318abc5164bd71913928b008a39ab3770eac64511816b7225138438634e2e4",
+      "bytes": 67812
+    },
+    {
+      "path": "docs/shared/CLIENT-INTEGRATION.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "523a610711d614b83c554d44e754355c1d4e3c1282ab68e2a3e7c059bdadca87",
+      "bytes": 7444
+    },
+    {
+      "path": "docs/shared/README.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "e40519e4369f892765c72d94af0b2c963d338bc491e0148b5f625ba753d318ff",
+      "bytes": 7709
+    },
+    {
+      "path": "docs/shared/RECOVERY-STATUS.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "ab2e7a7d8d5808ca619606e861e7fcde7282276aa3241803d3b729ffbe21a67a",
+      "bytes": 4257
+    },
+    {
+      "path": "docs/shared/ROLLOUT.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "461fcef1dfceefdbcfc8afbfc0e6e16033faef1f801de31fb796ac588e1fc023",
+      "bytes": 4128
+    },
+    {
+      "path": "docs/shared/VALIDATION.md",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "997d2853867988bb1b8d2b7bf7090e82eb1e70e25378fca09e21a39beb97850a",
+      "bytes": 4238
+    },
+    {
+      "path": "docs/shared/contracts/endpoints.json",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "67b5a69c4c8a060e67c8d27668d7faa33ae1235f43f4353e8c672b2de7963dc5",
+      "bytes": 7276
+    },
+    {
+      "path": "docs/shared/contracts/openapi.json",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "8ff0c284036c24134654ce30ce6cefe2d9e7b5f82df432da1eb45f66c5ba8b42",
+      "bytes": 167036
+    },
+    {
+      "path": "docs/shared/validation-summary.json",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "67c6b70ed84e0455a98c9d0cb8a2e3e5f5fdeba9b180906d5c38f6a9b6fa7a11",
+      "bytes": 790
+    },
+    {
+      "path": "package-lock.json",
+      "change": "modified",
+      "baselineSha256": "a4839e1ba2ade9be4a6f2a54b7921287b12087fe2a42449483a5ff6574c5f1f7",
+      "sha256": "3ce6a18281fa5d0c600fb75ea22b5701af19ecf0ed2f04f81270d22d364e161d",
+      "bytes": 97562
+    },
+    {
+      "path": "package.json",
+      "change": "modified",
+      "baselineSha256": "c2f98743f49387de3232b757eed78213b7ab8d7ac7ca5bda637971c3c30940b4",
+      "sha256": "1e69d4d436927ae03f08bff0b4f2825bf49f1e76d571569d7c13bf272b18f44b",
+      "bytes": 1618
+    },
+    {
+      "path": "src/app.js",
+      "change": "modified",
+      "baselineSha256": "9bd799ddfacf51d015c99f05a11c6e78bf1bcd6f34109b369a53f0836fc5b11e",
+      "sha256": "b18b1d65f4e69ffafab85c1b41bf8b225fe808417ddfedf528a1518e7dec3e3c",
+      "bytes": 5726
+    },
+    {
+      "path": "src/db/database.js",
+      "change": "modified",
+      "baselineSha256": "65a78880f71ffc1c55efa067cd5bc760aacc90c44c4eda76a939a747266f94c7",
+      "sha256": "38d937454ceb92276312480ff8e0c73b7e2af1bffaa10f8fe73f8b3f1cc6d7ff",
+      "bytes": 79429
+    },
+    {
+      "path": "src/db/postgres-sync-adapter.js",
+      "change": "modified",
+      "baselineSha256": "2bcc40ed03ec219d31cb25464b71b9133c3d50a3a7c2cafb97ec320dfe1d1607",
+      "sha256": "e4da2195a6a793e34a6257967a5de2851922faea7cd976eed5a55f1783778217",
+      "bytes": 6545
+    },
+    {
+      "path": "src/db/postgres-sync-worker.js",
+      "change": "modified",
+      "baselineSha256": "6e21008b467bb186c906d735297143c089ee92a9444a58f43a68d74f62682e8a",
+      "sha256": "b7954ac518b56c47c2ad2bcefd053aaed169f008f480c4d60398de426cc2eee9",
+      "bytes": 2625
+    },
+    {
+      "path": "src/lib/session.js",
+      "change": "modified",
+      "baselineSha256": "aac87417c369d3acbb47c14e33d404c9d727494a90b17d0696f4a6f74568d5cf",
+      "sha256": "1ffaec690bb323f77e96b71decca52fe73ebe6e725cba1a657903bfc037e1840",
+      "bytes": 5882
+    },
+    {
+      "path": "src/middleware/auth.js",
+      "change": "modified",
+      "baselineSha256": "5f79622471e65d4e8b981123bc95f853336045d55944ed6130a17f450df1c0f3",
+      "sha256": "91a91a246b23adf01506a4f7d47592e7d457725b74f519913ed45ba7280613ac",
+      "bytes": 4257
+    },
+    {
+      "path": "src/routes/payment.routes.js",
+      "change": "modified",
+      "baselineSha256": "bb05764b55bf4e5a581cda26f891627c62fe5ce1c1b0f8a8f5be9afe57366e43",
+      "sha256": "c916969525d60c62392944bdf31f932279a8f9397ac0a0d46583708b078804b6",
+      "bytes": 3822
+    },
+    {
+      "path": "src/routes/shared/api.routes.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "fea1c6bd838a7deb8b8e0b44b65c627164f1dbb83a6159d65a73bd86af861f23",
+      "bytes": 30081
+    },
+    {
+      "path": "src/scripts/test-postgres-parity.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "2ad59c35d085fa2a07023672d2f80852eaf857cc3bff83e8dc92b5ca4d25f345",
+      "bytes": 2957
+    },
+    {
+      "path": "src/server.js",
+      "change": "modified",
+      "baselineSha256": "00c3c59a0da6502a9b319892dc4881b6fe4793747280c6b190a68f4fa00a61cc",
+      "sha256": "6ae65aba53bb40e3302d4935709dab8e47f9bfd3cbd9718aad8b154f3dd8cdf9",
+      "bytes": 760
+    },
+    {
+      "path": "src/services/interaction.service.js",
+      "change": "modified",
+      "baselineSha256": "bbc020c1db81633219848bcaaf162c8bd8715075f9f18386961c402e69bd25be",
+      "sha256": "3261eec29c660d6c6801ae036d25a71f149755b825156e6ab134043accfbe317",
+      "bytes": 14366
+    },
+    {
+      "path": "src/services/listing.service.js",
+      "change": "modified",
+      "baselineSha256": "982832d5eacb7150b496a98216efc75ddab23e0954e41bba5be0b516296e8f9a",
+      "sha256": "0c019e99533d410f40405e79836a646333d6c15f17faf769d81e307bd7c14302",
+      "bytes": 17443
+    },
+    {
+      "path": "src/services/logistics.service.js",
+      "change": "modified",
+      "baselineSha256": "5015a3c07bbf27e1d88a4a5969bc9c9f1b1b421078d33215cf95e60e2676b0fb",
+      "sha256": "8503861dd8c82fd3e4bde615014a7e35633e65f95a624875179468484ee181ee",
+      "bytes": 176251
+    },
+    {
+      "path": "src/services/message.service.js",
+      "change": "modified",
+      "baselineSha256": "1a7e968b3fa109a8b9e02924ff448d77fa50b02ff0a045b023fe3c358ddc3691",
+      "sha256": "85758e930c2f898dea44614851b273eb0b51191ac09b1f1b9f1554c5bd7a6b56",
+      "bytes": 46863
+    },
+    {
+      "path": "src/services/moderation.service.js",
+      "change": "modified",
+      "baselineSha256": "3ee9c58e5287d7f3de8b187b2b23aa20a6b5f30ebde2648d4f9386fdb42b544c",
+      "sha256": "41eac53a0a35a40621ffe21bb2d6e2bbfe68fc1be35d51139e525cb03b5e5f07",
+      "bytes": 23769
+    },
+    {
+      "path": "src/services/order.service.js",
+      "change": "modified",
+      "baselineSha256": "80a609b0017dbd1de4600db039ea408fe2597701fb709e3ee0e42777a9029418",
+      "sha256": "5224586c7dad8bea2974aa6f4dd7f3b09beccb1285fceef477d8cbbf1914d0bf",
+      "bytes": 47497
+    },
+    {
+      "path": "src/services/settlement.service.js",
+      "change": "modified",
+      "baselineSha256": "ae1c8ecf5d04e30f21ef8b8d3e0513d3611f0efe5827f8df08f7bc8355dae838",
+      "sha256": "61d5bb4925c8e6b04ad8375f7071a1332b66b1a3f1092ed737f7b50276e3aa17",
+      "bytes": 13324
+    },
+    {
+      "path": "src/shared/account.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "dd1e0956921c1f0225800eb705ace771d071ecf933d33ad79163a0f6a2c84667",
+      "bytes": 12355
+    },
+    {
+      "path": "src/shared/catalogue.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "8bb2ac1e7b08c13af029ad4103113eb265d7148c1eefc482ee5e2ded7fe24613",
+      "bytes": 16637
+    },
+    {
+      "path": "src/shared/chat.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "af24fd1c0d50d74138155a3a2a0e125aa28dd1b32d1ed33a1de1dc10a0019cda",
+      "bytes": 15149
+    },
+    {
+      "path": "src/shared/checkout.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "fbb61bfb3937f1a48563ee3879c0b1443a7a9395b6dfd212a46ba045ce861da3",
+      "bytes": 19959
+    },
+    {
+      "path": "src/shared/core.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "a014134082f5437732c19f62b975879e603d82fab46f00f6e291c944bb42032e",
+      "bytes": 3561
+    },
+    {
+      "path": "src/shared/discovery.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "935ca792816ad5a5a658da0830fd2a57eece6d111e2c33b47111ce83e5637456",
+      "bytes": 3358
+    },
+    {
+      "path": "src/shared/downloads.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "46e2f108a2b6b516d6881a951def396646cbf33d7c13cc046553d20949e0d6af",
+      "bytes": 2526
+    },
+    {
+      "path": "src/shared/identity.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "256bff07ad9e7921e883c6a953582b4403daa2a6cc395d29a67f37f036488593",
+      "bytes": 6659
+    },
+    {
+      "path": "src/shared/legacy-compat.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "752ce2db57a27ce0eda5a155a605bec67b810f4a06e91c2348f2ced9e3f6a7fd",
+      "bytes": 1777
+    },
+    {
+      "path": "src/shared/media.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "7ba858df38d333845dc22f12ab00b1018a5721ed7039bf023c59ae97d0f7fb3d",
+      "bytes": 9337
+    },
+    {
+      "path": "src/shared/migrations.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "8bbd31fe4410404643c8873da67e3adcaef8667650f769762580b6f8a6ecee1f",
+      "bytes": 14232
+    },
+    {
+      "path": "src/shared/orders.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "e4d0cc2e4462fa612e34c983d637b6abb6110cba3802eabb3569e4da4f93d05d",
+      "bytes": 22688
+    },
+    {
+      "path": "src/shared/payments.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "0026c1a3ff55bcfc45e3b7f4c75cd2be5e74ab7eef693ace9e49b00174d9420a",
+      "bytes": 14653
+    },
+    {
+      "path": "src/shared/push.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "2b9083271161c90208fcd7397fdbe8918157e61690a067c93c746e07e87827d0",
+      "bytes": 5740
+    },
+    {
+      "path": "src/shared/recovery.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "6b30bf5231d0465b8b2bdd3c7c77d9061f8e31bf87d786039be78df977a8ec30",
+      "bytes": 3802
+    },
+    {
+      "path": "src/shared/reviews.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "bb0fdf37c5b46b2286a60ad5091e6d570f01d71b13e68ebdb19810fb82dd09c3",
+      "bytes": 4717
+    },
+    {
+      "path": "src/shared/schemas.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "eb53463757308ebb5f04d00d69fca7634e4c1eda15174dd015c58dcd4fd36da5",
+      "bytes": 5500
+    },
+    {
+      "path": "src/shared/sessions.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "3c6fc7e2af3c32d8d50bc13748d63b78e6a40f7c98fa96ba7e278121800846c6",
+      "bytes": 3680
+    },
+    {
+      "path": "src/shared/social.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "a225453971bd4ecdd1e79d448a834e8313703c64bf744282429f4f2b52460aa6",
+      "bytes": 16272
+    },
+    {
+      "path": "src/shared/worker.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "4fc916da552fbb140a3c44d34f7d5c51cc675829f00b0cbb8a61054b58aab02e",
+      "bytes": 3269
+    },
+    {
+      "path": "test/client.test.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "19907b877a748585cd2c0b8b475632e8824a7cabd8b2916ab4d2e7b3148911d6",
+      "bytes": 2756
+    },
+    {
+      "path": "test/commerce.test.js",
+      "change": "modified",
+      "baselineSha256": "f25036ebeb61d04a4165e86cdb054681cd90c4626a436065f3c3b3d587286d0e",
+      "sha256": "cb32d77e67ef33d486f0f4de1b73b34478bb50eba4dccbcc3b811177992c14a0",
+      "bytes": 32229
+    },
+    {
+      "path": "test/shared.test.js",
+      "change": "added",
+      "baselineSha256": null,
+      "sha256": "b399f915368282b288f50a81f0aa92361e1c743771914b7954495fe600eaa642",
+      "bytes": 43538
+    }
+  ]
+}

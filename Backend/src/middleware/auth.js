@@ -5,7 +5,12 @@ import {
 import { HttpError } from "../lib/http-error.js";
 import { assertRole, normalizeRole } from "../lib/roles.js";
 
+import { verifyMobileToken } from '../shared/sessions.js';
+
 export function optionalAuth(req, _res, next) {
+  const authorization=req.get('Authorization');
+  if(authorization){req.auth=authorization.startsWith('Bearer ')?verifyMobileToken(authorization.slice(7)):null;req.authPortal=req.auth?'user':null;req.mobileAuth=!!req.auth;return next();}
+
   const requestedPortal = String(
     req.get("x-gleenc-portal") || req.query?.portal || "",
   ).toLowerCase();
@@ -28,7 +33,7 @@ export function optionalAuth(req, _res, next) {
     requestPath.startsWith("/api/notifications") ||
     requestPath.startsWith("/api/messages");
   const riderPath = requestPath.startsWith("/api/rider") || sharedRiderPath;
-  const adminPath = requestPath.startsWith("/api/admin") || sharedAdminPath;
+  const adminPath = requestPath.startsWith("/api/admin") || requestPath.startsWith("/api/v2/admin") || sharedAdminPath;
   const sharedAccountPath =
     requestPath.startsWith("/api/notifications") ||
     requestPath.startsWith("/api/messages");
@@ -45,7 +50,7 @@ export function optionalAuth(req, _res, next) {
   // session, even if a request is crafted outside the frontend.
   if (requestedPortal === "rider" && riderPath) portal = "rider";
   if (requestedPortal === "admin" && adminPath) portal = "admin";
-  if (requestedPortal === "user" && !requestPath.startsWith("/api/admin") && !requestPath.startsWith("/api/rider")) {
+  if (requestedPortal === "user" && !requestPath.startsWith("/api/admin") && !requestPath.startsWith("/api/v2/admin") && !requestPath.startsWith("/api/rider")) {
     portal = "user";
   }
 

@@ -1,3 +1,4 @@
+import { assertUnblocked } from '../shared/core.js';
 import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
@@ -98,6 +99,7 @@ function serializeComment(row, viewer = null) {
 
 export function followStore(userId, slug) {
   const store = activeStoreBySlug(slug);
+  assertUnblocked(userId,store.owner_id);
   const result = db.prepare(`
     INSERT INTO store_follows (id, user_id, store_id, created_at)
     VALUES (?, ?, ?, ?)
@@ -152,6 +154,7 @@ export function storeInteraction(storeId, viewerId) {
 }
 
 export function likeProduct(userId, productId) {
+  assertUnblocked(userId,productNotificationTarget(productId)?.owner_id);
   activeProduct(productId);
   const target = productNotificationTarget(productId);
   const result = db.prepare(`
@@ -187,6 +190,7 @@ export function unlikeProduct(userId, productId) {
 export function addProductComment(userId, productId, input) {
   activeProduct(productId);
   const target = productNotificationTarget(productId);
+  assertUnblocked(userId,target?.owner_id);
   const cleanBody =
     typeof input === "string"
       ? input.trim()
@@ -200,8 +204,9 @@ export function addProductComment(userId, productId, input) {
 
   if (parentCommentId) {
     const parent = productCommentById(parentCommentId);
+    assertUnblocked(userId,parent.user_id);
 
-    if (parent.product_id !== productId || parent.is_deleted) {
+    if (parent.product_id !== productId || parent.is_deleted || parent.parent_comment_id) {
       throw new HttpError(422, "You can only reply to an active comment on this product.");
     }
   }
@@ -248,6 +253,7 @@ export function addProductComment(userId, productId, input) {
 }
 
 export function productInteraction(productId, viewerId) {
+  if(viewerId)assertUnblocked(viewerId,productNotificationTarget(productId)?.owner_id);
   const likeCount = db
     .prepare("SELECT COUNT(*) AS count FROM product_likes WHERE product_id = ?")
     .get(productId).count;

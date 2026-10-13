@@ -34,8 +34,7 @@ async function getClient() {
     ),
   });
 
-  await client.connect();
-  return client;
+  try {await client.connect();return client;} catch(error){client=null;throw error;}
 }
 
 function normalizeRow(row) {
@@ -76,7 +75,8 @@ async function execute(message) {
   };
 }
 
-parentPort.on("message", async (message) => {
+let queue=Promise.resolve();
+parentPort.on("message", message => {queue=queue.then(async()=>{
   try {
     const result = await execute(message);
 
@@ -104,4 +104,4 @@ parentPort.on("message", async (message) => {
     Atomics.store(new Int32Array(message.signal), 0, 2);
     Atomics.notify(new Int32Array(message.signal), 0);
   }
-});
+});});

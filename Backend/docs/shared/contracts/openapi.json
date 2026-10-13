@@ -1,0 +1,6360 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gleenc Shared API",
+    "version": "2.0.0",
+    "description": "The existing v1 web APIs remain available. Request body definitions for core product and checkout operations derive from Zod input schemas; generic action bodies are documented in the implementation and integration guide."
+  },
+  "servers": [
+    {
+      "url": "https://YOUR_API_HOST/api/v2"
+    }
+  ],
+  "security": [
+    {
+      "cookieAuth": []
+    },
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "gleank_session"
+      },
+      "adminCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "gleank_admin_session"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 160
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 6000
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "priceKobo": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "stock": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "kind": {
+            "default": "physical",
+            "type": "string",
+            "enum": [
+              "physical",
+              "digital"
+            ]
+          },
+          "presentation": {
+            "default": "image",
+            "type": "string",
+            "enum": [
+              "image",
+              "video"
+            ]
+          },
+          "mediaIds": {
+            "default": [],
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[a-zA-Z0-9_.:-]+$"
+            }
+          },
+          "posterId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          },
+          "fileIds": {
+            "default": [],
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[a-zA-Z0-9_.:-]+$"
+            }
+          },
+          "licence": {
+            "default": "Personal use",
+            "type": "string",
+            "maxLength": 2000
+          },
+          "attributes": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 300
+            }
+          },
+          "variants": {
+            "default": [],
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "size": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "color": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 60
+                },
+                "colorHex": {
+                  "type": "string",
+                  "pattern": "^#[0-9a-fA-F]{6}$"
+                },
+                "priceKobo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                "stock": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "photoIds": {
+                  "default": [],
+                  "maxItems": 10,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 140,
+                    "pattern": "^[a-zA-Z0-9_.:-]+$"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "stock"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "ordering": {
+            "default": {
+              "format": "single",
+              "unit": "piece",
+              "unitDescription": "",
+              "packSize": 1,
+              "components": [],
+              "packagingKobo": 0,
+              "preparationMinutes": 0,
+              "orderingHours": "",
+              "ingredients": "",
+              "allergens": [],
+              "pickup": true,
+              "delivery": true
+            },
+            "type": "object",
+            "properties": {
+              "format": {
+                "default": "single",
+                "type": "string",
+                "enum": [
+                  "single",
+                  "fixed_pack",
+                  "menu",
+                  "pack_extras"
+                ]
+              },
+              "unit": {
+                "default": "piece",
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "unitDescription": {
+                "default": "",
+                "type": "string",
+                "maxLength": 200
+              },
+              "packSize": {
+                "default": 1,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1000
+              },
+              "components": {
+                "default": [],
+                "maxItems": 100,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 140,
+                      "pattern": "^[a-zA-Z0-9_.:-]+$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "group": {
+                      "default": "Items",
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "unit": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    },
+                    "unitDescription": {
+                      "default": "",
+                      "type": "string",
+                      "maxLength": 180
+                    },
+                    "priceKobo": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000000
+                    },
+                    "stock": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 1000000
+                    },
+                    "min": {
+                      "default": 0,
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 99
+                    },
+                    "max": {
+                      "default": 99,
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 99
+                    },
+                    "required": {
+                      "default": false,
+                      "type": "boolean"
+                    },
+                    "photoId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 140,
+                      "pattern": "^[a-zA-Z0-9_.:-]+$"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "unit",
+                    "priceKobo",
+                    "stock"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "packagingKobo": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000
+              },
+              "preparationMinutes": {
+                "default": 0,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 86400
+              },
+              "orderingHours": {
+                "default": "",
+                "type": "string",
+                "maxLength": 300
+              },
+              "ingredients": {
+                "default": "",
+                "type": "string",
+                "maxLength": 2000
+              },
+              "allergens": {
+                "default": [],
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 100
+                }
+              },
+              "pickup": {
+                "default": true,
+                "type": "boolean"
+              },
+              "delivery": {
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "catalogueId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          },
+          "offersEnabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "reshareEnabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "returnDays": {
+            "default": 7,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 30
+          },
+          "deliveryKobo": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "publication": {
+            "default": "draft",
+            "type": "string",
+            "enum": [
+              "draft",
+              "publish",
+              "schedule"
+            ]
+          },
+          "publishAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "category",
+          "priceKobo",
+          "stock"
+        ],
+        "additionalProperties": false
+      },
+      "Ordering": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "default": "single",
+            "type": "string",
+            "enum": [
+              "single",
+              "fixed_pack",
+              "menu",
+              "pack_extras"
+            ]
+          },
+          "unit": {
+            "default": "piece",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "unitDescription": {
+            "default": "",
+            "type": "string",
+            "maxLength": 200
+          },
+          "packSize": {
+            "default": 1,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "components": {
+            "default": [],
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "group": {
+                  "default": "Items",
+                  "type": "string",
+                  "maxLength": 80
+                },
+                "unit": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "unitDescription": {
+                  "default": "",
+                  "type": "string",
+                  "maxLength": 180
+                },
+                "priceKobo": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000000
+                },
+                "stock": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1000000
+                },
+                "min": {
+                  "default": 0,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 99
+                },
+                "max": {
+                  "default": 99,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                },
+                "required": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "photoId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "unit",
+                "priceKobo",
+                "stock"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "packagingKobo": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000000
+          },
+          "preparationMinutes": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 86400
+          },
+          "orderingHours": {
+            "default": "",
+            "type": "string",
+            "maxLength": 300
+          },
+          "ingredients": {
+            "default": "",
+            "type": "string",
+            "maxLength": 2000
+          },
+          "allergens": {
+            "default": [],
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "pickup": {
+            "default": true,
+            "type": "boolean"
+          },
+          "delivery": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Selection": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          },
+          "quantity": {
+            "default": 1,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 99
+          },
+          "variantId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          },
+          "components": {
+            "default": [],
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 99
+                }
+              },
+              "required": [
+                "id",
+                "quantity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "postId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          },
+          "offerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 140,
+            "pattern": "^[a-zA-Z0-9_.:-]+$"
+          }
+        },
+        "required": [
+          "productId"
+        ],
+        "additionalProperties": false
+      },
+      "Checkout": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "productId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "quantity": {
+                  "default": 1,
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 99
+                },
+                "variantId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "components": {
+                  "default": [],
+                  "maxItems": 100,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 140,
+                        "pattern": "^[a-zA-Z0-9_.:-]+$"
+                      },
+                      "quantity": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 99
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "quantity"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "postId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                },
+                "offerId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 140,
+                  "pattern": "^[a-zA-Z0-9_.:-]+$"
+                }
+              },
+              "required": [
+                "productId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "cartLineIds": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 140,
+              "pattern": "^[a-zA-Z0-9_.:-]+$"
+            }
+          },
+          "address": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 100
+              },
+              "phone": {
+                "type": "string",
+                "minLength": 7,
+                "maxLength": 30
+              },
+              "address": {
+                "type": "string",
+                "minLength": 5,
+                "maxLength": 500
+              },
+              "city": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 100
+              },
+              "state": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 100
+              },
+              "country": {
+                "default": "Nigeria",
+                "type": "string",
+                "maxLength": 80
+              }
+            },
+            "required": [
+              "name",
+              "phone",
+              "address",
+              "city",
+              "state"
+            ],
+            "additionalProperties": false
+          },
+          "method": {
+            "default": "paystack",
+            "type": "string",
+            "enum": [
+              "wallet",
+              "paystack"
+            ]
+          },
+          "clientPlatform": {
+            "default": "web",
+            "type": "string",
+            "enum": [
+              "web",
+              "android",
+              "ios"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Login": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 160,
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "Register": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 80
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 160,
+            "format": "email",
+            "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 72
+          },
+          "role": {
+            "default": "buyer",
+            "type": "string",
+            "enum": [
+              "buyer",
+              "seller"
+            ]
+          },
+          "campus": {
+            "default": "",
+            "type": "string",
+            "maxLength": 80
+          },
+          "phone": {
+            "default": "",
+            "type": "string",
+            "maxLength": 30
+          },
+          "address": {
+            "default": "",
+            "type": "string",
+            "maxLength": 240
+          },
+          "storeName": {
+            "default": "",
+            "type": "string",
+            "maxLength": 100
+          },
+          "sellerType": {
+            "default": "campus",
+            "type": "string",
+            "enum": [
+              "campus",
+              "local_market",
+              "used_market"
+            ]
+          },
+          "country": {
+            "default": "",
+            "type": "string",
+            "maxLength": 80
+          },
+          "state": {
+            "default": "",
+            "type": "string",
+            "maxLength": 120
+          },
+          "city": {
+            "default": "",
+            "type": "string",
+            "maxLength": 120
+          },
+          "nearestCampus": {
+            "default": "",
+            "type": "string",
+            "maxLength": 160
+          },
+          "nearestMarketplace": {
+            "default": "",
+            "type": "string",
+            "maxLength": 180
+          },
+          "street": {
+            "default": "",
+            "type": "string",
+            "maxLength": 240
+          },
+          "pickupPlaceId": {
+            "default": "",
+            "type": "string",
+            "maxLength": 300
+          },
+          "pickupLat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "pickupLng": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "locationVerifiedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
+              },
+              {
+                "type": "string",
+                "const": ""
+              }
+            ]
+          },
+          "vehicleType": {
+            "default": "",
+            "type": "string",
+            "maxLength": 80
+          },
+          "vehiclePlate": {
+            "default": "",
+            "type": "string",
+            "maxLength": 40
+          },
+          "coverageArea": {
+            "default": "",
+            "type": "string",
+            "maxLength": 160
+          },
+          "homeAddress": {
+            "default": "",
+            "type": "string",
+            "maxLength": 240
+          },
+          "transportType": {
+            "default": "",
+            "type": "string",
+            "maxLength": 80
+          },
+          "maxPackageSize": {
+            "default": "small_medium",
+            "type": "string",
+            "maxLength": 80
+          },
+          "maxWeightClass": {
+            "default": "up_to_medium",
+            "type": "string",
+            "maxLength": 80
+          },
+          "fragileHandlingAbility": {
+            "default": "can_handle_fragile",
+            "type": "string",
+            "maxLength": 100
+          },
+          "deliveryBagType": {
+            "default": "medium_delivery_bag",
+            "type": "string",
+            "maxLength": 100
+          },
+          "gpsPermissionStatus": {
+            "default": "gps_disabled",
+            "type": "string",
+            "maxLength": 80
+          },
+          "canReceiveAutoDispatch": {
+            "default": true,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "email",
+          "password"
+        ]
+      },
+      "Success": {
+        "type": "object",
+        "required": [
+          "success",
+          "data"
+        ],
+        "properties": {
+          "success": {
+            "const": true
+          },
+          "data": {}
+        }
+      }
+    }
+  },
+  "paths": {
+    "/capabilities": {
+      "get": {
+        "summary": "GET /capabilities",
+        "operationId": "get_capabilities",
+        "tags": [
+          "capabilities"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/auth/challenge": {
+      "post": {
+        "summary": "POST /auth/challenge",
+        "operationId": "post_auth_challenge",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/identity": {
+      "post": {
+        "summary": "POST /auth/identity",
+        "operationId": "post_auth_identity",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "summary": "POST /auth/refresh",
+        "operationId": "post_auth_refresh",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "POST /auth/logout",
+        "operationId": "post_auth_logout",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "summary": "GET /search",
+        "operationId": "get_search",
+        "tags": [
+          "search"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/categories": {
+      "get": {
+        "summary": "GET /categories",
+        "operationId": "get_categories",
+        "tags": [
+          "categories"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/feed": {
+      "get": {
+        "summary": "GET /feed",
+        "operationId": "get_feed",
+        "tags": [
+          "feed"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}": {
+      "get": {
+        "summary": "GET /products/:id",
+        "operationId": "get_products_id",
+        "tags": [
+          "products"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT /products/:id",
+        "operationId": "put_products_id",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Product"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Archive an owned product or post without deleting purchase history",
+        "operationId": "archiveProduct",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archived; active is false"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Owned product or post not found"
+          },
+          "409": {
+            "description": "Cannot change this publication state"
+          }
+        }
+      }
+    },
+    "/people/{id}": {
+      "get": {
+        "summary": "GET /people/:id",
+        "operationId": "get_people_id",
+        "tags": [
+          "people"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/people/{id}/catalogue": {
+      "get": {
+        "summary": "GET /people/:id/catalogue",
+        "operationId": "get_people_id_catalogue",
+        "tags": [
+          "people"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/people/{id}/connections": {
+      "get": {
+        "summary": "GET /people/:id/connections",
+        "operationId": "get_people_id_connections",
+        "tags": [
+          "people"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}/reviews": {
+      "get": {
+        "summary": "GET /products/:id/reviews",
+        "operationId": "get_products_id_reviews",
+        "tags": [
+          "products"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}/comments": {
+      "get": {
+        "summary": "GET /products/:id/comments",
+        "operationId": "get_products_id_comments",
+        "tags": [
+          "products"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /products/:id/comments",
+        "operationId": "post_products_id_comments",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{id}/public": {
+      "get": {
+        "summary": "GET /media/:id/public",
+        "operationId": "get_media_id_public",
+        "tags": [
+          "media"
+        ],
+        "security": [],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized file bytes; range delivery supported for public media",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/push-devices": {
+      "post": {
+        "summary": "POST /me/push-devices",
+        "operationId": "post_me_push_devices",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /me/push-devices",
+        "operationId": "delete_me_push_devices",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/saved": {
+      "get": {
+        "summary": "GET /saved",
+        "operationId": "get_saved",
+        "tags": [
+          "saved"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/saved/{id}": {
+      "put": {
+        "summary": "PUT /saved/:id",
+        "operationId": "put_saved_id",
+        "tags": [
+          "saved"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /saved/:id",
+        "operationId": "delete_saved_id",
+        "tags": [
+          "saved"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "summary": "GET /me",
+        "operationId": "get_me",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/terms": {
+      "post": {
+        "summary": "POST /me/terms",
+        "operationId": "post_me_terms",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/profile": {
+      "patch": {
+        "summary": "PATCH /me/profile",
+        "operationId": "patch_me_profile",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/settings": {
+      "put": {
+        "summary": "PUT /me/settings",
+        "operationId": "put_me_settings",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/addresses": {
+      "get": {
+        "summary": "GET /me/addresses",
+        "operationId": "get_me_addresses",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /me/addresses",
+        "operationId": "post_me_addresses",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/addresses/{id}": {
+      "put": {
+        "summary": "PUT /me/addresses/:id",
+        "operationId": "put_me_addresses_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /me/addresses/:id",
+        "operationId": "delete_me_addresses_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/blocks/{id}": {
+      "put": {
+        "summary": "PUT /me/blocks/:id",
+        "operationId": "put_me_blocks_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /me/blocks/:id",
+        "operationId": "delete_me_blocks_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/blocks": {
+      "get": {
+        "summary": "GET /me/blocks",
+        "operationId": "get_me_blocks",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/deletion": {
+      "post": {
+        "summary": "POST /me/deletion",
+        "operationId": "post_me_deletion",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/devices": {
+      "get": {
+        "summary": "GET /me/devices",
+        "operationId": "get_me_devices",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/devices/{id}": {
+      "delete": {
+        "summary": "DELETE /me/devices/:id",
+        "operationId": "delete_me_devices_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/presence": {
+      "post": {
+        "summary": "POST /me/presence",
+        "operationId": "post_me_presence",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/activity/counts": {
+      "get": {
+        "summary": "GET /activity/counts",
+        "operationId": "get_activity_counts",
+        "tags": [
+          "activity"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "summary": "GET /notifications",
+        "operationId": "get_notifications",
+        "tags": [
+          "notifications"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/notifications/read": {
+      "post": {
+        "summary": "POST /notifications/read",
+        "operationId": "post_notifications_read",
+        "tags": [
+          "notifications"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations": {
+      "get": {
+        "summary": "GET /conversations",
+        "operationId": "get_conversations",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /conversations",
+        "operationId": "post_conversations",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/messages": {
+      "get": {
+        "summary": "GET /conversations/:id/messages",
+        "operationId": "get_conversations_id_messages",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /conversations/:id/messages",
+        "operationId": "post_conversations_id_messages",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/ack": {
+      "post": {
+        "summary": "POST /conversations/:id/ack",
+        "operationId": "post_conversations_id_ack",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/messages/{messageId}": {
+      "patch": {
+        "summary": "PATCH /conversations/:id/messages/:messageId",
+        "operationId": "patch_conversations_id_messages_messageId",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          },
+          {
+            "in": "path",
+            "name": "messageId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/conversations/{id}/settings": {
+      "put": {
+        "summary": "PUT /conversations/:id/settings",
+        "operationId": "put_conversations_id_settings",
+        "tags": [
+          "conversations"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/{id}/private": {
+      "get": {
+        "summary": "GET /media/:id/private",
+        "operationId": "get_media_id_private",
+        "tags": [
+          "media"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authorized file bytes; range delivery supported for public media",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/selling": {
+      "put": {
+        "summary": "PUT /me/selling",
+        "operationId": "put_me_selling",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media": {
+      "post": {
+        "summary": "POST /media",
+        "operationId": "post_media",
+        "tags": [
+          "media"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "kind",
+                  "file"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "image",
+                      "video",
+                      "digital",
+                      "document",
+                      "voice",
+                      "review",
+                      "avatar",
+                      "cover",
+                      "receipt",
+                      "chat_image",
+                      "evidence"
+                    ]
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalogue": {
+      "post": {
+        "summary": "POST /catalogue",
+        "operationId": "post_catalogue",
+        "tags": [
+          "catalogue"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/catalogue/{id}": {
+      "put": {
+        "summary": "PUT /catalogue/:id",
+        "operationId": "put_catalogue_id",
+        "tags": [
+          "catalogue"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/products": {
+      "post": {
+        "summary": "POST /products",
+        "operationId": "post_products",
+        "tags": [
+          "products"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Product"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/products/{id}": {
+      "get": {
+        "summary": "GET /me/products/:id",
+        "operationId": "get_me_products_id",
+        "tags": [
+          "me"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/me/products": {
+      "get": {
+        "summary": "GET /me/products",
+        "operationId": "get_me_products",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}/availability": {
+      "put": {
+        "summary": "PUT /products/:id/availability",
+        "operationId": "put_products_id_availability",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/people/{id}/follow": {
+      "post": {
+        "summary": "POST /people/:id/follow",
+        "operationId": "post_people_id_follow",
+        "tags": [
+          "people"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /people/:id/follow",
+        "operationId": "delete_people_id_follow",
+        "tags": [
+          "people"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/posts/{id}/reshare": {
+      "post": {
+        "summary": "POST /posts/:id/reshare",
+        "operationId": "post_posts_id_reshare",
+        "tags": [
+          "posts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}/events": {
+      "post": {
+        "summary": "POST /posts/:id/events",
+        "operationId": "post_posts_id_events",
+        "tags": [
+          "posts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/reshare-analytics": {
+      "get": {
+        "summary": "GET /me/reshare-analytics",
+        "operationId": "get_me_reshare_analytics",
+        "tags": [
+          "me"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}/like": {
+      "post": {
+        "summary": "POST /products/:id/like",
+        "operationId": "post_products_id_like",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /products/:id/like",
+        "operationId": "delete_products_id_like",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/products/{id}/comments/{commentId}": {
+      "delete": {
+        "summary": "DELETE /products/:id/comments/:commentId",
+        "operationId": "delete_products_id_comments_commentId",
+        "tags": [
+          "products"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          },
+          {
+            "in": "path",
+            "name": "commentId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/reports": {
+      "post": {
+        "summary": "POST /reports",
+        "operationId": "post_reports",
+        "tags": [
+          "reports"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/offers": {
+      "post": {
+        "summary": "POST /offers",
+        "operationId": "post_offers",
+        "tags": [
+          "offers"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "summary": "GET /offers",
+        "operationId": "get_offers",
+        "tags": [
+          "offers"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/offers/{id}/answer": {
+      "post": {
+        "summary": "POST /offers/:id/answer",
+        "operationId": "post_offers_id_answer",
+        "tags": [
+          "offers"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quote": {
+      "post": {
+        "summary": "POST /quote",
+        "operationId": "post_quote",
+        "tags": [
+          "quote"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cart": {
+      "get": {
+        "summary": "GET /cart",
+        "operationId": "get_cart",
+        "tags": [
+          "cart"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "post": {
+        "summary": "POST /cart",
+        "operationId": "post_cart",
+        "tags": [
+          "cart"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cart/{id}": {
+      "put": {
+        "summary": "PUT /cart/:id",
+        "operationId": "put_cart_id",
+        "tags": [
+          "cart"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Selection"
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "DELETE /cart/:id",
+        "operationId": "delete_cart_id",
+        "tags": [
+          "cart"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/checkouts": {
+      "post": {
+        "summary": "POST /checkouts",
+        "operationId": "post_checkouts",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Checkout"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkouts/{id}": {
+      "get": {
+        "summary": "GET /checkouts/:id",
+        "operationId": "get_checkouts_id",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/checkouts/{id}/cancel": {
+      "post": {
+        "summary": "POST /checkouts/:id/cancel",
+        "operationId": "post_checkouts_id_cancel",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkouts/{id}/pay": {
+      "post": {
+        "summary": "POST /checkouts/:id/pay",
+        "operationId": "post_checkouts_id_pay",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkouts/{id}/initialize": {
+      "post": {
+        "summary": "POST /checkouts/:id/initialize",
+        "operationId": "post_checkouts_id_initialize",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/checkouts/{id}/verify": {
+      "post": {
+        "summary": "POST /checkouts/:id/verify",
+        "operationId": "post_checkouts_id_verify",
+        "tags": [
+          "checkouts"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "summary": "GET /orders",
+        "operationId": "get_orders",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "summary": "GET /orders/:id",
+        "operationId": "get_orders_id",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/orders/{id}/receipt": {
+      "get": {
+        "summary": "GET /orders/:id/receipt",
+        "operationId": "get_orders_id_receipt",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/orders/{id}/prepare": {
+      "post": {
+        "summary": "POST /orders/:id/prepare",
+        "operationId": "post_orders_id_prepare",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}/packages/{packageId}/dispatch": {
+      "post": {
+        "summary": "POST /orders/:id/packages/:packageId/dispatch",
+        "operationId": "post_orders_id_packages_packageId_dispatch",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}/packages/{packageId}/confirm": {
+      "post": {
+        "summary": "POST /orders/:id/packages/:packageId/confirm",
+        "operationId": "post_orders_id_packages_packageId_confirm",
+        "tags": [
+          "orders"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          },
+          {
+            "in": "path",
+            "name": "packageId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues/{id}/reply": {
+      "post": {
+        "summary": "POST /issues/:id/reply",
+        "operationId": "post_issues_id_reply",
+        "tags": [
+          "issues"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/lines/{id}/issues": {
+      "post": {
+        "summary": "POST /lines/:id/issues",
+        "operationId": "post_lines_id_issues",
+        "tags": [
+          "lines"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/issues": {
+      "get": {
+        "summary": "GET /issues",
+        "operationId": "get_issues",
+        "tags": [
+          "issues"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/lines/{id}/review": {
+      "post": {
+        "summary": "POST /lines/:id/review",
+        "operationId": "post_lines_id_review",
+        "tags": [
+          "lines"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reviews/{id}": {
+      "patch": {
+        "summary": "PATCH /reviews/:id",
+        "operationId": "patch_reviews_id",
+        "tags": [
+          "reviews"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/banks": {
+      "get": {
+        "summary": "GET /wallet/banks",
+        "operationId": "get_wallet_banks",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/wallet/recipient": {
+      "get": {
+        "summary": "GET /wallet/recipient",
+        "operationId": "get_wallet_recipient",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      },
+      "put": {
+        "summary": "PUT /wallet/recipient",
+        "operationId": "put_wallet_recipient",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet": {
+      "get": {
+        "summary": "GET /wallet",
+        "operationId": "get_wallet",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/wallet/topups": {
+      "post": {
+        "summary": "POST /wallet/topups",
+        "operationId": "post_wallet_topups",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/topups/{id}/verify": {
+      "post": {
+        "summary": "POST /wallet/topups/:id/verify",
+        "operationId": "post_wallet_topups_id_verify",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/withdrawals": {
+      "post": {
+        "summary": "POST /wallet/withdrawals",
+        "operationId": "post_wallet_withdrawals",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/withdrawals/{id}/verify": {
+      "post": {
+        "summary": "POST /wallet/withdrawals/:id/verify",
+        "operationId": "post_wallet_withdrawals_id_verify",
+        "tags": [
+          "wallet"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/library": {
+      "get": {
+        "summary": "GET /library",
+        "operationId": "get_library",
+        "tags": [
+          "library"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/library/{id}/download-token": {
+      "post": {
+        "summary": "POST /library/:id/download-token",
+        "operationId": "post_library_id_download_token",
+        "tags": [
+          "library"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/library/download": {
+      "post": {
+        "summary": "POST /library/download",
+        "operationId": "post_library_download",
+        "tags": [
+          "library"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Authorized file bytes; range delivery supported for public media",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/deletions": {
+      "get": {
+        "summary": "GET /admin/deletions",
+        "operationId": "get_admin_deletions",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/admin/deletions/{id}/finalize": {
+      "post": {
+        "summary": "POST /admin/deletions/:id/finalize",
+        "operationId": "post_admin_deletions_id_finalize",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/refunds/{id}/link-provider": {
+      "post": {
+        "summary": "POST /admin/refunds/:id/link-provider",
+        "operationId": "post_admin_refunds_id_link_provider",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/recoveries/{id}/link-provider": {
+      "post": {
+        "summary": "POST /admin/recoveries/:id/link-provider",
+        "operationId": "post_admin_recoveries_id_link_provider",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/recoveries/{id}/reconcile": {
+      "post": {
+        "summary": "POST /admin/recoveries/:id/reconcile",
+        "operationId": "post_admin_recoveries_id_reconcile",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reports": {
+      "get": {
+        "summary": "GET /admin/reports",
+        "operationId": "get_admin_reports",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/admin/reports/{id}/resolve": {
+      "post": {
+        "summary": "POST /admin/reports/:id/resolve",
+        "operationId": "post_admin_reports_id_resolve",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/products": {
+      "get": {
+        "summary": "GET /admin/products",
+        "operationId": "get_admin_products",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/admin/products/{id}/review": {
+      "post": {
+        "summary": "POST /admin/products/:id/review",
+        "operationId": "post_admin_products_id_review",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/issues/{id}/resolve": {
+      "post": {
+        "summary": "POST /admin/issues/:id/resolve",
+        "operationId": "post_admin_issues_id_resolve",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/refunds/{id}/reconcile": {
+      "post": {
+        "summary": "POST /admin/refunds/:id/reconcile",
+        "operationId": "post_admin_refunds_id_reconcile",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 140
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/finance": {
+      "get": {
+        "summary": "GET /admin/finance",
+        "operationId": "get_admin_finance",
+        "tags": [
+          "admin"
+        ],
+        "security": [
+          {
+            "adminCookie": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Browser or mobile login",
+        "operationId": "postAuthLogin",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "summary": "Browser or mobile register",
+        "operationId": "postAuthRegister",
+        "tags": [
+          "auth"
+        ],
+        "security": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Success"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or invalid session"
+          },
+          "403": {
+            "description": "Role, verification, block or browser-origin restriction"
+          },
+          "409": {
+            "description": "Stock, state or idempotency conflict"
+          },
+          "422": {
+            "description": "Invalid submitted data"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/posts/{id}": {
+      "delete": {
+        "summary": "Archive an owned product or post without deleting purchase history",
+        "operationId": "archivePost",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archived; active is false"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "404": {
+            "description": "Owned product or post not found"
+          },
+          "409": {
+            "description": "Cannot change this publication state"
+          }
+        }
+      }
+    }
+  }
+}

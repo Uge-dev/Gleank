@@ -1,3 +1,4 @@
+import { assertUnblocked } from '../shared/core.js';
 import { db } from "../db/database.js";
 import { createId } from "../lib/ids.js";
 import { HttpError } from "../lib/http-error.js";
@@ -1227,6 +1228,7 @@ export function listMessages(userId, conversationId) {
 
 export function sendMessage(userId, conversationId, input) {
   const conversation = getConversation(userId, conversationId);
+  assertUnblocked(userId,conversation.buyerId===userId?conversation.sellerId:conversation.buyerId);
 
   const body = clean(input?.body, 1600);
   const attachmentUrl = clean(input?.attachmentUrl, 2000);
@@ -1338,5 +1340,7 @@ export function sendMessage(userId, conversationId, input) {
     });
   }
 
-  return listMessages(userId, conversationId).at(-1);
+  // Returning a sent message must not mark previously received messages as read.
+  const created=db.prepare(`SELECT messages.*,users.name AS sender_name,users.role AS sender_role,users.avatar_url AS sender_avatar_url FROM messages JOIN users ON users.id=messages.sender_id WHERE messages.id=?`).get(id);
+  return serializeMessage(created);
 }

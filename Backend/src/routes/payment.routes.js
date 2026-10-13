@@ -9,6 +9,7 @@ import {
   verifyPayment,
 } from "../services/payment.service.js";
 
+import { sharedWebhook } from '../shared/payments.js';
 export const paymentRouter = Router();
 
 const asyncRoute = (handler) => (req, res, next) => {
@@ -40,7 +41,7 @@ paymentRouter.post(
   "/webhook",
   paystackWebhookLimiter,
   asyncRoute(async (req, res) => {
-    await handlePaystackWebhook({
+    if(!await sharedWebhook({rawBody:req.rawBody,body:req.body,signature:req.get("x-paystack-signature")||""}))await handlePaystackWebhook({
       rawBody: req.rawBody,
       body: req.body,
       signature: req.get("x-paystack-signature") || "",

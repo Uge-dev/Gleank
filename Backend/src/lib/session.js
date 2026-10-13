@@ -63,7 +63,8 @@ export function createSession(userId, meta = {}) {
     env.jwtSecret,
     {
       expiresIn: `${env.sessionDays}d`,
-      issuer: "gleank-api",
+      algorithm: "HS256",
+    issuer: "gleank-api",
       audience: `gleank-${portal}`,
     },
   );
@@ -90,6 +91,7 @@ export function createSession(userId, meta = {}) {
 export function verifySessionToken(token, expectedPortal = "user") {
   const portal = normalizePortal(expectedPortal);
   const payload = jwt.verify(token, env.jwtSecret, {
+    algorithms: ["HS256"],
     issuer: "gleank-api",
     audience: `gleank-${portal}`,
   });
@@ -134,7 +136,8 @@ export function deleteSession(token) {
 
   try {
     const payload = jwt.verify(token, env.jwtSecret, {
-      issuer: "gleank-api",
+      algorithms: ["HS256"],
+    issuer: "gleank-api",
       audience: ["gleank-user", "gleank-rider", "gleank-admin"],
     });
     db.prepare("UPDATE sessions SET revoked_at = ? WHERE id = ?").run(
@@ -147,6 +150,8 @@ export function deleteSession(token) {
 }
 
 export function deleteSessionsForUser(userId, exceptSessionId = "") {
+  // Table exists after the additive shared migration; standalone legacy scripts may run earlier.
+  if(db.prepare("PRAGMA table_info(shared_sessions)").all().length)db.prepare('UPDATE shared_sessions SET revoked_at=? WHERE user_id=? AND id<>? AND revoked_at IS NULL').run(new Date().toISOString(),userId,exceptSessionId);
   if (exceptSessionId) {
     db.prepare(`
       UPDATE sessions

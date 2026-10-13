@@ -516,6 +516,7 @@ export function createOrders(userId, input) {
   if (input?.paymentMethod && input.paymentMethod !== 'pay_now') throw new HttpError(422, 'All orders must be paid at checkout.');
 
   const items = Array.isArray(input?.items) ? input.items : [];
+  if(db.prepare('PRAGMA table_info(shared_products)').all().length && items.some(item=>db.prepare('SELECT product_id FROM shared_products WHERE product_id=?').get(String(item.productId||item.product_id||''))))throw new HttpError(409,'This configured product requires /api/v2/checkouts to preserve its menu, licence and resale pricing.');
 
 
   if (items.length === 0) {

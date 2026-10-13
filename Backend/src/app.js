@@ -46,11 +46,17 @@ import { commerceRouter } from './routes/commerce.routes.js';
 import { socialRouter } from './routes/social.routes.js';
 import { earningRouter } from './routes/earning.routes.js';
 
+import { migrateShared } from './shared/migrations.js';
+import { syncLegacyPosts } from './shared/discovery.js';
+import { sharedRouter } from './routes/shared/api.routes.js';
+
 export const app = express();
 
 cleanExpiredSessions();
 runStage3Migrations();
 runCommerceMigrations();
+migrateShared();
+syncLegacyPosts();
 
 function normalizeCorsOrigin(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -133,6 +139,7 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.use("/api/v2", sharedRouter);
 app.use("/api/commerce", commerceRouter);
 app.use("/api/social", socialRouter);
 app.use("/api/earning", earningRouter);

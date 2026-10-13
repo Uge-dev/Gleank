@@ -7,7 +7,7 @@
     "dev": "node --watch src/server.js",
     "build": "node --check src/server.js",
     "start": "node src/server.js",
-    "test": "node --test --test-concurrency=1",
+    "test": "node --test --test-isolation=process --test-concurrency=1 test/auth.test.js test/client.test.js test/commerce.test.js test/location-route.test.js test/shared.test.js",
     "seed": "node src/scripts/seed.js",
     "migrate:neon": "node src/scripts/migrate-sqlite-to-postgres.js",
     "neon:check": "node src/scripts/neon-check.js",
@@ -15,7 +15,8 @@
     "admin:bootstrap": "node src/scripts/bootstrap-admin.js",
     "accounts:reconcile": "node src/scripts/reconcile-accounts.js",
     "verification:backfill:dry-run": "node src/scripts/backfill-verification.js",
-    "verification:backfill:apply": "node src/scripts/backfill-verification.js --apply"
+    "verification:backfill:apply": "node src/scripts/backfill-verification.js --apply",
+    "test:postgres": "node src/scripts/test-postgres-parity.js"
   },
   "engines": {
     "node": ">=24.0.0"
@@ -33,13 +34,14 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "nanoid": "^5.1.15",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^10.0.16",
     "pg": "^8.22.0",
     "sharp": "^0.35.3",
     "tesseract.js": "^7.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "supertest": "^7.2.2"
   }
 }

@@ -188,6 +188,7 @@ export class PostgresSyncDatabase {
   }
 
   call(payload) {
+    if(this.failed)throw new Error('Database connection stopped after an uncertain query. Restart and reconcile before retrying.');
     this.requestId += 1;
 
     const signal = new SharedArrayBuffer(4);
@@ -206,8 +207,9 @@ export class PostgresSyncDatabase {
     const waitResult = Atomics.wait(view, 0, 0, this.timeoutMs);
 
     if (waitResult === "timed-out") {
+      this.failed=true;this.worker.terminate();
       throw new Error(
-        `Postgres query timed out after ${this.timeoutMs}ms: ${payload.sql}`,
+        `Postgres query timed out after ${this.timeoutMs}ms; outcome requires reconciliation.`,
       );
     }
 
