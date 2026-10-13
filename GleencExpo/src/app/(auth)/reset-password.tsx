@@ -1,0 +1,6 @@
+import { useState } from 'react';
+import { useLocalSearchParams,useRouter } from 'expo-router';
+import { Page,Card,Input,Heading,GText,Action } from '@/features/live/ui';
+import { resetPassword } from '@/services/auth.service';
+import { validatePassword } from '@/utils/validation';
+export default function ResetPassword(){const {token}=useLocalSearchParams<{token?:string}>(),router=useRouter(),[value,setValue]=useState(token||''),[password,setPassword]=useState(''),[confirm,setConfirm]=useState('');return <Page title="Reset your password"><Card><Heading>Choose a new password</Heading><GText>Use the complete reset token from your email. Reset links expire and can only be used once.</GText><Input label="Reset token" value={value} onChange={setValue} maxLength={256}/><Input label="New password" value={password} onChange={setPassword} secure maxLength={72}/><Input label="Confirm new password" value={confirm} onChange={setConfirm} secure maxLength={72}/><Action title="Save new password" run={async()=>{const validation=validatePassword(password);if(!validation.valid)throw new Error(validation.message);if(password!==confirm)throw new Error('The passwords do not match.');await resetPassword(value,password);router.replace('/login');}}/></Card></Page>;}

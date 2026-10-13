@@ -1,0 +1,111 @@
+{
+  "stage": "mobile-auth-and-home-feed",
+  "targetedTests": 14,
+  "sharedClientRegressionTests": 3,
+  "isolatedBackendIntegration": "passed",
+  "productionAccess": false,
+  "deployed": false,
+  "merged": false,
+  "newDependencies": [],
+  "nativeRuntimeTested": false,
+  "expoSdkTypecheck": "not available; no new diagnostics with identical mocked SDK declarations",
+  "sourceFiles": 22,
+  "files": [
+    {
+      "path": "src/app/(auth)/login.tsx",
+      "sha256": "aaa1306e5ae4dee0c29df87846c62e9d63d5ba8627a7352bc7a3d7df846dcdd5"
+    },
+    {
+      "path": "src/app/(auth)/signup.tsx",
+      "sha256": "a52ffdf94c2b7f47809436e8fdac1f17c0d8aaf91dd4c1e88a882ef4071b7c43"
+    },
+    {
+      "path": "src/app/(auth)/verify-email.tsx",
+      "sha256": "428d734ba4e8102232b561206690d6da8ecb2534672a29f59ea87fdd1cbac0a6"
+    },
+    {
+      "path": "src/app/(tabs)/home.tsx",
+      "sha256": "fc3b465ef32541a4fa2b3f55a6965d375957b8c63de88fda5c43aa7ea3d2c28e"
+    },
+    {
+      "path": "src/app/product.tsx",
+      "sha256": "0f4ccd53666d0afcac956d2af10396e781066a12de33b895d8a29c88bc0ab0b2"
+    },
+    {
+      "path": "src/app/store.tsx",
+      "sha256": "c625d3698494a93d7eedc14d473d1ef554363f282364b7ee40f8bf74acb042b2"
+    },
+    {
+      "path": "src/components/gleenc/google-button.tsx",
+      "sha256": "79ff8643cc70c84ca44804d59690ababb956030612c7afb979c96620ab54dda2"
+    },
+    {
+      "path": "src/config/preview.ts",
+      "sha256": "0282a4ae35d20b4794ed6827f2f881ea44df088ffcc74597790eff5547ce3231"
+    },
+    {
+      "path": "src/context/auth-context.tsx",
+      "sha256": "5aa342ca3f076f53ad20d3706879da139032f52b8b6b2887aa2ce6eb55971c44"
+    },
+    {
+      "path": "src/features/feed/data.ts",
+      "sha256": "cc4ffcbe2f16c8f3e57d0e81a38af1e8b89406f1a424fbf5e8b99c3288c749e7"
+    },
+    {
+      "path": "src/features/feed/feed-state.tsx",
+      "sha256": "f4f0b06986c09cfff89d6768a80244a8cd823f40691a3a57a1b32cddb80b056e"
+    },
+    {
+      "path": "src/features/feed/product-post.tsx",
+      "sha256": "f1da20b84d18441406726587e51289c944ee136784958627fa4b7db75e52d0e4"
+    },
+    {
+      "path": "src/features/feed/purchase-actions.tsx",
+      "sha256": "d556deaff4a5a6b9fe45d307663f2b99bc1d2006f1f99da05d7399985b4f2596"
+    },
+    {
+      "path": "src/features/feed/remote-feed.ts",
+      "sha256": "8c2778f4f733e04328464b4ec3db34c319c36e6576e5c05a7660b706e2eee728"
+    },
+    {
+      "path": "src/features/feed/remote-product-details.tsx",
+      "sha256": "70be834411c0b975bfd265da13b41242836732c6409b6470e015fdd063d562c0"
+    },
+    {
+      "path": "src/features/feed/remote-seller.tsx",
+      "sha256": "b0c106138e35c4a12647740350db3abcf4fe5a656b5324c269a006d647efc2cc"
+    },
+    {
+      "path": "src/features/feed/use-remote-feed.ts",
+      "sha256": "cf3fc19c806b895601729f90dde61598dc404495549c3583dbb6ec77aad346e1"
+    },
+    {
+      "path": "src/features/feed/video-post.tsx",
+      "sha256": "799ca78150d6878d441732ef9b220576f504f2fe598180e911cc30f5011b36d9"
+    },
+    {
+      "path": "src/services/api-client.ts",
+      "sha256": "d1e44ad56c0db172b154b914e3f69d8ee44f64f9ee2f581052bffbe31ec34dca"
+    },
+    {
+      "path": "src/services/api.ts",
+      "sha256": "df952863a134015bae83b321fd7ac170ddd6563db6ab422994b34ec5756a8b1c"
+    },
+    {
+      "path": "src/services/auth.service.ts",
+      "sha256": "75a2f5442d7a2e87b5e3e663907954d6ac384ec7ae2c568317b70bfa3ee2d5c4"
+    },
+    {
+      "path": "src/services/gleenc-api.js",
+      "sha256": "ce0df54fc127e8f453acba93b5cbf2352e760bdb67ddbb01e0d3ee2e6e497613"
+    },
+    {
+      "path": "test/mobile-stage1.test.mjs",
+      "sha256": "6519a8e72a58abb2c38d6650dde3023cd72edc6b2c97e79fd242ee601d49658c"
+    },
+    {
+      "path": "README-MOBILE-STAGE-1.md",
+      "sha256": "86a64e573665ab6ceb7b673297c99a5aee1b510bcca9c6abd31d71b72d4794da"
+    }
+  ]
+}

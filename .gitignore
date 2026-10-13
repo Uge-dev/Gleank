@@ -31,3 +31,25 @@ pnpm-debug.log*
 **/.vscode/*
 !**/.vscode/extensions.json
 **/*.sw?
+
+# Mobile dependencies, local settings and generated files
+/GleencExpo/node_modules/
+/GleencExpo/.expo/
+/GleencExpo/.env*
+/GleencExpo/.npmrc
+/GleencExpo/dist/
+/GleencExpo/coverage/
+/GleencExpo/**/Pods/
+/GleencExpo/**/build/
+/GleencExpo/**/.gradle/
+/GleencExpo/**/*.apk
+/GleencExpo/**/*.aab
+/GleencExpo/**/*.ipa
+/GleencExpo/**/*.p8
+/GleencExpo/**/*.p12
+/GleencExpo/**/*.jks
+/GleencExpo/**/*.keystore
+/GleencExpo/**/*.mobileprovision
+/GleencExpo/**/credentials.json
+/GleencExpo/**/service-account*.json
+.DS_Store
